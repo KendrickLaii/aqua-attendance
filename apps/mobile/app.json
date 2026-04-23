@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Juku Attendance",
+    "slug": "juku-attendance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#160D47"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Juku Attendance to use the camera for QR code scanning."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.juku.attendance"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#160D47"
+      },
+      "package": "com.juku.attendance"
+    },
+    "scheme": "juku-attendance"
+  }
+}

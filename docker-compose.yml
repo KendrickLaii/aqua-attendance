@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-attendance}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-attendance}
+      POSTGRES_DB: ${POSTGRES_DB:-attendance}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attendance"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-attendance}:${POSTGRES_PASSWORD:-attendance}@db:5432/${POSTGRES_DB:-attendance}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      QR_SECRET: ${QR_SECRET:-change-me-qr-secret}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8081}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  pgdata:
