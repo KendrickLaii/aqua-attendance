@@ -4,8 +4,12 @@ export const $attendanceApi = ofetch.create({
   baseURL: import.meta.env.VITE_ATTENDANCE_API_URL || 'http://localhost:8000/api',
   async onRequest({ options }) {
     const accessToken = useCookie('attendanceAccessToken').value
-    if (accessToken)
-      options.headers.append('Authorization', `Bearer ${accessToken}`)
+    if (accessToken) {
+      if (!options.headers)
+        options.headers = new Headers()
+      if (options.headers instanceof Headers)
+        options.headers.set('Authorization', `Bearer ${accessToken}`)
+    }
   },
   async onResponseError({ response }) {
     if (response.status === 401) {

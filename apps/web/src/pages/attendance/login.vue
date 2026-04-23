@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
+
 definePage({
   meta: {
     public: true,
@@ -18,6 +20,22 @@ async function handleLogin() {
   error.value = ''
   try {
     await authStore.login({ username: form.username, password: form.password })
+
+    const userData = {
+      id: authStore.user?.id,
+      username: authStore.user?.username,
+      role: authStore.user?.role,
+      fullName: authStore.user?.full_name,
+    }
+
+    const userAbilityRules = authStore.isAdmin
+      ? [{ action: 'manage', subject: 'all' }]
+      : [{ action: 'read', subject: 'all' }]
+
+    useCookie('userData').value = userData as any
+    useCookie('accessToken').value = useCookie('attendanceAccessToken').value
+    useCookie('userAbilityRules').value = userAbilityRules as any
+
     if (authStore.isAdmin)
       router.push({ name: 'attendance-dashboard' })
     else if (authStore.isStaff)
@@ -55,7 +73,7 @@ async function handleLogin() {
           label="Username"
           prepend-inner-icon="ri-user-line"
           class="mb-3"
-          required
+          :rules="[requiredValidator]"
         />
         <VTextField
           v-model="form.password"
@@ -63,7 +81,7 @@ async function handleLogin() {
           type="password"
           prepend-inner-icon="ri-lock-line"
           class="mb-4"
-          required
+          :rules="[requiredValidator]"
         />
         <VBtn type="submit" block color="primary" :loading="loading" size="large">
           Sign In

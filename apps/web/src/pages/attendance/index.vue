@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
+
 definePage({
   meta: {
     public: true,

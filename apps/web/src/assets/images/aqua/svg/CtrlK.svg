@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="110" height="28" viewBox="0 0 110 28" fill="none">
+  <rect
+    x="4"
+    y="4"
+    width="40"
+    height="20"
+    rx="5"
+    fill="rgba(var(--v-border-color), var(--v-border-opacity))"
+    stroke="rgba(var(--v-border-color), var(--v-border-opacity))"
+    stroke-width="1"
+  />
+  <text
+    x="24"
+    y="18"
+    font-family="Segoe UI, sans-serif"
+    font-size="11"
+    text-anchor="middle"
+    fill="rgba(var(--v-theme-on-background), var(--v-disabled-opacity))"
+  >
+    Ctrl
+  </text>
+
+  <text
+    x="51"
+    y="18"
+    font-family="Segoe UI, sans-serif"
+    font-size="11"
+    fill="rgba(var(--v-theme-on-background), var(--v-disabled-opacity))"
+  >
+    +
+  </text>
+
+  <rect
+    x="65"
+    y="4"
+    width="40"
+    height="20"
+    rx="5"
+    fill="rgba(var(--v-border-color), var(--v-border-opacity))"
+    stroke="rgba(var(--v-border-color), var(--v-border-opacity))"
+    stroke-width="1"
+  />
+  <text
+    x="85"
+    y="18"
+    font-family="Segoe UI, sans-serif"
+    font-size="11"
+    text-anchor="middle"
+    fill="rgba(var(--v-theme-on-background), var(--v-disabled-opacity))"
+  >
+    K
+  </text>
+</svg>

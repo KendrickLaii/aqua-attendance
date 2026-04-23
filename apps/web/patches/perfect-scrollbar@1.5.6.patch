@@ -1,0 +1,38 @@
+diff --git a/dist/perfect-scrollbar.esm.js b/dist/perfect-scrollbar.esm.js
+index d54e121f8d6fd959d4f8ad5cb0d02a1d34ae4fb3..d37b8f052d5d4efaf16256c0ad3a7c5a9f36fb90 100644
+--- a/dist/perfect-scrollbar.esm.js
++++ b/dist/perfect-scrollbar.esm.js
+@@ -77,6 +77,7 @@ var cls = {
+ var scrollingClassTimeout = { x: null, y: null };
+ 
+ function addScrollingClass(i, x) {
++  if (!i || !i.element) return;
+   var classList = i.element.classList;
+   var className = cls.state.scrolling(x);
+ 
+@@ -303,6 +304,7 @@ var env = {
+ /* eslint-disable no-lonely-if */
+ 
+ function updateGeometry (i) {
++  if (!i || !i.element) return;
+   var element = i.element;
+   var roundedScrollTop = Math.floor(element.scrollTop);
+   var rect = element.getBoundingClientRect();
+@@ -543,7 +545,7 @@ function bindMouseScrollHandler(
+ 
+   function endHandler() {
+     removeScrollingClass(i, axis);
+-    i[scrollbarRail].classList.remove(cls.state.clicking);
++    if (i[scrollbarRail]) i[scrollbarRail].classList.remove(cls.state.clicking);
+     document.removeEventListener('mousemove', moveHandler);
+     document.removeEventListener('mouseup', endHandler);
+     document.removeEventListener('touchmove', moveHandler);
+@@ -572,7 +574,7 @@ function bindMouseScrollHandler(
+         document.addEventListener('touchend', endHandler);
+       }
+ 
+-      i[scrollbarRail].classList.add(cls.state.clicking);
++      if (i[scrollbarRail]) i[scrollbarRail].classList.add(cls.state.clicking);
+     }
+ 
+     e.stopPropagation();

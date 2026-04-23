@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { getQRToken } from '@/api/attendance/events'
 import type { QRPayload } from '@/api/attendance/events'
 
-definePage({ meta: { public: true, layout: 'blank' } })
+definePage({ meta: {} })
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
@@ -59,88 +60,63 @@ const countdownColor = computed(() => {
   if (countdown.value > 10) return 'warning'
   return 'error'
 })
-
-function handleLogout() {
-  authStore.logout()
-  router.push({ name: 'attendance-login' })
-}
 </script>
 
 <template>
-  <VApp>
-    <VAppBar color="primary" density="compact">
-      <VAppBarTitle>My QR Code</VAppBarTitle>
-      <VSpacer />
-      <VBtn v-if="authStore.isStaffOrAdmin" variant="text" :to="{ name: 'attendance-dashboard' }">
-        <VIcon icon="ri-dashboard-line" class="me-1" />
-        Dashboard
-      </VBtn>
-      <VBtn variant="text" :to="{ name: 'attendance-log' }">
-        <VIcon icon="ri-list-check-line" class="me-1" />
-        My Log
-      </VBtn>
-      <VBtn icon variant="text" @click="handleLogout">
-        <VIcon icon="ri-logout-box-r-line" />
-      </VBtn>
-    </VAppBar>
+  <VContainer class="d-flex flex-column align-center" style="max-width: 400px">
+    <VCard class="w-100 text-center pa-6">
+      <div class="text-h6 mb-2">
+        {{ authStore.user?.full_name || authStore.user?.username }}
+      </div>
+      <VChip :color="authStore.role === 'student' ? 'success' : 'info'" size="small" label class="mb-4">
+        {{ authStore.role }}
+      </VChip>
 
-    <VMain>
-      <VContainer class="d-flex flex-column align-center" style="max-width: 400px">
-        <VCard class="w-100 text-center pa-6">
-          <div class="text-h6 mb-2">
-            {{ authStore.user?.full_name || authStore.user?.username }}
-          </div>
-          <VChip :color="authStore.role === 'student' ? 'success' : 'info'" size="small" label class="mb-4">
-            {{ authStore.role }}
-          </VChip>
+      <div v-if="loading" class="py-12">
+        <VProgressCircular indeterminate color="primary" size="48" />
+      </div>
 
-          <div v-if="loading" class="py-12">
-            <VProgressCircular indeterminate color="primary" size="48" />
-          </div>
-
-          <template v-else-if="qrData">
-            <div class="mb-4 d-flex justify-center">
-              <VImg
-                :src="qrImageUrl"
-                width="280"
-                height="280"
-                class="rounded"
-                style="border: 4px solid rgb(var(--v-theme-primary))"
-              />
-            </div>
-
-            <VProgressLinear
-              :model-value="(countdown / (qrData.expires_in || 60)) * 100"
-              :color="countdownColor"
-              height="8"
-              rounded
-              class="mb-2"
-            />
-            <div class="text-body-2 text-medium-emphasis mb-4">
-              Refreshes in <strong>{{ countdown }}s</strong>
-            </div>
-
-            <VBtn variant="outlined" size="small" @click="refreshQR">
-              <VIcon icon="ri-refresh-line" class="me-1" />
-              Refresh Now
-            </VBtn>
-          </template>
-
-          <VAlert v-else-if="error" type="error" variant="tonal">
-            {{ error }}
-            <template #append>
-              <VBtn size="small" variant="text" @click="refreshQR">
-                Retry
-              </VBtn>
-            </template>
-          </VAlert>
-        </VCard>
-
-        <div class="text-caption text-medium-emphasis text-center mt-4">
-          Show this QR code to the scanner at the entrance.<br>
-          It refreshes automatically every {{ qrData?.expires_in || 60 }} seconds.
+      <template v-else-if="qrData">
+        <div class="mb-4 d-flex justify-center">
+          <VImg
+            :src="qrImageUrl"
+            width="280"
+            height="280"
+            class="rounded"
+            style="border: 4px solid rgb(var(--v-theme-primary))"
+          />
         </div>
-      </VContainer>
-    </VMain>
-  </VApp>
+
+        <VProgressLinear
+          :model-value="(countdown / (qrData.expires_in || 60)) * 100"
+          :color="countdownColor"
+          height="8"
+          rounded
+          class="mb-2"
+        />
+        <div class="text-body-2 text-medium-emphasis mb-4">
+          Refreshes in <strong>{{ countdown }}s</strong>
+        </div>
+
+        <VBtn variant="outlined" size="small" @click="refreshQR">
+          <VIcon icon="ri-refresh-line" class="me-1" />
+          Refresh Now
+        </VBtn>
+      </template>
+
+      <VAlert v-else-if="error" type="error" variant="tonal">
+        {{ error }}
+        <template #append>
+          <VBtn size="small" variant="text" @click="refreshQR">
+            Retry
+          </VBtn>
+        </template>
+      </VAlert>
+    </VCard>
+
+    <div class="text-caption text-medium-emphasis text-center mt-4">
+      Show this QR code to the scanner at the entrance.<br>
+      It refreshes automatically every {{ qrData?.expires_in || 60 }} seconds.
+    </div>
+  </VContainer>
 </template>

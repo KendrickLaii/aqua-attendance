@@ -15,7 +15,8 @@
         {
           "cameraPermission": "Allow Juku Attendance to use the camera for QR code scanning."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "ios": {
       "supportsTablet": true,

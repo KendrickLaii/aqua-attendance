@@ -1,0 +1,16 @@
+[2024/06/12]
+
+update the targeted mvc
+setup(
+    executables=[Executable("[DESIRED CLIENT].py", base="Win32GUI")]
+)
+
+$python buildGUI.py build
+
+or
+
+$python3 buildGUI.py build
+
+must run on Window OS
+company code: JKL
+demo key:9DDZ-Q6GJ-O762-U7WT
