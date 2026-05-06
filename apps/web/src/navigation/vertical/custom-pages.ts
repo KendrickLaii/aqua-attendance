@@ -5,18 +5,13 @@ export default [
     to: 'attendance-dashboard',
   },
   {
-    title: 'QR Scanner',
-    icon: { icon: 'ri-qr-scan-2-line' },
-    to: 'attendance-scanner',
-  },
-  {
     title: 'My QR Code',
     icon: { icon: 'ri-qr-code-line' },
     to: 'attendance-my-qr',
   },
   {
     title: 'Attendance Log',
-    icon: { icon: 'ri-list-check-line' },
+    icon: { icon: 'ri-list-check' },
     to: 'attendance-log',
   },
   {

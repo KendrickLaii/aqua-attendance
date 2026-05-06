@@ -36,9 +36,13 @@ async function refreshQR() {
 
     if (timer) clearInterval(timer)
     timer = setInterval(() => {
+      if (countdown.value <= 0) {
+        countdown.value = 0
+        if (timer) clearInterval(timer)
+        timer = null
+        return
+      }
       countdown.value--
-      if (countdown.value <= 0)
-        refreshQR()
     }, 1000)
   }
   catch (e: any) {
@@ -95,7 +99,7 @@ const countdownColor = computed(() => {
           class="mb-2"
         />
         <div class="text-body-2 text-medium-emphasis mb-4">
-          Refreshes in <strong>{{ countdown }}s</strong>
+          Expires in <strong>{{ countdown }}s</strong>
         </div>
 
         <VBtn variant="outlined" size="small" @click="refreshQR">
@@ -116,7 +120,7 @@ const countdownColor = computed(() => {
 
     <div class="text-caption text-medium-emphasis text-center mt-4">
       Show this QR code to the scanner at the entrance.<br>
-      It refreshes automatically every {{ qrData?.expires_in || 60 }} seconds.
+      Tap "Refresh Now" to generate a new QR code.
     </div>
   </VContainer>
 </template>

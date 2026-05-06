@@ -1,6 +1,6 @@
 # Juku Time & Attendance System
 
-A complete check-in / check-out system for a cram school (juku) with three roles: **admin**, **staff**, and **student**. Students present a rotating signed QR code; staff scan it via mobile camera or web interface.
+A complete check-in / check-out system for a cram school (juku) with three roles: **admin**, **staff**, and **student**. Students present a signed QR code; staff scan it in the mobile app.
 
 ## Architecture
 
@@ -22,9 +22,7 @@ A complete check-in / check-out system for a cram school (juku) with three roles
 |------|-------------|
 | `apps/api/` | FastAPI backend — auth, QR signing, attendance CRUD |
 | `apps/mobile/` | Expo (React Native) mobile app |
-| `src/pages/attendance/` | Vue 3 web pages (integrated into existing template) |
-| `src/api/attendance/` | Web API client modules |
-| `src/stores/useAttendanceAuthStore.ts` | Pinia store for attendance auth |
+| `apps/web/` | AQUA-based Vue 3 web app for attendance |
 | `docker-compose.yml` | PostgreSQL + API containers |
 
 ## Quick Start — Full Stack
@@ -51,12 +49,13 @@ docker compose up -d           # starts db + api
 ### 2. Start web app
 
 ```bash
-# From repo root (ensure VITE_ATTENDANCE_API_URL is set)
-pnpm install
-pnpm dev                       # Vite dev server on :5173
+# From repo root
+cd apps/web
+npm install
+npm run dev                    # Vite dev server on :5173 (or next available port)
 ```
 
-Visit: `http://localhost:5173/attendance/login`
+Visit: `http://localhost:5173/attendance/login` (or the port shown in terminal, e.g. `5174`/`5175`)
 
 ### 3. Start mobile app
 
@@ -196,7 +195,6 @@ Every `AttendanceEvent` records:
 |------|------|-------------|
 | `/attendance/login` | All | Attendance login page |
 | `/attendance/dashboard` | Admin/Staff | Dashboard with today's stats |
-| `/attendance/scanner` | Staff/Admin | QR scanner (web paste mode) |
 | `/attendance/my-qr` | All | Show personal QR code |
 | `/attendance/log` | All | Attendance log (filtered for students) |
 | `/attendance/users` | Admin | User management CRUD |

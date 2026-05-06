@@ -39,7 +39,7 @@ async function handleLogin() {
     if (authStore.isAdmin)
       router.push({ name: 'attendance-dashboard' })
     else if (authStore.isStaff)
-      router.push({ name: 'attendance-scanner' })
+      router.push({ name: 'attendance-dashboard' })
     else
       router.push({ name: 'attendance-my-qr' })
   }

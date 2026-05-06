@@ -17,7 +17,7 @@ onMounted(() => {
     if (authStore.isAdmin)
       router.replace({ name: 'attendance-dashboard' })
     else if (authStore.isStaff)
-      router.replace({ name: 'attendance-scanner' })
+      router.replace({ name: 'attendance-dashboard' })
     else
       router.replace({ name: 'attendance-my-qr' })
   }

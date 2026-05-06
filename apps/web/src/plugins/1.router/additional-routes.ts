@@ -11,7 +11,7 @@ export const redirects: RouteRecordRaw[] = [
       if (userRole === 'admin')
         return { name: 'attendance-dashboard' }
       if (userRole === 'staff')
-        return { name: 'attendance-scanner' }
+        return { name: 'attendance-dashboard' }
       if (userRole === 'student')
         return { name: 'attendance-my-qr' }
 
