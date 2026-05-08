@@ -21,9 +21,15 @@ async def main() -> None:
     async with async_session_factory() as db:
         for u in SEED_USERS:
             existing = await db.execute(select(User).where(User.username == u["username"]))
-            if existing.scalar_one_or_none():
-                print(f"  skip {u['username']} (exists)")
+            user = existing.scalar_one_or_none()
+            if user:
+                user.email = u["email"]
+                user.hashed_password = hash_password(u["password"])
+                user.full_name = u["full_name"]
+                user.role = u["role"]
+                print(f"  updated {u['username']} ({u['role']})")
                 continue
+
             user = User(
                 username=u["username"],
                 email=u["email"],

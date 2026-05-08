@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
+import type { VForm } from 'vuetify/components/VForm'
+import {
+  attendanceCreatePasswordValidator,
+  internalEmailValidator,
+  maxCharsRule,
+  requiredValidator,
+  usernameAttendanceValidator,
+} from '@core/utils/validators'
 import { createUser, deleteUser, listUsers, updateUser } from '@/api/attendance/users'
 import type { AttendanceUser } from '@/api/attendance/auth'
+import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
 
@@ -42,6 +50,7 @@ const form = reactive({
 })
 
 const saving = ref(false)
+const saveError = ref<string | null>(null)
 const searchQuery = ref('')
 
 const statusOptions = [
@@ -67,6 +76,13 @@ const relationshipOptions = [
 
 const isStudentRole = computed(() => form.role === 'student')
 
+const userFormRef = ref<VForm>()
+
+const usernameRules = [requiredValidator, usernameAttendanceValidator] as const
+const emailRules = [requiredValidator, internalEmailValidator] as const
+const fullNameRules = [requiredValidator, maxCharsRule(255, 'Full name')] as const
+const createPasswordRules = [requiredValidator, attendanceCreatePasswordValidator] as const
+
 onMounted(async () => {
   authStore.restoreSession()
 
@@ -90,6 +106,7 @@ async function loadUsers() {
 }
 
 function openCreate() {
+  saveError.value = null
   editingUser.value = null
   Object.assign(form, {
     username: '',
@@ -119,9 +136,11 @@ function openCreate() {
     whatsapp_enabled: true,
   })
   dialogOpen.value = true
+  nextTick(() => userFormRef.value?.resetValidation())
 }
 
 function openEdit(u: AttendanceUser) {
+  saveError.value = null
   editingUser.value = u
   Object.assign(form, {
     username: u.username,
@@ -151,6 +170,7 @@ function openEdit(u: AttendanceUser) {
     whatsapp_enabled: u.whatsapp_enabled,
   })
   dialogOpen.value = true
+  nextTick(() => userFormRef.value?.resetValidation())
 }
 
 function normalizeString(value: string): string | null {
@@ -191,7 +211,35 @@ function buildStudentPayload() {
   }
 }
 
+function formatAttendanceApiDetail(detail: unknown): string {
+  if (detail == null)
+    return ''
+  if (typeof detail === 'string')
+    return detail
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
+      .map(entry => {
+        const loc = entry.loc
+        const msg = entry.msg
+        const path = Array.isArray(loc) ? loc.filter((x): x is string => typeof x === 'string' && x !== 'body').join('.') : ''
+
+        return path ? `${path}: ${msg}` : String(msg ?? 'Invalid value')
+      })
+
+    return parts.join(' · ')
+  }
+
+  return String(detail)
+}
+
 async function handleSave() {
+  saveError.value = null
+
+  const validation = await userFormRef.value?.validate()
+  if (validation && !validation.valid)
+    return
+
   saving.value = true
   try {
     const basePayload = {
@@ -218,7 +266,7 @@ async function handleSave() {
     else {
       await createUser({
         ...basePayload,
-        username: form.username,
+        username: form.username.trim(),
         email: form.email.trim(),
         password: form.password,
         full_name: form.full_name.trim(),
@@ -226,6 +274,12 @@ async function handleSave() {
     }
     dialogOpen.value = false
     await loadUsers()
+  }
+  catch (e: unknown) {
+    const data = e && typeof e === 'object' && 'data' in e ? (e as { data?: { detail?: unknown } }).data : undefined
+    const msg = formatAttendanceApiDetail(data?.detail)
+
+    saveError.value = msg || (e instanceof Error ? e.message : 'Could not save user')
   }
   finally {
     saving.value = false
@@ -326,124 +380,240 @@ function statusColor(status: string) {
       </VTable>
     </VCard>
 
-    <VDialog v-model="dialogOpen" max-width="1100">
+    <VDialog v-model="dialogOpen" max-width="900" scrollable>
       <VCard>
-        <VCardTitle>{{ editingUser ? 'Edit User' : 'Create User' }}</VCardTitle>
-        <VCardText>
-          <VForm @submit.prevent="handleSave">
-            <h4 class="text-subtitle-1 mb-3">Basic Profile</h4>
-            <VRow>
-              <VCol cols="12" md="4">
-                <VSelect v-model="form.status" :items="statusOptions" item-title="title" item-value="value" label="Status" />
-              </VCol>
-              <VCol cols="12" md="4">
-                <VTextField v-model="form.username" label="Username / Code" :disabled="!!editingUser" required />
-              </VCol>
-              <VCol cols="12" md="4">
-                <VSelect v-model="form.role" :items="['admin', 'staff', 'student']" label="Role" />
-              </VCol>
-              <VCol cols="12" md="6">
-                <VTextField v-model="form.full_name" label="Full Name" required />
-              </VCol>
-              <VCol cols="12" md="6">
-                <VTextField v-model="form.english_name" label="English Name" :disabled="!isStudentRole" />
-              </VCol>
-              <VCol cols="12" md="6">
-                <VTextField v-model="form.email" label="Email" type="email" required />
-              </VCol>
-              <VCol cols="12" md="6">
-                <VTextField
-                  v-if="!editingUser"
-                  v-model="form.password"
-                  label="Password"
-                  type="password"
-                  required
-                />
-              </VCol>
-            </VRow>
-
-            <h4 class="text-subtitle-1 mt-4 mb-3">Contact & Personal</h4>
-            <VRow>
-              <VCol cols="12" md="4">
-                <VSelect v-model="form.gender" :items="genderOptions" item-title="title" item-value="value" label="Gender" />
-              </VCol>
-              <VCol cols="12" md="4">
-                <VTextField v-model="form.date_of_birth" label="Date of Birth" type="date" />
-              </VCol>
-              <VCol cols="12" md="4">
-                <VTextField v-model="form.phone" label="Phone" />
-              </VCol>
-              <VCol cols="12">
-                <VTextField v-model="form.address" label="Address" />
-              </VCol>
-            </VRow>
-
-            <h4 class="text-subtitle-1 mt-4 mb-3">Emergency Contact</h4>
-            <VRow>
-              <VCol cols="12" md="6">
-                <VTextField v-model="form.emergency_contact_name" label="Emergency Contact Name" />
-              </VCol>
-              <VCol cols="12" md="6">
-                <VTextField v-model="form.emergency_contact_phone" label="Emergency Contact Phone" />
-              </VCol>
-            </VRow>
-
-            <template v-if="isStudentRole">
-              <h4 class="text-subtitle-1 mt-4 mb-3">Student Details</h4>
-              <VRow>
-                <VCol cols="12" md="4">
-                  <VTextField v-model="form.student_code" label="Student Code" />
+        <VCardTitle class="text-h6 py-4">
+          {{ editingUser ? 'Edit User' : 'Create User' }}
+        </VCardTitle>
+        <VDivider />
+        <VCardText class="pa-4">
+          <VAlert v-if="saveError" type="error" variant="tonal" density="compact" class="mb-4" closable @click:close="saveError = null">
+            {{ saveError }}
+          </VAlert>
+          <VForm ref="userFormRef" @submit.prevent="handleSave">
+            <VDefaultsProvider
+              :defaults="{
+                VTextField: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+                VSelect: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+                VTextarea: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+                VSwitch: { density: 'compact', hideDetails: true },
+              }"
+            >
+              <h4 class="text-subtitle-2 text-medium-emphasis mb-2">
+                Basic profile
+              </h4>
+              <VRow class="dense-form-row">
+                <VCol cols="12" sm="6" md="4">
+                  <VSelect v-model="form.status" :items="statusOptions" item-title="title" item-value="value" label="Status" />
                 </VCol>
-                <VCol cols="12" md="4">
-                  <VTextField v-model="form.school_name" label="School Name" />
+                <VCol cols="12" sm="6" md="4">
+                  <VTextField
+                    v-model="form.username"
+                    label="Username / code *"
+                    :disabled="!!editingUser"
+                    required
+                    maxlength="100"
+                    :rules="usernameRules"
+                  />
                 </VCol>
-                <VCol cols="12" md="4">
-                  <VTextField v-model="form.grade_class" label="Grade / Class" />
+                <VCol cols="12" sm="6" md="4">
+                  <VSelect v-model="form.role" :items="['admin', 'staff', 'student']" label="Role" />
                 </VCol>
-                <VCol cols="12" md="4">
-                  <VTextField v-model="form.guardian1_name" label="Guardian 1 Name" />
+                <VCol cols="12" sm="6">
+                  <VTextField
+                    v-model="form.full_name"
+                    label="Full name *"
+                    required
+                    maxlength="255"
+                    :rules="fullNameRules"
+                  />
                 </VCol>
-                <VCol cols="12" md="4">
-                  <VSelect v-model="form.guardian1_relationship" :items="relationshipOptions" label="Guardian 1 Relationship" />
+                <VCol cols="12" sm="6">
+                  <VTextField
+                    v-model="form.english_name"
+                    label="English name"
+                    :disabled="!isStudentRole"
+                    maxlength="255"
+                    :rules="[maxCharsRule(255, 'English name')]"
+                  />
                 </VCol>
-                <VCol cols="12" md="4">
-                  <VTextField v-model="form.guardian1_phone" label="Guardian 1 Phone" />
+                <VCol cols="12" sm="6">
+                  <VTextField
+                    v-model="form.email"
+                    label="Email *"
+                    type="email"
+                    autocomplete="email"
+                    required
+                    maxlength="255"
+                    :rules="emailRules"
+                  />
                 </VCol>
-                <VCol cols="12" md="4">
-                  <VTextField v-model="form.guardian2_name" label="Guardian 2 Name" />
-                </VCol>
-                <VCol cols="12" md="4">
-                  <VSelect v-model="form.guardian2_relationship" :items="relationshipOptions" label="Guardian 2 Relationship" />
-                </VCol>
-                <VCol cols="12" md="4">
-                  <VTextField v-model="form.guardian2_phone" label="Guardian 2 Phone" />
-                </VCol>
-                <VCol cols="12" md="4">
-                  <VSwitch v-model="form.whatsapp_enabled" label="WhatsApp Enabled" />
+                <VCol cols="12" sm="6">
+                  <VTextField
+                    v-if="!editingUser"
+                    v-model="form.password"
+                    label="Password *"
+                    type="password"
+                    autocomplete="new-password"
+                    required
+                    maxlength="128"
+                    :rules="createPasswordRules"
+                  />
                 </VCol>
               </VRow>
-            </template>
 
-            <h4 class="text-subtitle-1 mt-4 mb-3">Notes</h4>
-            <VTextarea v-model="form.remarks" label="Remarks" rows="3" class="mb-3" />
+              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+                Contact & personal
+              </h4>
+              <VRow class="dense-form-row">
+                <VCol cols="12" sm="6" md="4">
+                  <VSelect v-model="form.gender" :items="genderOptions" item-title="title" item-value="value" label="Gender" clearable />
+                </VCol>
+                <VCol cols="12" sm="6" md="4">
+                  <VTextField v-model="form.date_of_birth" label="Date of birth" type="date" />
+                </VCol>
+                <VCol cols="12" sm="6" md="4">
+                  <VTextField
+                    v-model="form.phone"
+                    label="Phone"
+                    maxlength="50"
+                    :rules="[maxCharsRule(50, 'Phone')]"
+                  />
+                </VCol>
+                <VCol cols="12">
+                  <VTextField
+                    v-model="form.address"
+                    label="Address"
+                    maxlength="500"
+                    :rules="[maxCharsRule(500, 'Address')]"
+                  />
+                </VCol>
+              </VRow>
 
-            <VSwitch
-              v-if="editingUser"
-              v-model="form.is_active"
-              label="Login Access Enabled"
-              class="mb-3"
-            />
-            <div class="d-flex justify-end gap-2">
-              <VBtn variant="outlined" @click="dialogOpen = false">
-                Cancel
-              </VBtn>
-              <VBtn type="submit" color="primary" :loading="saving">
-                Save
-              </VBtn>
-            </div>
+              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+                Emergency contact
+              </h4>
+              <VRow class="dense-form-row">
+                <VCol cols="12" sm="6">
+                  <VTextField
+                    v-model="form.emergency_contact_name"
+                    label="Emergency contact name"
+                    maxlength="255"
+                    :rules="[maxCharsRule(255, 'Emergency contact name')]"
+                  />
+                </VCol>
+                <VCol cols="12" sm="6">
+                  <VTextField
+                    v-model="form.emergency_contact_phone"
+                    label="Emergency contact phone"
+                    maxlength="50"
+                    :rules="[maxCharsRule(50, 'Emergency contact phone')]"
+                  />
+                </VCol>
+              </VRow>
+
+              <template v-if="isStudentRole">
+                <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+                  Student details
+                </h4>
+                <VRow class="dense-form-row">
+                  <VCol cols="12" sm="6" md="4">
+                    <VTextField
+                      v-model="form.student_code"
+                      label="Student code"
+                      maxlength="100"
+                      :rules="[maxCharsRule(100, 'Student code')]"
+                    />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VTextField
+                      v-model="form.school_name"
+                      label="School name"
+                      maxlength="255"
+                      :rules="[maxCharsRule(255, 'School name')]"
+                    />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VTextField
+                      v-model="form.grade_class"
+                      label="Grade / class"
+                      maxlength="100"
+                      :rules="[maxCharsRule(100, 'Grade / class')]"
+                    />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VTextField
+                      v-model="form.guardian1_name"
+                      label="Guardian 1 name"
+                      maxlength="255"
+                      :rules="[maxCharsRule(255, 'Guardian 1 name')]"
+                    />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VSelect v-model="form.guardian1_relationship" :items="relationshipOptions" label="Guardian 1 relationship" clearable />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VTextField
+                      v-model="form.guardian1_phone"
+                      label="Guardian 1 phone"
+                      maxlength="50"
+                      :rules="[maxCharsRule(50, 'Guardian 1 phone')]"
+                    />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VTextField
+                      v-model="form.guardian2_name"
+                      label="Guardian 2 name"
+                      maxlength="255"
+                      :rules="[maxCharsRule(255, 'Guardian 2 name')]"
+                    />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VSelect v-model="form.guardian2_relationship" :items="relationshipOptions" label="Guardian 2 relationship" clearable />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4">
+                    <VTextField
+                      v-model="form.guardian2_phone"
+                      label="Guardian 2 phone"
+                      maxlength="50"
+                      :rules="[maxCharsRule(50, 'Guardian 2 phone')]"
+                    />
+                  </VCol>
+                  <VCol cols="12" sm="6" md="4" class="d-flex align-center">
+                    <VSwitch v-model="form.whatsapp_enabled" label="WhatsApp enabled" />
+                  </VCol>
+                </VRow>
+              </template>
+
+              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+                Notes
+              </h4>
+              <VTextarea v-model="form.remarks" label="Remarks" rows="2" auto-grow class="mb-2" />
+
+              <VSwitch
+                v-if="editingUser"
+                v-model="form.is_active"
+                label="Login access enabled"
+                class="mt-1"
+              />
+              <div class="d-flex justify-end gap-2 mt-4">
+                <VBtn variant="text" density="compact" @click="dialogOpen = false">
+                  Cancel
+                </VBtn>
+                <VBtn type="submit" color="primary" density="compact" size="small" :loading="saving">
+                  Save
+                </VBtn>
+              </div>
+            </VDefaultsProvider>
           </VForm>
         </VCardText>
       </VCard>
     </VDialog>
   </VContainer>
 </template>
+
+<style scoped lang="scss">
+.dense-form-row :deep(.v-col) {
+  padding-block: 4px !important;
+}
+</style>

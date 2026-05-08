@@ -9,22 +9,17 @@ const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const qrData = ref<QRPayload | null>(null)
-const countdown = ref(0)
 const error = ref('')
 const loading = ref(true)
-let timer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   authStore.restoreSession()
   if (!authStore.isLoggedIn) {
     router.replace({ name: 'attendance-login' })
+
     return
   }
   await refreshQR()
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
 })
 
 async function refreshQR() {
@@ -32,18 +27,6 @@ async function refreshQR() {
   error.value = ''
   try {
     qrData.value = await getQRToken()
-    countdown.value = qrData.value.expires_in
-
-    if (timer) clearInterval(timer)
-    timer = setInterval(() => {
-      if (countdown.value <= 0) {
-        countdown.value = 0
-        if (timer) clearInterval(timer)
-        timer = null
-        return
-      }
-      countdown.value--
-    }, 1000)
   }
   catch (e: any) {
     error.value = e?.data?.detail || 'Failed to get QR code'
@@ -54,15 +37,11 @@ async function refreshQR() {
 }
 
 const qrImageUrl = computed(() => {
-  if (!qrData.value) return ''
+  if (!qrData.value)
+    return ''
   const encoded = encodeURIComponent(qrData.value.qr_token)
-  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encoded}`
-})
 
-const countdownColor = computed(() => {
-  if (countdown.value > 30) return 'success'
-  if (countdown.value > 10) return 'warning'
-  return 'error'
+  return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encoded}`
 })
 </script>
 
@@ -91,18 +70,7 @@ const countdownColor = computed(() => {
           />
         </div>
 
-        <VProgressLinear
-          :model-value="(countdown / (qrData.expires_in || 60)) * 100"
-          :color="countdownColor"
-          height="8"
-          rounded
-          class="mb-2"
-        />
-        <div class="text-body-2 text-medium-emphasis mb-4">
-          Expires in <strong>{{ countdown }}s</strong>
-        </div>
-
-        <VBtn variant="outlined" size="small" @click="refreshQR">
+        <VBtn variant="outlined" size="small" class="mb-4" @click="refreshQR">
           <VIcon icon="ri-refresh-line" class="me-1" />
           Refresh Now
         </VBtn>

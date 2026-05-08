@@ -15,6 +15,7 @@ declare global {
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
+  const attendanceCreatePasswordValidator: typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
@@ -71,6 +72,7 @@ declare global {
   const inject: typeof import('vue')['inject']
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
+  const internalEmailValidator: typeof import('./src/@core/utils/validators')['internalEmailValidator']
   const isCheckboxContent: typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']
   const isComplexValue: typeof import('./src/utils/review-format')['isComplexValue']
   const isDefined: typeof import('@vueuse/core')['isDefined']
@@ -98,6 +100,7 @@ declare global {
   const mapStores: typeof import('pinia')['mapStores']
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
+  const maxCharsRule: typeof import('./src/@core/utils/validators')['maxCharsRule']
   const nextTick: typeof import('vue')['nextTick']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
@@ -360,6 +363,7 @@ declare global {
   const useWindowScroll: typeof import('@vueuse/core')['useWindowScroll']
   const useWindowSize: typeof import('@vueuse/core')['useWindowSize']
   const useWorkingSection: typeof import('./src/composables/useWorkingSection')['useWorkingSection']
+  const usernameAttendanceValidator: typeof import('./src/@core/utils/validators')['usernameAttendanceValidator']
   const vuetifyComponents: typeof import('./src/@core/utils/vuetify')['vuetifyComponents']
   const watch: typeof import('vue')['watch']
   const watchArray: typeof import('@vueuse/core')['watchArray']
@@ -399,6 +403,7 @@ declare module 'vue' {
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
+    readonly attendanceCreatePasswordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
@@ -454,6 +459,7 @@ declare module 'vue' {
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
+    readonly internalEmailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['internalEmailValidator']>
     readonly isCheckboxContent: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']>
     readonly isComplexValue: UnwrapRef<typeof import('./src/utils/review-format')['isComplexValue']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
@@ -481,6 +487,7 @@ declare module 'vue' {
     readonly mapStores: UnwrapRef<typeof import('pinia')['mapStores']>
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
+    readonly maxCharsRule: UnwrapRef<typeof import('./src/@core/utils/validators')['maxCharsRule']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
@@ -743,6 +750,7 @@ declare module 'vue' {
     readonly useWindowScroll: UnwrapRef<typeof import('@vueuse/core')['useWindowScroll']>
     readonly useWindowSize: UnwrapRef<typeof import('@vueuse/core')['useWindowSize']>
     readonly useWorkingSection: UnwrapRef<typeof import('./src/composables/useWorkingSection')['useWorkingSection']>
+    readonly usernameAttendanceValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['usernameAttendanceValidator']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>
     readonly watchAtMost: UnwrapRef<typeof import('@vueuse/core')['watchAtMost']>

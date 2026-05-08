@@ -21,6 +21,73 @@ export const emailValidator = (value: unknown) => {
   return re.test(String(value)) || 'The Email field must be a valid email'
 }
 
+/**
+ * Matches attendance API `_flex_email` (allows internal domains such as `@juku.local`).
+ * Pair with {@link requiredValidator} when the address is mandatory.
+ */
+export const internalEmailValidator = (value: unknown) => {
+  if (isEmpty(value))
+    return true
+
+  const normalized = String(value).trim()
+  if (normalized.length < 3 || normalized.length > 255)
+    return 'Email must be 3–255 characters'
+
+  const at = normalized.indexOf('@')
+  if (at <= 0 || at !== normalized.lastIndexOf('@'))
+    return 'Enter a valid email (use exactly one @)'
+
+  const localPart = normalized.slice(0, at)
+  const domainPart = normalized.slice(at + 1)
+  if (!localPart || !domainPart)
+    return 'Enter a valid email'
+
+  if (Array.from(localPart).some(c => /\s/.test(c)) || Array.from(domainPart).some(c => /\s/.test(c)))
+    return 'Email must not contain spaces'
+
+  return true
+}
+
+/** Attendance user create – API requires 6–128 characters. Use after {@link requiredValidator}. */
+export const attendanceCreatePasswordValidator = (value: unknown) => {
+  if (isEmpty(value))
+    return true
+
+  const s = String(value)
+  if (s.length < 6)
+    return 'Password must be at least 6 characters'
+
+  if (s.length > 128)
+    return 'Password must be at most 128 characters'
+
+  return true
+}
+
+/** Username / code for attendance users – max 100 after trim; use with {@link requiredValidator}. */
+export const usernameAttendanceValidator = (value: unknown) => {
+  if (isEmpty(value))
+    return true
+
+  const trimmed = String(value).trim()
+  if (!trimmed.length)
+    return 'Username cannot be only spaces'
+
+  if (trimmed.length > 100)
+    return 'Username must be at most 100 characters'
+
+  return true
+}
+
+/** Optional field max length (empty values pass). */
+export const maxCharsRule = (max: number, label = 'This field') => {
+  return (value: unknown) => {
+    if (isEmpty(value))
+      return true
+
+    return String(value).length <= max || `${label} must be at most ${max} characters`
+  }
+}
+
 // 👉 Password Validator
 export const passwordValidator = (password: string) => {
   const regExp = /(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%&*()]).{8,}/
