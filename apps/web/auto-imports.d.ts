@@ -16,6 +16,7 @@ declare global {
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
   const attendanceCreatePasswordValidator: typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']
+  const attendanceRoleToCaslRules: typeof import('./src/utils/attendanceCasl')['attendanceRoleToCaslRules']
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
@@ -196,6 +197,7 @@ declare global {
   const useAsyncQueue: typeof import('@vueuse/core')['useAsyncQueue']
   const useAsyncState: typeof import('@vueuse/core')['useAsyncState']
   const useAttachments: typeof import('./src/composables/useAttachments')['useAttachments']
+  const useAttendanceCaslSync: typeof import('./src/composables/useAttendanceCaslSync')['useAttendanceCaslSync']
   const useAttrs: typeof import('vue')['useAttrs']
   const useAverage: typeof import('@vueuse/math')['useAverage']
   const useBase64: typeof import('@vueuse/core')['useBase64']
@@ -404,6 +406,7 @@ declare module 'vue' {
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly attendanceCreatePasswordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']>
+    readonly attendanceRoleToCaslRules: UnwrapRef<typeof import('./src/utils/attendanceCasl')['attendanceRoleToCaslRules']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
@@ -583,6 +586,7 @@ declare module 'vue' {
     readonly useAsyncQueue: UnwrapRef<typeof import('@vueuse/core')['useAsyncQueue']>
     readonly useAsyncState: UnwrapRef<typeof import('@vueuse/core')['useAsyncState']>
     readonly useAttachments: UnwrapRef<typeof import('./src/composables/useAttachments')['useAttachments']>
+    readonly useAttendanceCaslSync: UnwrapRef<typeof import('./src/composables/useAttendanceCaslSync')['useAttendanceCaslSync']>
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
     readonly useAverage: UnwrapRef<typeof import('@vueuse/math')['useAverage']>
     readonly useBase64: UnwrapRef<typeof import('@vueuse/core')['useBase64']>

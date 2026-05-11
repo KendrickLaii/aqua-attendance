@@ -10,6 +10,10 @@ COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
 # Copy the rest of the application code
 COPY . .
 
+# Vite inlines this at build time (set in CI via repository Actions variable or --build-arg).
+ARG VITE_ATTENDANCE_API_URL
+ENV VITE_ATTENDANCE_API_URL=$VITE_ATTENDANCE_API_URL
+
 RUN \
   if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
   elif [ -f package-lock.json ]; then npm i; \
