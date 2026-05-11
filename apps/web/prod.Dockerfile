@@ -1,5 +1,5 @@
-# Use the official Node.js image as the base image
-FROM node:18 as builder
+# Vite 7 + @vitejs/plugin-vue require Node ^20.19.0 || >=22.12 (see package engines / vite release notes).
+FROM node:20-bookworm AS builder
 
 # Set the working directory in the container
 WORKDIR /app
