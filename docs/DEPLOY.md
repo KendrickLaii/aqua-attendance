@@ -101,3 +101,29 @@ After CI pushes a new image tag:
 docker compose -f docker-compose.prod.yml --env-file .env pull
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
+
+## 9) One-command scripts
+
+Inside `deploy/`, this repo now includes:
+
+- `first-boot.sh` - first-time setup on a fresh server
+- `update.sh` - pull latest images and restart services
+
+Run once on server:
+
+```bash
+cd deploy
+chmod +x first-boot.sh update.sh
+```
+
+First-time deploy:
+
+```bash
+./first-boot.sh
+```
+
+Regular update after each CI publish:
+
+```bash
+./update.sh
+```
