@@ -9,10 +9,15 @@ if [[ ! -f ".env" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1091
-source .env
-
 COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env"
+
+PG_USER="$(grep -E '^POSTGRES_USER=' .env | cut -d'=' -f2-)"
+PG_DB="$(grep -E '^POSTGRES_DB=' .env | cut -d'=' -f2-)"
+
+if [[ -z "$PG_USER" || -z "$PG_DB" ]]; then
+  echo "Could not read POSTGRES_USER or POSTGRES_DB from .env"
+  exit 1
+fi
 
 echo "============================================"
 echo "  WARNING: This will DELETE ALL data and"
@@ -29,8 +34,8 @@ echo "==> Step 1: Stopping API container"
 $COMPOSE stop api
 
 echo "==> Step 2: Resetting database schema"
-$COMPOSE exec -T db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -c \
-  "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${POSTGRES_USER};"
+$COMPOSE exec -T db psql -U "${PG_USER}" -d "${PG_DB}" -c \
+  "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${PG_USER};"
 
 echo "==> Step 3: Pulling latest images"
 $COMPOSE pull
@@ -38,7 +43,7 @@ $COMPOSE pull
 echo "==> Step 4: Starting API (runs alembic upgrade head automatically)"
 $COMPOSE up -d api
 echo "    Waiting for API to be ready..."
-sleep 8
+sleep 10
 
 echo "==> Step 5: Seeding default data"
 $COMPOSE exec -T api python seed.py
@@ -52,8 +57,8 @@ echo "============================================"
 echo "  Database reset complete!"
 echo ""
 echo "  Default login accounts:"
-echo "    admin     / admin123     (admin)"
-echo "    superadmin / super123    (superadmin)"
+echo "    admin      / admin123  (admin)"
+echo "    superadmin / super123  (superadmin)"
 echo ""
 echo "  Sample products:"
 echo "    STAFF-001  Tanaka Sensei   (staff)"
