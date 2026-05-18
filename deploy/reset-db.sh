@@ -11,8 +11,8 @@ fi
 
 COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env"
 
-PG_USER="$(grep -E '^POSTGRES_USER=' .env | cut -d'=' -f2-)"
-PG_DB="$(grep -E '^POSTGRES_DB=' .env | cut -d'=' -f2-)"
+PG_USER="$(grep -E '^POSTGRES_USER=' .env | cut -d'=' -f2- | tr -d '\r\n ')"
+PG_DB="$(grep -E '^POSTGRES_DB=' .env | cut -d'=' -f2- | tr -d '\r\n ')"
 
 if [[ -z "$PG_USER" || -z "$PG_DB" ]]; then
   echo "Could not read POSTGRES_USER or POSTGRES_DB from .env"
