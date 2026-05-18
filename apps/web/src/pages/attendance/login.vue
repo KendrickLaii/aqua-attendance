@@ -38,12 +38,7 @@ async function handleLogin() {
     useCookie('userAbilityRules').value = userAbilityRules as any
     ability.update(userAbilityRules)
 
-    if (authStore.isAdmin)
-      router.push({ name: 'attendance-dashboard' })
-    else if (authStore.isStaff)
-      router.push({ name: 'attendance-dashboard' })
-    else
-      router.push({ name: 'attendance-my-qr' })
+    router.push({ name: 'attendance-dashboard' })
   }
   catch (e: any) {
     error.value = e?.data?.detail || 'Login failed. Check credentials.'

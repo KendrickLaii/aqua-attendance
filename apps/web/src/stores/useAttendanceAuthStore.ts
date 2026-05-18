@@ -9,10 +9,8 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
   }),
   getters: {
     role: (state) => state.user?.role ?? null,
-    isAdmin: (state) => state.user?.role === 'admin',
-    isStaff: (state) => state.user?.role === 'staff',
-    isStudent: (state) => state.user?.role === 'student',
-    isStaffOrAdmin: (state) => state.user?.role === 'admin' || state.user?.role === 'staff',
+    isAdmin: (state) => state.user?.role === 'admin' || state.user?.role === 'superadmin',
+    isSuperAdmin: (state) => state.user?.role === 'superadmin',
   },
   actions: {
     async login(payload: AttendanceLoginPayload) {

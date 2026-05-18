@@ -13,13 +13,14 @@ class ScanRequest(BaseModel):
 
 class AttendanceOut(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
-    username: str | None = None
-    full_name: str | None = None
+    product_id: uuid.UUID
+    product_code: str | None = None
+    product_name: str | None = None
+    product_type: str | None = None
     event_type: str
     recorded_at: datetime
     qr_jti: str | None = None
-    scanner_user_id: uuid.UUID | None = None
+    recorded_by_user_id: uuid.UUID | None = None
     client_device_id: str | None = None
     notes: str | None = None
 
@@ -27,14 +28,14 @@ class AttendanceOut(BaseModel):
 
 
 class ManualCorrectionRequest(BaseModel):
-    user_id: uuid.UUID
+    product_id: uuid.UUID
     event_type: EventType = EventType.manual_correction
     recorded_at: datetime | None = None
     notes: str | None = None
 
 
 class AttendanceListParams(BaseModel):
-    user_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
     event_type: EventType | None = None

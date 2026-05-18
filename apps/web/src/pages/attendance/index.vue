@@ -13,17 +13,10 @@ const authStore = useAttendanceAuthStore()
 
 onMounted(() => {
   authStore.restoreSession()
-  if (authStore.isLoggedIn) {
-    if (authStore.isAdmin)
-      router.replace({ name: 'attendance-dashboard' })
-    else if (authStore.isStaff)
-      router.replace({ name: 'attendance-dashboard' })
-    else
-      router.replace({ name: 'attendance-my-qr' })
-  }
-  else {
+  if (authStore.isLoggedIn)
+    router.replace({ name: 'attendance-dashboard' })
+  else
     router.replace({ name: 'attendance-login' })
-  }
 })
 </script>
 

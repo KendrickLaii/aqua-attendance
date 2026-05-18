@@ -3,8 +3,8 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
-from app.deps import DB, AdminOnly
-from app.models.user import Role, User
+from app.deps import DB, AdminOnly, SuperAdminOnly
+from app.models.user import User
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.services.auth import hash_password
 
@@ -34,7 +34,7 @@ async def list_users(
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(body: UserCreate, _admin: AdminOnly, db: DB) -> User:
+async def create_user(body: UserCreate, _admin: SuperAdminOnly, db: DB) -> User:
     existing = await db.execute(
         select(User).where((User.username == body.username) | (User.email == body.email))
     )
@@ -47,25 +47,6 @@ async def create_user(body: UserCreate, _admin: AdminOnly, db: DB) -> User:
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
         role=body.role.value if hasattr(body.role, 'value') else body.role,
-        status=body.status,
-        gender=body.gender,
-        date_of_birth=body.date_of_birth,
-        phone=body.phone,
-        address=body.address,
-        emergency_contact_name=body.emergency_contact_name,
-        emergency_contact_phone=body.emergency_contact_phone,
-        remarks=body.remarks,
-        student_code=body.student_code,
-        english_name=body.english_name,
-        school_name=body.school_name,
-        grade_class=body.grade_class,
-        guardian1_name=body.guardian1_name,
-        guardian1_relationship=body.guardian1_relationship,
-        guardian1_phone=body.guardian1_phone,
-        guardian2_name=body.guardian2_name,
-        guardian2_relationship=body.guardian2_relationship,
-        guardian2_phone=body.guardian2_phone,
-        whatsapp_enabled=body.whatsapp_enabled,
     )
     db.add(user)
     await db.commit()
@@ -83,13 +64,17 @@ async def get_user(user_id: uuid.UUID, _admin: AdminOnly, db: DB) -> User:
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-async def update_user(user_id: uuid.UUID, body: UserUpdate, _admin: AdminOnly, db: DB) -> User:
+async def update_user(user_id: uuid.UUID, body: UserUpdate, _admin: SuperAdminOnly, db: DB) -> User:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    if 'password' in update_data:
+        pwd = update_data.pop('password')
+        if pwd:
+            user.hashed_password = hash_password(pwd)
     for field, value in update_data.items():
         if field == 'role' and hasattr(value, 'value'):
             value = value.value
@@ -100,7 +85,7 @@ async def update_user(user_id: uuid.UUID, body: UserUpdate, _admin: AdminOnly, d
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+async def delete_user(user_id: uuid.UUID, _admin: SuperAdminOnly, db: DB) -> None:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:

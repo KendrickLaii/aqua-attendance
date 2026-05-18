@@ -8,12 +8,8 @@ export const redirects: RouteRecordRaw[] = [
       const userData = useCookie<Record<string, unknown> | null | undefined>('userData')
       const userRole = userData.value?.role
 
-      if (userRole === 'admin')
+      if (userRole === 'admin' || userRole === 'superadmin')
         return { name: 'attendance-dashboard' }
-      if (userRole === 'staff')
-        return { name: 'attendance-dashboard' }
-      if (userRole === 'student')
-        return { name: 'attendance-my-qr' }
 
       return { name: 'attendance-login', query: to.query }
     },

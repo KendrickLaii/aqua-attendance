@@ -8,9 +8,9 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.deps import DB, AdminOnly, CurrentUser, StaffOrAdmin
-from app.models.attendance import AttendanceEvent, EventType
-from app.models.user import Role
+from app.deps import DB, AdminOnly, CurrentUser
+from app.models.attendance import AttendanceEvent
+from app.models.product import Product
 from app.schemas.attendance import AttendanceOut, ManualCorrectionRequest, ScanRequest
 from app.services import attendance as att_svc
 from app.services.qr import verify_qr_token
@@ -21,76 +21,76 @@ router = APIRouter(prefix="/attendance", tags=["attendance"])
 def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
     return AttendanceOut(
         id=event.id,
-        user_id=event.user_id,
-        username=event.user.username if event.user else None,
-        full_name=event.user.full_name if event.user else None,
+        product_id=event.product_id,
+        product_code=event.product.code if event.product else None,
+        product_name=event.product.full_name if event.product else None,
+        product_type=event.product.product_type if event.product else None,
         event_type=event.event_type,
         recorded_at=event.recorded_at,
         qr_jti=event.qr_jti,
-        scanner_user_id=event.scanner_user_id,
+        recorded_by_user_id=event.recorded_by_user_id,
         client_device_id=event.client_device_id,
         notes=event.notes,
     )
 
 
-async def _reload_with_user(db, event_id: uuid.UUID) -> AttendanceEvent:
+async def _reload_with_product(db, event_id: uuid.UUID) -> AttendanceEvent:
     result = await db.execute(
         select(AttendanceEvent)
-        .options(selectinload(AttendanceEvent.user))
+        .options(selectinload(AttendanceEvent.product))
         .where(AttendanceEvent.id == event_id)
     )
     return result.scalar_one()
 
 
 @router.post("/scan", response_model=AttendanceOut)
-async def scan(body: ScanRequest, scanner: StaffOrAdmin, db: DB) -> AttendanceOut:
+async def scan(body: ScanRequest, user: CurrentUser, db: DB) -> AttendanceOut:
     """
-    Scanner endpoint: staff/admin scans a student's QR code.
-    Idempotent on jti — scanning the same token twice returns the original event.
+    Scan endpoint: any authenticated user scans a product's QR code.
+    Idempotent on jti -- scanning the same token twice returns the original event.
     """
     try:
         payload = verify_qr_token(body.qr_token)
     except JWTError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid QR: {e}")
 
-    target_user_id = uuid.UUID(payload["sub"])
+    target_product_id = uuid.UUID(payload["sub"])
+
+    product = await db.execute(select(Product).where(Product.id == target_product_id))
+    if not product.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
     jti = payload["jti"]
 
     event, _created = await att_svc.record_scan(
         db,
-        user_id=target_user_id,
+        product_id=target_product_id,
         jti=jti,
-        scanner_user_id=scanner.id,
+        recorded_by_user_id=user.id,
         device_id=body.device_id,
     )
 
-    event = await _reload_with_user(db, event.id)
+    event = await _reload_with_product(db, event.id)
     return _event_to_out(event)
 
 
 @router.get("", response_model=list[AttendanceOut])
 async def list_attendance(
-    user: CurrentUser,
+    _user: CurrentUser,
     db: DB,
-    target_user_id: uuid.UUID | None = None,
+    product_id: uuid.UUID | None = None,
+    product_type: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     event_type: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AttendanceOut]:
-    """
-    List attendance events.
-    - Students can only see their own records.
-    - Staff/admin can see all (optionally filtered).
-    """
-    effective_user_id = target_user_id
-    if user.role == Role.student.value:
-        effective_user_id = user.id
-
+    """List attendance events. Any authenticated admin can view all records."""
     events, _total = await att_svc.list_events(
         db,
-        user_id=effective_user_id,
+        product_id=product_id,
+        product_type=product_type,
         date_from=date_from,
         date_to=date_to,
         event_type=event_type,
@@ -104,37 +104,49 @@ async def list_attendance(
 async def create_manual_correction(
     body: ManualCorrectionRequest, admin: AdminOnly, db: DB
 ) -> AttendanceOut:
+    product = await db.execute(select(Product).where(Product.id == body.product_id))
+    if not product.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
     event = await att_svc.manual_correction(
         db,
-        user_id=body.user_id,
+        product_id=body.product_id,
         event_type=body.event_type.value if hasattr(body.event_type, 'value') else body.event_type,
         recorded_at=body.recorded_at,
         notes=body.notes,
-        scanner_user_id=admin.id,
+        recorded_by_user_id=admin.id,
     )
-    event = await _reload_with_user(db, event.id)
+    event = await _reload_with_product(db, event.id)
     return _event_to_out(event)
 
 
 @router.get("/export/csv")
 async def export_csv(
-    _admin: StaffOrAdmin,
+    _admin: AdminOnly,
     db: DB,
-    target_user_id: uuid.UUID | None = None,
+    product_id: uuid.UUID | None = None,
+    product_type: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> StreamingResponse:
     events, _ = await att_svc.list_events(
-        db, user_id=target_user_id, date_from=date_from, date_to=date_to, page=1, page_size=10000
+        db,
+        product_id=product_id,
+        product_type=product_type,
+        date_from=date_from,
+        date_to=date_to,
+        page=1,
+        page_size=10000,
     )
     buf = StringIO()
-    buf.write("id,user_id,username,full_name,event_type,recorded_at,scanner_user_id,device_id,notes\n")
+    buf.write("id,product_id,product_code,product_name,product_type,event_type,recorded_at,recorded_by_user_id,device_id,notes\n")
     for e in events:
-        uname = e.user.username if e.user else ""
-        fname = e.user.full_name if e.user else ""
+        pcode = e.product.code if e.product else ""
+        pname = e.product.full_name if e.product else ""
+        ptype = e.product.product_type if e.product else ""
         buf.write(
-            f"{e.id},{e.user_id},{uname},{fname},{e.event_type},"
-            f"{e.recorded_at.isoformat()},{e.scanner_user_id or ''},{e.client_device_id or ''},{e.notes or ''}\n"
+            f"{e.id},{e.product_id},{pcode},{pname},{ptype},{e.event_type},"
+            f"{e.recorded_at.isoformat()},{e.recorded_by_user_id or ''},{e.client_device_id or ''},{e.notes or ''}\n"
         )
     buf.seek(0)
     return StreamingResponse(

@@ -5,9 +5,14 @@ export default [
     to: 'attendance-dashboard',
   },
   {
-    title: 'My QR Code',
+    title: 'Product Management',
+    icon: { icon: 'ri-group-line' },
+    to: 'attendance-products',
+  },
+  {
+    title: 'QR Codes',
     icon: { icon: 'ri-qr-code-line' },
-    to: 'attendance-my-qr',
+    to: 'attendance-qr-codes',
   },
   {
     title: 'Attendance Log',
@@ -16,7 +21,7 @@ export default [
   },
   {
     title: 'User Management',
-    icon: { icon: 'ri-group-line' },
+    icon: { icon: 'ri-admin-line' },
     to: 'attendance-users',
     action: 'manage',
     subject: 'User',

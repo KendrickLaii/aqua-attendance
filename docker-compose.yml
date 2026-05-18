@@ -28,6 +28,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-attendance}:${POSTGRES_PASSWORD:-attendance}@db:5432/${POSTGRES_DB:-attendance}
+      DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER:-attendance}:${POSTGRES_PASSWORD:-attendance}@db:5432/${POSTGRES_DB:-attendance}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       QR_SECRET: ${QR_SECRET:-change-me-qr-secret}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8081}

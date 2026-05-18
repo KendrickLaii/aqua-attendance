@@ -14,7 +14,7 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
     const isLoggedIn = !!(userDataCookie.value && accessTokenCookie.value)
 
     const role = (userDataCookie.value as any)?.role
-    if (isLoggedIn && to.path.startsWith('/attendance/users') && role !== 'admin')
+    if (isLoggedIn && to.path.startsWith('/attendance/users') && role !== 'admin' && role !== 'superadmin')
       return { name: 'not-authorized' }
 
     if (to.meta.unauthenticatedOnly) {
@@ -24,7 +24,7 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
         return undefined
     }
 
-    const bypassNavCheck = new Set(['index', 'login', 'attendance-login', 'attendance', 'not-authorized', '$error'])
+    const bypassNavCheck = new Set(['index', 'login', 'attendance-login', 'attendance', 'attendance-scanner', 'not-authorized', '$error'])
     if (
       isLoggedIn
       && to.name

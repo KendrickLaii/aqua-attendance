@@ -12,12 +12,12 @@ async def test_register_and_login(client: AsyncClient):
         "email": f"{uname}@test.com",
         "password": "testpass123",
         "full_name": "Test User",
-        "role": "student",
+        "role": "admin",
     })
     assert resp.status_code == 201
     data = resp.json()
     assert data["username"] == uname
-    assert data["role"] == "student"
+    assert data["role"] == "admin"
 
     resp = await client.post("/api/auth/login", json={"username": uname, "password": "testpass123"})
     assert resp.status_code == 200
@@ -38,7 +38,7 @@ async def test_login_wrong_password(client: AsyncClient):
         "email": f"{uname}@test.com",
         "password": "testpass123",
         "full_name": "T",
-        "role": "student",
+        "role": "admin",
     })
     resp = await client.post("/api/auth/login", json={"username": uname, "password": "wrong"})
     assert resp.status_code == 401
@@ -52,7 +52,7 @@ async def test_duplicate_register(client: AsyncClient):
         "email": f"{uname}@test.com",
         "password": "testpass123",
         "full_name": "T",
-        "role": "student",
+        "role": "admin",
     }
     resp1 = await client.post("/api/auth/register", json=body)
     assert resp1.status_code == 201
@@ -68,7 +68,7 @@ async def test_refresh_token(client: AsyncClient):
         "email": f"{uname}@test.com",
         "password": "testpass123",
         "full_name": "T",
-        "role": "student",
+        "role": "admin",
     })
     login_resp = await client.post("/api/auth/login", json={"username": uname, "password": "testpass123"})
     tokens = login_resp.json()

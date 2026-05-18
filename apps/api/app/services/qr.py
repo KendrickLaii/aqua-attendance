@@ -3,7 +3,7 @@ QR token service.
 
 Security design:
 - Tokens are HMAC-signed JWTs with a short lifetime (default 60 s).
-- Payload: { sub: user_id, jti: unique_id, iat, exp, type: "qr" }.
+- Payload: { sub: product_id, jti: unique_id, iat, exp, type: "qr" }.
 - The signing key (QR_SECRET) is separate from the auth JWT key so a leaked
   auth token cannot forge QR tokens and vice-versa.
 - Clock skew tolerance: 5 seconds (jose default leeway).
@@ -24,12 +24,12 @@ _ALGORITHM = "HS256"
 _LEEWAY_SECONDS = 5
 
 
-def issue_qr_token(user_id: str) -> tuple[str, int]:
-    """Return (signed_token, lifetime_seconds)."""
+def issue_qr_token(product_id: str) -> tuple[str, int]:
+    """Return (signed_token, lifetime_seconds) for a product."""
     now = datetime.now(timezone.utc)
     lifetime = settings.QR_TOKEN_LIFETIME_SECONDS
     payload = {
-        "sub": user_id,
+        "sub": product_id,
         "jti": uuid.uuid4().hex,
         "iat": now,
         "exp": now + timedelta(seconds=lifetime),

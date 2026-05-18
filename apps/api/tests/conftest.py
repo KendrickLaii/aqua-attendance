@@ -57,34 +57,6 @@ async def client():
 
 
 @pytest_asyncio.fixture
-async def staff_token(client: AsyncClient) -> str:
-    uname = f"staff_{uuid.uuid4().hex[:8]}"
-    await client.post("/api/auth/register", json={
-        "username": uname,
-        "email": f"{uname}@test.com",
-        "password": "staff123",
-        "full_name": "Test Staff",
-        "role": "staff",
-    })
-    resp = await client.post("/api/auth/login", json={"username": uname, "password": "staff123"})
-    return resp.json()["access_token"]
-
-
-@pytest_asyncio.fixture
-async def student_token(client: AsyncClient) -> str:
-    uname = f"student_{uuid.uuid4().hex[:8]}"
-    await client.post("/api/auth/register", json={
-        "username": uname,
-        "email": f"{uname}@test.com",
-        "password": "student123",
-        "full_name": "Test Student",
-        "role": "student",
-    })
-    resp = await client.post("/api/auth/login", json={"username": uname, "password": "student123"})
-    return resp.json()["access_token"]
-
-
-@pytest_asyncio.fixture
 async def admin_token(client: AsyncClient) -> str:
     uname = f"admin_{uuid.uuid4().hex[:8]}"
     await client.post("/api/auth/register", json={
@@ -96,3 +68,19 @@ async def admin_token(client: AsyncClient) -> str:
     })
     resp = await client.post("/api/auth/login", json={"username": uname, "password": "admin123"})
     return resp.json()["access_token"]
+
+
+@pytest_asyncio.fixture
+async def sample_product(client: AsyncClient, admin_token: str) -> dict:
+    """Create a sample product and return its data."""
+    code = f"STU-{uuid.uuid4().hex[:6]}"
+    resp = await client.post(
+        "/api/products",
+        json={
+            "code": code,
+            "full_name": "Test Student",
+            "product_type": "student",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    return resp.json()

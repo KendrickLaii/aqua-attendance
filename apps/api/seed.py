@@ -1,4 +1,4 @@
-"""Seed script: creates default admin + sample users.  Run with:
+"""Seed script: creates default admin + sample products.  Run with:
     python seed.py
 """
 import asyncio
@@ -6,19 +6,26 @@ import asyncio
 from sqlalchemy import select
 
 from app.database import async_session_factory
+from app.models.product import Product
 from app.models.user import User
 from app.services.auth import hash_password
 
 SEED_USERS = [
     {"username": "admin", "email": "admin@juku.local", "password": "admin123", "full_name": "Admin User", "role": "admin"},
-    {"username": "staff1", "email": "staff1@juku.local", "password": "staff123", "full_name": "Tanaka Sensei", "role": "staff"},
-    {"username": "student1", "email": "student1@juku.local", "password": "student123", "full_name": "Suzuki Taro", "role": "student"},
-    {"username": "student2", "email": "student2@juku.local", "password": "student123", "full_name": "Yamada Hanako", "role": "student"},
+    {"username": "superadmin", "email": "superadmin@juku.local", "password": "super123", "full_name": "Super Admin", "role": "superadmin"},
+]
+
+SEED_PRODUCTS = [
+    {"code": "STAFF-001", "full_name": "Tanaka Sensei", "product_type": "staff", "status": "active"},
+    {"code": "STAFF-002", "full_name": "Yamamoto Sensei", "product_type": "staff", "status": "active"},
+    {"code": "STU-001", "full_name": "Suzuki Taro", "product_type": "student", "status": "active", "school_name": "Tokyo High", "grade_class": "3-A"},
+    {"code": "STU-002", "full_name": "Yamada Hanako", "product_type": "student", "status": "active", "school_name": "Osaka Middle", "grade_class": "2-B"},
 ]
 
 
 async def main() -> None:
     async with async_session_factory() as db:
+        print("--- Seeding users ---")
         for u in SEED_USERS:
             existing = await db.execute(select(User).where(User.username == u["username"]))
             user = existing.scalar_one_or_none()
@@ -39,6 +46,21 @@ async def main() -> None:
             )
             db.add(user)
             print(f"  created {u['username']} ({u['role']})")
+
+        print("--- Seeding products ---")
+        for p in SEED_PRODUCTS:
+            existing = await db.execute(select(Product).where(Product.code == p["code"]))
+            product = existing.scalar_one_or_none()
+            if product:
+                for field, value in p.items():
+                    setattr(product, field, value)
+                print(f"  updated {p['code']} ({p['product_type']})")
+                continue
+
+            product = Product(**p)
+            db.add(product)
+            print(f"  created {p['code']} - {p['full_name']} ({p['product_type']})")
+
         await db.commit()
     print("Seed complete.")
 

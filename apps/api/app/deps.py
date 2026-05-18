@@ -46,5 +46,5 @@ def require_roles(*roles: Role):
     return _check
 
 
-AdminOnly = Annotated[User, Depends(require_roles(Role.admin))]
-StaffOrAdmin = Annotated[User, Depends(require_roles(Role.admin, Role.staff))]
+AdminOnly = Annotated[User, Depends(require_roles(Role.admin, Role.superadmin))]
+SuperAdminOnly = Annotated[User, Depends(require_roles(Role.superadmin))]

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listAttendance } from '@/api/attendance/events'
-import { listUsers } from '@/api/attendance/users'
+import { listProducts } from '@/api/attendance/products'
 import type { AttendanceEvent } from '@/api/attendance/events'
 
 definePage({ meta: {} })
@@ -10,7 +10,7 @@ const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const recentEvents = ref<AttendanceEvent[]>([])
-const userCount = ref(0)
+const productCount = ref(0)
 const todayCheckIns = ref(0)
 const todayCheckOuts = ref(0)
 const loading = ref(true)
@@ -18,16 +18,15 @@ const loading = ref(true)
 onMounted(async () => {
   authStore.restoreSession()
   if (!authStore.isLoggedIn) { router.replace({ name: 'attendance-login' }); return }
-  if (!authStore.isStaffOrAdmin) { router.replace({ name: 'attendance-my-qr' }); return }
 
   try {
     const today = new Date().toISOString().split('T')[0]
-    const [events, users] = await Promise.all([
+    const [events, products] = await Promise.all([
       listAttendance({ date_from: `${today}T00:00:00Z`, page_size: 20 }),
-      authStore.isAdmin ? listUsers() : Promise.resolve([]),
+      listProducts(),
     ])
     recentEvents.value = events
-    userCount.value = users.length
+    productCount.value = products.length
     todayCheckIns.value = events.filter(e => e.event_type === 'check_in').length
     todayCheckOuts.value = events.filter(e => e.event_type === 'check_out').length
   }
@@ -76,11 +75,11 @@ function eventColor(type: string) {
             </VCardText>
           </VCard>
         </VCol>
-        <VCol v-if="authStore.isAdmin" cols="12" sm="4">
+        <VCol cols="12" sm="4">
           <VCard color="info" variant="tonal">
             <VCardText class="text-center">
-              <div class="text-h4 font-weight-bold">{{ userCount }}</div>
-              <div class="text-body-1">Total Users</div>
+              <div class="text-h4 font-weight-bold">{{ productCount }}</div>
+              <div class="text-body-1">Total Products</div>
             </VCardText>
           </VCard>
         </VCol>
@@ -92,15 +91,21 @@ function eventColor(type: string) {
           <thead>
             <tr>
               <th>Time</th>
-              <th>User</th>
+              <th>Product</th>
               <th>Type</th>
+              <th>Event</th>
               <th>Device</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="evt in recentEvents" :key="evt.id">
               <td>{{ formatTime(evt.recorded_at) }}</td>
-              <td>{{ evt.full_name || evt.username }}</td>
+              <td>{{ evt.product_name || evt.product_code }}</td>
+              <td>
+                <VChip :color="evt.product_type === 'staff' ? 'info' : 'success'" size="x-small" label>
+                  {{ evt.product_type }}
+                </VChip>
+              </td>
               <td>
                 <VChip :color="eventColor(evt.event_type)" size="small" label>
                   {{ evt.event_type.replace('_', ' ') }}
@@ -109,7 +114,7 @@ function eventColor(type: string) {
               <td>{{ evt.client_device_id || '—' }}</td>
             </tr>
             <tr v-if="recentEvents.length === 0">
-              <td colspan="4" class="text-center text-medium-emphasis py-4">
+              <td colspan="5" class="text-center text-medium-emphasis py-4">
                 No events today
               </td>
             </tr>

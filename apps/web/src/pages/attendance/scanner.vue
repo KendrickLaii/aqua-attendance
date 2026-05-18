@@ -16,7 +16,7 @@ const showResult = ref(false)
 
 onMounted(() => {
   authStore.restoreSession()
-  if (!authStore.isStaffOrAdmin) {
+  if (!authStore.isLoggedIn) {
     router.replace({ name: 'attendance-login' })
   }
 })
@@ -113,8 +113,11 @@ function resetResult() {
               {{ result.event_type.replace('_', ' ').toUpperCase() }}
             </div>
             <div class="text-h6 mb-1">
-              {{ result.full_name || result.username }}
+              {{ result.product_name || result.product_code }}
             </div>
+            <VChip v-if="result.product_type" :color="result.product_type === 'staff' ? 'info' : 'success'" size="small" label class="mb-2">
+              {{ result.product_type }}
+            </VChip>
             <div class="text-body-2 text-medium-emphasis">
               {{ formatTime(result.recorded_at) }}
             </div>
