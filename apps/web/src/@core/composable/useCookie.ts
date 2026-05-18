@@ -28,9 +28,14 @@ export const useCookie = <T = string | null | undefined>(name: string, _opts?: C
 
   const cookie = ref<T | undefined>(cookies[name] as any ?? opts.default?.())
 
+  // ℹ️ Flush sync so `document.cookie` is updated immediately when `.value` is set.
+  // Otherwise, code that calls `useCookie(name)` right after setting will create a
+  // new ref that re-reads the (still stale) `document.cookie`, causing race bugs
+  // such as the first login attempt failing because the Bearer token isn't visible
+  // to the next request's `onRequest` hook.
   watch(cookie, () => {
     document.cookie = serializeCookie(name, cookie.value, opts)
-  })
+  }, { flush: 'sync' })
 
   return cookie as CookieRef<T>
 }
