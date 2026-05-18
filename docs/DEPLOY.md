@@ -102,12 +102,33 @@ docker compose -f docker-compose.prod.yml --env-file .env pull
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 ```
 
-## 9) One-command scripts
+## 9) Reset database (breaking schema changes)
+
+When a release has major DB changes (new tables, removed columns, etc.), you need to wipe the old data and start fresh:
+
+```bash
+cd deploy
+chmod +x reset-db.sh
+./reset-db.sh
+```
+
+This will:
+1. Stop the API
+2. Drop and recreate the database schema
+3. Pull the latest images
+4. Start the API (runs migrations automatically)
+5. Seed default admin accounts and sample products
+6. Restart all services
+
+> **Warning**: This deletes ALL existing data. Only use for breaking upgrades or fresh installs.
+
+## 10) One-command scripts
 
 Inside `deploy/`, this repo now includes:
 
 - `first-boot.sh` - first-time setup on a fresh server
 - `update.sh` - pull latest images and restart services
+- `reset-db.sh` - wipe database and re-seed (for breaking schema changes)
 
 Run once on server:
 
