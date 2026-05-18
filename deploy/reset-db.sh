@@ -11,14 +11,6 @@ fi
 
 COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env"
 
-PG_USER="$(grep -E '^POSTGRES_USER=' .env | cut -d'=' -f2- | tr -d '\r\n ')"
-PG_DB="$(grep -E '^POSTGRES_DB=' .env | cut -d'=' -f2- | tr -d '\r\n ')"
-
-if [[ -z "$PG_USER" || -z "$PG_DB" ]]; then
-  echo "Could not read POSTGRES_USER or POSTGRES_DB from .env"
-  exit 1
-fi
-
 echo "============================================"
 echo "  WARNING: This will DELETE ALL data and"
 echo "  recreate the database from scratch."
@@ -34,8 +26,7 @@ echo "==> Step 1: Stopping API container"
 $COMPOSE stop api
 
 echo "==> Step 2: Resetting database schema"
-$COMPOSE exec -T db psql -U "${PG_USER}" -d "${PG_DB}" -c \
-  "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${PG_USER};"
+$COMPOSE exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO $POSTGRES_USER;"'
 
 echo "==> Step 3: Pulling latest images"
 $COMPOSE pull
