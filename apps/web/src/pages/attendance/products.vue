@@ -7,6 +7,7 @@ import {
 import { createProduct, deleteProduct, listProducts, updateProduct } from '@/api/attendance/products'
 import { getQRToken, refreshQRToken } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
+import { copyToClipboard } from '@/utils/copyToClipboard'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 
 definePage({ meta: {} })
@@ -272,11 +273,32 @@ async function confirmRotate() {
   }
 }
 
-const { copy, copied } = useClipboard()
+const copied = ref(false)
+const copyFailOpen = ref(false)
+let copiedHideTimer: ReturnType<typeof setTimeout> | null = null
 
 async function copyQrToken() {
-  if (qrToken.value)
-    await copy(qrToken.value)
+  if (!qrToken.value)
+    return
+  const ok = await copyToClipboard(qrToken.value)
+  if (ok) {
+    copyFailOpen.value = false
+    copied.value = true
+    if (copiedHideTimer)
+      clearTimeout(copiedHideTimer)
+    copiedHideTimer = setTimeout(() => {
+      copied.value = false
+    }, 2500)
+  }
+  else {
+    copied.value = false
+    copyFailOpen.value = true
+  }
+}
+
+function selectTokenField(ev: FocusEvent) {
+  const el = ev.target as HTMLInputElement | null
+  el?.select()
 }
 
 const qrImageUrl = computed(() => {
@@ -557,7 +579,17 @@ function attendanceChip(p: Product) {
               Rotate QR
             </VBtn>
           </div>
-          <div class="text-caption text-disabled">
+          <VTextField
+            :model-value="qrToken"
+            readonly
+            label="Raw token (tap to select, then copy)"
+            density="compact"
+            variant="outlined"
+            class="text-start mt-4"
+            hide-details
+            @focus="selectTokenField"
+          />
+          <div class="text-caption text-disabled mt-2">
             Token version: {{ qrProduct?.qr_token_version }}
           </div>
         </template>
@@ -585,6 +617,10 @@ function attendanceChip(p: Product) {
         </VCardActions>
       </VCard>
     </VDialog>
+
+    <VSnackbar v-model="copyFailOpen" color="error" location="bottom" :timeout="7000">
+      Could not copy automatically. Select the text in the field above and copy manually (Ctrl+C or long-press).
+    </VSnackbar>
   </VContainer>
 </template>
 
