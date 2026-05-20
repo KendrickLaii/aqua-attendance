@@ -81,8 +81,13 @@ export default function ScannerScreen() {
                   {result.event_type.replace('_', ' ').toUpperCase()}
                 </Text>
                 <Text style={styles.resultName}>
-                  {result.full_name || result.username}
+                  {result.product_name || result.product_code || '—'}
                 </Text>
+                {result.attendance_status ? (
+                  <Text style={styles.resultStatus}>
+                    Now: {result.attendance_status === 'checked_in' ? 'IN' : 'OUT'}
+                  </Text>
+                ) : null}
                 <Text style={styles.resultTime}>
                   {new Date(result.recorded_at).toLocaleTimeString()}
                 </Text>
@@ -120,6 +125,7 @@ const styles = StyleSheet.create({
   resultIcon: { fontSize: 72, fontWeight: '700', marginBottom: 8 },
   resultType: { fontSize: 22, fontWeight: '700', color: THEME.primary, marginBottom: 8 },
   resultName: { fontSize: 18, color: '#333', marginBottom: 4 },
+  resultStatus: { fontSize: 13, color: '#555', marginBottom: 6, fontWeight: '600' },
   resultTime: { fontSize: 14, color: '#888', marginBottom: 20 },
   errorMsg: { fontSize: 14, color: THEME.error, textAlign: 'center', marginBottom: 20 },
   okBtn: { backgroundColor: THEME.primary, borderRadius: 10, paddingHorizontal: 32, paddingVertical: 12 },

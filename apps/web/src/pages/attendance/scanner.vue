@@ -115,9 +115,22 @@ function resetResult() {
             <div class="text-h6 mb-1">
               {{ result.product_name || result.product_code }}
             </div>
-            <VChip v-if="result.product_type" :color="result.product_type === 'staff' ? 'info' : 'success'" size="small" label class="mb-2">
-              {{ result.product_type }}
-            </VChip>
+            <div class="text-caption text-medium-emphasis mb-2">
+              {{ result.product_id }}
+            </div>
+            <div class="d-flex justify-center gap-2 mb-2">
+              <VChip v-if="result.product_type" :color="result.product_type === 'staff' ? 'info' : 'success'" size="small" label>
+                {{ result.product_type }}
+              </VChip>
+              <VChip
+                v-if="result.attendance_status"
+                :color="result.attendance_status === 'checked_in' ? 'success' : 'grey'"
+                size="small"
+                label
+              >
+                Now: {{ result.attendance_status === 'checked_in' ? 'IN' : 'OUT' }}
+              </VChip>
+            </div>
             <div class="text-body-2 text-medium-emphasis">
               {{ formatTime(result.recorded_at) }}
             </div>

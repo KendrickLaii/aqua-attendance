@@ -1,53 +1,15 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
-import { getQRToken, type QRPayload } from '../services/attendance';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { getSavedUser, type User } from '../services/auth';
 
 const THEME = { primary: '#160D47', bg: '#F4F5FA', success: '#56CA00', warning: '#FFB400', error: '#9d1c24' };
 
 export default function QRDisplayScreen() {
-  const [qrData, setQrData] = useState<QRPayload | null>(null);
-  const [countdown, setCountdown] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [user, setUser] = useState<User | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [user, setUser] = React.useState<User | null>(null);
 
-  const fetchQR = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await getQRToken();
-      setQrData(data);
-      setCountdown(data.expires_in);
-    } catch (e: any) {
-      setError(e.message || 'Failed to get QR');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
+  React.useEffect(() => {
     getSavedUser().then(setUser);
-    fetchQR();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [fetchQR]);
-
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (!qrData) return;
-    timerRef.current = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) { fetchQR(); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [qrData, fetchQR]);
-
-  const progressPct = qrData ? (countdown / qrData.expires_in) * 100 : 0;
-  const barColor = countdown > 30 ? THEME.success : countdown > 10 ? THEME.warning : THEME.error;
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -60,35 +22,14 @@ export default function QRDisplayScreen() {
             </View>
           </>
         )}
-
-        {loading ? (
-          <ActivityIndicator size="large" color={THEME.primary} style={{ marginVertical: 40 }} />
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryBtn} onPress={fetchQR}>
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : qrData ? (
-          <>
-            <View style={styles.qrWrapper}>
-              <QRCode value={qrData.qr_token} size={240} backgroundColor="white" color={THEME.primary} />
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${progressPct}%`, backgroundColor: barColor }]} />
-            </View>
-            <Text style={styles.countdown}>
-              Refreshes in <Text style={{ fontWeight: '700' }}>{countdown}s</Text>
-            </Text>
-            <TouchableOpacity style={styles.refreshBtn} onPress={fetchQR}>
-              <Text style={styles.refreshBtnText}>Refresh Now</Text>
-            </TouchableOpacity>
-          </>
-        ) : null}
+        <Text style={styles.iconBig}>🪪</Text>
+        <Text style={styles.heading}>QR codes are managed per product</Text>
+        <Text style={styles.body}>
+          Open the web app's <Text style={styles.bold}>QR Codes</Text> page (admin only) to print
+          or display a product's QR. The same QR toggles check-in / check-out — staff scan it
+          here from the Scan tab.
+        </Text>
       </View>
-
-      <Text style={styles.hint}>Show this QR code to the scanner at the entrance.</Text>
     </View>
   );
 }
@@ -103,17 +44,8 @@ const styles = StyleSheet.create({
   name: { fontSize: 20, fontWeight: '700', color: THEME.primary, marginBottom: 6 },
   badge: { paddingHorizontal: 12, paddingVertical: 3, borderRadius: 12, marginBottom: 20 },
   badgeText: { color: '#fff', fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
-  qrWrapper: {
-    padding: 12, borderWidth: 3, borderColor: THEME.primary, borderRadius: 16, marginBottom: 16,
-  },
-  progressBarBg: { width: '100%', height: 6, backgroundColor: '#eee', borderRadius: 3, marginBottom: 8 },
-  progressBarFill: { height: 6, borderRadius: 3 },
-  countdown: { fontSize: 13, color: '#888', marginBottom: 12 },
-  refreshBtn: { borderWidth: 1, borderColor: THEME.primary, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  refreshBtnText: { color: THEME.primary, fontWeight: '600', fontSize: 13 },
-  errorContainer: { alignItems: 'center', marginVertical: 30 },
-  errorText: { color: THEME.error, fontSize: 14, marginBottom: 12 },
-  retryBtn: { backgroundColor: THEME.primary, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
-  retryText: { color: '#fff', fontWeight: '600' },
-  hint: { marginTop: 16, fontSize: 12, color: '#999', textAlign: 'center' },
+  iconBig: { fontSize: 56, marginVertical: 12 },
+  heading: { fontSize: 16, fontWeight: '700', color: THEME.primary, marginBottom: 10, textAlign: 'center' },
+  body: { fontSize: 13, color: '#666', textAlign: 'center', lineHeight: 18 },
+  bold: { fontWeight: '700', color: THEME.primary },
 });

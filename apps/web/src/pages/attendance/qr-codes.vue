@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listProducts } from '@/api/attendance/products'
-import { getQRToken } from '@/api/attendance/events'
+import { getQRToken, refreshQRToken } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
 
 definePage({ meta: {} })
@@ -18,10 +18,16 @@ const qrDialog = ref(false)
 const qrProduct = ref<Product | null>(null)
 const qrToken = ref('')
 const qrLoading = ref(false)
+const rotateConfirmOpen = ref(false)
+const rotating = ref(false)
 
 onMounted(async () => {
   authStore.restoreSession()
-  if (!authStore.isLoggedIn) { router.replace({ name: 'attendance-login' }); return }
+  if (!authStore.isLoggedIn) {
+    router.replace({ name: 'attendance-login' })
+
+    return
+  }
   await loadProducts()
 })
 
@@ -46,6 +52,7 @@ async function openQR(p: Product) {
   qrDialog.value = true
   try {
     const data = await getQRToken(p.id)
+
     qrToken.value = data.qr_token
   }
   catch {
@@ -56,18 +63,43 @@ async function openQR(p: Product) {
   }
 }
 
-async function refreshQR() {
+async function confirmRotate() {
   if (!qrProduct.value) return
-  await openQR(qrProduct.value)
+  rotating.value = true
+  try {
+    const data = await refreshQRToken(qrProduct.value.id)
+
+    qrToken.value = data.qr_token
+    qrProduct.value = { ...qrProduct.value, qr_token_version: data.token_version }
+    rotateConfirmOpen.value = false
+    await loadProducts()
+  }
+  finally {
+    rotating.value = false
+  }
+}
+
+const { copy, copied } = useClipboard()
+
+async function copyQrToken() {
+  if (qrToken.value)
+    await copy(qrToken.value)
 }
 
 const qrImageUrl = computed(() => {
   if (!qrToken.value) return ''
+
   return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrToken.value)}`
 })
 
 function typeColor(type: string) {
   return type === 'staff' ? 'info' : 'success'
+}
+
+function statusChip(p: Product) {
+  return p.attendance_status === 'checked_in'
+    ? { color: 'success', label: 'In', icon: 'ri-login-box-line' }
+    : { color: 'grey', label: 'Out', icon: 'ri-logout-box-line' }
 }
 </script>
 
@@ -115,11 +147,20 @@ function typeColor(type: string) {
         <VCard class="text-center" hover @click="openQR(p)">
           <VCardText>
             <VIcon icon="ri-qr-code-line" size="48" color="primary" class="mb-2" />
-            <div class="text-subtitle-1 font-weight-bold">{{ p.full_name }}</div>
-            <div class="text-body-2 text-medium-emphasis mb-2">{{ p.code }}</div>
-            <VChip :color="typeColor(p.product_type)" size="small" label>
-              {{ p.product_type }}
-            </VChip>
+            <div class="text-subtitle-1 font-weight-bold">
+              {{ p.full_name }}
+            </div>
+            <div class="text-body-2 text-medium-emphasis mb-2">
+              {{ p.code }}
+            </div>
+            <div class="d-flex justify-center gap-2">
+              <VChip :color="typeColor(p.product_type)" size="small" label>
+                {{ p.product_type }}
+              </VChip>
+              <VChip :color="statusChip(p).color" size="small" label :prepend-icon="statusChip(p).icon">
+                {{ statusChip(p).label }}
+              </VChip>
+            </div>
           </VCardText>
         </VCard>
       </VCol>
@@ -136,7 +177,9 @@ function typeColor(type: string) {
     <!-- QR Code Dialog -->
     <VDialog v-model="qrDialog" max-width="420">
       <VCard class="text-center pa-6">
-        <VCardTitle class="text-h6">{{ qrProduct?.full_name }}</VCardTitle>
+        <VCardTitle class="text-h6">
+          {{ qrProduct?.full_name }}
+        </VCardTitle>
         <VCardSubtitle>{{ qrProduct?.code }} · {{ qrProduct?.product_type }}</VCardSubtitle>
 
         <div v-if="qrLoading" class="py-12">
@@ -153,18 +196,65 @@ function typeColor(type: string) {
             />
           </div>
           <div class="text-caption text-medium-emphasis mb-3">
-            QR code expires in 60 seconds. Tap refresh to generate a new one.
+            This QR stays valid — scan it again to toggle check-in / check-out.
+            Paste the token on the
+            <RouterLink :to="{ name: 'attendance-scanner' }" class="text-primary">
+              web scanner
+            </RouterLink>
+            to test.
           </div>
-          <VBtn variant="outlined" size="small" @click="refreshQR" prepend-icon="ri-refresh-line">
-            Refresh QR
-          </VBtn>
+          <div class="d-flex justify-center flex-wrap gap-2 mb-2">
+            <VBtn
+              variant="outlined"
+              size="small"
+              :prepend-icon="copied ? 'ri-check-line' : 'ri-file-copy-line'"
+              :color="copied ? 'success' : undefined"
+              @click="copyQrToken"
+            >
+              {{ copied ? 'Copied' : 'Copy token' }}
+            </VBtn>
+            <VBtn
+              variant="text"
+              size="small"
+              color="warning"
+              prepend-icon="ri-refresh-line"
+              @click="rotateConfirmOpen = true"
+            >
+              Rotate QR
+            </VBtn>
+          </div>
+          <div class="text-caption text-disabled">
+            Token version: {{ qrProduct?.qr_token_version }}
+          </div>
         </template>
         <VAlert v-else type="error" variant="tonal" class="mt-4">
           Failed to generate QR code
         </VAlert>
 
         <VCardActions class="justify-center mt-2">
-          <VBtn @click="qrDialog = false">Close</VBtn>
+          <VBtn @click="qrDialog = false">
+            Close
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <!-- Rotate confirmation -->
+    <VDialog v-model="rotateConfirmOpen" max-width="420" persistent>
+      <VCard>
+        <VCardTitle>Rotate QR for {{ qrProduct?.full_name }}?</VCardTitle>
+        <VCardText>
+          The current QR will stop working. Use this only if the printed
+          code was lost or shared with someone who shouldn't have it.
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" @click="rotateConfirmOpen = false">
+            Cancel
+          </VBtn>
+          <VBtn color="warning" :loading="rotating" @click="confirmRotate">
+            Rotate
+          </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>

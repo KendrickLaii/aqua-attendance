@@ -1,63 +1,113 @@
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.models.attendance import AttendanceEvent, EventType
-from app.models.product import Product
+from app.models.product import AttendanceStatus, Product
 
 
-async def determine_event_type(db: AsyncSession, product_id: uuid.UUID) -> str:
-    """Toggle logic: first event today -> check_in, then alternate."""
-    today_start = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
-    today_end = datetime.combine(date.today(), time.max, tzinfo=timezone.utc)
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(dt: datetime) -> datetime:
+    """Coerce a datetime to UTC, treating naive values as already-UTC.
+
+    SQLite has no native timezone storage so columns declared as
+    ``DateTime(timezone=True)`` may come back naive in tests; we still want
+    correct date comparisons.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _is_same_utc_day(a: datetime, b: datetime) -> bool:
+    return _as_utc(a).date() == _as_utc(b).date()
+
+
+def _next_event_type(product: Product, now: datetime) -> str:
+    """Decide check_in vs check_out based on the product's current attendance status.
+
+    If the last event was on a previous UTC day, treat the product as
+    checked_out regardless of stored status so the new day starts fresh.
+    """
+    if (
+        product.attendance_status == AttendanceStatus.checked_in.value
+        and product.last_event_at is not None
+        and _is_same_utc_day(product.last_event_at, now)
+    ):
+        return EventType.check_out.value
+    return EventType.check_in.value
+
+
+async def find_recent_event(
+    db: AsyncSession, *, product_id: uuid.UUID, within_seconds: int
+) -> AttendanceEvent | None:
+    """Return the latest scan event for this product within the debounce window."""
+    if within_seconds <= 0:
+        return None
+    cutoff = _now() - timedelta(seconds=within_seconds)
     result = await db.execute(
-        select(func.count())
+        select(AttendanceEvent)
         .where(
             and_(
                 AttendanceEvent.product_id == product_id,
-                AttendanceEvent.recorded_at >= today_start,
-                AttendanceEvent.recorded_at <= today_end,
-                AttendanceEvent.event_type.in_([EventType.check_in.value, EventType.check_out.value]),
+                AttendanceEvent.recorded_at >= cutoff,
+                AttendanceEvent.event_type.in_(
+                    [EventType.check_in.value, EventType.check_out.value]
+                ),
             )
         )
+        .order_by(AttendanceEvent.recorded_at.desc())
+        .limit(1)
     )
-    count = result.scalar_one()
-    return EventType.check_out.value if count % 2 == 1 else EventType.check_in.value
-
-
-async def find_by_jti(db: AsyncSession, jti: str) -> AttendanceEvent | None:
-    result = await db.execute(select(AttendanceEvent).where(AttendanceEvent.qr_jti == jti))
     return result.scalar_one_or_none()
 
 
 async def record_scan(
     db: AsyncSession,
     *,
-    product_id: uuid.UUID,
-    jti: str,
+    product: Product,
+    jti: str | None,
     recorded_by_user_id: uuid.UUID | None = None,
     device_id: str | None = None,
 ) -> tuple[AttendanceEvent, bool]:
-    """
-    Record a scan.  Returns (event, created).
-    If jti already exists -> returns existing event and created=False (idempotent).
-    """
-    existing = await find_by_jti(db, jti)
-    if existing:
-        return existing, False
+    """Record a scan, toggling the product's attendance status.
 
-    event_type = await determine_event_type(db, product_id)
+    Returns (event, created). If a scan landed within the debounce window
+    for this product, returns the existing event with created=False so
+    rapid double-taps at a kiosk do not produce duplicate rows.
+    """
+    debounce = getattr(settings, "SCAN_DEBOUNCE_SECONDS", 3)
+    recent = await find_recent_event(db, product_id=product.id, within_seconds=debounce)
+    if recent is not None:
+        return recent, False
+
+    now = _now()
+    event_type = _next_event_type(product, now)
+
     event = AttendanceEvent(
-        product_id=product_id,
+        product_id=product.id,
         event_type=event_type,
+        recorded_at=now,
         qr_jti=jti,
         recorded_by_user_id=recorded_by_user_id,
         client_device_id=device_id,
     )
     db.add(event)
+
+    product.attendance_status = (
+        AttendanceStatus.checked_in.value
+        if event_type == EventType.check_in.value
+        else AttendanceStatus.checked_out.value
+    )
+    product.last_event_at = now
+
     await db.commit()
     await db.refresh(event)
     return event, True
@@ -111,20 +161,41 @@ async def list_events(
 async def manual_correction(
     db: AsyncSession,
     *,
-    product_id: uuid.UUID,
+    product: Product,
     event_type: str,
     recorded_at: datetime | None = None,
     notes: str | None = None,
     recorded_by_user_id: uuid.UUID | None = None,
 ) -> AttendanceEvent:
+    """Insert a manual correction.  If the correction is an explicit
+    check_in/check_out, also update the product's attendance_status so the
+    next scan continues the toggle from the corrected state.
+    """
+    when = recorded_at or _now()
     event = AttendanceEvent(
-        product_id=product_id,
+        product_id=product.id,
         event_type=event_type,
-        recorded_at=recorded_at or datetime.now(timezone.utc),
+        recorded_at=when,
         notes=notes,
         recorded_by_user_id=recorded_by_user_id,
     )
     db.add(event)
+
+    if event_type == EventType.check_in.value:
+        product.attendance_status = AttendanceStatus.checked_in.value
+        product.last_event_at = when
+    elif event_type == EventType.check_out.value:
+        product.attendance_status = AttendanceStatus.checked_out.value
+        product.last_event_at = when
+
     await db.commit()
     await db.refresh(event)
     return event
+
+
+async def rotate_product_qr(db: AsyncSession, *, product: Product) -> Product:
+    """Invalidate any existing QR for this product by bumping its token version."""
+    product.qr_token_version = (product.qr_token_version or 0) + 1
+    await db.commit()
+    await db.refresh(product)
+    return product

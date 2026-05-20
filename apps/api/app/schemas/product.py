@@ -63,6 +63,9 @@ class ProductOut(BaseModel):
     product_type: str
     is_active: bool
     status: str
+    attendance_status: str = "checked_out"
+    qr_token_version: int = 1
+    last_event_at: datetime | None = None
     gender: str | None = None
     date_of_birth: date | None = None
     phone: str | None = None

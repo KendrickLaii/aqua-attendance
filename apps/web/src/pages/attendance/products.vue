@@ -5,7 +5,7 @@ import {
   requiredValidator,
 } from '@core/utils/validators'
 import { createProduct, deleteProduct, listProducts, updateProduct } from '@/api/attendance/products'
-import { getQRToken } from '@/api/attendance/events'
+import { getQRToken, refreshQRToken } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 
@@ -242,6 +242,7 @@ async function openQR(p: Product) {
   qrDialog.value = true
   try {
     const data = await getQRToken(p.id)
+
     qrToken.value = data.qr_token
   }
   catch {
@@ -250,6 +251,32 @@ async function openQR(p: Product) {
   finally {
     qrLoading.value = false
   }
+}
+
+const rotateConfirmOpen = ref(false)
+const rotating = ref(false)
+
+async function confirmRotate() {
+  if (!qrProduct.value) return
+  rotating.value = true
+  try {
+    const data = await refreshQRToken(qrProduct.value.id)
+
+    qrToken.value = data.qr_token
+    qrProduct.value = { ...qrProduct.value, qr_token_version: data.token_version }
+    rotateConfirmOpen.value = false
+    await loadProducts()
+  }
+  finally {
+    rotating.value = false
+  }
+}
+
+const { copy, copied } = useClipboard()
+
+async function copyQrToken() {
+  if (qrToken.value)
+    await copy(qrToken.value)
 }
 
 const qrImageUrl = computed(() => {
@@ -264,7 +291,14 @@ function typeColor(type: string) {
 function statusColor(status: string) {
   if (status === 'active') return 'success'
   if (status === 'suspended') return 'warning'
+
   return 'grey'
+}
+
+function attendanceChip(p: Product) {
+  return p.attendance_status === 'checked_in'
+    ? { color: 'success', label: 'In' }
+    : { color: 'grey', label: 'Out' }
 }
 </script>
 
@@ -307,6 +341,7 @@ function statusColor(status: string) {
             <th>Full Name</th>
             <th>Type</th>
             <th>Status</th>
+            <th>Presence</th>
             <th>Phone</th>
             <th>School / Class</th>
             <th>Actions</th>
@@ -324,6 +359,11 @@ function statusColor(status: string) {
             <td>
               <VChip :color="statusColor(p.status)" size="small" label>
                 {{ p.status }}
+              </VChip>
+            </td>
+            <td>
+              <VChip :color="attendanceChip(p).color" size="small" label>
+                {{ attendanceChip(p).label }}
               </VChip>
             </td>
             <td>{{ p.phone || '-' }}</td>
@@ -489,16 +529,59 @@ function statusColor(status: string) {
               style="border: 4px solid rgb(var(--v-theme-primary))"
             />
           </div>
-          <VBtn variant="outlined" size="small" @click="openQR(qrProduct!)">
-            <VIcon icon="ri-refresh-line" class="me-1" />
-            Refresh
-          </VBtn>
+          <div class="text-caption text-medium-emphasis mb-3">
+            This QR stays valid — scan it again to toggle check-in / check-out.
+            Paste the token on the
+            <RouterLink :to="{ name: 'attendance-scanner' }" class="text-primary">
+              web scanner
+            </RouterLink>
+            to test.
+          </div>
+          <div class="d-flex justify-center flex-wrap gap-2 mb-2">
+            <VBtn
+              variant="outlined"
+              size="small"
+              :prepend-icon="copied ? 'ri-check-line' : 'ri-file-copy-line'"
+              :color="copied ? 'success' : undefined"
+              @click="copyQrToken"
+            >
+              {{ copied ? 'Copied' : 'Copy token' }}
+            </VBtn>
+            <VBtn
+              variant="text"
+              size="small"
+              color="warning"
+              prepend-icon="ri-refresh-line"
+              @click="rotateConfirmOpen = true"
+            >
+              Rotate QR
+            </VBtn>
+          </div>
+          <div class="text-caption text-disabled">
+            Token version: {{ qrProduct?.qr_token_version }}
+          </div>
         </template>
         <VAlert v-else type="error" variant="tonal" class="mt-4">
           Failed to generate QR code
         </VAlert>
         <VCardActions class="justify-center">
           <VBtn @click="qrDialog = false">Close</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <!-- Rotate confirmation -->
+    <VDialog v-model="rotateConfirmOpen" max-width="420" persistent>
+      <VCard>
+        <VCardTitle>Rotate QR for {{ qrProduct?.full_name }}?</VCardTitle>
+        <VCardText>
+          The current QR will stop working. Use this only if the printed
+          code was lost or shared with someone who shouldn't have it.
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" @click="rotateConfirmOpen = false">Cancel</VBtn>
+          <VBtn color="warning" :loading="rotating" @click="confirmRotate">Rotate</VBtn>
         </VCardActions>
       </VCard>
     </VDialog>

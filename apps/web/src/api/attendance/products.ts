@@ -8,6 +8,9 @@ export interface Product {
   product_type: string
   is_active: boolean
   status: string
+  attendance_status: 'checked_in' | 'checked_out'
+  qr_token_version: number
+  last_event_at: string | null
   gender: string | null
   date_of_birth: string | null
   phone: string | null

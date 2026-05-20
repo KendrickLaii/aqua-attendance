@@ -86,7 +86,7 @@ Set `EXPO_PUBLIC_API_URL` in `.env` to your machine's LAN IP (e.g. `http://192.1
 | `DATABASE_URL_SYNC` | `postgresql+psycopg://...` | Sync DB URL for Alembic |
 | `SECRET_KEY` | — | JWT signing key (change in prod!) |
 | `QR_SECRET` | — | QR token signing key (separate from auth) |
-| `QR_TOKEN_LIFETIME_SECONDS` | `60` | QR code validity window |
+| `SCAN_DEBOUNCE_SECONDS` | `3` | Window in which duplicate scans of the same product return the existing event (kiosk double-tap protection) |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Auth token expiry |
 | `CORS_ORIGINS` | `http://localhost:5173,...` | Allowed CORS origins |
 
@@ -125,29 +125,43 @@ pytest tests/test_scan.py -v   # scan / QR tests only
 
 ### QR Token Flow
 
-1. Authenticated user requests `GET /api/qr/token` → receives a signed JWT with 60-second expiry
-2. JWT payload: `{ sub: user_id, jti: unique_nonce, iat, exp, type: "qr" }`
+1. Admin requests `GET /api/qr/token/{product_id}` → receives a signed JWT
+2. JWT payload: `{ sub: product_id, ver: token_version, jti, iat, type: "qr" }`
 3. QR is signed with `QR_SECRET` (separate from auth `SECRET_KEY`)
-4. Scanner sends QR token to `POST /api/attendance/scan`
-5. Server verifies signature, checks expiry (with 5s leeway for clock skew)
-6. Server records attendance event keyed on `jti`
+4. The token has **no expiry** — it lives on a printed badge / lock screen
+   and the same QR is scanned every time the product checks in or out
+5. Scanner sends QR token to `POST /api/attendance/scan`
+6. Server verifies signature, and verifies `ver` matches the product's
+   current `qr_token_version`; a stale version is rejected as "rotated"
 
-### Replay Prevention (Idempotent Design)
+### Rotating a QR
 
-Each QR token's `jti` has a **UNIQUE constraint** in the database. The design is **idempotent**:
-
-- **First scan**: creates a new `AttendanceEvent`, returns it (HTTP 200)
-- **Second scan of same jti**: returns the *original* event (HTTP 200), no duplicate row
-- This prevents accidental double-scans at kiosks while keeping audit integrity
+If a QR is lost or shared with someone who shouldn't have it, an admin can
+call `POST /api/qr/token/{product_id}/refresh`. This bumps the product's
+`qr_token_version`, invalidating any previously-issued QR for that product.
+Normal check-in / check-out **never** needs a refresh.
 
 ### Check-in / Check-out Toggle
 
-The system automatically determines event type by counting today's events for the user:
-- 0 events → `check_in`
-- 1 event → `check_out`
-- 2 events → `check_in` (toggle continues)
+Each `Product` has an `attendance_status` (`checked_in` / `checked_out`,
+default `checked_out`). Every scan toggles it:
 
-Admins can override via `POST /api/attendance/manual` with explicit `event_type`.
+- Status `checked_out` → scan creates a `check_in` event, status becomes `checked_in`
+- Status `checked_in` → scan creates a `check_out` event, status becomes `checked_out`
+
+If the last event was on a previous UTC day, the next scan starts a fresh
+session with `check_in` regardless of stored status (handles overnight gaps).
+
+Admins can override via `POST /api/attendance/manual` with an explicit
+`event_type`; manual `check_in` / `check_out` corrections also update the
+product's `attendance_status`.
+
+### Replay / Double-tap Protection
+
+Rapid duplicate scans of the **same product** within
+`SCAN_DEBOUNCE_SECONDS` (default `3`) return the existing event instead of
+creating a duplicate row. This protects kiosks from double-taps without
+preventing the legitimate "scan again to check out" flow.
 
 ### RBAC
 
@@ -182,7 +196,8 @@ Every `AttendanceEvent` records:
 | GET | `/api/users/:id` | Admin | Get user |
 | PATCH | `/api/users/:id` | Admin | Update user |
 | DELETE | `/api/users/:id` | Admin | Delete user |
-| GET | `/api/qr/token` | Bearer | Issue QR token |
+| GET | `/api/qr/token/:product_id` | Admin | Get product's current QR token |
+| POST | `/api/qr/token/:product_id/refresh` | Admin | Rotate product's QR (invalidates the old one) |
 | POST | `/api/attendance/scan` | Staff+ | Process QR scan |
 | GET | `/api/attendance` | Bearer | List attendance events |
 | POST | `/api/attendance/manual` | Admin | Manual correction |

@@ -11,6 +11,7 @@ const router = useRouter()
 
 const recentEvents = ref<AttendanceEvent[]>([])
 const productCount = ref(0)
+const presentCount = ref(0)
 const todayCheckIns = ref(0)
 const todayCheckOuts = ref(0)
 const loading = ref(true)
@@ -27,6 +28,7 @@ onMounted(async () => {
     ])
     recentEvents.value = events
     productCount.value = products.length
+    presentCount.value = products.filter(p => p.attendance_status === 'checked_in').length
     todayCheckIns.value = events.filter(e => e.event_type === 'check_in').length
     todayCheckOuts.value = events.filter(e => e.event_type === 'check_out').length
   }
@@ -59,7 +61,15 @@ function eventColor(type: string) {
 
     <template v-else>
       <VRow class="mb-4">
-        <VCol cols="12" sm="4">
+        <VCol cols="12" sm="3">
+          <VCard color="primary" variant="tonal">
+            <VCardText class="text-center">
+              <div class="text-h4 font-weight-bold">{{ presentCount }}</div>
+              <div class="text-body-1">Currently Checked In</div>
+            </VCardText>
+          </VCard>
+        </VCol>
+        <VCol cols="12" sm="3">
           <VCard color="success" variant="tonal">
             <VCardText class="text-center">
               <div class="text-h4 font-weight-bold">{{ todayCheckIns }}</div>
@@ -67,7 +77,7 @@ function eventColor(type: string) {
             </VCardText>
           </VCard>
         </VCol>
-        <VCol cols="12" sm="4">
+        <VCol cols="12" sm="3">
           <VCard color="warning" variant="tonal">
             <VCardText class="text-center">
               <div class="text-h4 font-weight-bold">{{ todayCheckOuts }}</div>
@@ -75,7 +85,7 @@ function eventColor(type: string) {
             </VCardText>
           </VCard>
         </VCol>
-        <VCol cols="12" sm="4">
+        <VCol cols="12" sm="3">
           <VCard color="info" variant="tonal">
             <VCardText class="text-center">
               <div class="text-h4 font-weight-bold">{{ productCount }}</div>

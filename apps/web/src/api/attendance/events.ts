@@ -8,6 +8,7 @@ export interface AttendanceEvent {
   product_type: string | null
   event_type: 'check_in' | 'check_out' | 'manual_correction'
   recorded_at: string
+  attendance_status: 'checked_in' | 'checked_out' | null
   qr_jti: string | null
   recorded_by_user_id: string | null
   client_device_id: string | null
@@ -16,11 +17,15 @@ export interface AttendanceEvent {
 
 export interface QRPayload {
   qr_token: string
-  expires_in: number
+  token_version: number
 }
 
 export async function getQRToken(productId: string): Promise<QRPayload> {
   return await $attendanceApi(`/qr/token/${productId}`)
+}
+
+export async function refreshQRToken(productId: string): Promise<QRPayload> {
+  return await $attendanceApi(`/qr/token/${productId}/refresh`, { method: 'POST' })
 }
 
 export async function scanQR(payload: { qr_token: string; device_id?: string }): Promise<AttendanceEvent> {

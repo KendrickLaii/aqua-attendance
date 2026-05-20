@@ -3,13 +3,16 @@ Attendance event model.
 
 Tracks check-in / check-out events for products (staff, students, etc.).
 
-Idempotency: each QR token's `jti` can produce exactly one event.  A second
-scan of the same `jti` returns the original row (HTTP 200) instead of creating
-a duplicate.
+The event_type (check_in / check_out) is derived from the product's current
+`attendance_status` — each scan toggles it.  The same QR token can therefore
+be re-scanned to perform both check-in and check-out without rotating the
+code.  Admins may insert manual corrections with event_type =
+"manual_correction".
 
-The event_type (check_in / check_out) is derived automatically: the first
-scan of the day is check_in; subsequent scans toggle.  Admins may insert
-manual corrections with event_type = "manual_correction".
+Replay / double-tap protection is handled in the scan service by a short
+debounce window (same product scanned twice within a few seconds returns
+the original event).  `qr_jti` is recorded for audit but is no longer
+globally unique.
 """
 
 import enum
@@ -36,7 +39,7 @@ class AttendanceEvent(Base):
     event_type: Mapped[str] = mapped_column(String(30), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    qr_jti: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    qr_jti: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
     client_device_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

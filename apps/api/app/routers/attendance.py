@@ -27,6 +27,7 @@ def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
         product_type=event.product.product_type if event.product else None,
         event_type=event.event_type,
         recorded_at=event.recorded_at,
+        attendance_status=event.product.attendance_status if event.product else None,
         qr_jti=event.qr_jti,
         recorded_by_user_id=event.recorded_by_user_id,
         client_device_id=event.client_device_id,
@@ -45,27 +46,39 @@ async def _reload_with_product(db, event_id: uuid.UUID) -> AttendanceEvent:
 
 @router.post("/scan", response_model=AttendanceOut)
 async def scan(body: ScanRequest, user: CurrentUser, db: DB) -> AttendanceOut:
-    """
-    Scan endpoint: any authenticated user scans a product's QR code.
-    Idempotent on jti -- scanning the same token twice returns the original event.
+    """Scan a product's QR.
+
+    The same QR toggles check-in / check-out on each scan based on the
+    product's current `attendance_status`.  Rapid duplicate scans within
+    `SCAN_DEBOUNCE_SECONDS` return the existing event (no duplicate row).
     """
     try:
         payload = verify_qr_token(body.qr_token)
     except JWTError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid QR: {e}")
 
-    target_product_id = uuid.UUID(payload["sub"])
+    try:
+        target_product_id = uuid.UUID(payload["sub"])
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid QR: bad subject")
 
-    product = await db.execute(select(Product).where(Product.id == target_product_id))
-    if not product.scalar_one_or_none():
+    result = await db.execute(select(Product).where(Product.id == target_product_id))
+    product = result.scalar_one_or_none()
+    if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    if not product.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product is inactive")
 
-    jti = payload["jti"]
+    if payload.get("ver") != product.qr_token_version:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid QR: token has been rotated, please refresh the QR",
+        )
 
     event, _created = await att_svc.record_scan(
         db,
-        product_id=target_product_id,
-        jti=jti,
+        product=product,
+        jti=payload.get("jti"),
         recorded_by_user_id=user.id,
         device_id=body.device_id,
     )
@@ -104,13 +117,14 @@ async def list_attendance(
 async def create_manual_correction(
     body: ManualCorrectionRequest, admin: AdminOnly, db: DB
 ) -> AttendanceOut:
-    product = await db.execute(select(Product).where(Product.id == body.product_id))
-    if not product.scalar_one_or_none():
+    result = await db.execute(select(Product).where(Product.id == body.product_id))
+    product = result.scalar_one_or_none()
+    if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
     event = await att_svc.manual_correction(
         db,
-        product_id=body.product_id,
+        product=product,
         event_type=body.event_type.value if hasattr(body.event_type, 'value') else body.event_type,
         recorded_at=body.recorded_at,
         notes=body.notes,

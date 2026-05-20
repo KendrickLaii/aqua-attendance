@@ -33,6 +33,7 @@ export default function HistoryScreen() {
         <View style={[styles.dot, { backgroundColor: isIn ? THEME.success : THEME.warning }]} />
         <View style={{ flex: 1 }}>
           <Text style={styles.type}>{item.event_type.replace('_', ' ')}</Text>
+          <Text style={styles.product}>{item.product_name || item.product_code || '—'}</Text>
           <Text style={styles.time}>{d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
         </View>
       </View>
@@ -64,6 +65,7 @@ const styles = StyleSheet.create({
   },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   type: { fontSize: 15, fontWeight: '600', color: THEME.primary, textTransform: 'capitalize' },
+  product: { fontSize: 13, color: '#444', marginTop: 2 },
   time: { fontSize: 13, color: '#888', marginTop: 2 },
   empty: { textAlign: 'center', color: '#999', marginTop: 40, fontSize: 15 },
 });
