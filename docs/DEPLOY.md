@@ -108,7 +108,9 @@ Windows without OpenSSL: use WSL/Git Bash, or PowerShell:
 | `WEB_IMAGE` / `API_IMAGE` | `ghcr.io/<user>/juku-attendance/web:main` etc. |
 | `POSTGRES_PASSWORD` | Strong password (not `change-this-db-password`) |
 | `SECRET_KEY` / `QR_SECRET` | Two unique `openssl rand -hex 32` values (see above) |
-| `CORS_ORIGINS` | `https://app.yourdomain.com` |
+| `CORS_ORIGINS` | `https://app.yourdomain.com` (must match browser URL; use `http://IP` if no TLS) |
+
+**IP-only (no domain):** set `APP_DOMAIN` and `API_DOMAIN` both to your public IP (e.g. `13.115.90.135`). Caddy routes `/api/*` to the API and everything else to the web app on that single host. Use `http://` in the browser unless you have real HTTPS.
 
 Optional API tuning (if wired through compose env): `SCAN_DEBOUNCE_SECONDS` (default `3` in API code).
 

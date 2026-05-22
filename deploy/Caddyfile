@@ -1,9 +1,27 @@
+# Same host (IP or one domain): web at /, API at /api/* and /docs
 {$APP_DOMAIN} {
-  encode gzip
-  reverse_proxy web:80
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /docs* {
+		reverse_proxy api:8000
+	}
+	handle /openapi.json {
+		reverse_proxy api:8000
+	}
+	handle /redoc* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
 }
 
-{$API_DOMAIN} {
-  encode gzip
-  reverse_proxy api:8000
-}
+# Separate API hostname only (e.g. api.example.com). Uncomment if API_DOMAIN differs from APP_DOMAIN.
+# {$API_DOMAIN} {
+# 	encode gzip
+# 	reverse_proxy api:8000
+# }

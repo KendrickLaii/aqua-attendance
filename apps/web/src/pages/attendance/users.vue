@@ -152,6 +152,17 @@ function roleColor(role: string) {
   if (role === 'superadmin') return 'error'
   return 'warning'
 }
+
+/** Admins may edit/delete admin accounts only; superadmins may manage all. */
+function canManageUser(u: AttendanceUser) {
+  return authStore.isSuperAdmin || u.role === 'admin'
+}
+
+const roleOptions = computed(() =>
+  authStore.isSuperAdmin
+    ? ['admin', 'superadmin']
+    : ['admin'],
+)
 </script>
 
 <template>
@@ -201,10 +212,25 @@ function roleColor(role: string) {
               <VIcon :icon="u.is_active ? 'ri-checkbox-circle-fill' : 'ri-close-circle-fill'" :color="u.is_active ? 'success' : 'error'" />
             </td>
             <td>
-              <VBtn icon size="small" variant="text" @click="openEdit(u)" title="Edit">
+              <VBtn
+                v-if="canManageUser(u)"
+                icon
+                size="small"
+                variant="text"
+                title="Edit"
+                @click="openEdit(u)"
+              >
                 <VIcon icon="ri-edit-line" />
               </VBtn>
-              <VBtn icon size="small" variant="text" color="error" @click="handleDelete(u)" title="Delete">
+              <VBtn
+                v-if="authStore.isSuperAdmin"
+                icon
+                size="small"
+                variant="text"
+                color="error"
+                title="Delete"
+                @click="handleDelete(u)"
+              >
                 <VIcon icon="ri-delete-bin-line" />
               </VBtn>
             </td>
@@ -266,7 +292,7 @@ function roleColor(role: string) {
             </VTextField>
             <VSelect
               v-model="form.role"
-              :items="['admin', 'superadmin']"
+              :items="roleOptions"
               label="Role"
               class="mb-3"
             />

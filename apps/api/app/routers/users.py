@@ -4,11 +4,23 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.deps import DB, AdminOnly, SuperAdminOnly
-from app.models.user import User
+from app.models.user import Role, User
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.services.auth import hash_password
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _role_value(role: object) -> str:
+    return role.value if hasattr(role, "value") else str(role)
+
+
+def _forbid_admin_managing_superadmin(actor: User, *, target_role: str | None = None, new_role: str | None = None) -> None:
+    """Admins may manage admin accounts only; superadmins may manage anyone."""
+    if actor.role == Role.superadmin.value:
+        return
+    if target_role == Role.superadmin.value or new_role == Role.superadmin.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
 
 @router.get("", response_model=list[UserOut])
@@ -34,7 +46,9 @@ async def list_users(
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(body: UserCreate, _admin: AdminOnly, db: DB) -> User:
+async def create_user(body: UserCreate, actor: AdminOnly, db: DB) -> User:
+    _forbid_admin_managing_superadmin(actor, new_role=_role_value(body.role))
+
     existing = await db.execute(
         select(User).where((User.username == body.username) | (User.email == body.email))
     )
@@ -64,13 +78,15 @@ async def get_user(user_id: uuid.UUID, _admin: AdminOnly, db: DB) -> User:
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-async def update_user(user_id: uuid.UUID, body: UserUpdate, _admin: SuperAdminOnly, db: DB) -> User:
+async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db: DB) -> User:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    new_role = _role_value(update_data["role"]) if "role" in update_data else None
+    _forbid_admin_managing_superadmin(actor, target_role=user.role, new_role=new_role)
     if 'password' in update_data:
         pwd = update_data.pop('password')
         if pwd:
