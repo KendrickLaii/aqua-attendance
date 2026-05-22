@@ -95,8 +95,9 @@ Two workflows in `.github/workflows/`:
 
 ### 2.8 Postgres = database
 
-- Stores users, attendance records, etc.
+- Stores **login users** (`admin` / `superadmin`), **products** (staff/student entities with QR versions), and **attendance events**
 - Lives in a Docker volume → data persists across restarts
+- **Seed** is not automatic on `first-boot.sh` — run `exec api python seed.py` or `reset-db.sh` (see `docs/DEPLOY.md`)
 
 ---
 
@@ -215,11 +216,13 @@ cd ~/juku-attendance/deploy
 sudo docker compose -f docker-compose.prod.yml --env-file .env restart
 ```
 
-### Re-seed users (only when DB is reset)
+### Seed users + sample products (empty or reset DB)
 
 ```bash
 sudo docker compose -f docker-compose.prod.yml --env-file .env exec api python seed.py
 ```
+
+Creates `admin`, `superadmin`, and products `STAFF-001`, `STU-001`, etc. Change passwords after seeding.
 
 ---
 
@@ -339,6 +342,8 @@ Common next-level additions:
 4. **Monitoring** — install something like `dozzle` to view logs in browser
 5. **Staging environment** — same setup on a 2nd VM for testing before prod
 6. **Strong passwords** — change all seeded demo passwords before sharing
+7. **Harden API** — disable open `/api/auth/register` before public launch ([KNOWN-GAPS.md](KNOWN-GAPS.md))
+8. **Mobile** — set `EXPO_PUBLIC_API_URL` to production API when building the Expo app (not part of this compose stack)
 
 ---
 

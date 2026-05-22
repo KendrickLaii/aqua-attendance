@@ -1,47 +1,69 @@
-# AQUA-Attendance
+# Juku Attendance — Web App
 
-## Quick Start
+Vue 3 + Vite admin console for attendance. **Attendance UI** lives under `src/pages/attendance/`. The rest of the repo tree is the AQUA admin template (demos); production navigation only links attendance pages.
 
-Run these commands from the repository root:
+## Quick start
+
+From repo root, ensure API is running (see [apps/api/README.md](../api/README.md)).
 
 ```bash
-# 1) Start database
-docker compose up -d db
-
-# 2) Start API (new terminal)
-cd apps/api
-python -m uvicorn app.main:app --reload
-
-# 3) Start Web (new terminal)
 cd apps/web
+cp .env.example .env
+npm install
 npm run dev
 ```
 
-## URLs
+Open: http://localhost:5173/attendance/login
 
-- API Health: `http://127.0.0.1:8000/api/health`
-- Web Login: `http://localhost:5173/attendance/login`
-  - If `5173` is occupied, Vite may use `5174`/`5175`/etc.
+Default login: `admin` / `admin123` (after API `python seed.py`).
 
-## First-Time Setup
+## Environment
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_ATTENDANCE_API_URL` | Yes for real API | e.g. `http://localhost:8000/api` |
+
+Optional template vars (`VITE_MAPBOX_ACCESS_TOKEN`, etc.) are unused by attendance pages.
+
+**Production:** `VITE_ATTENDANCE_API_URL` is baked in at **image build** time. Set the GitHub Actions variable `VITE_ATTENDANCE_API_URL` before running the publish workflow.
+
+## Attendance pages
+
+| Route | Purpose |
+|-------|---------|
+| `/attendance/login` | Login |
+| `/attendance/dashboard` | Dashboard |
+| `/attendance/products` | Product CRUD |
+| `/attendance/qr-codes` | Fetch / rotate / preview QRs |
+| `/attendance/log` | Event log, manual correction, CSV |
+| `/attendance/scanner` | Paste QR token (dev/kiosk without camera) |
+| `/attendance/users` | User CRUD (admin) |
+
+Navigation: `src/navigation/vertical/custom-pages.ts` (prod uses this list only).
+
+## API client
+
+- `src/utils/attendanceApi.ts` — `ofetch`, Bearer token, 401 refresh
+- `src/api/attendance/` — typed endpoints
+- `src/stores/useAttendanceAuthStore.ts` — session + cookies
+
+Tokens are stored in cookies (`attendanceAccessToken`). See [docs/KNOWN-GAPS.md](../../docs/KNOWN-GAPS.md) for logout/CSV caveats.
+
+## Build
 
 ```bash
-# API setup
-cd apps/api
-pip install -r requirements.txt
-python -m alembic upgrade head
-python seed.py
-
-# Web setup
-cd ../web
-npm install
+npm run build      # output: dist/
+npm run preview    # preview production build locally
 ```
 
-## Stop Services
+Docker production image: `prod.Dockerfile` (nginx serves `dist/`).
 
-- In API/Web terminals: press `Ctrl + C`
-- Stop database:
+## Stop services
 
-```bash
-docker compose down
-```
+- Dev server: `Ctrl+C` in the web terminal  
+- Database (from repo root): `docker compose down`
+
+## More docs
+
+- Root [README.md](../../README.md)  
+- [docs/DEPLOY.md](../../docs/DEPLOY.md) — production web image  

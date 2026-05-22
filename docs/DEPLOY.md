@@ -1,19 +1,21 @@
 # Production Deploy Guide
 
-This deploy setup runs:
+This stack runs on a single server:
 
-- `web` image from GHCR
-- `api` image from GHCR
-- `db` (Postgres)
-- `caddy` reverse proxy with automatic HTTPS certificates
+- **web** — Vue admin (nginx) from GHCR
+- **api** — FastAPI from GHCR
+- **db** — PostgreSQL 16
+- **caddy** — HTTPS reverse proxy (`APP_DOMAIN`, `API_DOMAIN`)
+
+Mobile apps are built separately; point them at `https://<API_DOMAIN>/api` (see [apps/mobile/README.md](../apps/mobile/README.md)).
 
 ## 1) Prerequisites
 
 - Ubuntu server with public IP
-- DNS records:
-  - `app.yourdomain.com` -> server IP
-  - `api.yourdomain.com` -> server IP
-- GitHub Actions already pushed images to GHCR
+- DNS A records:
+  - `app.yourdomain.com` → server IP
+  - `api.yourdomain.com` → server IP
+- GitHub Actions has published images to GHCR (`docker-publish` workflow on `main`)
 
 ## 2) Install Docker on server
 
@@ -50,36 +52,52 @@ echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password
 ## 4) Prepare deploy folder
 
 ```bash
-mkdir -p ~/juku-attendance
-cd ~/juku-attendance
+mkdir -p ~/juku-attendance/deploy
+cd ~/juku-attendance/deploy
 ```
 
-Copy these files from this repo's `deploy/` folder:
+Copy from this repo's `deploy/` folder:
 
 - `docker-compose.prod.yml`
 - `Caddyfile`
-- `.env.example` (rename to `.env`)
+- `.env.example` → `.env`
+- `first-boot.sh`, `update.sh`, `reset-db.sh` (optional but recommended)
 
 ```bash
 cp .env.example .env
+chmod +x first-boot.sh update.sh reset-db.sh
 ```
 
-Then edit `.env`:
+Edit `.env`:
 
-- set real domains
-- set `WEB_IMAGE` and `API_IMAGE`
-- set strong secrets
-- set `CORS_ORIGINS` to app domain
+| Variable | Set to |
+|----------|--------|
+| `APP_DOMAIN` | Your app hostname |
+| `API_DOMAIN` | Your API hostname |
+| `WEB_IMAGE` / `API_IMAGE` | `ghcr.io/<user>/juku-attendance/web:main` etc. |
+| `POSTGRES_PASSWORD` | Strong password |
+| `SECRET_KEY` / `QR_SECRET` | Strong random values (`openssl rand -hex 32`) |
+| `CORS_ORIGINS` | `https://app.yourdomain.com` |
 
-## 5) Ensure web build uses your API domain
+Optional API tuning (if wired through compose env): `SCAN_DEBOUNCE_SECONDS` (default `3` in API code).
 
-In GitHub repo settings, set Actions variable:
+## 5) Web image must include your API URL
 
-- `VITE_ATTENDANCE_API_URL=https://api.yourdomain.com/api`
+In GitHub → **Settings → Secrets and variables → Actions → Variables**:
 
-Then run the publish workflow again so the web image is rebuilt with that value.
+- `VITE_ATTENDANCE_API_URL` = `https://api.yourdomain.com/api`
+
+Re-run the **Publish container images** workflow after changing this so the web bundle calls the correct API.
 
 ## 6) Start services
+
+Using scripts (from `deploy/`):
+
+```bash
+./first-boot.sh    # first time: Docker install check, pull, up -d
+```
+
+Or manually:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env pull
@@ -87,15 +105,36 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 docker compose -f docker-compose.prod.yml --env-file .env ps
 ```
 
+### Seed the database (first install)
+
+`first-boot.sh` does **not** run `seed.py`. After containers are healthy:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env exec api python seed.py
+```
+
+This creates `admin` / `superadmin` and sample products. **Change passwords immediately** before sharing the system.
+
+For a clean slate with migrations + seed, use `reset-db.sh` (destructive).
+
 ## 7) Verify
 
-- App: `https://app.yourdomain.com`
+- App: `https://app.yourdomain.com/attendance/login`
 - API health: `https://api.yourdomain.com/api/health`
-- Swagger docs: `https://api.yourdomain.com/docs`
+- Swagger: `https://api.yourdomain.com/docs`
+
+Log in with seeded `admin` / `admin123`, create product QRs under **QR Codes**, then test mobile scan against `https://api.yourdomain.com/api`.
 
 ## 8) Update to a new release
 
-After CI pushes a new image tag:
+After CI pushes new images:
+
+```bash
+cd ~/juku-attendance/deploy
+./update.sh
+```
+
+Or:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env pull
@@ -104,47 +143,43 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 ## 9) Reset database (breaking schema changes)
 
-When a release has major DB changes (new tables, removed columns, etc.), you need to wipe the old data and start fresh:
+When a release requires a full schema rebuild:
 
 ```bash
 cd deploy
-chmod +x reset-db.sh
 ./reset-db.sh
 ```
 
 This will:
+
 1. Stop the API
 2. Drop and recreate the database schema
-3. Pull the latest images
-4. Start the API (runs migrations automatically)
-5. Seed default admin accounts and sample products
+3. Pull latest images
+4. Start the API (migrations run on start)
+5. Run `seed.py` (default users + sample products)
 6. Restart all services
 
-> **Warning**: This deletes ALL existing data. Only use for breaking upgrades or fresh installs.
+> **Warning:** Deletes **all** data. Use only for breaking upgrades or intentional fresh installs.
 
-## 10) One-command scripts
+## 10) Helper scripts
 
-Inside `deploy/`, this repo now includes:
+| Script | Purpose |
+|--------|---------|
+| `first-boot.sh` | Docker install (if needed), pull images, `up -d` |
+| `update.sh` | Pull latest images and restart |
+| `reset-db.sh` | Wipe DB, migrate, seed |
 
-- `first-boot.sh` - first-time setup on a fresh server
-- `update.sh` - pull latest images and restart services
-- `reset-db.sh` - wipe database and re-seed (for breaking schema changes)
+## 11) Security before going live
 
-Run once on server:
+See [KNOWN-GAPS.md](KNOWN-GAPS.md). Minimum checklist:
 
-```bash
-cd deploy
-chmod +x first-boot.sh update.sh
-```
+- [ ] Strong `SECRET_KEY`, `QR_SECRET`, DB password
+- [ ] Change seed account passwords
+- [ ] Plan to disable public `POST /api/auth/register`
+- [ ] HTTPS via Caddy with real domains
+- [ ] `CORS_ORIGINS` matches app URL only
 
-First-time deploy:
+## Related
 
-```bash
-./first-boot.sh
-```
-
-Regular update after each CI publish:
-
-```bash
-./update.sh
-```
+- [CICD-EXPLAINED.md](CICD-EXPLAINED.md) — pipeline overview  
+- [README.md](../README.md) — architecture and API reference  

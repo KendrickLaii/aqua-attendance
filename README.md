@@ -1,236 +1,300 @@
 # Juku Time & Attendance System
 
-A complete check-in / check-out system for a cram school (juku) with three roles: **admin**, **staff**, and **student**. Students present a signed QR code; staff scan it in the mobile app.
+Check-in / check-out for a cram school (juku). **Staff and students are not login accounts** — they are **products** with a printed or on-screen QR code. **Admins** (and **superadmins**) log into the web app and mobile app to manage data and scan QRs.
 
-## Architecture
+## How it works
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Mobile App │────▶│   FastAPI    │◀────│   Vue 3 Web App │
-│  (Expo/RN)  │     │  (apps/api)  │     │  (src/pages/    │
-│             │     │              │     │   attendance/)   │
-└─────────────┘     └──────┬───────┘     └─────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  Products (staff / students)                                     │
+│  Each has a signed QR (JWT) — same code for every check-in/out   │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ scan
+                                ▼
+┌─────────────┐     ┌──────────────┐     ┌─────────────────────────┐
+│  Mobile App │────▶│   FastAPI    │◀────│   Vue 3 Web App         │
+│  (Expo/RN)  │     │  apps/api    │     │  apps/web/attendance/   │
+│  QR scanner │     │              │     │  admin console          │
+└─────────────┘     └──────┬───────┘     └─────────────────────────┘
                            │
                     ┌──────┴───────┐
                     │  PostgreSQL  │
                     └──────────────┘
 ```
 
-## Repository Layout
+| Concept | Description |
+|---------|-------------|
+| **User** (`users` table) | Someone who logs in: `admin` or `superadmin` only |
+| **Product** (`products` table) | Person or entity that checks in: `product_type` = `staff` or `student` |
+| **Attendance event** | A `check_in`, `check_out`, or `manual_correction` row for a product |
+
+## Repository layout
 
 | Path | Description |
 |------|-------------|
-| `apps/api/` | FastAPI backend — auth, QR signing, attendance CRUD |
-| `apps/mobile/` | Expo (React Native) mobile app |
-| `apps/web/` | AQUA-based Vue 3 web app for attendance |
-| `docker-compose.yml` | PostgreSQL + API containers |
+| `apps/api/` | FastAPI — auth, products, QR signing, attendance |
+| `apps/web/` | Vue 3 admin UI (`src/pages/attendance/`) on AQUA template |
+| `apps/mobile/` | Expo app — QR scanner + history (see mobile README for entry-point note) |
+| `docker-compose.yml` | Dev: PostgreSQL + API |
+| `deploy/` | Production: Caddy + web + api + db (see `docs/DEPLOY.md`) |
+| `docs/` | Deploy guide, CI/CD explainer |
 
-## Quick Start — Full Stack
+## Quick start — full stack
 
-### 1. Start database and API
+### 1. Database and API
 
 ```bash
 # From repo root
-docker compose up -d db        # start PostgreSQL
+docker compose up -d db
+
 cd apps/api
-cp .env.example .env           # edit if needed
+cp .env.example .env
 pip install -r requirements.txt
-alembic upgrade head           # run migrations
-python seed.py                 # create sample users (admin/staff1/student1/student2)
-uvicorn app.main:app --reload  # start API on :8000
+alembic upgrade head
+python seed.py
+uvicorn app.main:app --reload
 ```
 
-Or run everything via Docker:
+API: http://localhost:8000/docs  
+Health: http://localhost:8000/api/health
+
+Or run API in Docker:
 
 ```bash
-docker compose up -d           # starts db + api
+docker compose up -d
 ```
 
-### 2. Start web app
+### 2. Web app
 
 ```bash
-# From repo root
 cd apps/web
+cp .env.example .env   # set VITE_ATTENDANCE_API_URL if needed
 npm install
-npm run dev                    # Vite dev server on :5173 (or next available port)
+npm run dev
 ```
 
-Visit: `http://localhost:5173/attendance/login` (or the port shown in terminal, e.g. `5174`/`5175`)
+Open: http://localhost:5173/attendance/login (Vite may use 5174+ if 5173 is busy)
 
-### 3. Start mobile app
+### 3. Mobile app
 
 ```bash
 cd apps/mobile
+cp .env.example .env
+# Set EXPO_PUBLIC_API_URL to your LAN IP on a physical device, e.g.:
+# EXPO_PUBLIC_API_URL=http://192.168.1.50:8000/api
 npm install
-npx expo start                 # scan QR with Expo Go
+npx expo start
 ```
 
-Set `EXPO_PUBLIC_API_URL` in `.env` to your machine's LAN IP (e.g. `http://192.168.1.50:8000/api`).
+See [apps/mobile/README.md](apps/mobile/README.md) for scanner setup and known entry-point limitations.
 
-## Default Seed Users
+## Seed data
+
+After `python seed.py`:
+
+### Login users
 
 | Username | Password | Role |
 |----------|----------|------|
 | admin | admin123 | admin |
-| staff1 | staff123 | staff |
-| student1 | student123 | student |
-| student2 | student123 | student |
+| superadmin | super123 | superadmin |
 
-## Environment Variables
+### Sample products (QR issued from web)
+
+| Code | Name | Type |
+|------|------|------|
+| STAFF-001 | Tanaka Sensei | staff |
+| STAFF-002 | Yamamoto Sensei | staff |
+| STU-001 | Suzuki Taro | student |
+| STU-002 | Yamada Hanako | student |
+
+**Get a QR:** log in as `admin` → **QR Codes** or **Product Management** → fetch token → print or display.  
+**Scan:** mobile **Scan** tab or web **Scanner** (paste token) while logged in as admin/superadmin.
+
+Change all seed passwords before any shared or production use.
+
+## Environment variables
 
 ### API (`apps/api/.env`)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `postgresql+asyncpg://...` | Async DB connection string |
-| `DATABASE_URL_SYNC` | `postgresql+psycopg://...` | Sync DB URL for Alembic |
-| `SECRET_KEY` | — | JWT signing key (change in prod!) |
-| `QR_SECRET` | — | QR token signing key (separate from auth) |
-| `SCAN_DEBOUNCE_SECONDS` | `3` | Window in which duplicate scans of the same product return the existing event (kiosk double-tap protection) |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Auth token expiry |
-| `CORS_ORIGINS` | `http://localhost:5173,...` | Allowed CORS origins |
+| `DATABASE_URL` | `postgresql+asyncpg://...` | Async app connection |
+| `DATABASE_URL_SYNC` | `postgresql+psycopg://...` | Sync URL for Alembic |
+| `SECRET_KEY` | (required in prod) | JWT auth signing |
+| `QR_SECRET` | (required in prod) | QR token signing (separate from auth) |
+| `SCAN_DEBOUNCE_SECONDS` | `3` | Same product: duplicate scan within window returns existing event |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token TTL |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
+| `CORS_ORIGINS` | localhost dev URLs | Comma-separated allowed origins |
+| `ENV` | `development` | `development` enables SQL echo |
 
-### Web (`.env`)
+### Web (`apps/web/.env`)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VITE_ATTENDANCE_API_URL` | `http://localhost:8000/api` | Attendance API base URL |
+| `VITE_ATTENDANCE_API_URL` | `http://localhost:8000/api` | API base URL (baked at **build** time for prod images) |
 
 ### Mobile (`apps/mobile/.env`)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EXPO_PUBLIC_API_URL` | `http://localhost:8000/api` | API URL (use LAN IP for devices) |
+| `EXPO_PUBLIC_API_URL` | `http://localhost:8000/api` | API base URL; use LAN IP on real devices |
 
-## Database Migrations
+### Production server (`deploy/.env`)
 
-```bash
-cd apps/api
-alembic upgrade head           # apply all migrations
-alembic revision --autogenerate -m "description"  # create new migration
-alembic downgrade -1           # rollback one step
-```
+See [deploy/.env.example](deploy/.env.example) and [docs/DEPLOY.md](docs/DEPLOY.md).
+
+## Security design
+
+### QR token flow
+
+1. Admin calls `GET /api/qr/token/{product_id}` → signed JWT
+2. Payload: `{ sub: product_id, ver: qr_token_version, jti, iat, type: "qr" }`
+3. Signed with `QR_SECRET` (not `SECRET_KEY`)
+4. **No expiry** — same QR on badge/lock screen; each scan toggles check-in/out
+5. Scanner posts token to `POST /api/attendance/scan`
+6. Server checks signature and `ver` matches product; stale version → "rotated"
+
+**Rotate:** `POST /api/qr/token/{product_id}/refresh` bumps `qr_token_version` and invalidates old QRs.
+
+### Check-in / check-out toggle
+
+- `attendance_status`: `checked_out` → scan → `check_in`; `checked_in` → scan → `check_out`
+- If last event was on a **previous UTC day**, next scan always starts with `check_in` (overnight gap handling)
+- Admins: `POST /api/attendance/manual` for corrections
+
+### Debounce
+
+Same product scanned twice within `SCAN_DEBOUNCE_SECONDS` (default 3) returns the **existing** event (kiosk double-tap), not a duplicate row.
+
+### API authorization (current behavior)
+
+Roles on **users**: `admin`, `superadmin`.  
+`AdminOnly` = admin or superadmin. `SuperAdminOnly` = superadmin only.
+
+| Endpoint | Auth required |
+|----------|----------------|
+| `POST /api/auth/register` | None (open — **disable before production**) |
+| `POST /api/auth/login`, `/refresh` | None |
+| `GET /api/auth/me` | Bearer |
+| `GET/POST/PATCH /api/users` | Admin (create user: **superadmin only**) |
+| `DELETE /api/users/:id` | Superadmin |
+| `GET/POST/PATCH/DELETE /api/products` | Admin |
+| `GET/POST /api/qr/token/...` | Admin |
+| `POST /api/attendance/scan` | Any authenticated user |
+| `GET /api/attendance` | Any authenticated user |
+| `POST /api/attendance/manual` | Admin |
+| `GET /api/attendance/export/csv` | Admin |
+
+> **Planned hardening:** restrict open `register`, tighten scan/list to admin-only. See [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md).
+
+### Audit fields (`attendance_events`)
+
+- `recorded_by_user_id` — logged-in user who performed the scan or manual entry
+- `client_device_id` — kiosk/mobile identifier from scan request
+- `qr_jti` — QR token id at scan time
+- `recorded_at` — server timestamp (UTC)
+
+## API endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/register` | — | Register user (dev; see security note) |
+| POST | `/api/auth/login` | — | Login → JWT pair |
+| POST | `/api/auth/refresh` | — | Refresh tokens |
+| GET | `/api/auth/me` | Bearer | Current user |
+| GET | `/api/users` | Admin | List users |
+| POST | `/api/users` | Superadmin | Create user |
+| GET | `/api/users/:id` | Admin | Get user |
+| PATCH | `/api/users/:id` | Admin | Update user |
+| DELETE | `/api/users/:id` | Superadmin | Delete user |
+| GET | `/api/products` | Admin | List products |
+| POST | `/api/products` | Admin | Create product |
+| GET | `/api/products/:id` | Admin | Get product |
+| PATCH | `/api/products/:id` | Admin | Update product |
+| DELETE | `/api/products/:id` | Admin | Delete product |
+| GET | `/api/qr/token/:product_id` | Admin | Current QR JWT |
+| POST | `/api/qr/token/:product_id/refresh` | Admin | Rotate QR |
+| POST | `/api/attendance/scan` | Bearer | Process QR scan |
+| GET | `/api/attendance` | Bearer | List events (filters: product, dates, type) |
+| POST | `/api/attendance/manual` | Admin | Manual correction |
+| GET | `/api/attendance/export/csv` | Admin | CSV export |
+| GET | `/api/health` | — | Health check |
+
+Full OpenAPI: http://localhost:8000/docs
+
+## Web routes (attendance)
+
+| Path | Access | Description |
+|------|--------|-------------|
+| `/attendance/login` | Public | Login |
+| `/attendance` | Public | Redirect to dashboard or login |
+| `/attendance/dashboard` | Logged in | Today's stats |
+| `/attendance/products` | Admin | Product CRUD |
+| `/attendance/qr-codes` | Logged in | Browse/fetch/rotate QRs |
+| `/attendance/log` | Logged in | Event log, manual correction, CSV export |
+| `/attendance/scanner` | Logged in | Paste QR token (no camera) |
+| `/attendance/users` | Admin (CASL) | User CRUD |
+
+Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos (not used in production nav).
 
 ## Tests
 
 ```bash
 cd apps/api
-pip install aiosqlite          # test dependency for SQLite backend
-pytest -v                      # run all tests
-pytest tests/test_auth.py -v   # auth tests only
-pytest tests/test_scan.py -v   # scan / QR tests only
+pip install -r requirements.txt   # includes aiosqlite for tests
+pytest -v
+pytest tests/test_auth.py -v
+pytest tests/test_scan.py -v
 ```
 
-## Security Design
+CI also runs API tests and web `npm run build` on every PR and push to `main`.
 
-### QR Token Flow
+## Deployment and CI/CD
 
-1. Admin requests `GET /api/qr/token/{product_id}` → receives a signed JWT
-2. JWT payload: `{ sub: product_id, ver: token_version, jti, iat, type: "qr" }`
-3. QR is signed with `QR_SECRET` (separate from auth `SECRET_KEY`)
-4. The token has **no expiry** — it lives on a printed badge / lock screen
-   and the same QR is scanned every time the product checks in or out
-5. Scanner sends QR token to `POST /api/attendance/scan`
-6. Server verifies signature, and verifies `ver` matches the product's
-   current `qr_token_version`; a stale version is rejected as "rotated"
+- **CI:** `.github/workflows/ci.yml` — pytest + web build
+- **Images:** `.github/workflows/docker-publish.yml` — push API + web to GHCR on `main` / tags
+- **Server:** `deploy/` + [docs/DEPLOY.md](docs/DEPLOY.md)
+- **Overview:** [docs/CICD-EXPLAINED.md](docs/CICD-EXPLAINED.md)
 
-### Rotating a QR
+`first-boot.sh` starts containers but does **not** seed the database. After first deploy, run `python seed.py` in the API container or use `deploy/reset-db.sh` for a fresh DB + seed.
 
-If a QR is lost or shared with someone who shouldn't have it, an admin can
-call `POST /api/qr/token/{product_id}/refresh`. This bumps the product's
-`qr_token_version`, invalidating any previously-issued QR for that product.
-Normal check-in / check-out **never** needs a refresh.
+## Documentation index
 
-### Check-in / Check-out Toggle
+| Doc | Purpose |
+|-----|---------|
+| [docs/README.md](docs/README.md) | Doc index |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Production server setup |
+| [docs/CICD-EXPLAINED.md](docs/CICD-EXPLAINED.md) | Pipeline mental model |
+| [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | Doc/code mismatches and planned fixes |
+| [apps/api/README.md](apps/api/README.md) | API-only quick start |
+| [apps/web/README.md](apps/web/README.md) | Web-only quick start |
+| [apps/mobile/README.md](apps/mobile/README.md) | Mobile scanner app |
 
-Each `Product` has an `attendance_status` (`checked_in` / `checked_out`,
-default `checked_out`). Every scan toggles it:
-
-- Status `checked_out` → scan creates a `check_in` event, status becomes `checked_in`
-- Status `checked_in` → scan creates a `check_out` event, status becomes `checked_out`
-
-If the last event was on a previous UTC day, the next scan starts a fresh
-session with `check_in` regardless of stored status (handles overnight gaps).
-
-Admins can override via `POST /api/attendance/manual` with an explicit
-`event_type`; manual `check_in` / `check_out` corrections also update the
-product's `attendance_status`.
-
-### Replay / Double-tap Protection
-
-Rapid duplicate scans of the **same product** within
-`SCAN_DEBOUNCE_SECONDS` (default `3`) return the existing event instead of
-creating a duplicate row. This protects kiosks from double-taps without
-preventing the legitimate "scan again to check out" flow.
-
-### RBAC
-
-| Endpoint | admin | staff | student |
-|----------|-------|-------|---------|
-| User CRUD | ✅ | ❌ | ❌ |
-| Scan QR | ✅ | ✅ | ❌ |
-| View all attendance | ✅ | ✅ | ❌ |
-| View own attendance | ✅ | ✅ | ✅ |
-| Manual correction | ✅ | ❌ | ❌ |
-| Export CSV | ✅ | ✅ | ❌ |
-| Get QR token | ✅ | ✅ | ✅ |
-
-### Audit Trail
-
-Every `AttendanceEvent` records:
-- `scanner_user_id` — who performed the scan
-- `client_device_id` — which device/kiosk
-- `qr_jti` — links back to the exact QR token used
-- `recorded_at` — server-side timestamp
-
-## API Endpoints
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/auth/register` | — | Register a new user |
-| POST | `/api/auth/login` | — | Login, returns JWT pair |
-| POST | `/api/auth/refresh` | — | Refresh access token |
-| GET | `/api/auth/me` | Bearer | Get current user |
-| GET | `/api/users` | Admin | List users |
-| POST | `/api/users` | Admin | Create user |
-| GET | `/api/users/:id` | Admin | Get user |
-| PATCH | `/api/users/:id` | Admin | Update user |
-| DELETE | `/api/users/:id` | Admin | Delete user |
-| GET | `/api/qr/token/:product_id` | Admin | Get product's current QR token |
-| POST | `/api/qr/token/:product_id/refresh` | Admin | Rotate product's QR (invalidates the old one) |
-| POST | `/api/attendance/scan` | Staff+ | Process QR scan |
-| GET | `/api/attendance` | Bearer | List attendance events |
-| POST | `/api/attendance/manual` | Admin | Manual correction |
-| GET | `/api/attendance/export/csv` | Staff+ | Export CSV |
-| GET | `/api/health` | — | Health check |
-
-## Web Routes
-
-| Path | Role | Description |
-|------|------|-------------|
-| `/attendance/login` | All | Attendance login page |
-| `/attendance/dashboard` | Admin/Staff | Dashboard with today's stats |
-| `/attendance/my-qr` | All | Show personal QR code |
-| `/attendance/log` | All | Attendance log (filtered for students) |
-| `/attendance/users` | Admin | User management CRUD |
-
-## Not in v1
-
-The following features are explicitly **out of scope** for this MVP:
+## Roadmap (not in v1)
 
 - [ ] Password reset / email verification
-- [ ] Push notifications for attendance reminders
-- [ ] Multi-location / multi-organization support
-- [ ] Offline mode / local-first sync
-- [ ] Biometric authentication (Face ID / fingerprint)
-- [ ] Advanced reporting / analytics dashboards
-- [ ] Class/course scheduling integration
-- [ ] Parent portal / notifications
-- [ ] Geofencing for attendance validation
-- [ ] Bulk user import (CSV upload)
-- [ ] Rate limiting / Redis-backed throttling
+- [ ] Push notifications
+- [ ] Multi-location / multi-organization
+- [ ] Offline mode
+- [ ] Biometric auth on mobile
+- [ ] Advanced analytics
+- [ ] Class scheduling integration
+- [ ] Parent portal
+- [ ] Geofencing
+- [ ] Bulk CSV import for products
+- [ ] Rate limiting / Redis throttling
 - [ ] E2E tests (Playwright / Detox)
-- [ ] Production deployment (CI/CD, container registry, secrets management)
-- [ ] Internationalization (i18n) for mobile app
-- [ ] Dark mode for mobile app
-- [ ] WebSocket real-time attendance feed
+- [ ] Mobile CI and EAS build docs
+- [ ] WebSocket live feed
+- [ ] Trim AQUA template dead code from web app
+
+**Partially done (update checklist as you go):**
+
+- [x] CI (pytest + web build on PR/main)
+- [x] Container images to GHCR
+- [x] Production compose + Caddy + deploy scripts
+- [ ] Lock down open registration and tighten RBAC
+- [ ] Fix mobile Expo entry point
+- [ ] HttpOnly session / CSV export auth on web
