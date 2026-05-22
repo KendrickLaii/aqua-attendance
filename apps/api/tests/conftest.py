@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.database import Base, get_db
 from app.main import app
+from app.models.user import User
+from app.services.auth import hash_password
 
 TEST_DB_URL = "sqlite+aiosqlite:///./test.db"
 
@@ -56,16 +58,31 @@ async def client():
         yield c
 
 
+async def _insert_test_user(
+    *,
+    username: str,
+    email: str,
+    password: str = "admin123",
+    role: str = "admin",
+    full_name: str = "Test Admin",
+) -> None:
+    async with TestSessionLocal() as session:
+        session.add(
+            User(
+                username=username,
+                email=email,
+                hashed_password=hash_password(password),
+                full_name=full_name,
+                role=role,
+            )
+        )
+        await session.commit()
+
+
 @pytest_asyncio.fixture
 async def admin_token(client: AsyncClient) -> str:
     uname = f"admin_{uuid.uuid4().hex[:8]}"
-    await client.post("/api/auth/register", json={
-        "username": uname,
-        "email": f"{uname}@test.com",
-        "password": "admin123",
-        "full_name": "Test Admin",
-        "role": "admin",
-    })
+    await _insert_test_user(username=uname, email=f"{uname}@test.com")
     resp = await client.post("/api/auth/login", json={"username": uname, "password": "admin123"})
     return resp.json()["access_token"]
 

@@ -21,6 +21,7 @@ declare global {
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
+  const clearAttendanceSessionCookies: typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']
   const computed: typeof import('vue')['computed']
   const computedAsync: typeof import('@vueuse/core')['computedAsync']
   const computedEager: typeof import('@vueuse/core')['computedEager']
@@ -30,6 +31,7 @@ declare global {
   const controlledComputed: typeof import('@vueuse/core')['controlledComputed']
   const controlledRef: typeof import('@vueuse/core')['controlledRef']
   const copyTextToClipboard: typeof import('./src/utils/clipboard')['copyTextToClipboard']
+  const copyToClipboard: typeof import('./src/utils/copyToClipboard')['copyToClipboard']
   const createApp: typeof import('vue')['createApp']
   const createEventHook: typeof import('@vueuse/core')['createEventHook']
   const createGenericProjection: typeof import('@vueuse/math')['createGenericProjection']
@@ -65,6 +67,7 @@ declare global {
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
   const formatValue: typeof import('./src/utils/review-format')['formatValue']
   const getActivePinia: typeof import('pinia')['getActivePinia']
+  const getAttendanceRole: typeof import('./src/utils/attendanceSession')['getAttendanceRole']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
   const h: typeof import('vue')['h']
@@ -74,6 +77,7 @@ declare global {
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
   const internalEmailValidator: typeof import('./src/@core/utils/validators')['internalEmailValidator']
+  const isAttendanceLoggedIn: typeof import('./src/utils/attendanceSession')['isAttendanceLoggedIn']
   const isCheckboxContent: typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']
   const isComplexValue: typeof import('./src/utils/review-format')['isComplexValue']
   const isDefined: typeof import('@vueuse/core')['isDefined']
@@ -161,6 +165,7 @@ declare global {
   const templateRef: typeof import('@vueuse/core')['templateRef']
   const throttledRef: typeof import('@vueuse/core')['throttledRef']
   const throttledWatch: typeof import('@vueuse/core')['throttledWatch']
+  const toQrDataUrl: typeof import('./src/utils/qrCodeDataUrl')['toQrDataUrl']
   const toRaw: typeof import('vue')['toRaw']
   const toReactive: typeof import('@vueuse/core')['toReactive']
   const toRef: typeof import('vue')['toRef']
@@ -303,6 +308,7 @@ declare global {
   const usePreferredReducedMotion: typeof import('@vueuse/core')['usePreferredReducedMotion']
   const usePrevious: typeof import('@vueuse/core')['usePrevious']
   const useProjection: typeof import('@vueuse/math')['useProjection']
+  const useQrImageUrl: typeof import('./src/composables/useQrImageUrl')['useQrImageUrl']
   const useRafFn: typeof import('@vueuse/core')['useRafFn']
   const useRefHistory: typeof import('@vueuse/core')['useRefHistory']
   const useResizeObserver: typeof import('@vueuse/core')['useResizeObserver']
@@ -411,6 +417,7 @@ declare module 'vue' {
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
+    readonly clearAttendanceSessionCookies: UnwrapRef<typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
@@ -420,6 +427,7 @@ declare module 'vue' {
     readonly controlledComputed: UnwrapRef<typeof import('@vueuse/core')['controlledComputed']>
     readonly controlledRef: UnwrapRef<typeof import('@vueuse/core')['controlledRef']>
     readonly copyTextToClipboard: UnwrapRef<typeof import('./src/utils/clipboard')['copyTextToClipboard']>
+    readonly copyToClipboard: UnwrapRef<typeof import('./src/utils/copyToClipboard')['copyToClipboard']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
     readonly createEventHook: UnwrapRef<typeof import('@vueuse/core')['createEventHook']>
     readonly createGenericProjection: UnwrapRef<typeof import('@vueuse/math')['createGenericProjection']>
@@ -454,6 +462,7 @@ declare module 'vue' {
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
     readonly formatValue: UnwrapRef<typeof import('./src/utils/review-format')['formatValue']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
+    readonly getAttendanceRole: UnwrapRef<typeof import('./src/utils/attendanceSession')['getAttendanceRole']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
@@ -463,6 +472,7 @@ declare module 'vue' {
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
     readonly internalEmailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['internalEmailValidator']>
+    readonly isAttendanceLoggedIn: UnwrapRef<typeof import('./src/utils/attendanceSession')['isAttendanceLoggedIn']>
     readonly isCheckboxContent: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']>
     readonly isComplexValue: UnwrapRef<typeof import('./src/utils/review-format')['isComplexValue']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
@@ -550,6 +560,7 @@ declare module 'vue' {
     readonly templateRef: UnwrapRef<typeof import('@vueuse/core')['templateRef']>
     readonly throttledRef: UnwrapRef<typeof import('@vueuse/core')['throttledRef']>
     readonly throttledWatch: UnwrapRef<typeof import('@vueuse/core')['throttledWatch']>
+    readonly toQrDataUrl: UnwrapRef<typeof import('./src/utils/qrCodeDataUrl')['toQrDataUrl']>
     readonly toRaw: UnwrapRef<typeof import('vue')['toRaw']>
     readonly toReactive: UnwrapRef<typeof import('@vueuse/core')['toReactive']>
     readonly toRef: UnwrapRef<typeof import('vue')['toRef']>
@@ -692,6 +703,7 @@ declare module 'vue' {
     readonly usePreferredReducedMotion: UnwrapRef<typeof import('@vueuse/core')['usePreferredReducedMotion']>
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
     readonly useProjection: UnwrapRef<typeof import('@vueuse/math')['useProjection']>
+    readonly useQrImageUrl: UnwrapRef<typeof import('./src/composables/useQrImageUrl')['useQrImageUrl']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>

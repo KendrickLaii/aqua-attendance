@@ -34,7 +34,7 @@ async def list_users(
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(body: UserCreate, _admin: SuperAdminOnly, db: DB) -> User:
+async def create_user(body: UserCreate, _admin: AdminOnly, db: DB) -> User:
     existing = await db.execute(
         select(User).where((User.username == body.username) | (User.email == body.email))
     )

@@ -1,5 +1,9 @@
+import uuid
+
 import pytest
 from httpx import AsyncClient
+
+from tests.conftest import _insert_test_user
 
 
 @pytest.mark.asyncio
@@ -187,3 +191,40 @@ async def test_inactive_product_scan_rejected(
         "/api/attendance/scan", json={"qr_token": qr_token}, headers=headers
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_cannot_list_attendance(client: AsyncClient):
+    resp = await client.get("/api/attendance")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_scan_or_list(client: AsyncClient, admin_token: str, sample_product: dict):
+    """Users without admin/superadmin role cannot scan or list attendance."""
+    uname = f"staff_{uuid.uuid4().hex[:8]}"
+    await _insert_test_user(
+        username=uname,
+        email=f"{uname}@test.com",
+        password="staff123",
+        role="staff",
+    )
+    login = await client.post("/api/auth/login", json={"username": uname, "password": "staff123"})
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    qr_resp = await client.get(
+        f"/api/qr/token/{sample_product['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    qr_token = qr_resp.json()["qr_token"]
+
+    scan_resp = await client.post(
+        "/api/attendance/scan",
+        json={"qr_token": qr_token},
+        headers=headers,
+    )
+    assert scan_resp.status_code == 403
+
+    list_resp = await client.get("/api/attendance", headers=headers)
+    assert list_resp.status_code == 403

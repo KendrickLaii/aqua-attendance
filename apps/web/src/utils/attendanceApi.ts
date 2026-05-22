@@ -1,4 +1,5 @@
 import { FetchError, ofetch } from 'ofetch'
+import { clearAttendanceSessionCookies } from '@/utils/attendanceSession'
 
 const getBaseURL = (): string =>
   import.meta.env.VITE_ATTENDANCE_API_URL || 'http://localhost:8000/api'
@@ -53,9 +54,7 @@ async function refreshAttendanceTokens(): Promise<boolean> {
     return true
   }
   catch {
-    useCookie('attendanceAccessToken').value = null
-    useCookie('attendanceRefreshToken').value = null
-    useCookie('attendanceUserData').value = null
+    clearAttendanceSessionCookies()
 
     return false
   }

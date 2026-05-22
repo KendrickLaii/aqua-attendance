@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { attendanceGetMe, attendanceLogin } from '@/api/attendance/auth'
 import type { AttendanceUser, AttendanceLoginPayload } from '@/api/attendance/auth'
+import { clearAttendanceSessionCookies } from '@/utils/attendanceSession'
 
 export const useAttendanceAuthStore = defineStore('attendanceAuth', {
   state: () => ({
@@ -23,9 +24,7 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
       useCookie('attendanceUserData').value = JSON.stringify(me)
     },
     logout() {
-      useCookie('attendanceAccessToken').value = null
-      useCookie('attendanceRefreshToken').value = null
-      useCookie('attendanceUserData').value = null
+      clearAttendanceSessionCookies()
       this.user = null
       this.isLoggedIn = false
     },

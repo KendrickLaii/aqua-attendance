@@ -7,37 +7,24 @@ from sqlalchemy import select
 from app.deps import DB, CurrentUser
 from app.models.user import User
 from app.schemas.auth import TokenPair, TokenRefresh
-from app.schemas.user import UserCreate, UserLogin, UserOut
+from app.schemas.user import UserLogin, UserOut
 from app.services.auth import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    hash_password,
     verify_password,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def register(body: UserCreate, db: DB) -> User:
-    existing = await db.execute(
-        select(User).where((User.username == body.username) | (User.email == body.email))
+@router.post("/register", status_code=status.HTTP_403_FORBIDDEN)
+async def register() -> None:
+    """Public self-registration is disabled. Create users via POST /api/users (admin)."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Public registration is disabled. Ask an administrator to create your account.",
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Username or email already exists")
-
-    user = User(
-        username=body.username,
-        email=body.email,
-        hashed_password=hash_password(body.password),
-        full_name=body.full_name,
-        role=body.role.value if hasattr(body.role, 'value') else body.role,
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
 
 
 @router.post("/login", response_model=TokenPair)

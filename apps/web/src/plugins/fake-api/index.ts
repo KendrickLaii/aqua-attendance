@@ -37,7 +37,8 @@ const worker = setupWorker(
 )
 
 export default function () {
-  if (import.meta.env.PROD || import.meta.env.VITE_USE_MSW === 'false')
+  // Off by default — attendance uses the real API. Set VITE_USE_MSW=true for AQUA demo pages only.
+  if (import.meta.env.PROD || import.meta.env.VITE_USE_MSW !== 'true')
     return
 
   const workerUrl = `${import.meta.env.BASE_URL ?? '/'}mockServiceWorker.js`

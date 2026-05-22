@@ -4,6 +4,7 @@ import { listProducts } from '@/api/attendance/products'
 import { getQRToken, refreshQRToken } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
 import { copyToClipboard } from '@/utils/copyToClipboard'
+import { useQrImageUrl } from '@/composables/useQrImageUrl'
 
 definePage({ meta: {} })
 
@@ -108,11 +109,7 @@ function selectTokenField(ev: FocusEvent) {
   el?.select()
 }
 
-const qrImageUrl = computed(() => {
-  if (!qrToken.value) return ''
-
-  return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrToken.value)}`
-})
+const { qrImageUrl, qrImageError, qrImageLoading } = useQrImageUrl(qrToken, 300)
 
 function typeColor(type: string) {
   return type === 'staff' ? 'info' : 'success'
@@ -208,8 +205,13 @@ function statusChip(p: Product) {
           <VProgressCircular indeterminate color="primary" size="48" />
         </div>
         <template v-else-if="qrToken">
-          <div class="my-4 d-flex justify-center">
+          <div class="my-4 d-flex justify-center align-center" style="min-height: 300px">
+            <VProgressCircular v-if="qrImageLoading" indeterminate color="primary" size="40" />
+            <VAlert v-else-if="qrImageError" type="error" variant="tonal" density="compact">
+              Could not render QR image.
+            </VAlert>
             <VImg
+              v-else-if="qrImageUrl"
               :src="qrImageUrl"
               width="300"
               height="300"

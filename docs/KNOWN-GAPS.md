@@ -6,9 +6,9 @@ This file tracks intentional MVP limitations and mismatches between **current co
 
 | Issue | Current behavior | Target |
 |-------|------------------|--------|
-| Open registration | `POST /api/auth/register` is public; client can set `role` including `superadmin` | Disable in prod or admin-only invite |
-| Scan authorization | `POST /api/attendance/scan` requires any Bearer user | Restrict to admin (or dedicated scanner role) |
-| List attendance | `GET /api/attendance` requires any Bearer user | Restrict to admin |
+| ~~Open registration~~ | ~~Public `/api/auth/register`~~ | **Done** — returns 403; use User Management / `POST /api/users` |
+| ~~Scan authorization~~ | ~~Any Bearer user~~ | **Done** — `AdminOnly` |
+| ~~List attendance~~ | ~~Any Bearer user~~ | **Done** — `AdminOnly` |
 | Default secrets | `SECRET_KEY` / `QR_SECRET` have dev placeholders; no startup guard | Fail fast when `ENV=production` |
 | Refresh tokens | New pair issued without revoking old refresh token | Optional rotation / token family |
 
@@ -16,11 +16,11 @@ This file tracks intentional MVP limitations and mismatches between **current co
 
 | Issue | Notes |
 |-------|--------|
-| Route guards | Most `/attendance/*` routes rely on `onMounted` redirects, not router `meta` |
-| Dual cookies | `attendanceAccessToken` + template `accessToken` can desync |
-| Logout | Template `UserProfile` may not clear attendance cookies |
-| CSV export | `window.open(url)` does not send `Authorization` header |
-| QR preview | Uses third-party `api.qrserver.com` with full token in URL |
+| ~~Route guards~~ | ~~`onMounted` only~~ | **Done** — `/attendance/*` guarded in `guards.ts` |
+| Dual cookies | `attendanceAccessToken` + template `accessToken` still mirrored on login | Logout clears both; could unify to one cookie later |
+| ~~Logout~~ | ~~Template logout missed attendance cookies~~ | **Done** — `UserProfile` + store clear all session cookies |
+| ~~CSV export~~ | ~~`window.open` without auth~~ | **Done** — `exportAttendanceCSV` blob download with Bearer |
+| ~~QR preview~~ | ~~`api.qrserver.com` leaked token~~ | **Done** — local `qrcode` data URL in browser |
 | Template bloat | Large AQUA demo tree still in repo; prod nav is trimmed only |
 
 ## Mobile app

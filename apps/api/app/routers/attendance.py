@@ -8,7 +8,7 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.deps import DB, AdminOnly, CurrentUser
+from app.deps import DB, AdminOnly
 from app.models.attendance import AttendanceEvent
 from app.models.product import Product
 from app.schemas.attendance import AttendanceOut, ManualCorrectionRequest, ScanRequest
@@ -45,7 +45,7 @@ async def _reload_with_product(db, event_id: uuid.UUID) -> AttendanceEvent:
 
 
 @router.post("/scan", response_model=AttendanceOut)
-async def scan(body: ScanRequest, user: CurrentUser, db: DB) -> AttendanceOut:
+async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
     """Scan a product's QR.
 
     The same QR toggles check-in / check-out on each scan based on the
@@ -79,7 +79,7 @@ async def scan(body: ScanRequest, user: CurrentUser, db: DB) -> AttendanceOut:
         db,
         product=product,
         jti=payload.get("jti"),
-        recorded_by_user_id=user.id,
+        recorded_by_user_id=admin.id,
         device_id=body.device_id,
     )
 
@@ -89,7 +89,7 @@ async def scan(body: ScanRequest, user: CurrentUser, db: DB) -> AttendanceOut:
 
 @router.get("", response_model=list[AttendanceOut])
 async def list_attendance(
-    _user: CurrentUser,
+    _admin: AdminOnly,
     db: DB,
     product_id: uuid.UUID | None = None,
     product_type: str | None = None,
@@ -99,7 +99,7 @@ async def list_attendance(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AttendanceOut]:
-    """List attendance events. Any authenticated admin can view all records."""
+    """List attendance events (admin or superadmin only)."""
     events, _total = await att_svc.list_events(
         db,
         product_id=product_id,

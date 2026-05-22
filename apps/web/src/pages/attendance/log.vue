@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { listAttendance, getExportCSVUrl, createManualCorrection } from '@/api/attendance/events'
+import { listAttendance, exportAttendanceCSV, createManualCorrection } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
@@ -30,6 +30,8 @@ const correctionForm = reactive({
   notes: '',
 })
 const correcting = ref(false)
+const exporting = ref(false)
+const exportError = ref('')
 
 onMounted(async () => {
   authStore.restoreSession()
@@ -68,14 +70,30 @@ function eventColor(type: string) {
   return 'info'
 }
 
-function handleExport() {
-  const url = getExportCSVUrl({
-    product_id: filters.product_id || undefined,
-    product_type: filters.product_type || undefined,
-    date_from: filters.date_from ? `${filters.date_from}T00:00:00Z` : undefined,
-    date_to: filters.date_to ? `${filters.date_to}T23:59:59Z` : undefined,
-  })
-  window.open(url, '_blank')
+async function handleExport() {
+  exporting.value = true
+  exportError.value = ''
+  try {
+    const blob = await exportAttendanceCSV({
+      product_id: filters.product_id || undefined,
+      product_type: filters.product_type || undefined,
+      date_from: filters.date_from ? `${filters.date_from}T00:00:00Z` : undefined,
+      date_to: filters.date_to ? `${filters.date_to}T23:59:59Z` : undefined,
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'attendance_export.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+  catch (e: unknown) {
+    const data = e && typeof e === 'object' && 'data' in e ? (e as { data?: { detail?: unknown } }).data : undefined
+    exportError.value = typeof data?.detail === 'string' ? data.detail : 'Export failed'
+  }
+  finally {
+    exporting.value = false
+  }
 }
 
 async function handleCorrection() {
@@ -127,7 +145,13 @@ async function handleCorrection() {
           <VBtn color="primary" @click="loadEvents" prepend-icon="ri-search-line">
             Filter
           </VBtn>
-          <VBtn variant="outlined" @click="handleExport" prepend-icon="ri-download-line">
+          <VBtn
+            variant="outlined"
+            :loading="exporting"
+            :disabled="exporting"
+            prepend-icon="ri-download-line"
+            @click="handleExport"
+          >
             CSV
           </VBtn>
           <VBtn variant="tonal" color="info" @click="correctionDialog = true" prepend-icon="ri-add-line">
@@ -136,6 +160,10 @@ async function handleCorrection() {
         </VCol>
       </VRow>
     </VCard>
+
+    <VAlert v-if="exportError" type="error" variant="tonal" class="mb-4" closable @click:close="exportError = ''">
+      {{ exportError }}
+    </VAlert>
 
     <VCard :loading="loading">
       <VTable>

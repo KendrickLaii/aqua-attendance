@@ -1,6 +1,9 @@
 import { getAllowedRouteNames } from '@/navigation/vertical'
 import { canNavigate } from '@layouts/plugins/casl'
+import { getAttendanceRole, isAttendanceLoggedIn } from '@/utils/attendanceSession'
 import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
+
+const ATTENDANCE_PUBLIC_ROUTE_NAMES = new Set(['attendance-login', 'attendance'])
 
 export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]: any }>) => {
   const allowedRouteNames = getAllowedRouteNames()
@@ -8,6 +11,32 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
   router.beforeEach(to => {
     if (to.meta.public)
       return
+
+    if (to.path.startsWith('/attendance')) {
+      const routeName = typeof to.name === 'string' ? to.name : ''
+      const isPublicAttendance = ATTENDANCE_PUBLIC_ROUTE_NAMES.has(routeName)
+      const loggedIn = isAttendanceLoggedIn()
+
+      if (!isPublicAttendance && !loggedIn) {
+        return {
+          name: 'attendance-login',
+          query: to.fullPath !== '/attendance' && !to.fullPath.endsWith('/login')
+            ? { to: to.fullPath }
+            : undefined,
+        }
+      }
+
+      if (routeName === 'attendance-login' && loggedIn)
+        return { name: 'attendance-dashboard' }
+
+      if (loggedIn && to.path.startsWith('/attendance/users')) {
+        const role = getAttendanceRole()
+        if (role !== 'admin' && role !== 'superadmin')
+          return { name: 'not-authorized' }
+      }
+
+      return
+    }
 
     const userDataCookie = useCookie('userData')
     const accessTokenCookie = useCookie('accessToken')

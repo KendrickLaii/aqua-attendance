@@ -87,4 +87,4 @@ Server deploy: [docs/DEPLOY.md](../../docs/DEPLOY.md).
 Before production:
 
 - Set strong `SECRET_KEY` and `QR_SECRET`
-- Plan to disable or protect `POST /api/auth/register` (see [docs/KNOWN-GAPS.md](../../docs/KNOWN-GAPS.md))
+- Create additional login users via web **User Management** (`POST /api/users`) — public `/api/auth/register` returns 403

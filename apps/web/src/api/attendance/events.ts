@@ -53,17 +53,14 @@ export async function createManualCorrection(payload: {
   return await $attendanceApi('/attendance/manual', { method: 'POST', body: payload })
 }
 
-export function getExportCSVUrl(params?: {
+export async function exportAttendanceCSV(params?: {
   product_id?: string
   product_type?: string
   date_from?: string
   date_to?: string
-}): string {
-  const base = import.meta.env.VITE_ATTENDANCE_API_URL || 'http://localhost:8000/api'
-  const qs = new URLSearchParams()
-  if (params?.product_id) qs.set('product_id', params.product_id)
-  if (params?.product_type) qs.set('product_type', params.product_type)
-  if (params?.date_from) qs.set('date_from', params.date_from)
-  if (params?.date_to) qs.set('date_to', params.date_to)
-  return `${base}/attendance/export/csv?${qs.toString()}`
+}): Promise<Blob> {
+  return await $attendanceApi<Blob>('/attendance/export/csv', {
+    params,
+    responseType: 'blob',
+  })
 }

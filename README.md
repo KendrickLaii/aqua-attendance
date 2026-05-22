@@ -175,19 +175,21 @@ Roles on **users**: `admin`, `superadmin`.
 
 | Endpoint | Auth required |
 |----------|----------------|
-| `POST /api/auth/register` | None (open — **disable before production**) |
+| `POST /api/auth/register` | None (always **403** — use User Management) |
 | `POST /api/auth/login`, `/refresh` | None |
 | `GET /api/auth/me` | Bearer |
-| `GET/POST/PATCH /api/users` | Admin (create user: **superadmin only**) |
+| `GET/PATCH /api/users` | Admin |
+| `POST /api/users` | Admin (create user — web User Management) |
+| `DELETE /api/users/:id` | Superadmin |
 | `DELETE /api/users/:id` | Superadmin |
 | `GET/POST/PATCH/DELETE /api/products` | Admin |
 | `GET/POST /api/qr/token/...` | Admin |
-| `POST /api/attendance/scan` | Any authenticated user |
-| `GET /api/attendance` | Any authenticated user |
+| `POST /api/attendance/scan` | Admin |
+| `GET /api/attendance` | Admin |
 | `POST /api/attendance/manual` | Admin |
 | `GET /api/attendance/export/csv` | Admin |
 
-> **Planned hardening:** restrict open `register`, tighten scan/list to admin-only. See [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md).
+> See [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) for remaining web/mobile hardening.
 
 ### Audit fields (`attendance_events`)
 
@@ -200,12 +202,12 @@ Roles on **users**: `admin`, `superadmin`.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/auth/register` | — | Register user (dev; see security note) |
+| POST | `/api/auth/register` | — | Disabled (403) — use `POST /api/users` |
 | POST | `/api/auth/login` | — | Login → JWT pair |
 | POST | `/api/auth/refresh` | — | Refresh tokens |
 | GET | `/api/auth/me` | Bearer | Current user |
 | GET | `/api/users` | Admin | List users |
-| POST | `/api/users` | Superadmin | Create user |
+| POST | `/api/users` | Admin | Create user |
 | GET | `/api/users/:id` | Admin | Get user |
 | PATCH | `/api/users/:id` | Admin | Update user |
 | DELETE | `/api/users/:id` | Superadmin | Delete user |
@@ -216,8 +218,8 @@ Roles on **users**: `admin`, `superadmin`.
 | DELETE | `/api/products/:id` | Admin | Delete product |
 | GET | `/api/qr/token/:product_id` | Admin | Current QR JWT |
 | POST | `/api/qr/token/:product_id/refresh` | Admin | Rotate QR |
-| POST | `/api/attendance/scan` | Bearer | Process QR scan |
-| GET | `/api/attendance` | Bearer | List events (filters: product, dates, type) |
+| POST | `/api/attendance/scan` | Admin | Process QR scan |
+| GET | `/api/attendance` | Admin | List events (filters: product, dates, type) |
 | POST | `/api/attendance/manual` | Admin | Manual correction |
 | GET | `/api/attendance/export/csv` | Admin | CSV export |
 | GET | `/api/health` | — | Health check |
@@ -295,6 +297,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 - [x] CI (pytest + web build on PR/main)
 - [x] Container images to GHCR
 - [x] Production compose + Caddy + deploy scripts
-- [ ] Lock down open registration and tighten RBAC
+- [x] Disable public registration (use User Management)
+- [x] Scan and attendance list restricted to admin/superadmin
 - [ ] Fix mobile Expo entry point
 - [ ] HttpOnly session / CSV export auth on web

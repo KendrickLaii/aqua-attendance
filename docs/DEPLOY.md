@@ -175,7 +175,7 @@ See [KNOWN-GAPS.md](KNOWN-GAPS.md). Minimum checklist:
 
 - [ ] Strong `SECRET_KEY`, `QR_SECRET`, DB password
 - [ ] Change seed account passwords
-- [ ] Plan to disable public `POST /api/auth/register`
+- [x] Public `POST /api/auth/register` is disabled (403)
 - [ ] HTTPS via Caddy with real domains
 - [ ] `CORS_ORIGINS` matches app URL only
 

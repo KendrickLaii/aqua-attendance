@@ -1,27 +1,31 @@
 <script setup lang="ts">
 import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
+import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
+import { isAttendanceLoggedIn } from '@/utils/attendanceSession'
 
 const router = useRouter()
 const ability = useAbility()
+const attendanceAuth = useAttendanceAuthStore()
 
 // TODO: Get type from backend
 const userData = useCookie<any>('userData')
 
 const logout = async () => {
-  // Remove "accessToken" from cookie
+  const onAttendanceApp =
+    router.currentRoute.value.path.startsWith('/attendance')
+    || isAttendanceLoggedIn()
+
+  if (onAttendanceApp) {
+    attendanceAuth.logout()
+    ability.update([])
+    await router.push({ name: 'attendance-login' })
+    return
+  }
+
   useCookie('accessToken').value = null
-
-  // Remove "userData" from cookie
   userData.value = null
-
-  // Redirect to login page
   await router.push('/login')
-
-  // ℹ️ We had to remove abilities in then block because if we don't nav menu items mutation is visible while redirecting user to login page
-  // Remove "userAbilities" from cookie
   useCookie('userAbilityRules').value = null
-
-  // Reset ability to initial ability
   ability.update([])
 }
 
