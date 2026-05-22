@@ -27,6 +27,7 @@ const correctionDialog = ref(false)
 const correctionForm = reactive({
   product_id: '',
   event_type: 'manual_correction',
+  location: '',
   notes: '',
 })
 const correcting = ref(false)
@@ -102,6 +103,7 @@ async function handleCorrection() {
     await createManualCorrection({
       product_id: correctionForm.product_id,
       event_type: correctionForm.event_type,
+      location: correctionForm.location.trim() || undefined,
       notes: correctionForm.notes || undefined,
     })
     correctionDialog.value = false
@@ -173,6 +175,7 @@ async function handleCorrection() {
             <th>Product</th>
             <th>Type</th>
             <th>Event</th>
+            <th>Location</th>
             <th>Device</th>
             <th>Notes</th>
           </tr>
@@ -192,11 +195,12 @@ async function handleCorrection() {
                 {{ evt.event_type.replace('_', ' ') }}
               </VChip>
             </td>
+            <td>{{ evt.location || '—' }}</td>
             <td>{{ evt.client_device_id || '—' }}</td>
             <td>{{ evt.notes || '—' }}</td>
           </tr>
           <tr v-if="events.length === 0 && !loading">
-            <td colspan="6" class="text-center text-medium-emphasis py-6">
+            <td colspan="7" class="text-center text-medium-emphasis py-6">
               No attendance records found
             </td>
           </tr>
@@ -220,6 +224,12 @@ async function handleCorrection() {
               v-model="correctionForm.event_type"
               :items="[{ title: 'Check In', value: 'check_in' }, { title: 'Check Out', value: 'check_out' }, { title: 'Manual Correction', value: 'manual_correction' }]"
               label="Event Type"
+              class="mb-3"
+            />
+            <VTextField
+              v-model="correctionForm.location"
+              label="Location (optional)"
+              prepend-inner-icon="ri-map-pin-line"
               class="mb-3"
             />
             <VTextarea v-model="correctionForm.notes" label="Notes" rows="2" class="mb-3" />

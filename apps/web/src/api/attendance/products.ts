@@ -11,6 +11,7 @@ export interface Product {
   attendance_status: 'checked_in' | 'checked_out'
   qr_token_version: number
   last_event_at: string | null
+  last_event_location: string | null
   gender: string | null
   date_of_birth: string | null
   phone: string | null

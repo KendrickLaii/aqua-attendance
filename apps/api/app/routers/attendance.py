@@ -32,6 +32,7 @@ def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
         qr_jti=event.qr_jti,
         recorded_by_user_id=event.recorded_by_user_id,
         client_device_id=event.client_device_id,
+        location=event.location,
         notes=event.notes,
     )
 
@@ -82,6 +83,7 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
         jti=payload.get("jti"),
         recorded_by_user_id=admin.id,
         device_id=body.device_id,
+        location=body.location,
     )
 
     event = await _reload_with_product(db, event.id)
@@ -128,6 +130,7 @@ async def create_manual_correction(
         product=product,
         event_type=body.event_type.value if hasattr(body.event_type, 'value') else body.event_type,
         recorded_at=body.recorded_at,
+        location=body.location,
         notes=body.notes,
         recorded_by_user_id=admin.id,
     )
@@ -165,6 +168,7 @@ async def export_csv(
         "recorded_at",
         "recorded_by_user_id",
         "device_id",
+        "location",
         "notes",
     ])
     for e in events:
@@ -178,6 +182,7 @@ async def export_csv(
             e.recorded_at.isoformat(),
             str(e.recorded_by_user_id) if e.recorded_by_user_id else "",
             e.client_device_id or "",
+            e.location or "",
             e.notes or "",
         ])
     buf.seek(0)

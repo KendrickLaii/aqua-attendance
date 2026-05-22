@@ -8,7 +8,17 @@ definePage({ meta: {} })
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
+const SCAN_LOCATION_KEY = 'attendance-scan-location'
+const defaultScanLocation = (
+  import.meta.env.VITE_ATTENDANCE_SCAN_LOCATION as string | undefined
+)?.trim() || ''
+
 const manualInput = ref('')
+const scanLocation = ref(
+  typeof localStorage !== 'undefined'
+    ? localStorage.getItem(SCAN_LOCATION_KEY) || defaultScanLocation
+    : defaultScanLocation,
+)
 const scanning = ref(false)
 const result = ref<AttendanceEvent | null>(null)
 const error = ref('')
@@ -30,7 +40,15 @@ async function handleScan(qrToken?: string) {
   result.value = null
 
   try {
-    const evt = await scanQR({ qr_token: token, device_id: 'web-scanner' })
+    const loc = scanLocation.value.trim()
+    if (loc && typeof localStorage !== 'undefined')
+      localStorage.setItem(SCAN_LOCATION_KEY, loc)
+
+    const evt = await scanQR({
+      qr_token: token,
+      device_id: 'web-scanner',
+      location: loc || undefined,
+    })
     result.value = evt
     showResult.value = true
     manualInput.value = ''
@@ -51,7 +69,13 @@ function eventColor(type: string) {
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return new Date(iso).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
 function resetResult() {
@@ -79,6 +103,15 @@ function resetResult() {
       <VCardTitle>Manual Token Input</VCardTitle>
       <VCardText>
         <VForm @submit.prevent="handleScan()">
+          <VTextField
+            v-model="scanLocation"
+            label="Scan location"
+            placeholder="e.g. Main classroom, Front desk"
+            prepend-inner-icon="ri-map-pin-line"
+            hint="Shown on product list after each check-in / check-out"
+            persistent-hint
+            class="mb-3"
+          />
           <VTextarea
             v-model="manualInput"
             label="QR Token"
@@ -131,8 +164,12 @@ function resetResult() {
                 Now: {{ result.attendance_status === 'checked_in' ? 'IN' : 'OUT' }}
               </VChip>
             </div>
-            <div class="text-body-2 text-medium-emphasis">
+            <div class="text-body-2 text-medium-emphasis mb-1">
               {{ formatTime(result.recorded_at) }}
+            </div>
+            <div v-if="result.location" class="text-body-2">
+              <VIcon icon="ri-map-pin-line" size="16" class="me-1" />
+              {{ result.location }}
             </div>
           </VCardText>
         </template>

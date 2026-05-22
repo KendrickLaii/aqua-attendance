@@ -30,6 +30,13 @@ def _is_same_utc_day(a: datetime, b: datetime) -> bool:
     return _as_utc(a).date() == _as_utc(b).date()
 
 
+def _normalize_location(location: str | None) -> str | None:
+    if location is None:
+        return None
+    trimmed = location.strip()
+    return trimmed[:255] if trimmed else None
+
+
 def _next_event_type(product: Product, now: datetime) -> str:
     """Decide check_in vs check_out based on the product's current attendance status.
 
@@ -76,6 +83,7 @@ async def record_scan(
     jti: str | None,
     recorded_by_user_id: uuid.UUID | None = None,
     device_id: str | None = None,
+    location: str | None = None,
 ) -> tuple[AttendanceEvent, bool]:
     """Record a scan, toggling the product's attendance status.
 
@@ -90,6 +98,7 @@ async def record_scan(
 
     now = _now()
     event_type = _next_event_type(product, now)
+    loc = _normalize_location(location)
 
     event = AttendanceEvent(
         product_id=product.id,
@@ -98,6 +107,7 @@ async def record_scan(
         qr_jti=jti,
         recorded_by_user_id=recorded_by_user_id,
         client_device_id=device_id,
+        location=loc,
     )
     db.add(event)
 
@@ -107,6 +117,7 @@ async def record_scan(
         else AttendanceStatus.checked_out.value
     )
     product.last_event_at = now
+    product.last_event_location = loc
 
     await db.commit()
     await db.refresh(event)
@@ -164,6 +175,7 @@ async def manual_correction(
     product: Product,
     event_type: str,
     recorded_at: datetime | None = None,
+    location: str | None = None,
     notes: str | None = None,
     recorded_by_user_id: uuid.UUID | None = None,
 ) -> AttendanceEvent:
@@ -172,10 +184,12 @@ async def manual_correction(
     next scan continues the toggle from the corrected state.
     """
     when = recorded_at or _now()
+    loc = _normalize_location(location)
     event = AttendanceEvent(
         product_id=product.id,
         event_type=event_type,
         recorded_at=when,
+        location=loc,
         notes=notes,
         recorded_by_user_id=recorded_by_user_id,
     )
@@ -184,9 +198,11 @@ async def manual_correction(
     if event_type == EventType.check_in.value:
         product.attendance_status = AttendanceStatus.checked_in.value
         product.last_event_at = when
+        product.last_event_location = loc
     elif event_type == EventType.check_out.value:
         product.attendance_status = AttendanceStatus.checked_out.value
         product.last_event_at = when
+        product.last_event_location = loc
 
     await db.commit()
     await db.refresh(event)

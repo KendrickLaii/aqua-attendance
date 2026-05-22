@@ -265,3 +265,28 @@ async def test_export_csv_quotes_commas_in_fields(
     data_rows = [r for r in rows[1:] if r and r[1] == product_id]
     assert len(data_rows) >= 1
     assert data_rows[-1][3] == "Tanaka, Taro"
+
+
+@pytest.mark.asyncio
+async def test_scan_records_location_on_product(
+    client: AsyncClient, admin_token: str, sample_product: dict
+):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    product_id = sample_product["id"]
+
+    qr_resp = await client.get(f"/api/qr/token/{product_id}", headers=headers)
+    qr_token = qr_resp.json()["qr_token"]
+
+    scan = await client.post(
+        "/api/attendance/scan",
+        json={"qr_token": qr_token, "location": "Main classroom"},
+        headers=headers,
+    )
+    assert scan.status_code == 200
+    assert scan.json()["location"] == "Main classroom"
+
+    product = await client.get(f"/api/products/{product_id}", headers=headers)
+    assert product.status_code == 200
+    body = product.json()
+    assert body["last_event_location"] == "Main classroom"
+    assert body["last_event_at"] is not None

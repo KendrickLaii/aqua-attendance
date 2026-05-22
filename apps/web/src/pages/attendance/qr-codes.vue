@@ -5,6 +5,7 @@ import { getQRToken, refreshQRToken } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
 import { copyToClipboard } from '@/utils/copyToClipboard'
 import { useQrImageUrl } from '@/composables/useQrImageUrl'
+import { formatLastAttendance } from '@/utils/attendanceDisplay'
 
 definePage({ meta: {} })
 
@@ -179,6 +180,9 @@ function statusChip(p: Product) {
               <VChip :color="statusChip(p).color" size="small" label :prepend-icon="statusChip(p).icon">
                 {{ statusChip(p).label }}
               </VChip>
+            </div>
+            <div class="text-caption text-medium-emphasis mt-2">
+              {{ formatLastAttendance(p) }}
             </div>
           </VCardText>
         </VCard>

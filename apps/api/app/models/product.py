@@ -33,6 +33,7 @@ class Product(Base):
     )
     qr_token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)

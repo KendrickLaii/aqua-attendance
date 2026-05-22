@@ -10,6 +10,7 @@ import type { Product } from '@/api/attendance/products'
 import { copyToClipboard } from '@/utils/copyToClipboard'
 import { useQrImageUrl } from '@/composables/useQrImageUrl'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
+import { formatLastAttendance } from '@/utils/attendanceDisplay'
 
 definePage({ meta: {} })
 
@@ -361,7 +362,7 @@ function attendanceChip(p: Product) {
             <th>Full Name</th>
             <th>Type</th>
             <th>Status</th>
-            <th>Presence</th>
+            <th>Last check-in / out</th>
             <th>Phone</th>
             <th>School / Class</th>
             <th>Actions</th>
@@ -381,10 +382,15 @@ function attendanceChip(p: Product) {
                 {{ p.status }}
               </VChip>
             </td>
-            <td>
-              <VChip :color="attendanceChip(p).color" size="small" label>
-                {{ attendanceChip(p).label }}
-              </VChip>
+            <td style="min-width: 220px">
+              <div class="d-flex align-center gap-2 mb-1">
+                <VChip :color="attendanceChip(p).color" size="small" label>
+                  {{ attendanceChip(p).label }}
+                </VChip>
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                {{ formatLastAttendance(p) }}
+              </div>
             </td>
             <td>{{ p.phone || '-' }}</td>
             <td>{{ p.school_name ? `${p.school_name} / ${p.grade_class || '-'}` : '-' }}</td>
