@@ -1,4 +1,6 @@
+import csv
 import uuid
+from io import StringIO
 
 import pytest
 from httpx import AsyncClient
@@ -228,3 +230,38 @@ async def test_non_admin_cannot_scan_or_list(client: AsyncClient, admin_token: s
 
     list_resp = await client.get("/api/attendance", headers=headers)
     assert list_resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_export_csv_quotes_commas_in_fields(
+    client: AsyncClient, admin_token: str, sample_product: dict
+):
+    """CSV export must quote fields that contain commas."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    product_id = sample_product["id"]
+
+    patch = await client.patch(
+        f"/api/products/{product_id}",
+        json={"full_name": "Tanaka, Taro"},
+        headers=headers,
+    )
+    assert patch.status_code == 200
+
+    qr_resp = await client.get(f"/api/qr/token/{product_id}", headers=headers)
+    assert qr_resp.status_code == 200
+    qr_token = qr_resp.json()["qr_token"]
+
+    scan = await client.post(
+        "/api/attendance/scan",
+        json={"qr_token": qr_token},
+        headers=headers,
+    )
+    assert scan.status_code == 200
+
+    export = await client.get("/api/attendance/export/csv", headers=headers)
+    assert export.status_code == 200
+    rows = list(csv.reader(StringIO(export.text)))
+    assert rows[0][3] == "product_name"
+    data_rows = [r for r in rows[1:] if r and r[1] == product_id]
+    assert len(data_rows) >= 1
+    assert data_rows[-1][3] == "Tanaka, Taro"

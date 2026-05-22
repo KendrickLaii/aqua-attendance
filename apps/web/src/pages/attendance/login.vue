@@ -15,6 +15,7 @@ const router = useRouter()
 const ability = useAbility()
 
 const form = reactive({ username: '', password: '' })
+const showPassword = ref(false)
 const loading = ref(false)
 const error = ref('')
 
@@ -75,11 +76,20 @@ async function handleLogin() {
         <VTextField
           v-model="form.password"
           label="Password"
-          type="password"
+          :type="showPassword ? 'text' : 'password'"
           prepend-inner-icon="ri-lock-line"
+          autocomplete="current-password"
           class="mb-4"
           :rules="[requiredValidator]"
-        />
+        >
+          <template #append-inner>
+            <VIcon
+              :icon="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"
+              style="cursor: pointer"
+              @click="showPassword = !showPassword"
+            />
+          </template>
+        </VTextField>
         <VBtn type="submit" block color="primary" :loading="loading" size="large">
           Sign In
         </VBtn>

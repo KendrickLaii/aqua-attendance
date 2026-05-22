@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.deps import DB, AdminOnly, SuperAdminOnly
 from app.models.user import Role, User
@@ -50,7 +50,9 @@ async def create_user(body: UserCreate, actor: AdminOnly, db: DB) -> User:
     _forbid_admin_managing_superadmin(actor, new_role=_role_value(body.role))
 
     existing = await db.execute(
-        select(User).where((User.username == body.username) | (User.email == body.email))
+        select(User).where(
+            (func.lower(User.username) == body.username.lower()) | (User.email == body.email)
+        )
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Username or email already exists")

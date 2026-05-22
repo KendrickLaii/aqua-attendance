@@ -1,3 +1,4 @@
+import csv
 import uuid
 from datetime import datetime
 from io import StringIO
@@ -153,15 +154,32 @@ async def export_csv(
         page_size=10000,
     )
     buf = StringIO()
-    buf.write("id,product_id,product_code,product_name,product_type,event_type,recorded_at,recorded_by_user_id,device_id,notes\n")
+    writer = csv.writer(buf)
+    writer.writerow([
+        "id",
+        "product_id",
+        "product_code",
+        "product_name",
+        "product_type",
+        "event_type",
+        "recorded_at",
+        "recorded_by_user_id",
+        "device_id",
+        "notes",
+    ])
     for e in events:
-        pcode = e.product.code if e.product else ""
-        pname = e.product.full_name if e.product else ""
-        ptype = e.product.product_type if e.product else ""
-        buf.write(
-            f"{e.id},{e.product_id},{pcode},{pname},{ptype},{e.event_type},"
-            f"{e.recorded_at.isoformat()},{e.recorded_by_user_id or ''},{e.client_device_id or ''},{e.notes or ''}\n"
-        )
+        writer.writerow([
+            str(e.id),
+            str(e.product_id),
+            e.product.code if e.product else "",
+            e.product.full_name if e.product else "",
+            e.product.product_type if e.product else "",
+            e.event_type,
+            e.recorded_at.isoformat(),
+            str(e.recorded_by_user_id) if e.recorded_by_user_id else "",
+            e.client_device_id or "",
+            e.notes or "",
+        ])
     buf.seek(0)
     return StreamingResponse(
         buf,

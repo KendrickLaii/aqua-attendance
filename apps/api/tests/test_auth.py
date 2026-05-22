@@ -41,6 +41,18 @@ async def test_login_and_me(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_login_username_case_insensitive(client: AsyncClient):
+    uname = f"user_{uuid.uuid4().hex[:8]}"
+    await _insert_test_user(username=uname, email=f"{uname}@test.com", password="testpass123")
+
+    resp = await client.post(
+        "/api/auth/login",
+        json={"username": uname.upper(), "password": "testpass123"},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_login_wrong_password(client: AsyncClient):
     uname = f"user_{uuid.uuid4().hex[:8]}"
     await _insert_test_user(username=uname, email=f"{uname}@test.com", password="testpass123")

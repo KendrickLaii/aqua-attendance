@@ -38,7 +38,7 @@ This file tracks intentional MVP limitations and mismatches between **current co
 | Issue | Notes |
 |-------|--------|
 | Scan race | No row lock on product during debounce window |
-| CSV quoting | Commas in names can break CSV rows |
+| ~~CSV quoting~~ | ~~Commas in names can break CSV rows~~ | **Done** — `csv.writer` in export endpoint |
 | Migration 003 | Upgrading very old DBs with `user_id` attendance rows may need manual migration |
 | Tests | ~12 tests (auth + scan); no full RBAC matrix |
 

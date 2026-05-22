@@ -87,3 +87,10 @@ class UserOut(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
+
+    @field_validator('username', mode='before')
+    @classmethod
+    def strip_login_username(cls, v: object) -> str:
+        if not isinstance(v, str):
+            raise ValueError('username must be a string')
+        return v.strip()
