@@ -84,7 +84,8 @@ See root [README.md](../../README.md) for env vars and security notes.
 API image is built from `Dockerfile` and published by `.github/workflows/docker-publish.yml`.  
 Server deploy: [docs/DEPLOY.md](../../docs/DEPLOY.md).
 
-Before production:
+Before production / UAT deploy:
 
-- Set strong `SECRET_KEY` and `QR_SECRET`
-- Create additional login users via web **User Management** (`POST /api/users`) — public `/api/auth/register` returns 403
+- Set `ENV=production` and unique `SECRET_KEY` / `QR_SECRET` (each `openssl rand -hex 32`) — see [docs/DEPLOY.md](../../docs/DEPLOY.md)
+- API refuses to start if production keys are placeholders or shorter than 32 characters
+- Create additional login users via web **User Management** — public `/api/auth/register` returns 403

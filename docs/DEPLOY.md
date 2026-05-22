@@ -68,18 +68,55 @@ cp .env.example .env
 chmod +x first-boot.sh update.sh reset-db.sh
 ```
 
-Edit `.env`:
+### Generate API secrets (`SECRET_KEY` and `QR_SECRET`)
+
+The API container runs with **`ENV=production`**. On startup it **refuses to start** if either key is still an example placeholder or shorter than 32 characters.
+
+On your laptop or the server (Linux/macOS/Git Bash):
+
+```bash
+openssl rand -hex 32
+```
+
+Run it **twice** and paste the outputs into `deploy/.env`:
+
+```env
+SECRET_KEY=<first 64-char hex string>
+QR_SECRET=<second 64-char hex string>
+```
+
+Rules:
+
+- Use **two different** values (`SECRET_KEY` signs login JWTs; `QR_SECRET` signs product QR codes).
+- Do **not** commit real values to Git — only keep them in `deploy/.env` on the server.
+- After go-live, changing these keys invalidates existing logins and printed QRs; plan a maintenance window if you must rotate them.
+
+Windows without OpenSSL: use WSL/Git Bash, or PowerShell:
+
+```powershell
+[Convert]::ToHexString((1..32 | ForEach-Object { Get-Random -Maximum 256 })).ToLower()
+```
+
+(Run twice for two keys.)
+
+### Edit `deploy/.env`
 
 | Variable | Set to |
 |----------|--------|
 | `APP_DOMAIN` | Your app hostname |
 | `API_DOMAIN` | Your API hostname |
 | `WEB_IMAGE` / `API_IMAGE` | `ghcr.io/<user>/juku-attendance/web:main` etc. |
-| `POSTGRES_PASSWORD` | Strong password |
-| `SECRET_KEY` / `QR_SECRET` | Strong random values (`openssl rand -hex 32`) |
+| `POSTGRES_PASSWORD` | Strong password (not `change-this-db-password`) |
+| `SECRET_KEY` / `QR_SECRET` | Two unique `openssl rand -hex 32` values (see above) |
 | `CORS_ORIGINS` | `https://app.yourdomain.com` |
 
 Optional API tuning (if wired through compose env): `SCAN_DEBOUNCE_SECONDS` (default `3` in API code).
+
+If the API container exits immediately after `up`, check logs — often placeholder secrets:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env logs api --tail=30
+```
 
 ## 5) Web image must include your API URL
 
@@ -173,8 +210,9 @@ This will:
 
 See [KNOWN-GAPS.md](KNOWN-GAPS.md). Minimum checklist:
 
-- [ ] Strong `SECRET_KEY`, `QR_SECRET`, DB password
-- [ ] Change seed account passwords
+- [ ] `SECRET_KEY` and `QR_SECRET` set via `openssl rand -hex 32` (API enforces when `ENV=production`)
+- [ ] Strong `POSTGRES_PASSWORD`
+- [ ] Change seed account passwords after `seed.py`
 - [x] Public `POST /api/auth/register` is disabled (403)
 - [ ] HTTPS via Caddy with real domains
 - [ ] `CORS_ORIGINS` matches app URL only

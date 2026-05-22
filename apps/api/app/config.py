@@ -1,4 +1,48 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+# Known placeholders from .env.example / deploy templates — must not be used when ENV=production
+_INSECURE_SECRET_VALUES = frozenset({
+    "change-me-in-production",
+    "change-me-in-production-use-openssl-rand-hex-32",
+    "change-me-qr-secret",
+    "change-me-qr-secret-use-openssl-rand-hex-32",
+    "change-this-secret-key",
+    "change-this-qr-secret",
+})
+
+_MIN_PRODUCTION_SECRET_LEN = 32
+
+
+def _is_production_env(env: str) -> bool:
+    return env.strip().lower() in ("production", "prod")
+
+
+def validate_production_secrets(
+    *,
+    env: str,
+    secret_key: str,
+    qr_secret: str,
+) -> None:
+    """Refuse to start in production with default or weak signing keys."""
+    if not _is_production_env(env):
+        return
+
+    def check(name: str, value: str) -> None:
+        trimmed = value.strip()
+        if len(trimmed) < _MIN_PRODUCTION_SECRET_LEN:
+            raise RuntimeError(
+                f"{name} must be at least {_MIN_PRODUCTION_SECRET_LEN} characters when ENV=production. "
+                "Generate one with: openssl rand -hex 32"
+            )
+        if trimmed in _INSECURE_SECRET_VALUES or trimmed.lower() in _INSECURE_SECRET_VALUES:
+            raise RuntimeError(
+                f"{name} must not use the example placeholder when ENV=production. "
+                "Generate a unique value with: openssl rand -hex 32"
+            )
+
+    check("SECRET_KEY", secret_key)
+    check("QR_SECRET", qr_secret)
 
 
 class Settings(BaseSettings):
@@ -24,6 +68,15 @@ class Settings(BaseSettings):
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
+
+    @model_validator(mode="after")
+    def _enforce_production_secrets(self) -> "Settings":
+        validate_production_secrets(
+            env=self.ENV,
+            secret_key=self.SECRET_KEY,
+            qr_secret=self.QR_SECRET,
+        )
+        return self
 
 
 settings = Settings()

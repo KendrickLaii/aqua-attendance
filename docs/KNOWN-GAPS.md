@@ -9,7 +9,7 @@ This file tracks intentional MVP limitations and mismatches between **current co
 | ~~Open registration~~ | ~~Public `/api/auth/register`~~ | **Done** — returns 403; use User Management / `POST /api/users` |
 | ~~Scan authorization~~ | ~~Any Bearer user~~ | **Done** — `AdminOnly` |
 | ~~List attendance~~ | ~~Any Bearer user~~ | **Done** — `AdminOnly` |
-| Default secrets | `SECRET_KEY` / `QR_SECRET` have dev placeholders; no startup guard | Fail fast when `ENV=production` |
+| ~~Default secrets~~ | ~~No startup guard~~ | **Done** — API fails fast when `ENV=production` and keys are weak/placeholder |
 | Refresh tokens | New pair issued without revoking old refresh token | Optional rotation / token family |
 
 ## Web app
