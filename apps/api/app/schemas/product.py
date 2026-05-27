@@ -66,6 +66,7 @@ class ProductOut(BaseModel):
     attendance_status: str = "checked_out"
     qr_token_version: int = 1
     last_event_at: datetime | None = None
+    last_event_location_id: uuid.UUID | None = None
     last_event_location: str | None = None
     gender: str | None = None
     date_of_birth: date | None = None

@@ -39,8 +39,9 @@ This file tracks intentional MVP limitations and mismatches between **current co
 |-------|--------|
 | Scan race | No row lock on product during debounce window |
 | ~~CSV quoting~~ | ~~Commas in names can break CSV rows~~ | **Done** — `csv.writer` in export endpoint |
+| Location photos | v1: URL fields only (`icon_url`, `main_photo_url`, `detail_photos`) | **Later** — admin file upload + S3/R2; see [LOCATIONS.md](./LOCATIONS.md) |
 | Migration 003 | Upgrading very old DBs with `user_id` attendance rows may need manual migration |
-| Tests | ~12 tests (auth + scan); no full RBAC matrix |
+| Tests | ~21 tests; no full RBAC matrix |
 
 ## Documentation
 

@@ -2,33 +2,37 @@
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { scanQR } from '@/api/attendance/events'
 import type { AttendanceEvent } from '@/api/attendance/events'
+import { listLocations, type LocationItem } from '@/api/attendance/locations'
 
 definePage({ meta: {} })
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
-const SCAN_LOCATION_KEY = 'attendance-scan-location'
-const defaultScanLocation = (
-  import.meta.env.VITE_ATTENDANCE_SCAN_LOCATION as string | undefined
-)?.trim() || ''
+const SCAN_LOCATION_KEY = 'attendance-scan-location-id'
 
 const manualInput = ref('')
-const scanLocation = ref(
+const locations = ref<LocationItem[]>([])
+const selectedLocationId = ref(
   typeof localStorage !== 'undefined'
-    ? localStorage.getItem(SCAN_LOCATION_KEY) || defaultScanLocation
-    : defaultScanLocation,
+    ? localStorage.getItem(SCAN_LOCATION_KEY) || ''
+    : '',
 )
 const scanning = ref(false)
 const result = ref<AttendanceEvent | null>(null)
 const error = ref('')
 const showResult = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   authStore.restoreSession()
   if (!authStore.isLoggedIn) {
     router.replace({ name: 'attendance-login' })
+    return
   }
+  try {
+    locations.value = await listLocations({ is_active: true, page_size: 200 })
+  }
+  catch {}
 })
 
 async function handleScan(qrToken?: string) {
@@ -40,14 +44,14 @@ async function handleScan(qrToken?: string) {
   result.value = null
 
   try {
-    const loc = scanLocation.value.trim()
-    if (loc && typeof localStorage !== 'undefined')
-      localStorage.setItem(SCAN_LOCATION_KEY, loc)
+    const locationId = selectedLocationId.value || undefined
+    if (typeof localStorage !== 'undefined')
+      localStorage.setItem(SCAN_LOCATION_KEY, selectedLocationId.value || '')
 
     const evt = await scanQR({
       qr_token: token,
       device_id: 'web-scanner',
-      location: loc || undefined,
+      location_id: locationId,
     })
     result.value = evt
     showResult.value = true
@@ -103,13 +107,14 @@ function resetResult() {
       <VCardTitle>Manual Token Input</VCardTitle>
       <VCardText>
         <VForm @submit.prevent="handleScan()">
-          <VTextField
-            v-model="scanLocation"
+          <VSelect
+            v-model="selectedLocationId"
+            :items="locations.map(l => ({ title: `${l.name_zh}${l.name_en ? ` / ${l.name_en}` : ''}`, value: l.id }))"
             label="Scan location"
-            placeholder="e.g. Main classroom, Front desk"
             prepend-inner-icon="ri-map-pin-line"
-            hint="Shown on product list after each check-in / check-out"
+            hint="Select managed location for this check-in / check-out"
             persistent-hint
+            clearable
             class="mb-3"
           />
           <VTextarea

@@ -20,6 +20,11 @@ export default [
     to: 'attendance-log',
   },
   {
+    title: 'Location Management',
+    icon: { icon: 'ri-map-pin-line' },
+    to: 'attendance-locations',
+  },
+  {
     title: 'User Management',
     icon: { icon: 'ri-admin-line' },
     to: 'attendance-users',

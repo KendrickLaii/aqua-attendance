@@ -2,6 +2,7 @@
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listAttendance, exportAttendanceCSV, createManualCorrection } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
+import { listLocations, type LocationItem } from '@/api/attendance/locations'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
 
@@ -12,6 +13,7 @@ const router = useRouter()
 
 const events = ref<AttendanceEvent[]>([])
 const products = ref<Product[]>([])
+const locations = ref<LocationItem[]>([])
 const loading = ref(true)
 
 const filters = reactive({
@@ -27,7 +29,7 @@ const correctionDialog = ref(false)
 const correctionForm = reactive({
   product_id: '',
   event_type: 'manual_correction',
-  location: '',
+  location_id: '',
   notes: '',
 })
 const correcting = ref(false)
@@ -39,6 +41,7 @@ onMounted(async () => {
   if (!authStore.isLoggedIn) { router.replace({ name: 'attendance-login' }); return }
 
   try { products.value = await listProducts() } catch {}
+  try { locations.value = await listLocations({ is_active: true, page_size: 200 }) } catch {}
   await loadEvents()
 })
 
@@ -103,7 +106,7 @@ async function handleCorrection() {
     await createManualCorrection({
       product_id: correctionForm.product_id,
       event_type: correctionForm.event_type,
-      location: correctionForm.location.trim() || undefined,
+      location_id: correctionForm.location_id || undefined,
       notes: correctionForm.notes || undefined,
     })
     correctionDialog.value = false
@@ -226,9 +229,10 @@ async function handleCorrection() {
               label="Event Type"
               class="mb-3"
             />
-            <VTextField
-              v-model="correctionForm.location"
-              label="Location (optional)"
+            <VSelect
+              v-model="correctionForm.location_id"
+              :items="[{ title: '— no location —', value: '' }, ...locations.map(l => ({ title: `${l.name_zh}${l.name_en ? ` / ${l.name_en}` : ''}`, value: l.id }))]"
+              label="Location"
               prepend-inner-icon="ri-map-pin-line"
               class="mb-3"
             />

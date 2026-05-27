@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import attendance, auth, products, qr, users
+from app.routers import attendance, auth, locations, products, qr, users
 
 app = FastAPI(
     title="Juku Attendance API",
@@ -22,6 +22,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
+app.include_router(locations.router, prefix="/api")
 app.include_router(qr.router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
 

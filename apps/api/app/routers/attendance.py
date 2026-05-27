@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import DB, AdminOnly
 from app.models.attendance import AttendanceEvent
+from app.models.location import Location
 from app.models.product import Product
 from app.schemas.attendance import AttendanceOut, ManualCorrectionRequest, ScanRequest
 from app.services import attendance as att_svc
@@ -32,9 +33,23 @@ def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
         qr_jti=event.qr_jti,
         recorded_by_user_id=event.recorded_by_user_id,
         client_device_id=event.client_device_id,
+        location_id=event.location_id,
         location=event.location,
         notes=event.notes,
     )
+
+
+async def _resolve_location(db: DB, location_id: uuid.UUID | None, location_text: str | None) -> tuple[uuid.UUID | None, str | None]:
+    if location_id is None:
+        return None, location_text
+    result = await db.execute(select(Location).where(Location.id == location_id))
+    location = result.scalar_one_or_none()
+    if not location:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Location not found")
+    if not location.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Location is inactive")
+    display_name = location.name_en or location.name_zh or ""
+    return location.id, display_name
 
 
 async def _reload_with_product(db, event_id: uuid.UUID) -> AttendanceEvent:
@@ -76,6 +91,7 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid QR: token has been rotated, please refresh the QR",
         )
+    location_id, location_name = await _resolve_location(db, body.location_id, body.location)
 
     event, _created = await att_svc.record_scan(
         db,
@@ -83,7 +99,8 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
         jti=payload.get("jti"),
         recorded_by_user_id=admin.id,
         device_id=body.device_id,
-        location=body.location,
+        location_id=location_id,
+        location=location_name,
     )
 
     event = await _reload_with_product(db, event.id)
@@ -124,13 +141,15 @@ async def create_manual_correction(
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    location_id, location_name = await _resolve_location(db, body.location_id, body.location)
 
     event = await att_svc.manual_correction(
         db,
         product=product,
         event_type=body.event_type.value if hasattr(body.event_type, 'value') else body.event_type,
         recorded_at=body.recorded_at,
-        location=body.location,
+        location_id=location_id,
+        location=location_name,
         notes=body.notes,
         recorded_by_user_id=admin.id,
     )
@@ -168,6 +187,7 @@ async def export_csv(
         "recorded_at",
         "recorded_by_user_id",
         "device_id",
+        "location_id",
         "location",
         "notes",
     ])
@@ -182,6 +202,7 @@ async def export_csv(
             e.recorded_at.isoformat(),
             str(e.recorded_by_user_id) if e.recorded_by_user_id else "",
             e.client_device_id or "",
+            str(e.location_id) if e.location_id else "",
             e.location or "",
             e.notes or "",
         ])

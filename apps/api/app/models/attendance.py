@@ -43,8 +43,10 @@ class AttendanceEvent(Base):
 
     recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
     client_device_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("locations.id"), nullable=True, index=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     product = relationship("Product", foreign_keys=[product_id], back_populates="attendance_events")
     recorded_by = relationship("User", foreign_keys=[recorded_by_user_id])
+    location_ref = relationship("Location", foreign_keys=[location_id], back_populates="attendance_events")

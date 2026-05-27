@@ -1,0 +1,102 @@
+import uuid
+
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import or_, select
+
+from app.deps import AdminOnly, DB
+from app.models.attendance import AttendanceEvent
+from app.models.location import Location
+from app.models.product import Product
+from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
+
+router = APIRouter(prefix="/locations", tags=["locations"])
+
+
+@router.get("", response_model=list[LocationOut])
+async def list_locations(
+    _admin: AdminOnly,
+    db: DB,
+    is_active: bool | None = None,
+    search: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200),
+) -> list[Location]:
+    q = select(Location)
+    if is_active is not None:
+        q = q.where(Location.is_active == is_active)
+    if search:
+        like = f"%{search}%"
+        q = q.where(
+            or_(
+                Location.name_zh.ilike(like),
+                Location.name_en.ilike(like),
+                Location.code.ilike(like),
+                Location.region.ilike(like),
+                Location.location_type.ilike(like),
+            )
+        )
+    q = q.order_by(Location.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(q)
+    return list(result.scalars().all())
+
+
+@router.post("", response_model=LocationOut, status_code=status.HTTP_201_CREATED)
+async def create_location(body: LocationCreate, _admin: AdminOnly, db: DB) -> Location:
+    if body.code:
+        exists = await db.execute(select(Location).where(Location.code == body.code))
+        if exists.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Location code already exists")
+    location = Location(**body.model_dump())
+    db.add(location)
+    await db.commit()
+    await db.refresh(location)
+    return location
+
+
+@router.get("/{location_id}", response_model=LocationOut)
+async def get_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> Location:
+    result = await db.execute(select(Location).where(Location.id == location_id))
+    location = result.scalar_one_or_none()
+    if not location:
+        raise HTTPException(status_code=404, detail="Location not found")
+    return location
+
+
+@router.patch("/{location_id}", response_model=LocationOut)
+async def update_location(location_id: uuid.UUID, body: LocationUpdate, _admin: AdminOnly, db: DB) -> Location:
+    result = await db.execute(select(Location).where(Location.id == location_id))
+    location = result.scalar_one_or_none()
+    if not location:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    update_data = body.model_dump(exclude_unset=True)
+    new_code = update_data.get("code")
+    if new_code:
+        exists = await db.execute(select(Location).where(Location.code == new_code, Location.id != location_id))
+        if exists.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Location code already exists")
+
+    for field, value in update_data.items():
+        setattr(location, field, value)
+    await db.commit()
+    await db.refresh(location)
+    return location
+
+
+@router.delete("/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+    result = await db.execute(select(Location).where(Location.id == location_id))
+    location = result.scalar_one_or_none()
+    if not location:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    used_in_events = await db.execute(select(AttendanceEvent.id).where(AttendanceEvent.location_id == location_id).limit(1))
+    used_in_products = await db.execute(select(Product.id).where(Product.last_event_location_id == location_id).limit(1))
+    if used_in_events.scalar_one_or_none() or used_in_products.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Location is referenced by attendance records. Set it inactive instead of deleting.",
+        )
+
+    await db.delete(location)
+    await db.commit()

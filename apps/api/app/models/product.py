@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Integer, String, Text, Uuid
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -33,6 +33,9 @@ class Product(Base):
     )
     qr_token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_location_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("locations.id"), nullable=True, index=True
+    )
     last_event_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -64,3 +67,4 @@ class Product(Base):
     )
 
     attendance_events = relationship("AttendanceEvent", back_populates="product", lazy="selectin")
+    last_event_location_ref = relationship("Location", foreign_keys=[last_event_location_id], back_populates="products")

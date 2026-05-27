@@ -9,6 +9,7 @@ from app.models.attendance import EventType
 class ScanRequest(BaseModel):
     qr_token: str
     device_id: str | None = Field(default=None, max_length=255)
+    location_id: uuid.UUID | None = None
     location: str | None = Field(default=None, max_length=255)
 
 
@@ -24,6 +25,7 @@ class AttendanceOut(BaseModel):
     qr_jti: str | None = None
     recorded_by_user_id: uuid.UUID | None = None
     client_device_id: str | None = None
+    location_id: uuid.UUID | None = None
     location: str | None = None
     notes: str | None = None
 
@@ -34,6 +36,7 @@ class ManualCorrectionRequest(BaseModel):
     product_id: uuid.UUID
     event_type: EventType = EventType.manual_correction
     recorded_at: datetime | None = None
+    location_id: uuid.UUID | None = None
     location: str | None = Field(default=None, max_length=255)
     notes: str | None = None
 

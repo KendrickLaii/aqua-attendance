@@ -51,6 +51,7 @@ declare module 'vue-router/auto-routes' {
     'apps-email-label': RouteRecordInfo<'apps-email-label', '/apps/email/:label', { label: ParamValue<true> }, { label: ParamValue<false> }>,
     'attendance': RouteRecordInfo<'attendance', '/attendance', Record<never, never>, Record<never, never>>,
     'attendance-dashboard': RouteRecordInfo<'attendance-dashboard', '/attendance/dashboard', Record<never, never>, Record<never, never>>,
+    'attendance-locations': RouteRecordInfo<'attendance-locations', '/attendance/locations', Record<never, never>, Record<never, never>>,
     'attendance-log': RouteRecordInfo<'attendance-log', '/attendance/log', Record<never, never>, Record<never, never>>,
     'attendance-login': RouteRecordInfo<'attendance-login', '/attendance/login', Record<never, never>, Record<never, never>>,
     'attendance-products': RouteRecordInfo<'attendance-products', '/attendance/products', Record<never, never>, Record<never, never>>,

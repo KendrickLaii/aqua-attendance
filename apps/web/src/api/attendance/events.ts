@@ -12,6 +12,7 @@ export interface AttendanceEvent {
   qr_jti: string | null
   recorded_by_user_id: string | null
   client_device_id: string | null
+  location_id: string | null
   location: string | null
   notes: string | null
 }
@@ -32,6 +33,7 @@ export async function refreshQRToken(productId: string): Promise<QRPayload> {
 export async function scanQR(payload: {
   qr_token: string
   device_id?: string
+  location_id?: string
   location?: string
 }): Promise<AttendanceEvent> {
   return await $attendanceApi('/attendance/scan', { method: 'POST', body: payload })
@@ -53,6 +55,7 @@ export async function createManualCorrection(payload: {
   product_id: string
   event_type?: string
   recorded_at?: string
+  location_id?: string
   location?: string
   notes?: string
 }): Promise<AttendanceEvent> {

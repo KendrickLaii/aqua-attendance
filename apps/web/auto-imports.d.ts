@@ -60,9 +60,12 @@ declare global {
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const filterSelectedTableRows: typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
+  const formatAttendanceDateTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']
+  const formatAttendanceTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
+  const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
   const formatValue: typeof import('./src/utils/review-format')['formatValue']
@@ -455,9 +458,12 @@ declare module 'vue' {
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly filterSelectedTableRows: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
+    readonly formatAttendanceDateTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']>
+    readonly formatAttendanceTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
+    readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
     readonly formatValue: UnwrapRef<typeof import('./src/utils/review-format')['formatValue']>
