@@ -124,7 +124,7 @@ async def attendance_day_stats(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> AttendanceDayStatsOut:
-    """Aggregate event counts for a date range (dashboard; not limited by page size)."""
+    """Aggregate event counts for a date range (dashboard stats)."""
     stats = await att_svc.event_day_stats(db, date_from=date_from, date_to=date_to)
     return AttendanceDayStatsOut(**stats)
 
