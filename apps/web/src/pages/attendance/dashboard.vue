@@ -4,6 +4,7 @@ import { listAttendanceWithTotal } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso } from '@/utils/attendanceDisplay'
+import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
@@ -84,7 +85,7 @@ async function loadDashboard(isRefresh = false) {
   }
   catch (e) {
     console.error('Failed to load dashboard', e)
-    loadError.value = 'Failed to load dashboard data. Please try again.'
+    loadError.value = formatApiError(e, 'Failed to load dashboard data. Please try again.')
   }
   finally {
     loading.value = false
@@ -150,14 +151,6 @@ function eventColor(type: string) {
           prepend-icon="ri-list-check"
         >
           Full Log
-        </VBtn>
-        <VBtn
-          v-if="authStore.isAdmin"
-          variant="outlined"
-          :to="{ name: 'attendance-scanner' }"
-          prepend-icon="ri-qr-scan-2-line"
-        >
-          Web Scanner
         </VBtn>
       </VCol>
     </VRow>

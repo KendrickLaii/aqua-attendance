@@ -1,7 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import or_, select
+from fastapi import APIRouter, HTTPException, Query, Response, status
+from sqlalchemy import func, or_, select
 
 from app.deps import AdminOnly, DB
 from app.models.attendance import AttendanceEvent
@@ -12,21 +12,32 @@ from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
 router = APIRouter(prefix="/locations", tags=["locations"])
 
 
+def _normalize_location_names(data: dict) -> dict:
+    """DB requires name_zh NOT NULL; UI treats English as required and Chinese optional."""
+    name_en = data.get("name_en")
+    name_zh = data.get("name_zh")
+    if not name_zh or (isinstance(name_zh, str) and not name_zh.strip()):
+        if name_en:
+            data["name_zh"] = name_en.strip() if isinstance(name_en, str) else name_en
+    return data
+
+
 @router.get("", response_model=list[LocationOut])
 async def list_locations(
     _admin: AdminOnly,
     db: DB,
+    response: Response,
     is_active: bool | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[Location]:
-    q = select(Location)
+    clauses = []
     if is_active is not None:
-        q = q.where(Location.is_active == is_active)
+        clauses.append(Location.is_active == is_active)
     if search:
         like = f"%{search}%"
-        q = q.where(
+        clauses.append(
             or_(
                 Location.name_zh.ilike(like),
                 Location.name_en.ilike(like),
@@ -35,8 +46,18 @@ async def list_locations(
                 Location.location_type.ilike(like),
             )
         )
+
+    count_q = select(func.count()).select_from(Location)
+    if clauses:
+        count_q = count_q.where(*clauses)
+    total = await db.scalar(count_q) or 0
+
+    q = select(Location)
+    if clauses:
+        q = q.where(*clauses)
     q = q.order_by(Location.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
+    response.headers["X-Total-Count"] = str(total)
     return list(result.scalars().all())
 
 
@@ -46,7 +67,8 @@ async def create_location(body: LocationCreate, _admin: AdminOnly, db: DB) -> Lo
         exists = await db.execute(select(Location).where(Location.code == body.code))
         if exists.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="Location code already exists")
-    location = Location(**body.model_dump())
+    data = _normalize_location_names(body.model_dump())
+    location = Location(**data)
     db.add(location)
     await db.commit()
     await db.refresh(location)
@@ -78,6 +100,14 @@ async def update_location(location_id: uuid.UUID, body: LocationUpdate, _admin: 
 
     for field, value in update_data.items():
         setattr(location, field, value)
+
+    merged = {
+        "name_en": location.name_en,
+        "name_zh": location.name_zh,
+    }
+    normalized = _normalize_location_names(merged)
+    location.name_zh = normalized["name_zh"]
+
     await db.commit()
     await db.refresh(location)
     return location

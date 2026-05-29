@@ -4,6 +4,7 @@ import { listProducts } from '@/api/attendance/products'
 import type { Product } from '@/api/attendance/products'
 import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
+import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
@@ -96,7 +97,7 @@ async function loadProducts(isRefresh = false) {
   }
   catch (e) {
     console.error('Failed to load QR products', e)
-    loadError.value = 'Failed to load products. Please try again.'
+    loadError.value = formatApiError(e, 'Failed to load products. Please try again.')
   }
   finally {
     loading.value = false

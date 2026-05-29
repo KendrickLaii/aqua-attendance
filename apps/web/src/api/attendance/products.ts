@@ -1,4 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
+import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
 
 export interface Product {
   id: string
@@ -36,11 +37,25 @@ export interface Product {
 export async function listProducts(params?: {
   product_type?: string
   is_active?: boolean
+  attendance_status?: 'checked_in' | 'checked_out'
   search?: string
   page?: number
   page_size?: number
 }): Promise<Product[]> {
-  return await $attendanceApi('/products', { params })
+  const result = await listProductsWithTotal(params)
+
+  return result.items
+}
+
+export async function listProductsWithTotal(params?: {
+  product_type?: string
+  is_active?: boolean
+  attendance_status?: 'checked_in' | 'checked_out'
+  search?: string
+  page?: number
+  page_size?: number
+}): Promise<AttendanceListResult<Product>> {
+  return await fetchAttendanceListWithTotal<Product>('/products', params)
 }
 
 export async function getProduct(productId: string): Promise<Product> {

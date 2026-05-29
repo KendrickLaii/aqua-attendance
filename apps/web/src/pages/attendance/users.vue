@@ -7,20 +7,22 @@ import {
   requiredValidator,
   usernameAttendanceValidator,
 } from '@core/utils/validators'
-import { createUser, deleteUser, listUsers, updateUser } from '@/api/attendance/users'
+import { createUser, deleteUser, listUsersWithTotal, updateUser } from '@/api/attendance/users'
 import type { AttendanceUser } from '@/api/attendance/auth'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
 
-const USER_PAGE_SIZE = 200
+const USER_PAGE_SIZE = 50
 const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const users = ref<AttendanceUser[]>([])
+const totalCount = ref(0)
+const page = ref(1)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
@@ -54,30 +56,34 @@ const fullNameRules = [requiredValidator, maxCharsRule(255, 'Full name')] as con
 const createPasswordRules = [requiredValidator, attendanceCreatePasswordValidator] as const
 const editPasswordRules = [attendanceCreatePasswordValidator] as const
 
-const usersCapped = computed(() => users.value.length >= USER_PAGE_SIZE)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / USER_PAGE_SIZE)))
+const hasNextPage = computed(() => page.value < totalPages.value)
+const hasPrevPage = computed(() => page.value > 1)
 const activeCount = computed(() => users.value.filter(u => u.is_active).length)
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
     return 'Loading…'
 
-  const total = users.value.length
-  const countLabel = usersCapped.value ? `${USER_PAGE_SIZE}+` : String(total)
+  const total = totalCount.value
+  let label = `${total} user${total === 1 ? '' : 's'} · ${activeCount.value} login enabled on this page`
+  if (totalPages.value > 1)
+    label += ` · page ${page.value} of ${totalPages.value}`
 
-  return `${countLabel} users · ${activeCount.value} login enabled`
+  return label
 })
 
 const listCaption = computed(() => {
-  if (loading.value || users.value.length === 0)
+  if (loading.value || totalCount.value === 0)
     return ''
 
-  const total = users.value.length
-  if (usersCapped.value)
-    return `Showing ${total} of ${USER_PAGE_SIZE}+ users`
-  if (searchQuery.value.trim())
-    return `Showing ${total} matching user${total === 1 ? '' : 's'}`
+  const from = (page.value - 1) * USER_PAGE_SIZE + 1
+  const to = from + users.value.length - 1
 
-  return `${total} user${total === 1 ? '' : 's'}`
+  if (totalCount.value <= USER_PAGE_SIZE)
+    return `${totalCount.value} user${totalCount.value === 1 ? '' : 's'}`
+
+  return `${from}–${to} of ${totalCount.value}`
 })
 
 const showEmptyCreateCta = computed(() => !searchQuery.value.trim())
@@ -108,23 +114,29 @@ onMounted(async () => {
   await loadUsers()
 })
 
-async function loadUsers(isRefresh = false) {
+async function loadUsers(isRefresh = false, resetPage = false) {
   const softRefresh = isRefresh === true
 
+  if (resetPage)
+    page.value = 1
   if (softRefresh)
     refreshing.value = true
   else
     loading.value = true
   loadError.value = ''
   try {
-    users.value = await listUsers({
+    const result = await listUsersWithTotal({
       search: searchQuery.value.trim() || undefined,
+      page: page.value,
       page_size: USER_PAGE_SIZE,
     })
+
+    users.value = result.items
+    totalCount.value = result.total
   }
   catch (e) {
     console.error('Failed to load users', e)
-    loadError.value = 'Failed to load admin users. Please try again.'
+    loadError.value = formatApiError(e, 'Failed to load admin users. Please try again.')
   }
   finally {
     loading.value = false
@@ -132,11 +144,25 @@ async function loadUsers(isRefresh = false) {
   }
 }
 
-const debouncedLoadUsers = useDebounceFn(() => loadUsers(true), SEARCH_DEBOUNCE_MS)
+const debouncedLoadUsers = useDebounceFn(() => loadUsers(true, true), SEARCH_DEBOUNCE_MS)
 
 watch(searchQuery, () => {
   debouncedLoadUsers()
 })
+
+function goToPrevPage() {
+  if (page.value <= 1)
+    return
+  page.value -= 1
+  loadUsers(true)
+}
+
+function goToNextPage() {
+  if (!hasNextPage.value)
+    return
+  page.value += 1
+  loadUsers(true)
+}
 
 function closeEditDialog() {
   dialogOpen.value = false
@@ -466,6 +492,32 @@ function canDeleteUser(u: AttendanceUser) {
             </tr>
           </tbody>
         </VTable>
+      </div>
+      <div
+        v-if="!loading && users.length > 0 && totalPages > 1"
+        class="d-flex flex-wrap align-center justify-space-between gap-2 pa-4 pt-0"
+      >
+        <span class="text-caption text-medium-emphasis">
+          Page {{ page }} of {{ totalPages }}
+        </span>
+        <div class="d-flex gap-2">
+          <VBtn
+            variant="tonal"
+            size="small"
+            :disabled="!hasPrevPage || refreshing"
+            @click="goToPrevPage"
+          >
+            Previous
+          </VBtn>
+          <VBtn
+            variant="tonal"
+            size="small"
+            :disabled="!hasNextPage || refreshing"
+            @click="goToNextPage"
+          >
+            Next
+          </VBtn>
+        </div>
       </div>
     </VCard>
 

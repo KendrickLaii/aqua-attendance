@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 
 from app.deps import DB, AdminOnly, SuperAdminOnly
@@ -27,21 +27,32 @@ def _forbid_admin_managing_superadmin(actor: User, *, target_role: str | None = 
 async def list_users(
     _admin: AdminOnly,
     db: DB,
+    response: Response,
     role: str | None = None,
     is_active: bool | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[User]:
-    q = select(User)
+    clauses = []
     if role:
-        q = q.where(User.role == role)
+        clauses.append(User.role == role)
     if is_active is not None:
-        q = q.where(User.is_active == is_active)
+        clauses.append(User.is_active == is_active)
     if search:
-        q = q.where(User.username.ilike(f"%{search}%") | User.full_name.ilike(f"%{search}%"))
+        clauses.append(User.username.ilike(f"%{search}%") | User.full_name.ilike(f"%{search}%"))
+
+    count_q = select(func.count()).select_from(User)
+    if clauses:
+        count_q = count_q.where(*clauses)
+    total = await db.scalar(count_q) or 0
+
+    q = select(User)
+    if clauses:
+        q = q.where(*clauses)
     q = q.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
+    response.headers["X-Total-Count"] = str(total)
     return list(result.scalars().all())
 
 

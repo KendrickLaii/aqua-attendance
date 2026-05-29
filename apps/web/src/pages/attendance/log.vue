@@ -171,7 +171,7 @@ async function loadEvents(isRefresh = false, resetPage = false) {
   }
   catch (e) {
     console.error('Failed to load attendance log', e)
-    loadError.value = 'Failed to load attendance records. Please try again.'
+    loadError.value = formatApiError(e, 'Failed to load attendance records. Please try again.')
   }
   finally {
     loading.value = false

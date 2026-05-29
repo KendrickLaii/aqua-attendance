@@ -4,7 +4,7 @@ import {
   maxCharsRule,
   requiredValidator,
 } from '@core/utils/validators'
-import { createProduct, deleteProduct, listProducts, updateProduct } from '@/api/attendance/products'
+import { createProduct, deleteProduct, listProductsWithTotal, updateProduct } from '@/api/attendance/products'
 import type { Product } from '@/api/attendance/products'
 import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
@@ -13,13 +13,15 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
-const PRODUCT_PAGE_SIZE = 200
+const PRODUCT_PAGE_SIZE = 50
 const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const products = ref<Product[]>([])
+const totalCount = ref(0)
+const page = ref(1)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
@@ -57,6 +59,7 @@ const saveError = ref<string | null>(null)
 const searchQuery = ref('')
 const filterType = ref('')
 const filterActive = ref('')
+const filterAttendance = ref('')
 const qrDialogsRef = ref<InstanceType<typeof ProductQrDialogs> | null>(null)
 
 const deleteConfirmOpen = ref(false)
@@ -81,6 +84,12 @@ const activeFilterOptions = [
   { title: 'Inactive only', value: 'inactive' },
 ]
 
+const attendanceFilterOptions = [
+  { title: 'All attendance', value: '' },
+  { title: 'Checked in', value: 'checked_in' },
+  { title: 'Checked out', value: 'checked_out' },
+]
+
 const genderOptions = [
   { title: 'Male', value: 'male' },
   { title: 'Female', value: 'female' },
@@ -101,34 +110,41 @@ const productFormRef = ref<VForm>()
 const codeRules = [requiredValidator, maxCharsRule(100, 'Code')] as const
 const fullNameRules = [requiredValidator, maxCharsRule(255, 'Full name')] as const
 
-const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE)
-const checkedInCount = computed(() => products.value.filter(p => p.attendance_status === 'checked_in').length)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / PRODUCT_PAGE_SIZE)))
+const hasNextPage = computed(() => page.value < totalPages.value)
+const hasPrevPage = computed(() => page.value > 1)
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
     return 'Loading…'
 
-  const total = products.value.length
-  const countLabel = productsCapped.value ? `${PRODUCT_PAGE_SIZE}+` : String(total)
+  const total = totalCount.value
+  let label = `${total} product${total === 1 ? '' : 's'}`
+  if (filterAttendance.value === 'checked_in')
+    label += ' · checked in'
+  else if (filterAttendance.value === 'checked_out')
+    label += ' · checked out'
+  if (totalPages.value > 1)
+    label += ` · page ${page.value} of ${totalPages.value}`
 
-  return `${countLabel} products · ${checkedInCount.value} checked in`
+  return label
 })
 
 const listCaption = computed(() => {
-  if (loading.value || products.value.length === 0)
+  if (loading.value || totalCount.value === 0)
     return ''
 
-  const total = products.value.length
-  if (productsCapped.value)
-    return `Showing ${total} of ${PRODUCT_PAGE_SIZE}+ products`
-  if (searchQuery.value || filterType.value || filterActive.value)
-    return `Showing ${total} matching product${total === 1 ? '' : 's'}`
+  const from = (page.value - 1) * PRODUCT_PAGE_SIZE + 1
+  const to = from + products.value.length - 1
 
-  return `${total} product${total === 1 ? '' : 's'}`
+  if (totalCount.value <= PRODUCT_PAGE_SIZE)
+    return `${totalCount.value} product${totalCount.value === 1 ? '' : 's'}`
+
+  return `${from}–${to} of ${totalCount.value}`
 })
 
 const showEmptyCreateCta = computed(() =>
-  !searchQuery.value && !filterType.value && !filterActive.value,
+  !searchQuery.value && !filterType.value && !filterActive.value && !filterAttendance.value,
 )
 
 onMounted(async () => {
@@ -146,25 +162,34 @@ onMounted(async () => {
   await loadProducts()
 })
 
-async function loadProducts(isRefresh = false) {
+async function loadProducts(isRefresh = false, resetPage = false) {
   const softRefresh = isRefresh === true
 
+  if (resetPage)
+    page.value = 1
   if (softRefresh)
     refreshing.value = true
   else
     loading.value = true
   loadError.value = ''
   try {
-    products.value = await listProducts({
+    const result = await listProductsWithTotal({
       search: searchQuery.value || undefined,
       product_type: filterType.value || undefined,
       is_active: filterActive.value === 'active' ? true : filterActive.value === 'inactive' ? false : undefined,
+      attendance_status: filterAttendance.value === 'checked_in' || filterAttendance.value === 'checked_out'
+        ? filterAttendance.value
+        : undefined,
+      page: page.value,
       page_size: PRODUCT_PAGE_SIZE,
     })
+
+    products.value = result.items
+    totalCount.value = result.total
   }
   catch (e) {
     console.error('Failed to load products', e)
-    loadError.value = 'Failed to load products. Please try again.'
+    loadError.value = formatApiError(e, 'Failed to load products. Please try again.')
   }
   finally {
     loading.value = false
@@ -172,19 +197,37 @@ async function loadProducts(isRefresh = false) {
   }
 }
 
-const debouncedLoadProducts = useDebounceFn(() => loadProducts(true), SEARCH_DEBOUNCE_MS)
+const debouncedLoadProducts = useDebounceFn(() => loadProducts(true, true), SEARCH_DEBOUNCE_MS)
 
 watch(searchQuery, () => {
   debouncedLoadProducts()
 })
 
 watch(filterType, () => {
-  loadProducts(true)
+  loadProducts(true, true)
 })
 
 watch(filterActive, () => {
-  loadProducts(true)
+  loadProducts(true, true)
 })
+
+watch(filterAttendance, () => {
+  loadProducts(true, true)
+})
+
+function goToPrevPage() {
+  if (page.value <= 1)
+    return
+  page.value -= 1
+  loadProducts(true)
+}
+
+function goToNextPage() {
+  if (!hasNextPage.value)
+    return
+  page.value += 1
+  loadProducts(true)
+}
 
 function openCreate() {
   saveError.value = null
@@ -429,7 +472,7 @@ function rowStatusChip(p: Product) {
       </VCol>
     </VRow>
 
-    <!-- Attendance filter (checked in / out): deferred — see docs/KNOWN-GAPS.md -->
+    <!-- Attendance filter uses server-side attendance_status — see GET /api/products -->
     <VRow
       class="mb-4"
       align="center"
@@ -437,6 +480,7 @@ function rowStatusChip(p: Product) {
       <VCol
         cols="12"
         sm="4"
+        md="3"
       >
         <VTextField
           v-model="searchQuery"
@@ -449,7 +493,8 @@ function rowStatusChip(p: Product) {
       </VCol>
       <VCol
         cols="12"
-        sm="3"
+        sm="4"
+        md="3"
       >
         <VSelect
           v-model="filterType"
@@ -461,12 +506,26 @@ function rowStatusChip(p: Product) {
       </VCol>
       <VCol
         cols="12"
-        sm="3"
+        sm="4"
+        md="3"
       >
         <VSelect
           v-model="filterActive"
           :items="activeFilterOptions"
           label="Active status"
+          density="compact"
+          hide-details
+        />
+      </VCol>
+      <VCol
+        cols="12"
+        sm="4"
+        md="3"
+      >
+        <VSelect
+          v-model="filterAttendance"
+          :items="attendanceFilterOptions"
+          label="Attendance"
           density="compact"
           hide-details
         />
@@ -606,7 +665,7 @@ function rowStatusChip(p: Product) {
                 class="text-center text-medium-emphasis py-6"
               >
                 <div class="mb-3">
-                  {{ searchQuery || filterType || filterActive ? 'No products match your search or filters' : 'No products yet' }}
+                  {{ searchQuery || filterType || filterActive || filterAttendance ? 'No products match your search or filters' : 'No products yet' }}
                 </div>
                 <VBtn
                   v-if="showEmptyCreateCta"
@@ -620,6 +679,32 @@ function rowStatusChip(p: Product) {
             </tr>
           </tbody>
         </VTable>
+      </div>
+      <div
+        v-if="!loading && products.length > 0 && totalPages > 1"
+        class="d-flex flex-wrap align-center justify-space-between gap-2 pa-4 pt-0"
+      >
+        <span class="text-caption text-medium-emphasis">
+          Page {{ page }} of {{ totalPages }}
+        </span>
+        <div class="d-flex gap-2">
+          <VBtn
+            variant="tonal"
+            size="small"
+            :disabled="!hasPrevPage || refreshing"
+            @click="goToPrevPage"
+          >
+            Previous
+          </VBtn>
+          <VBtn
+            variant="tonal"
+            size="small"
+            :disabled="!hasNextPage || refreshing"
+            @click="goToNextPage"
+          >
+            Next
+          </VBtn>
+        </div>
       </div>
       <div class="text-caption text-medium-emphasis px-4 pb-3 d-md-none">
         Swipe sideways to see more columns. Phone and school are hidden on small screens.

@@ -1,4 +1,7 @@
 /** Cookie keys used by the attendance app (and mirrored template keys on login). */
+
+export const SCAN_TOKEN_SESSION_KEY = 'attendance-scan-token'
+export const SCAN_ENTRY_SESSION_KEY = 'attendance-scan-entry'
 export function isAttendanceLoggedIn(): boolean {
   return !!(
     useCookie('attendanceAccessToken').value

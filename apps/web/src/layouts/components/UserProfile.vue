@@ -52,30 +52,16 @@ const templateProfileList: ProfileListItem[] = [
   { type: 'divider' },
 ]
 
-const attendanceProfileList = computed((): ProfileListItem[] => {
-  const items: ProfileListItem[] = [
-    { type: 'divider' },
-    {
-      type: 'navItem',
-      icon: 'ri-dashboard-line',
-      title: 'Dashboard',
-      to: { name: 'attendance-dashboard' },
-    },
-  ]
-
-  if (attendanceAuth.isAdmin) {
-    items.push({
-      type: 'navItem',
-      icon: 'ri-qr-scan-2-line',
-      title: 'Web Scanner',
-      to: { name: 'attendance-scanner' },
-    })
-  }
-
-  items.push({ type: 'divider' })
-
-  return items
-})
+const attendanceProfileList = computed((): ProfileListItem[] => [
+  { type: 'divider' },
+  {
+    type: 'navItem',
+    icon: 'ri-dashboard-line',
+    title: 'Dashboard',
+    to: { name: 'attendance-dashboard' },
+  },
+  { type: 'divider' },
+])
 
 const userProfileList = computed(() =>
   isAttendanceMode.value ? attendanceProfileList.value : templateProfileList,

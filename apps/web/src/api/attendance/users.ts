@@ -1,4 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
+import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
 import type { AttendanceUser } from './auth'
 
 export async function listUsers(params?: {
@@ -8,7 +9,19 @@ export async function listUsers(params?: {
   page?: number
   page_size?: number
 }): Promise<AttendanceUser[]> {
-  return await $attendanceApi('/users', { params })
+  const result = await listUsersWithTotal(params)
+
+  return result.items
+}
+
+export async function listUsersWithTotal(params?: {
+  role?: string
+  is_active?: boolean
+  search?: string
+  page?: number
+  page_size?: number
+}): Promise<AttendanceListResult<AttendanceUser>> {
+  return await fetchAttendanceListWithTotal<AttendanceUser>('/users', params)
 }
 
 export async function createUser(payload: {

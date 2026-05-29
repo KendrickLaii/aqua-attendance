@@ -1,4 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
+import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
 
 export interface LocationDetailPhoto {
   url: string
@@ -53,7 +54,18 @@ export async function listLocations(params?: {
   page?: number
   page_size?: number
 }): Promise<LocationItem[]> {
-  return await $attendanceApi('/locations', { params })
+  const result = await listLocationsWithTotal(params)
+
+  return result.items
+}
+
+export async function listLocationsWithTotal(params?: {
+  is_active?: boolean
+  search?: string
+  page?: number
+  page_size?: number
+}): Promise<AttendanceListResult<LocationItem>> {
+  return await fetchAttendanceListWithTotal<LocationItem>('/locations', params)
 }
 
 export async function createLocation(payload: LocationPayload): Promise<LocationItem> {

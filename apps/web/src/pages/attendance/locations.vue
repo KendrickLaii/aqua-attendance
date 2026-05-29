@@ -3,7 +3,7 @@ import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import {
   createLocation,
   deleteLocation,
-  listLocations,
+  listLocationsWithTotal,
   updateLocation,
   type LocationDetailPhoto,
   type LocationItem,
@@ -12,13 +12,15 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
-const LOCATION_PAGE_SIZE = 200
+const LOCATION_PAGE_SIZE = 24
 const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const locations = ref<LocationItem[]>([])
+const totalCount = ref(0)
+const page = ref(1)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
@@ -146,30 +148,34 @@ const regionOptions = computed(() =>
   [...new Set(locations.value.map(l => l.region).filter((r): r is string => !!r))].sort(),
 )
 
-const locationsCapped = computed(() => locations.value.length >= LOCATION_PAGE_SIZE)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / LOCATION_PAGE_SIZE)))
+const hasNextPage = computed(() => page.value < totalPages.value)
+const hasPrevPage = computed(() => page.value > 1)
 const activeCount = computed(() => locations.value.filter(l => l.is_active).length)
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
     return 'Loading…'
 
-  const total = locations.value.length
-  const countLabel = locationsCapped.value ? `${LOCATION_PAGE_SIZE}+` : String(total)
+  const total = totalCount.value
+  let label = `${total} location${total === 1 ? '' : 's'} · ${activeCount.value} active on this page`
+  if (totalPages.value > 1)
+    label += ` · page ${page.value} of ${totalPages.value}`
 
-  return `${countLabel} locations · ${activeCount.value} active`
+  return label
 })
 
 const listCaption = computed(() => {
-  if (loading.value || locations.value.length === 0)
+  if (loading.value || totalCount.value === 0)
     return ''
 
-  const total = locations.value.length
-  if (locationsCapped.value)
-    return `Showing ${total} of ${LOCATION_PAGE_SIZE}+ locations`
-  if (search.value.trim() || showInactive.value)
-    return `Showing ${total} matching location${total === 1 ? '' : 's'}`
+  const from = (page.value - 1) * LOCATION_PAGE_SIZE + 1
+  const to = from + locations.value.length - 1
 
-  return `${total} location${total === 1 ? '' : 's'}`
+  if (totalCount.value <= LOCATION_PAGE_SIZE)
+    return `${totalCount.value} location${totalCount.value === 1 ? '' : 's'}`
+
+  return `${from}–${to} of ${totalCount.value}`
 })
 
 const showEmptyCreateCta = computed(() => !search.value.trim() && !showInactive.value)
@@ -189,25 +195,30 @@ onMounted(async () => {
   await loadLocations()
 })
 
-async function loadLocations(isRefresh = false) {
+async function loadLocations(isRefresh = false, resetPage = false) {
   const softRefresh = isRefresh === true
 
+  if (resetPage)
+    page.value = 1
   if (softRefresh)
     refreshing.value = true
   else
     loading.value = true
   loadError.value = ''
   try {
-    locations.value = await listLocations({
+    const result = await listLocationsWithTotal({
       is_active: showInactive.value ? undefined : true,
       search: search.value.trim() || undefined,
-      page: 1,
+      page: page.value,
       page_size: LOCATION_PAGE_SIZE,
     })
+
+    locations.value = result.items
+    totalCount.value = result.total
   }
   catch (e) {
     console.error('Failed to load locations', e)
-    loadError.value = 'Failed to load locations. Please try again.'
+    loadError.value = formatApiError(e, 'Failed to load locations. Please try again.')
   }
   finally {
     loading.value = false
@@ -215,15 +226,29 @@ async function loadLocations(isRefresh = false) {
   }
 }
 
-const debouncedLoadLocations = useDebounceFn(() => loadLocations(true), SEARCH_DEBOUNCE_MS)
+const debouncedLoadLocations = useDebounceFn(() => loadLocations(true, true), SEARCH_DEBOUNCE_MS)
 
 watch(search, () => {
   debouncedLoadLocations()
 })
 
 watch(showInactive, () => {
-  loadLocations(true)
+  loadLocations(true, true)
 })
+
+function goToPrevPage() {
+  if (page.value <= 1)
+    return
+  page.value -= 1
+  loadLocations(true)
+}
+
+function goToNextPage() {
+  if (!hasNextPage.value)
+    return
+  page.value += 1
+  loadLocations(true)
+}
 
 function resetForm() {
   Object.assign(form, {
@@ -358,10 +383,11 @@ async function handleSave() {
   saving.value = true
   saveError.value = ''
   try {
+    const englishName = form.name_en.trim()
     const payload = {
       code: form.code.trim() || null,
-      name_zh: form.name_zh.trim() || null,
-      name_en: form.name_en.trim(),
+      name_zh: form.name_zh.trim() || englishName,
+      name_en: englishName,
       location_type: form.location_type.trim() || null,
       region: (form.region as string)?.trim() || null,
       business_hours: buildBusinessHoursString() || null,
@@ -810,6 +836,33 @@ function cardCoverUrl(l: LocationItem): string | null {
       </VCol>
     </VRow>
 
+    <div
+      v-if="!loading && !loadError && locations.length > 0 && totalPages > 1"
+      class="d-flex flex-wrap align-center justify-space-between gap-2 mb-6"
+    >
+      <span class="text-caption text-medium-emphasis">
+        Page {{ page }} of {{ totalPages }}
+      </span>
+      <div class="d-flex gap-2">
+        <VBtn
+          variant="tonal"
+          size="small"
+          :disabled="!hasPrevPage || refreshing"
+          @click="goToPrevPage"
+        >
+          Previous
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          size="small"
+          :disabled="!hasNextPage || refreshing"
+          @click="goToNextPage"
+        >
+          Next
+        </VBtn>
+      </div>
+    </div>
+
     <!-- create / edit dialog -->
     <VDialog v-model="dialogOpen" max-width="760" scrollable>
       <VCard>
@@ -888,6 +941,8 @@ function cardCoverUrl(l: LocationItem): string | null {
                   <VTextField
                     v-model="form.name_zh"
                     label="Chinese Name"
+                    hint="Optional — defaults to English name if left blank"
+                    persistent-hint
                     prepend-inner-icon="ri-translate"
                   />
                 </VCol>

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.location_photo import LocationDetailPhoto
 
@@ -30,6 +30,13 @@ class LocationCreate(BaseModel):
     notes: str | None = None
     details: dict | None = None
     is_active: bool = True
+
+    @model_validator(mode="after")
+    def default_name_zh_from_en(self) -> "LocationCreate":
+        """DB column name_zh is NOT NULL; UI requires English name and Chinese is optional."""
+        if not self.name_zh and self.name_en:
+            self.name_zh = self.name_en
+        return self
 
     @field_validator(
         "code", "name_zh", "name_en", "location_type", "region", "business_hours",

@@ -3,8 +3,8 @@ import type { Product } from '@/api/attendance/products'
 import { useQrImageUrl } from '@/composables/useQrImageUrl'
 import { copyToClipboard } from '@/utils/copyToClipboard'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { SCAN_ENTRY_SESSION_KEY, SCAN_TOKEN_SESSION_KEY } from '@/utils/attendanceSession'
 
-const SCAN_TOKEN_SESSION_KEY = 'attendance-scan-token'
 export const PRODUCT_QR_IMAGE_SIZE = 300
 
 export function useProductQrDialog(options?: {
@@ -105,8 +105,11 @@ export function useProductQrDialog(options?: {
   }
 
   function openWebScanner() {
-    if (qrToken.value && typeof sessionStorage !== 'undefined')
-      sessionStorage.setItem(SCAN_TOKEN_SESSION_KEY, qrToken.value)
+    if (typeof sessionStorage !== 'undefined') {
+      if (qrToken.value)
+        sessionStorage.setItem(SCAN_TOKEN_SESSION_KEY, qrToken.value)
+      sessionStorage.setItem(SCAN_ENTRY_SESSION_KEY, '1')
+    }
     qrDialog.value = false
     router.push({ name: 'attendance-scanner' })
   }
