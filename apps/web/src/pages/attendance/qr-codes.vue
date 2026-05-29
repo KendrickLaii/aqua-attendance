@@ -198,6 +198,13 @@ function typeLabel(type: string) {
           hide-details
         />
       </VCol>
+      <VCol
+        v-if="listCaption"
+        cols="auto"
+        class="ms-sm-auto"
+      >
+        <span class="text-caption text-medium-emphasis">{{ listCaption }}</span>
+      </VCol>
     </VRow>
 
     <VAlert
@@ -220,94 +227,93 @@ function typeLabel(type: string) {
       </template>
     </VAlert>
 
-    <VCard :loading="loading">
-      <VCardTitle class="d-flex align-center justify-space-between flex-wrap gap-2">
-        <span>Active products</span>
-        <span
-          v-if="listCaption"
-          class="text-caption text-medium-emphasis"
-        >
-          {{ listCaption }}
-        </span>
-      </VCardTitle>
+    <VRow v-if="loading && !refreshing">
+      <VCol
+        cols="12"
+        class="text-center py-12"
+      >
+        <VProgressCircular
+          indeterminate
+          color="primary"
+          size="48"
+        />
+      </VCol>
+    </VRow>
 
-      <VCardText class="pa-4">
-        <div
-          v-if="!loading && products.length === 0 && !loadError"
-          class="text-center text-medium-emphasis py-12"
-        >
-          <div class="mb-3">
-            {{ emptyStateMessage }}
-          </div>
-          <VBtn
-            v-if="showEmptyProductsCta"
-            color="primary"
-            prepend-icon="ri-group-line"
-            :to="{ name: 'attendance-products' }"
-          >
-            Go to Product Management
-          </VBtn>
-        </div>
+    <div
+      v-else-if="products.length === 0 && !loadError"
+      class="text-center text-medium-emphasis py-12"
+    >
+      <div class="mb-3">
+        {{ emptyStateMessage }}
+      </div>
+      <VBtn
+        v-if="showEmptyProductsCta"
+        color="primary"
+        prepend-icon="ri-group-line"
+        :to="{ name: 'attendance-products' }"
+      >
+        Go to Product Management
+      </VBtn>
+    </div>
 
-        <VRow v-else-if="!loading">
-          <VCol
-            v-for="p in products"
-            :key="p.id"
-            cols="12"
-            sm="6"
-            md="4"
-            lg="3"
-          >
-            <VCard
-              class="qr-product-card text-center"
-              hover
-              tabindex="0"
-              role="button"
-              :aria-label="`View QR code for ${p.full_name}`"
-              @click="openQR(p)"
-              @keydown.enter="openQR(p)"
-              @keydown.space.prevent="openQR(p)"
+    <VRow v-else-if="!loadError">
+      <VCol
+        v-for="p in products"
+        :key="p.id"
+        cols="12"
+        sm="6"
+        md="4"
+        lg="3"
+      >
+        <VCard
+          class="qr-product-card text-center"
+          hover
+          tabindex="0"
+          role="button"
+          :aria-label="`View QR code for ${p.full_name}`"
+          @click="openQR(p)"
+          @keydown.enter="openQR(p)"
+          @keydown.space.prevent="openQR(p)"
+        >
+          <VCardText>
+            <VIcon
+              icon="ri-qr-code-line"
+              size="48"
+              color="primary"
+              class="mb-2"
+            />
+            <div
+              class="qr-product-name text-subtitle-1 font-weight-bold"
+              :title="p.full_name"
             >
-              <VCardText>
-                <VIcon
-                  icon="ri-qr-code-line"
-                  size="48"
-                  color="primary"
-                  class="mb-2"
-                />
-                <div
-                  class="qr-product-name text-subtitle-1 font-weight-bold"
-                  :title="p.full_name"
-                >
-                  {{ p.full_name }}
-                </div>
-                <div class="text-body-2 text-medium-emphasis mb-2">
-                  {{ p.code }}
-                </div>
-                <div class="d-flex justify-center gap-2 mb-2">
-                  <VChip
-                    :color="typeColor(p.product_type)"
-                    size="small"
-                    label
-                  >
-                    {{ typeLabel(p.product_type) }}
-                  </VChip>
-                </div>
-                <div
-                  class="text-caption mt-2"
-                  :class="p.last_event_at && p.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
-                >
-                  {{ formatLastAttendance(p, { compact: true }) }}
-                </div>
-                <div class="text-caption text-disabled mt-2">
-                  Tap to view QR
-                </div>
-              </VCardText>
-            </VCard>
-          </VCol>
-        </VRow>
-      </VCardText>
-    </VCard>
+              {{ p.full_name }}
+            </div>
+            <div class="text-body-2 text-medium-emphasis mb-2">
+              {{ p.code }}
+            </div>
+            <div class="d-flex justify-center gap-2 mb-2">
+              <VChip
+                :color="typeColor(p.product_type)"
+                size="small"
+                label
+              >
+                {{ typeLabel(p.product_type) }}
+              </VChip>
+            </div>
+            <div
+              class="text-caption mt-2"
+              :class="p.last_event_at && p.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
+            >
+              {{ formatLastAttendance(p, { compact: true }) }}
+            </div>
+            <div class="text-caption text-disabled mt-2">
+              Tap to view QR
+            </div>
+          </VCardText>
+        </VCard>
+      </VCol>
+    </VRow>
 
     <ProductQrDialogs
       ref="qrDialogsRef"

@@ -622,25 +622,32 @@ function cardCoverUrl(l: LocationItem): string | null {
       </VCol>
     </VRow>
 
-    <VRow v-else-if="locations.length === 0 && !loadError">
-      <VCol cols="12">
-        <VCard variant="outlined">
-          <VCardText class="text-center text-medium-emphasis py-12">
-            <VIcon
-              icon="ri-map-pin-line"
-              size="48"
-              class="mb-3"
-            />
-            <div v-if="showEmptyCreateCta">
-              No locations yet. Click <strong>Add Location</strong> to get started.
-            </div>
-            <div v-else>
-              No locations match your filters.
-            </div>
-          </VCardText>
-        </VCard>
-      </VCol>
-    </VRow>
+    <div
+      v-else-if="locations.length === 0 && !loadError"
+      class="text-center text-medium-emphasis py-12"
+    >
+      <VIcon
+        icon="ri-map-pin-line"
+        size="48"
+        class="mb-3"
+      />
+      <div class="mb-3">
+        <template v-if="showEmptyCreateCta">
+          No locations yet. Click <strong>Add Location</strong> to get started.
+        </template>
+        <template v-else>
+          No locations match your filters.
+        </template>
+      </div>
+      <VBtn
+        v-if="showEmptyCreateCta"
+        color="primary"
+        prepend-icon="ri-add-line"
+        @click="openCreate"
+      >
+        Add Location
+      </VBtn>
+    </div>
 
     <VRow v-else-if="!loadError">
       <VCol
@@ -653,141 +660,152 @@ function cardCoverUrl(l: LocationItem): string | null {
       >
         <VCard
           class="location-card d-flex flex-column"
-          variant="outlined"
-          :opacity="l.is_active ? 1 : 0.65"
+          hover
           height="100%"
+          :class="{ 'location-card--inactive': !l.is_active }"
         >
           <div class="location-card__cover">
             <VImg
               v-if="cardCoverUrl(l)"
               :src="cardCoverUrl(l) || ''"
-              height="120"
+              height="128"
               cover
-              class="bg-grey-lighten-3"
+              class="location-card__cover-img"
             />
             <div
               v-else
-              class="location-card__cover-placeholder bg-grey-lighten-4"
+              class="location-card__cover-placeholder"
             >
               <VIcon
                 icon="ri-map-pin-line"
-                size="36"
-                color="grey"
+                size="40"
+                color="primary"
               />
             </div>
             <VChip
               class="location-card__status"
               :color="l.is_active ? 'success' : 'grey'"
-              size="x-small"
+              size="small"
+              variant="flat"
               label
             >
               {{ l.is_active ? 'Active' : 'Inactive' }}
             </VChip>
           </div>
 
-          <VCardText class="location-card__body pa-3 flex-grow-1">
-            <div class="d-flex align-start gap-2">
+          <VCardText class="location-card__body pa-4">
+            <div class="location-card__header">
+              <div class="min-w-0 flex-grow-1">
+                <div
+                  class="location-card__title text-truncate"
+                  :title="l.name_en"
+                >
+                  {{ l.name_en }}
+                </div>
+                <div
+                  v-if="l.name_zh"
+                  class="location-card__subtitle text-truncate"
+                  :title="l.name_zh"
+                >
+                  {{ l.name_zh }}
+                </div>
+                <div
+                  v-if="l.code"
+                  class="location-card__code text-truncate"
+                >
+                  {{ l.code }}
+                </div>
+              </div>
               <VAvatar
                 v-if="showCardIcon(l)"
-                size="28"
-                rounded="sm"
-                class="flex-shrink-0"
+                size="36"
+                rounded="lg"
+                class="location-card__avatar flex-shrink-0"
               >
                 <VImg
                   :src="l.icon_url || ''"
                   cover
                 />
               </VAvatar>
-              <div class="min-w-0 flex-grow-1">
-                <div class="text-subtitle-2 font-weight-bold text-truncate">
-                  {{ l.name_en }}
-                </div>
-                <div
-                  v-if="l.name_zh"
-                  class="text-caption text-medium-emphasis text-truncate"
-                >
-                  {{ l.name_zh }}
-                </div>
-                <div
-                  v-if="l.code"
-                  class="text-caption text-disabled text-truncate"
-                >
-                  {{ l.code }}
-                </div>
-              </div>
             </div>
 
             <div
               v-if="l.location_type || l.region"
-              class="d-flex flex-wrap gap-1 mt-2"
+              class="location-card__chips"
             >
               <VChip
                 v-if="l.location_type"
                 size="x-small"
                 color="primary"
                 variant="tonal"
+                label
               >
                 {{ l.location_type }}
               </VChip>
               <VChip
                 v-if="l.region"
                 size="x-small"
-                color="secondary"
+                color="primary"
                 variant="tonal"
-                prepend-icon="ri-map-pin-line"
+                label
               >
                 {{ l.region }}
               </VChip>
             </div>
 
             <div
-              v-if="formatCardBusinessHours(l)"
-              class="location-card__meta mt-2"
+              v-if="formatCardBusinessHours(l) || l.address"
+              class="location-card__meta-block"
             >
-              <VIcon
-                icon="ri-time-line"
-                size="14"
-                class="flex-shrink-0 mt-1"
-              />
-              <span class="location-card__meta-text">{{ formatCardBusinessHours(l) }}</span>
+              <div
+                v-if="formatCardBusinessHours(l)"
+                class="location-card__meta"
+              >
+                <VIcon
+                  icon="ri-time-line"
+                  size="15"
+                  class="location-card__meta-icon"
+                />
+                <span>{{ formatCardBusinessHours(l) }}</span>
+              </div>
+              <div
+                v-if="l.address"
+                class="location-card__meta"
+              >
+                <VIcon
+                  icon="ri-road-map-line"
+                  size="15"
+                  class="location-card__meta-icon"
+                />
+                <span class="location-card__address">{{ l.address }}</span>
+              </div>
             </div>
-            <div
-              v-if="l.address"
-              class="location-card__meta"
-            >
-              <VIcon
-                icon="ri-road-map-line"
-                size="14"
-                class="flex-shrink-0 mt-1"
-              />
-              <span class="location-card__meta-text location-card__address">{{ l.address }}</span>
+
+            <div class="location-card__actions">
+              <VBtn
+                icon
+                size="small"
+                variant="text"
+                color="default"
+                title="Edit"
+                :aria-label="`Edit ${l.name_en}`"
+                @click="openEdit(l)"
+              >
+                <VIcon icon="ri-edit-line" />
+              </VBtn>
+              <VBtn
+                icon
+                size="small"
+                variant="text"
+                color="error"
+                title="Delete"
+                :aria-label="`Delete ${l.name_en}`"
+                @click="openDeleteConfirm(l)"
+              >
+                <VIcon icon="ri-delete-bin-line" />
+              </VBtn>
             </div>
           </VCardText>
-
-          <VDivider />
-          <VCardActions class="pa-1 justify-end">
-            <VBtn
-              icon
-              size="small"
-              variant="text"
-              title="Edit"
-              :aria-label="`Edit ${l.name_en}`"
-              @click="openEdit(l)"
-            >
-              <VIcon icon="ri-edit-line" />
-            </VBtn>
-            <VBtn
-              icon
-              size="small"
-              variant="text"
-              color="error"
-              title="Delete"
-              :aria-label="`Delete ${l.name_en}`"
-              @click="openDeleteConfirm(l)"
-            >
-              <VIcon icon="ri-delete-bin-line" />
-            </VBtn>
-          </VCardActions>
         </VCard>
       </VCol>
     </VRow>
@@ -1187,38 +1205,100 @@ function cardCoverUrl(l: LocationItem): string | null {
 
 <style scoped lang="scss">
 .location-card {
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+
+  &--inactive {
+    opacity: 0.72;
+  }
+
   &__cover {
     position: relative;
+    overflow: hidden;
+  }
+
+  &__cover-img {
+    background: rgb(var(--v-theme-surface-variant));
   }
 
   &__cover-placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 120px;
+    height: 128px;
+    background: rgba(var(--v-theme-primary), 0.06);
   }
 
   &__status {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 10px;
+    right: 10px;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  }
+
+  &__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  &__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  &__title {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  &__subtitle {
+    font-size: 0.8125rem;
+    color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+    line-height: 1.35;
+    margin-top: 2px;
+  }
+
+  &__code {
+    font-size: 0.75rem;
+    color: rgba(var(--v-theme-on-surface), var(--v-disabled-opacity));
+    margin-top: 2px;
+  }
+
+  &__avatar {
+    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  }
+
+  &__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+  }
+
+  &__meta-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
   }
 
   &__meta {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
-    font-size: 0.75rem;
+    gap: 8px;
+    font-size: 0.8125rem;
+    line-height: 1.4;
     color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-
-    & + & {
-      margin-top: 4px;
-    }
   }
 
-  &__meta-text {
-    line-height: 1.35;
-    min-width: 0;
+  &__meta-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    opacity: 0.7;
   }
 
   &__address {
@@ -1227,6 +1307,15 @@ function cardCoverUrl(l: LocationItem): string | null {
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 2px;
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   }
 }
 
