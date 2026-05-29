@@ -13,7 +13,7 @@ from app.deps import DB, AdminOnly
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
 from app.models.product import Product
-from app.schemas.attendance import AttendanceOut, ManualCorrectionRequest, ScanRequest
+from app.schemas.attendance import AttendanceDayStatsOut, AttendanceOut, ManualCorrectionRequest, ScanRequest
 from app.services import attendance as att_svc
 from app.services.qr import verify_qr_token
 
@@ -115,6 +115,18 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
 
     event = await _reload_with_product(db, event.id)
     return _event_to_out(event)
+
+
+@router.get("/stats", response_model=AttendanceDayStatsOut)
+async def attendance_day_stats(
+    _admin: AdminOnly,
+    db: DB,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> AttendanceDayStatsOut:
+    """Aggregate event counts for a date range (dashboard; not limited by page size)."""
+    stats = await att_svc.event_day_stats(db, date_from=date_from, date_to=date_to)
+    return AttendanceDayStatsOut(**stats)
 
 
 @router.get("", response_model=list[AttendanceOut])

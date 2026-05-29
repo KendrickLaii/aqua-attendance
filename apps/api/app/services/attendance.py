@@ -180,6 +180,74 @@ async def list_events(
     return list(result.scalars().all()), total
 
 
+def _event_stats_conditions(
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> list:
+    conditions = []
+    if date_from:
+        conditions.append(AttendanceEvent.recorded_at >= date_from)
+    if date_to:
+        conditions.append(AttendanceEvent.recorded_at <= date_to)
+    return conditions
+
+
+async def event_day_stats(
+    db: AsyncSession,
+    *,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> dict[str, int]:
+    """Aggregate today's event counts for dashboard (all rows, not paginated)."""
+    conditions = _event_stats_conditions(date_from=date_from, date_to=date_to)
+
+    total_q = select(func.count()).select_from(AttendanceEvent)
+    if conditions:
+        total_q = total_q.where(and_(*conditions))
+    total = (await db.execute(total_q)).scalar_one()
+
+    breakdown_q = (
+        select(
+            AttendanceEvent.event_type,
+            Product.product_type,
+            func.count().label("count"),
+        )
+        .join(Product, AttendanceEvent.product_id == Product.id)
+        .where(
+            AttendanceEvent.event_type.in_(
+                [EventType.check_in.value, EventType.check_out.value]
+            )
+        )
+        .group_by(AttendanceEvent.event_type, Product.product_type)
+    )
+    if conditions:
+        breakdown_q = breakdown_q.where(and_(*conditions))
+
+    rows = (await db.execute(breakdown_q)).all()
+
+    stats = {
+        "total": total,
+        "check_ins_student": 0,
+        "check_ins_staff": 0,
+        "check_outs_student": 0,
+        "check_outs_staff": 0,
+    }
+    for event_type, product_type, count in rows:
+        if event_type == EventType.check_in.value:
+            if product_type == "student":
+                stats["check_ins_student"] = count
+            elif product_type == "staff":
+                stats["check_ins_staff"] = count
+        elif event_type == EventType.check_out.value:
+            if product_type == "student":
+                stats["check_outs_student"] = count
+            elif product_type == "staff":
+                stats["check_outs_staff"] = count
+
+    return stats
+
+
 async def manual_correction(
     db: AsyncSession,
     *,

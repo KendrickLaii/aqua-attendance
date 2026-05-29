@@ -49,3 +49,11 @@ class AttendanceListParams(BaseModel):
     event_type: EventType | None = None
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=50, ge=1, le=200)
+
+
+class AttendanceDayStatsOut(BaseModel):
+    total: int
+    check_ins_student: int
+    check_ins_staff: int
+    check_outs_student: int
+    check_outs_staff: int

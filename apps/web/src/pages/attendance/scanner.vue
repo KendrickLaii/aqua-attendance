@@ -577,175 +577,79 @@ function resetResult() {
 
 
 
-    <VDialog
-
+    <AttendanceInfoDialog
       v-model="showResult"
-
-      max-width="400"
-
+      :max-width="400"
       persistent
-
+      centered
+      body-class="pa-8"
+      action-label="OK — Next Scan"
+      @action="resetResult"
     >
-
-      <VCard>
-
-        <template v-if="result">
-
-          <VCardText class="text-center pa-8">
-
-            <VIcon
-
-              :icon="result.event_type === 'check_in' ? 'ri-login-box-line' : 'ri-logout-box-line'"
-
-              :color="eventColor(result.event_type)"
-
-              size="80"
-
-              class="mb-4"
-
-            />
-
-            <div class="text-h5 mb-2">
-
-              {{ result.event_type.replace('_', ' ').toUpperCase() }}
-
-            </div>
-
-            <div class="text-h6 mb-1">
-
-              {{ result.product_name || result.product_code }}
-
-            </div>
-
-            <div class="text-caption text-medium-emphasis mb-2">
-
-              {{ result.product_id }}
-
-            </div>
-
-            <div class="d-flex justify-center gap-2 mb-2">
-
-              <VChip
-
-                v-if="result.product_type"
-
-                :color="result.product_type === 'staff' ? 'info' : 'success'"
-
-                size="small"
-
-                label
-
-              >
-
-                {{ result.product_type }}
-
-              </VChip>
-
-              <VChip
-
-                v-if="result.attendance_status"
-
-                :color="result.attendance_status === 'checked_in' ? 'success' : 'grey'"
-
-                size="small"
-
-                label
-
-              >
-
-                Now: {{ result.attendance_status === 'checked_in' ? 'IN' : 'OUT' }}
-
-              </VChip>
-
-            </div>
-
-            <div class="text-body-2 text-medium-emphasis mb-1">
-
-              {{ formatAttendanceDateTime(result.recorded_at) }}
-
-            </div>
-
-            <div
-
-              v-if="result.location"
-
-              class="text-body-2"
-
-            >
-
-              <VIcon
-
-                icon="ri-map-pin-line"
-
-                size="16"
-
-                class="me-1"
-
-              />
-
-              {{ result.location }}
-
-            </div>
-
-          </VCardText>
-
-        </template>
-
-        <template v-else-if="error">
-
-          <VCardText class="text-center pa-8">
-
-            <VIcon
-
-              icon="ri-error-warning-line"
-
-              color="error"
-
-              size="80"
-
-              class="mb-4"
-
-            />
-
-            <div class="text-h6 mb-2">
-
-              Scan Failed
-
-            </div>
-
-            <div class="text-body-1 text-medium-emphasis">
-
-              {{ error }}
-
-            </div>
-
-          </VCardText>
-
-        </template>
-
-        <VDivider />
-
-        <DialogFooter>
-
-          <VBtn
-
-            color="primary"
-
-            variant="flat"
-
-            @click="resetResult"
-
+      <template v-if="result">
+        <VIcon
+          :icon="result.event_type === 'check_in' ? 'ri-login-box-line' : 'ri-logout-box-line'"
+          :color="eventColor(result.event_type)"
+          size="80"
+          class="mb-4"
+        />
+        <div class="text-h5 mb-2">
+          {{ result.event_type.replace('_', ' ').toUpperCase() }}
+        </div>
+        <div class="text-h6 mb-1">
+          {{ result.product_name || result.product_code }}
+        </div>
+        <div class="text-caption text-medium-emphasis mb-2">
+          {{ result.product_id }}
+        </div>
+        <div class="d-flex justify-center gap-2 mb-2">
+          <VChip
+            v-if="result.product_type"
+            :color="result.product_type === 'staff' ? 'info' : 'success'"
+            size="small"
+            label
           >
-
-            OK — Next Scan
-
-          </VBtn>
-
-        </DialogFooter>
-
-      </VCard>
-
-    </VDialog>
+            {{ result.product_type }}
+          </VChip>
+          <VChip
+            v-if="result.attendance_status"
+            :color="result.attendance_status === 'checked_in' ? 'success' : 'grey'"
+            size="small"
+            label
+          >
+            Now: {{ result.attendance_status === 'checked_in' ? 'IN' : 'OUT' }}
+          </VChip>
+        </div>
+        <div class="text-body-2 text-medium-emphasis mb-1">
+          {{ formatAttendanceDateTime(result.recorded_at) }}
+        </div>
+        <div
+          v-if="result.location"
+          class="text-body-2"
+        >
+          <VIcon
+            icon="ri-map-pin-line"
+            size="16"
+            class="me-1"
+          />
+          {{ result.location }}
+        </div>
+      </template>
+      <template v-else-if="error">
+        <VIcon
+          icon="ri-error-warning-line"
+          color="error"
+          size="80"
+          class="mb-4"
+        />
+        <div class="text-h6 mb-2">
+          Scan Failed
+        </div>
+        <div class="text-body-1 text-medium-emphasis">
+          {{ error }}
+        </div>
+      </template>
+    </AttendanceInfoDialog>
 
   </VContainer>
 

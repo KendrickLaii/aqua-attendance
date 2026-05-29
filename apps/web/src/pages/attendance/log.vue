@@ -601,27 +601,17 @@ async function handleCorrection() {
       </div>
     </VCard>
 
-    <VDialog
+    <AttendanceFormDialog
       v-model="correctionDialog"
-      max-width="500"
-      scrollable
+      title="Manual Correction"
+      icon="ri-edit-box-line"
+      :saving="correcting"
+      :error="correctionError"
+      @save="handleCorrection"
+      @cancel="closeCorrectionDialog"
+      @clear-error="correctionError = ''"
     >
-      <VCard>
-        <VCardTitle>Manual Correction</VCardTitle>
-        <VDivider />
-        <VCardText class="pa-4">
-          <VAlert
-            v-if="correctionError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-4"
-            closable
-            @click:close="correctionError = ''"
-          >
-            {{ correctionError }}
-          </VAlert>
-          <VForm @submit.prevent="handleCorrection">
+      <VForm @submit.prevent="handleCorrection">
             <VSelect
               v-model="correctionForm.product_id"
               :items="products.map(p => ({ title: `${p.full_name} (${p.code})`, value: p.id }))"
@@ -654,28 +644,8 @@ async function handleCorrection() {
               density="compact"
               variant="outlined"
             />
-          </VForm>
-        </VCardText>
-        <VDivider />
-        <DialogFooter>
-          <VBtn
-            variant="outlined"
-            color="primary"
-            @click="closeCorrectionDialog"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            variant="flat"
-            color="primary"
-            :loading="correcting"
-            @click="handleCorrection"
-          >
-            Save
-          </VBtn>
-        </DialogFooter>
-      </VCard>
-    </VDialog>
+      </VForm>
+    </AttendanceFormDialog>
   </VContainer>
 </template>
 

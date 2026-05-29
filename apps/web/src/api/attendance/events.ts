@@ -45,6 +45,21 @@ export interface AttendanceListResult {
   total: number
 }
 
+export interface AttendanceDayStats {
+  total: number
+  check_ins_student: number
+  check_ins_staff: number
+  check_outs_student: number
+  check_outs_staff: number
+}
+
+export async function getAttendanceDayStats(params?: {
+  date_from?: string
+  date_to?: string
+}): Promise<AttendanceDayStats> {
+  return await $attendanceApi<AttendanceDayStats>('/attendance/stats', { params })
+}
+
 export async function listAttendance(params?: {
   product_id?: string
   product_type?: string

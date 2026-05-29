@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { listAttendanceWithTotal } from '@/api/attendance/events'
+import { getAttendanceDayStats, listAttendanceWithTotal } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso } from '@/utils/attendanceDisplay'
@@ -8,7 +8,6 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
-const EVENTS_PAGE_SIZE = 200
 const RECENT_EVENTS_LIMIT = 20
 
 const authStore = useAttendanceAuthStore()
@@ -28,15 +27,12 @@ const refreshing = ref(false)
 const loadError = ref('')
 const todayLabel = ref(formatAttendanceDateLabel())
 const todayEventTotal = ref(0)
-const todayEventsCapped = ref(false)
 
 const recentEventsCaption = computed(() => {
   if (todayEventTotal.value === 0)
     return ''
 
   const shown = recentEvents.value.length
-  if (todayEventsCapped.value)
-    return `Showing latest ${shown} of ${EVENTS_PAGE_SIZE}+ events today`
   if (todayEventTotal.value > shown)
     return `Showing latest ${shown} of ${todayEventTotal.value} events today`
 
@@ -64,24 +60,24 @@ async function loadDashboard(isRefresh = false) {
 
     const range = getTodayRangeIso()
 
-    const [eventsResult, products] = await Promise.all([
-      listAttendanceWithTotal({ date_from: range.date_from, date_to: range.date_to, page_size: EVENTS_PAGE_SIZE }),
+    const [eventsResult, dayStats, products] = await Promise.all([
+      listAttendanceWithTotal({ date_from: range.date_from, date_to: range.date_to, page_size: RECENT_EVENTS_LIMIT }),
+      getAttendanceDayStats({ date_from: range.date_from, date_to: range.date_to }),
       listProducts({ is_active: true, page_size: 200 }),
     ])
 
     const events = eventsResult.items
 
-    todayEventTotal.value = eventsResult.total
-    todayEventsCapped.value = eventsResult.total > EVENTS_PAGE_SIZE
-    recentEvents.value = events.slice(0, RECENT_EVENTS_LIMIT)
+    todayEventTotal.value = dayStats.total
+    recentEvents.value = events
     presentStudentCount.value = products.filter(p => p.product_type === 'student' && p.attendance_status === 'checked_in').length
     presentStaffCount.value = products.filter(p => p.product_type === 'staff' && p.attendance_status === 'checked_in').length
     activeStudentCount.value = products.filter(p => p.product_type === 'student').length
     activeStaffCount.value = products.filter(p => p.product_type === 'staff').length
-    todayCheckInsStudent.value = events.filter(e => e.event_type === 'check_in' && e.product_type === 'student').length
-    todayCheckInsStaff.value = events.filter(e => e.event_type === 'check_in' && e.product_type === 'staff').length
-    todayCheckOutsStudent.value = events.filter(e => e.event_type === 'check_out' && e.product_type === 'student').length
-    todayCheckOutsStaff.value = events.filter(e => e.event_type === 'check_out' && e.product_type === 'staff').length
+    todayCheckInsStudent.value = dayStats.check_ins_student
+    todayCheckInsStaff.value = dayStats.check_ins_staff
+    todayCheckOutsStudent.value = dayStats.check_outs_student
+    todayCheckOutsStaff.value = dayStats.check_outs_staff
   }
   catch (e) {
     console.error('Failed to load dashboard', e)

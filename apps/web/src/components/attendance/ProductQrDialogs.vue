@@ -55,171 +55,121 @@ defineExpose({ openQR })
 
 <template>
   <!-- QR Code Dialog -->
-  <VDialog
+  <AttendanceInfoDialog
     v-model="qrDialog"
-    max-width="420"
-    scrollable
+    :title="qrProduct?.full_name"
+    :subtitle="qrProduct ? `${qrProduct.code} · ${productTypeLabel(qrProduct.product_type)}` : undefined"
+    icon="ri-qr-code-line"
+    centered
+    @action="qrDialog = false"
   >
-    <VCard>
-      <VCardTitle class="text-h6 text-wrap">
-        {{ qrProduct?.full_name }}
-      </VCardTitle>
-      <VCardSubtitle class="text-wrap pb-2">
-        {{ qrProduct?.code }} · {{ productTypeLabel(qrProduct?.product_type) }}
-      </VCardSubtitle>
-      <VDivider />
-
-      <VCardText class="text-center pa-4">
-        <div
-          v-if="qrLoading"
-          class="py-12"
-        >
-          <VProgressCircular
-            indeterminate
-            color="primary"
-            size="48"
-          />
-        </div>
-        <template v-else-if="qrToken">
-          <div
-            class="my-4 d-flex justify-center align-center"
-            :style="{ minHeight: `${displayQrSize}px` }"
-          >
-            <VProgressCircular
-              v-if="qrImageLoading"
-              indeterminate
-              color="primary"
-              size="40"
-            />
-            <VAlert
-              v-else-if="qrImageError"
-              type="error"
-              variant="tonal"
-              density="compact"
-            >
-              Could not render QR image.
-            </VAlert>
-            <VImg
-              v-else-if="qrImageUrl"
-              :src="qrImageUrl"
-              :width="displayQrSize"
-              :height="displayQrSize"
-              class="qr-dialog-image rounded"
-            />
-          </div>
-          <div class="text-caption text-medium-emphasis mb-3">
-            This QR stays valid until you rotate it. On scan, choose Check In or Check Out
-            (mobile app or web scanner). Same code works every day.
-          </div>
-          <div class="d-flex justify-center flex-wrap gap-2 mb-2">
-            <VBtn
-              variant="tonal"
-              size="small"
-              color="primary"
-              prepend-icon="ri-qr-scan-2-line"
-              @click="openWebScanner"
-            >
-              Web scanner
-            </VBtn>
-            <VBtn
-              variant="outlined"
-              size="small"
-              :prepend-icon="copied ? 'ri-check-line' : 'ri-file-copy-line'"
-              :color="copied ? 'success' : undefined"
-              @click="copyQrToken"
-            >
-              {{ copied ? 'Copied' : 'Copy token' }}
-            </VBtn>
-            <VBtn
-              variant="text"
-              size="small"
-              color="warning"
-              prepend-icon="ri-refresh-line"
-              @click="openRotateConfirm"
-            >
-              Rotate QR
-            </VBtn>
-          </div>
-          <VTextField
-            :model-value="qrToken"
-            readonly
-            label="Raw token (tap to select, then copy)"
-            density="compact"
-            variant="outlined"
-            class="text-start mt-4"
-            hide-details
-            @focus="selectTokenField"
-          />
-          <div class="text-caption text-disabled mt-2">
-            Token version: {{ qrProduct?.qr_token_version }}
-          </div>
-        </template>
-        <VAlert
-          v-else
-          type="error"
-          variant="tonal"
-          class="mt-4"
-        >
-          {{ qrError || 'Failed to generate QR code' }}
-        </VAlert>
-      </VCardText>
-
-      <VDivider />
-      <DialogFooter>
-        <VBtn
-          variant="flat"
+    <div
+      v-if="qrLoading"
+      class="py-12"
+    >
+      <VProgressCircular
+        indeterminate
+        color="primary"
+        size="48"
+      />
+    </div>
+    <template v-else-if="qrToken">
+      <div
+        class="my-4 d-flex justify-center align-center"
+        :style="{ minHeight: `${displayQrSize}px` }"
+      >
+        <VProgressCircular
+          v-if="qrImageLoading"
+          indeterminate
           color="primary"
-          @click="qrDialog = false"
-        >
-          Close
-        </VBtn>
-      </DialogFooter>
-    </VCard>
-  </VDialog>
-
-  <!-- Rotate confirmation -->
-  <VDialog
-    v-model="rotateConfirmOpen"
-    max-width="420"
-    persistent
-  >
-    <VCard>
-      <VCardTitle>Rotate QR for {{ qrProduct?.full_name }}?</VCardTitle>
-      <VCardText>
+          size="40"
+        />
         <VAlert
-          v-if="rotateError"
+          v-else-if="qrImageError"
           type="error"
           variant="tonal"
           density="compact"
-          class="mb-3"
-          closable
-          @click:close="rotateError = ''"
         >
-          {{ rotateError }}
+          Could not render QR image.
         </VAlert>
-        The current QR will stop working. Use this only if the printed
-        code was lost or shared with someone who shouldn't have it.
-      </VCardText>
-      <VDivider />
-      <DialogFooter>
+        <VImg
+          v-else-if="qrImageUrl"
+          :src="qrImageUrl"
+          :width="displayQrSize"
+          :height="displayQrSize"
+          class="qr-dialog-image rounded"
+        />
+      </div>
+      <div class="text-caption text-medium-emphasis mb-3">
+        This QR stays valid until you rotate it. On scan, choose Check In or Check Out
+        (mobile app or web scanner). Same code works every day.
+      </div>
+      <div class="d-flex justify-center flex-wrap gap-2 mb-2">
+        <VBtn
+          variant="tonal"
+          size="small"
+          color="primary"
+          prepend-icon="ri-qr-scan-2-line"
+          @click="openWebScanner"
+        >
+          Web scanner
+        </VBtn>
         <VBtn
           variant="outlined"
-          color="primary"
-          @click="closeRotateConfirm"
+          size="small"
+          :prepend-icon="copied ? 'ri-check-line' : 'ri-file-copy-line'"
+          :color="copied ? 'success' : undefined"
+          @click="copyQrToken"
         >
-          Cancel
+          {{ copied ? 'Copied' : 'Copy token' }}
         </VBtn>
         <VBtn
-          variant="flat"
+          variant="text"
+          size="small"
           color="warning"
-          :loading="rotating"
-          @click="confirmRotate"
+          prepend-icon="ri-refresh-line"
+          @click="openRotateConfirm"
         >
-          Rotate
+          Rotate QR
         </VBtn>
-      </DialogFooter>
-    </VCard>
-  </VDialog>
+      </div>
+      <VTextField
+        :model-value="qrToken"
+        readonly
+        label="Raw token (tap to select, then copy)"
+        density="compact"
+        variant="outlined"
+        class="text-start mt-4"
+        hide-details
+        @focus="selectTokenField"
+      />
+      <div class="text-caption text-disabled mt-2">
+        Token version: {{ qrProduct?.qr_token_version }}
+      </div>
+    </template>
+    <VAlert
+      v-else
+      type="error"
+      variant="tonal"
+    >
+      {{ qrError || 'Failed to generate QR code' }}
+    </VAlert>
+  </AttendanceInfoDialog>
+
+  <AttendanceConfirmDialog
+    v-model="rotateConfirmOpen"
+    :title="`Rotate QR for ${qrProduct?.full_name}?`"
+    confirm-label="Rotate"
+    confirm-color="warning"
+    :loading="rotating"
+    :error="rotateError"
+    @confirm="confirmRotate"
+    @cancel="closeRotateConfirm"
+    @clear-error="rotateError = ''"
+  >
+    The current QR will stop working. Use this only if the printed
+    code was lost or shared with someone who shouldn't have it.
+  </AttendanceConfirmDialog>
 
   <VSnackbar
     v-model="copyFailOpen"

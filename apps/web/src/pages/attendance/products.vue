@@ -711,388 +711,316 @@ function rowStatusChip(p: Product) {
       </div>
     </VCard>
 
-    <!-- Create/Edit Dialog -->
-    <VDialog
+    <AttendanceFormDialog
       v-model="dialogOpen"
-      max-width="900"
-      scrollable
+      :title="editingProduct ? 'Edit Product' : 'Create Product'"
+      icon="ri-group-line"
+      :max-width="900"
+      :saving="saving"
+      :error="saveError"
+      @save="handleSave"
+      @cancel="dialogOpen = false"
+      @clear-error="saveError = null"
     >
-      <VCard>
-        <VCardTitle class="text-h6 py-4">
-          {{ editingProduct ? 'Edit Product' : 'Create Product' }}
-        </VCardTitle>
-        <VDivider />
-        <VCardText class="pa-4">
-          <VAlert
-            v-if="saveError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-4"
-            closable
-            @click:close="saveError = null"
+      <VForm
+        ref="productFormRef"
+        @submit.prevent="handleSave"
+      >
+        <h4 class="text-subtitle-2 text-medium-emphasis mb-2">
+          Basic info
+        </h4>
+        <VRow class="dense-form-row">
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
           >
-            {{ saveError }}
-          </VAlert>
-          <VForm
-            ref="productFormRef"
-            @submit.prevent="handleSave"
+            <VTextField
+              v-model="form.code"
+              label="Code *"
+              :disabled="!!editingProduct"
+              maxlength="100"
+              :rules="codeRules"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
           >
-            <VDefaultsProvider
-              :defaults="{
-                VTextField: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
-                VSelect: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
-                VTextarea: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
-                VSwitch: { density: 'compact', hideDetails: true },
-              }"
-            >
-              <h4 class="text-subtitle-2 text-medium-emphasis mb-2">
-                Basic info
-              </h4>
-              <VRow class="dense-form-row">
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.code"
-                    label="Code *"
-                    :disabled="!!editingProduct"
-                    maxlength="100"
-                    :rules="codeRules"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VSelect
-                    v-model="form.product_type"
-                    :items="typeOptions"
-                    item-title="title"
-                    item-value="value"
-                    label="Type *"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VSelect
-                    v-model="form.status"
-                    :items="statusOptions"
-                    item-title="title"
-                    item-value="value"
-                    label="Status"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                >
-                  <VTextField
-                    v-model="form.full_name"
-                    label="Full name *"
-                    maxlength="255"
-                    :rules="fullNameRules"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                >
-                  <VTextField
-                    v-model="form.english_name"
-                    label="English name"
-                    maxlength="255"
-                    :rules="[maxCharsRule(255, 'English name')]"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                >
-                  <VTextField
-                    v-model="form.email"
-                    label="Email"
-                    maxlength="255"
-                    :rules="[maxCharsRule(255, 'Email')]"
-                  />
-                </VCol>
-              </VRow>
-
-              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
-                Contact & personal
-              </h4>
-              <VRow class="dense-form-row">
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VSelect
-                    v-model="form.gender"
-                    :items="genderOptions"
-                    item-title="title"
-                    item-value="value"
-                    label="Gender"
-                    clearable
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.date_of_birth"
-                    label="Date of birth"
-                    type="date"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.phone"
-                    label="Phone"
-                    maxlength="50"
-                    :rules="[maxCharsRule(50, 'Phone')]"
-                  />
-                </VCol>
-                <VCol cols="12">
-                  <VTextField
-                    v-model="form.address"
-                    label="Address"
-                    maxlength="500"
-                    :rules="[maxCharsRule(500, 'Address')]"
-                  />
-                </VCol>
-              </VRow>
-
-              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
-                Emergency contact
-              </h4>
-              <VRow class="dense-form-row">
-                <VCol
-                  cols="12"
-                  sm="6"
-                >
-                  <VTextField
-                    v-model="form.emergency_contact_name"
-                    label="Emergency contact name"
-                    maxlength="255"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                >
-                  <VTextField
-                    v-model="form.emergency_contact_phone"
-                    label="Emergency contact phone"
-                    maxlength="50"
-                  />
-                </VCol>
-              </VRow>
-
-              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
-                School & guardian
-              </h4>
-              <VRow class="dense-form-row">
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.school_name"
-                    label="School name"
-                    maxlength="255"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.grade_class"
-                    label="Grade / class"
-                    maxlength="100"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                  class="d-flex align-center"
-                >
-                  <VSwitch
-                    v-model="form.whatsapp_enabled"
-                    label="WhatsApp enabled"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.guardian1_name"
-                    label="Guardian 1 name"
-                    maxlength="255"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VSelect
-                    v-model="form.guardian1_relationship"
-                    :items="relationshipOptions"
-                    label="Guardian 1 relationship"
-                    clearable
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.guardian1_phone"
-                    label="Guardian 1 phone"
-                    maxlength="50"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.guardian2_name"
-                    label="Guardian 2 name"
-                    maxlength="255"
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VSelect
-                    v-model="form.guardian2_relationship"
-                    :items="relationshipOptions"
-                    label="Guardian 2 relationship"
-                    clearable
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="form.guardian2_phone"
-                    label="Guardian 2 phone"
-                    maxlength="50"
-                  />
-                </VCol>
-              </VRow>
-
-              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
-                Notes
-              </h4>
-              <VTextarea
-                v-model="form.remarks"
-                label="Remarks"
-                rows="2"
-                auto-grow
-                class="mb-2"
-              />
-
-              <VSwitch
-                v-if="editingProduct"
-                v-model="form.is_active"
-                label="Active (can scan QR and appear in attendance)"
-                class="mt-1"
-              />
-            </VDefaultsProvider>
-          </VForm>
-        </VCardText>
-        <VDivider />
-        <DialogFooter>
-          <VBtn
-            variant="outlined"
-            color="primary"
-            @click="dialogOpen = false"
+            <VSelect
+              v-model="form.product_type"
+              :items="typeOptions"
+              item-title="title"
+              item-value="value"
+              label="Type *"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
           >
-            Cancel
-          </VBtn>
-          <VBtn
-            variant="flat"
-            color="primary"
-            :loading="saving"
-            @click="handleSave"
+            <VSelect
+              v-model="form.status"
+              :items="statusOptions"
+              item-title="title"
+              item-value="value"
+              label="Status"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
           >
-            Save
-          </VBtn>
-        </DialogFooter>
-      </VCard>
-    </VDialog>
+            <VTextField
+              v-model="form.full_name"
+              label="Full name *"
+              maxlength="255"
+              :rules="fullNameRules"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="form.english_name"
+              label="English name"
+              maxlength="255"
+              :rules="[maxCharsRule(255, 'English name')]"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="form.email"
+              label="Email"
+              maxlength="255"
+              :rules="[maxCharsRule(255, 'Email')]"
+            />
+          </VCol>
+        </VRow>
 
-    <!-- Delete confirmation -->
-    <VDialog
+        <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+          Contact & personal
+        </h4>
+        <VRow class="dense-form-row">
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VSelect
+              v-model="form.gender"
+              :items="genderOptions"
+              item-title="title"
+              item-value="value"
+              label="Gender"
+              clearable
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.date_of_birth"
+              label="Date of birth"
+              type="date"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.phone"
+              label="Phone"
+              maxlength="50"
+              :rules="[maxCharsRule(50, 'Phone')]"
+            />
+          </VCol>
+          <VCol cols="12">
+            <VTextField
+              v-model="form.address"
+              label="Address"
+              maxlength="500"
+              :rules="[maxCharsRule(500, 'Address')]"
+            />
+          </VCol>
+        </VRow>
+
+        <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+          Emergency contact
+        </h4>
+        <VRow class="dense-form-row">
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="form.emergency_contact_name"
+              label="Emergency contact name"
+              maxlength="255"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="form.emergency_contact_phone"
+              label="Emergency contact phone"
+              maxlength="50"
+            />
+          </VCol>
+        </VRow>
+
+        <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+          School & guardian
+        </h4>
+        <VRow class="dense-form-row">
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.school_name"
+              label="School name"
+              maxlength="255"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.grade_class"
+              label="Grade / class"
+              maxlength="100"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+            class="d-flex align-center"
+          >
+            <VSwitch
+              v-model="form.whatsapp_enabled"
+              label="WhatsApp enabled"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.guardian1_name"
+              label="Guardian 1 name"
+              maxlength="255"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VSelect
+              v-model="form.guardian1_relationship"
+              :items="relationshipOptions"
+              label="Guardian 1 relationship"
+              clearable
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.guardian1_phone"
+              label="Guardian 1 phone"
+              maxlength="50"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.guardian2_name"
+              label="Guardian 2 name"
+              maxlength="255"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VSelect
+              v-model="form.guardian2_relationship"
+              :items="relationshipOptions"
+              label="Guardian 2 relationship"
+              clearable
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VTextField
+              v-model="form.guardian2_phone"
+              label="Guardian 2 phone"
+              maxlength="50"
+            />
+          </VCol>
+        </VRow>
+
+        <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+          Notes
+        </h4>
+        <VTextarea
+          v-model="form.remarks"
+          label="Remarks"
+          rows="2"
+          auto-grow
+          class="mb-2"
+        />
+
+        <VSwitch
+          v-if="editingProduct"
+          v-model="form.is_active"
+          label="Active (can scan QR and appear in attendance)"
+          class="mt-1"
+        />
+      </VForm>
+    </AttendanceFormDialog>
+
+    <AttendanceConfirmDialog
       v-model="deleteConfirmOpen"
-      max-width="420"
-      persistent
+      :title="`Delete ${deleteTarget?.full_name}?`"
+      :loading="deleting"
+      :error="deleteError"
+      @confirm="confirmDelete"
+      @cancel="closeDeleteConfirm"
+      @clear-error="deleteError = ''"
     >
-      <VCard>
-        <VCardTitle>Delete {{ deleteTarget?.full_name }}?</VCardTitle>
-        <VCardText>
-          <VAlert
-            v-if="deleteError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-3"
-            closable
-            @click:close="deleteError = ''"
-          >
-            {{ deleteError }}
-          </VAlert>
-          This will permanently remove
-          <strong>{{ deleteTarget?.full_name }}</strong> ({{ deleteTarget?.code }}).
-          This action cannot be undone.
-        </VCardText>
-        <VDivider />
-        <DialogFooter>
-          <VBtn
-            variant="outlined"
-            color="primary"
-            @click="closeDeleteConfirm"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            variant="flat"
-            color="error"
-            :loading="deleting"
-            @click="confirmDelete"
-          >
-            Delete
-          </VBtn>
-        </DialogFooter>
-      </VCard>
-    </VDialog>
+      This will permanently remove
+      <strong>{{ deleteTarget?.full_name }}</strong> ({{ deleteTarget?.code }}).
+      This action cannot be undone.
+    </AttendanceConfirmDialog>
 
     <ProductQrDialogs
       ref="qrDialogsRef"

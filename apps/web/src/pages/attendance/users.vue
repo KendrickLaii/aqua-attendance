@@ -521,32 +521,20 @@ function canDeleteUser(u: AttendanceUser) {
       </div>
     </VCard>
 
-    <VDialog
+    <AttendanceFormDialog
       v-model="dialogOpen"
-      max-width="500"
-      scrollable
+      :title="editingUser ? 'Edit Admin User' : 'Create Admin User'"
+      icon="ri-admin-line"
+      :saving="saving"
+      :error="saveError"
+      @save="handleSave"
+      @cancel="closeEditDialog"
+      @clear-error="saveError = ''"
     >
-      <VCard>
-        <VCardTitle class="text-h6 py-4">
-          {{ editingUser ? 'Edit Admin User' : 'Create Admin User' }}
-        </VCardTitle>
-        <VDivider />
-        <VCardText class="pa-4">
-          <VAlert
-            v-if="saveError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-4"
-            closable
-            @click:close="saveError = ''"
-          >
-            {{ saveError }}
-          </VAlert>
-          <VForm
-            ref="userFormRef"
-            @submit.prevent="handleSave"
-          >
+      <VForm
+        ref="userFormRef"
+        @submit.prevent="handleSave"
+      >
             <VTextField
               v-model="form.username"
               label="Username *"
@@ -612,73 +600,23 @@ function canDeleteUser(u: AttendanceUser) {
               class="mb-1"
             />
           </VForm>
-        </VCardText>
-        <VDivider />
-        <DialogFooter>
-          <VBtn
-            variant="outlined"
-            color="primary"
-            @click="closeEditDialog"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            variant="flat"
-            color="primary"
-            :loading="saving"
-            @click="handleSave"
-          >
-            Save
-          </VBtn>
-        </DialogFooter>
-      </VCard>
-    </VDialog>
+    </AttendanceFormDialog>
 
-    <VDialog
+    <AttendanceConfirmDialog
       v-model="deleteConfirmOpen"
-      max-width="420"
-      persistent
+      :title="`Delete ${deleteTarget?.username}?`"
+      :loading="deleting"
+      :error="deleteError"
+      @confirm="confirmDelete"
+      @cancel="closeDeleteConfirm"
+      @clear-error="deleteError = ''"
     >
-      <VCard>
-        <VCardTitle>Delete {{ deleteTarget?.username }}?</VCardTitle>
-        <VCardText>
-          <VAlert
-            v-if="deleteError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-3"
-            closable
-            @click:close="deleteError = ''"
-          >
-            {{ deleteError }}
-          </VAlert>
-          <template v-if="deleteTarget">
-            This will permanently remove admin user
-            <strong>{{ deleteTarget.username }}</strong> ({{ deleteTarget.full_name }}).
-            This action cannot be undone.
-          </template>
-        </VCardText>
-        <VDivider />
-        <DialogFooter>
-          <VBtn
-            variant="outlined"
-            color="primary"
-            @click="closeDeleteConfirm"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            variant="flat"
-            color="error"
-            :loading="deleting"
-            @click="confirmDelete"
-          >
-            Delete
-          </VBtn>
-        </DialogFooter>
-      </VCard>
-    </VDialog>
+      <template v-if="deleteTarget">
+        This will permanently remove admin user
+        <strong>{{ deleteTarget.username }}</strong> ({{ deleteTarget.full_name }}).
+        This action cannot be undone.
+      </template>
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>
 

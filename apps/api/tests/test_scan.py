@@ -327,3 +327,42 @@ async def test_scan_records_location_on_product(
     body = product.json()
     assert body["last_event_location"] == "Main classroom"
     assert body["last_event_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_attendance_day_stats_aggregates_all_events(
+    client: AsyncClient, admin_token: str, sample_product: dict
+):
+    """Stats endpoint counts all events, not just the first page."""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    product_id = sample_product["id"]
+
+    for event_type in ("check_in", "check_out", "check_in"):
+        resp = await client.post(
+            "/api/attendance/manual",
+            json={"product_id": product_id, "event_type": event_type},
+            headers=headers,
+        )
+        assert resp.status_code == 201
+
+    stats = await client.get("/api/attendance/stats", headers=headers)
+    assert stats.status_code == 200
+    body = stats.json()
+    assert body["total"] >= 3
+    assert body["check_ins_student"] >= 2
+    assert body["check_outs_student"] >= 1
+
+    list_resp = await client.get(
+        "/api/attendance",
+        params={"page_size": 2},
+        headers=headers,
+    )
+    assert list_resp.status_code == 200
+    assert int(list_resp.headers["X-Total-Count"]) >= 3
+    assert len(list_resp.json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_cannot_get_attendance_stats(client: AsyncClient):
+    resp = await client.get("/api/attendance/stats")
+    assert resp.status_code == 403

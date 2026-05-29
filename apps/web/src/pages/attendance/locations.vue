@@ -863,23 +863,20 @@ function cardCoverUrl(l: LocationItem): string | null {
       </div>
     </div>
 
-    <!-- create / edit dialog -->
-    <VDialog v-model="dialogOpen" max-width="760" scrollable>
-      <VCard>
-        <VCardTitle class="d-flex align-center pa-4 pb-0">
-          <VIcon :icon="editing ? 'ri-edit-line' : 'ri-map-pin-add-line'" class="me-2" />
-          {{ editing ? `Edit — ${editing.name_en || editing.name_zh}` : 'Create Location' }}
-          <VSpacer />
-          <VBtn
-            icon
-            variant="text"
-            size="small"
-            @click="closeEditDialog"
-          >
-            <VIcon icon="ri-close-line" />
-          </VBtn>
-        </VCardTitle>
-
+    <AttendanceFormDialog
+      v-model="dialogOpen"
+      :max-width="760"
+      :title="editing ? `Edit — ${editing.name_en || editing.name_zh}` : 'Create Location'"
+      :icon="editing ? 'ri-edit-line' : 'ri-map-pin-add-line'"
+      :saving="saving"
+      :error="saveError"
+      body-class="pa-4"
+      :body-style="{ height: '62vh', overflowY: 'auto' }"
+      @save="handleSave"
+      @cancel="closeEditDialog"
+      @clear-error="saveError = ''"
+    >
+      <template #header-after>
         <VTabs
           v-model="formTab"
           class="px-4"
@@ -898,30 +895,18 @@ function cardCoverUrl(l: LocationItem): string | null {
           </VTab>
         </VTabs>
         <VDivider />
+      </template>
+      <VAlert
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-4"
+        icon="ri-information-line"
+      >
+        Photos use external URLs in v1. File upload is planned later.
+      </VAlert>
 
-        <VCardText style="height: 62vh; overflow-y: auto">
-          <VAlert
-            v-if="saveError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-4"
-            closable
-            @click:close="saveError = ''"
-          >
-            {{ saveError }}
-          </VAlert>
-          <VAlert
-            type="info"
-            variant="tonal"
-            density="compact"
-            class="mb-4"
-            icon="ri-information-line"
-          >
-            Photos use external URLs in v1. File upload is planned later.
-          </VAlert>
-
-          <VWindow v-model="formTab">
+      <VWindow v-model="formTab">
             <!-- tab: basic -->
             <VWindowItem value="basic">
               <VRow class="mt-1">
@@ -1184,77 +1169,24 @@ function cardCoverUrl(l: LocationItem): string | null {
               </VRow>
             </VWindowItem>
           </VWindow>
-        </VCardText>
+    </AttendanceFormDialog>
 
-        <VDivider />
-        <DialogFooter>
-          <VBtn
-            variant="outlined"
-            color="primary"
-            @click="closeEditDialog"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            variant="flat"
-            color="primary"
-            :loading="saving"
-            @click="handleSave"
-          >
-            Save
-          </VBtn>
-        </DialogFooter>
-      </VCard>
-    </VDialog>
-
-    <VDialog
+    <AttendanceConfirmDialog
       v-model="deleteConfirmOpen"
-      max-width="420"
-      persistent
+      :title="`Delete ${deleteTarget ? displayName(deleteTarget) : 'location'}?`"
+      :loading="deleting"
+      :error="deleteError"
+      @confirm="confirmDelete"
+      @cancel="closeDeleteConfirm"
+      @clear-error="deleteError = ''"
     >
-      <VCard>
-        <VCardTitle>
-          Delete {{ deleteTarget ? displayName(deleteTarget) : 'location' }}?
-        </VCardTitle>
-        <VCardText>
-          <VAlert
-            v-if="deleteError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-3"
-            closable
-            @click:close="deleteError = ''"
-          >
-            {{ deleteError }}
-          </VAlert>
-          <template v-if="deleteTarget">
-            This will permanently remove
-            <strong>{{ displayName(deleteTarget) }}</strong>
-            <span v-if="deleteTarget.code"> ({{ deleteTarget.code }})</span>.
-            Locations referenced by attendance records cannot be deleted.
-          </template>
-        </VCardText>
-        <VDivider />
-        <DialogFooter>
-          <VBtn
-            variant="outlined"
-            color="primary"
-            @click="closeDeleteConfirm"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            variant="flat"
-            color="error"
-            :loading="deleting"
-            @click="confirmDelete"
-          >
-            Delete
-          </VBtn>
-        </DialogFooter>
-      </VCard>
-    </VDialog>
+      <template v-if="deleteTarget">
+        This will permanently remove
+        <strong>{{ displayName(deleteTarget) }}</strong>
+        <span v-if="deleteTarget.code"> ({{ deleteTarget.code }})</span>.
+        Locations referenced by attendance records cannot be deleted.
+      </template>
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>
 
