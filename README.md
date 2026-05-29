@@ -271,6 +271,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Production server setup |
 | [docs/CICD-EXPLAINED.md](docs/CICD-EXPLAINED.md) | Pipeline mental model |
 | [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | Doc/code mismatches and planned fixes |
+| [docs/RELEASE-2026-05.md](docs/RELEASE-2026-05.md) | **Current release** — deploy checklist |
 | [apps/api/README.md](apps/api/README.md) | API-only quick start |
 | [apps/web/README.md](apps/web/README.md) | Web-only quick start |
 | [apps/mobile/README.md](apps/mobile/README.md) | Mobile scanner app |
@@ -300,5 +301,6 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 - [x] Production compose + Caddy + deploy scripts
 - [x] Disable public registration (use User Management)
 - [x] Scan and attendance list restricted to admin/superadmin
+- [x] CSV export auth on web (Bearer blob download)
 - [ ] Fix mobile Expo entry point
-- [ ] HttpOnly session / CSV export auth on web
+- [ ] HttpOnly session cookies

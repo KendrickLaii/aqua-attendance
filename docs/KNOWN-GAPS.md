@@ -15,10 +15,17 @@ Review backlog from attendance frontend pass — all **P1–P3** items below are
 | P2 | Shared `DialogFooter` component | **Done** |
 | P3 | Product **Checked in / out** filter (server-side) | **Done** |
 | P3 | List pagination — products, users, locations | **Done** |
+| P3 | Dialog unification — Confirm / Form / Info shells | **Done** |
+| Post-P3 | Dashboard check-in/out stats (`GET /attendance/stats`) | **Done** |
+| Post-P3 | `locations.vue` component split | **Done** |
+| Post-P3 | Location create — `name_zh` default from English | **Done** |
+| Post-P3 | Load errors — `formatApiError` on all attendance list pages | **Done** |
 
 **Deferred (not in P1–P3):** none from original web polish backlog.
 
-**Suggested next (see tables below):** mobile superadmin Scan tab → dashboard stats accuracy → commit/ship → optional cookie unification / template trim.
+**Ship:** [RELEASE-2026-05.md](./RELEASE-2026-05.md) — pre/post deploy checklist for this release.
+
+**Suggested next (see tables below):** mobile superadmin Scan tab → optional cookie unification / template trim.
 
 ## Technical debt (技術債)
 
@@ -27,10 +34,7 @@ Open items — not blocking ship; track here when planning refactors.
 | Area | Item | Notes |
 |------|------|--------|
 | Web | **Dual cookies** | Login mirrors `attendanceAccessToken` → `accessToken` and `attendanceUserData` → `userData` for Materio layout/CASL. Logout clears both (`clearAttendanceSessionCookies`). **Unify:** pick one cookie set; see `login.vue`, `attendanceSession.ts`, `UserProfile.vue`, `guards.ts`. |
-| Web | ~~**Dashboard check-in/out stats**~~ | ~~Today event *total* is accurate; check-in/out counts still derived from first 200 events when >200/day.~~ | **Done** — `GET /attendance/stats` aggregate endpoint + dashboard uses it |
-| Web | ~~**`locations.vue` split**~~ | ~~`~1.3k lines — candidate for tab/hours/photos sub-components.~~ | **Done** — `LocationCard`, tab components, `locationHours` / `locationPhotos` utils |
 | Web | **Template bloat** | Large AQUA demo tree (`pages/apps/`, `dashboards/`, etc.); prod nav trimmed only. |
-| Web | ~~**Load errors**~~ | ~~Most pages use fixed strings; API detail via `formatApiError` not used everywhere.~~ | **Done** — load catch blocks use `formatApiError` on all attendance list pages |
 | Mobile | **Scan tab + role types** | Gating uses `admin \| staff`; API uses `admin \| superadmin`. Role TS types mismatch. |
 | Mobile | **Entry / My QR** | Expo router stub; My QR tab placeholder. |
 | API | **Refresh token rotation** | New pair issued without revoking old refresh token. |
@@ -59,6 +63,9 @@ Open items — not blocking ship; track here when planning refactors.
 | ~~QR preview~~ | ~~`api.qrserver.com` leaked token~~ | **Done** — local `qrcode` data URL in browser |
 | ~~Product attendance filter~~ | ~~Product Management has Type search only; no **Checked in / out** filter~~ | **Done** — `GET /api/products?attendance_status=checked_in|checked_out` + filter on `products.vue` |
 | ~~List pagination~~ | ~~Only log had real pagination; products/users/locations capped at 200 rows~~ | **Done** — `X-Total-Count` on list endpoints + prev/next on products, users, locations |
+| ~~Dashboard check-in/out stats~~ | ~~Counts capped at first 200 events/day~~ | **Done** — `GET /api/attendance/stats` |
+| ~~Dialog unification~~ | ~~Mixed VDialog patterns~~ | **Done** — `AttendanceConfirmDialog`, `AttendanceFormDialog`, `AttendanceInfoDialog` |
+| ~~`locations.vue` split~~ | ~~1.3k line monolith~~ | **Done** — `components/attendance/locations/*` |
 | Template bloat | Large AQUA demo tree still in repo; prod nav is trimmed only |
 
 ## Mobile app
