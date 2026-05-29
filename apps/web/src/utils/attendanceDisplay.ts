@@ -20,9 +20,11 @@ function getZonedParts(date: Date, timeZone: string): ZonedParts {
     minute: '2-digit',
     second: '2-digit',
   })
+
   const parts = formatter.formatToParts(date)
   const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find(p => p.type === type)?.value ?? 0)
   const hour = get('hour')
+
   return {
     year: get('year'),
     month: get('month'),
@@ -49,8 +51,10 @@ function zonedTimeToUtc(
     const zoned = getZonedParts(new Date(utcMs), timeZone)
     const asUtc = Date.UTC(zoned.year, zoned.month - 1, zoned.day, zoned.hour, zoned.minute, zoned.second, ms)
     const desired = Date.UTC(year, month - 1, day, hour, minute, second, ms)
+
     utcMs += desired - asUtc
   }
+
   return new Date(utcMs)
 }
 
@@ -62,12 +66,51 @@ export function getTodayRangeIso(timeZone = ATTENDANCE_TIMEZONE, now = new Date(
     month: '2-digit',
     day: '2-digit',
   }).format(now)
+
   const [year, month, day] = dateKey.split('-').map(Number)
+
   return {
     dateKey,
     date_from: zonedTimeToUtc(year, month, day, 0, 0, 0, 0, timeZone).toISOString(),
     date_to: zonedTimeToUtc(year, month, day, 23, 59, 59, 999, timeZone).toISOString(),
   }
+}
+
+/** Shift a YYYY-MM-DD date key by `deltaDays` in the attendance timezone. */
+export function shiftDateKey(dateKey: string, deltaDays: number, timeZone = ATTENDANCE_TIMEZONE): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const anchor = zonedTimeToUtc(year, month, day, 12, 0, 0, 0, timeZone)
+
+  anchor.setUTCDate(anchor.getUTCDate() + deltaDays)
+
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(anchor)
+}
+
+/** Convert YYYY-MM-DD date keys in the attendance timezone to UTC ISO bounds for API filters. */
+export function getDateRangeIso(
+  dateFrom?: string | null,
+  dateTo?: string | null,
+  timeZone = ATTENDANCE_TIMEZONE,
+): { date_from?: string; date_to?: string } {
+  const result: { date_from?: string; date_to?: string } = {}
+
+  if (dateFrom?.trim()) {
+    const [year, month, day] = dateFrom.split('-').map(Number)
+
+    result.date_from = zonedTimeToUtc(year, month, day, 0, 0, 0, 0, timeZone).toISOString()
+  }
+  if (dateTo?.trim()) {
+    const [year, month, day] = dateTo.split('-').map(Number)
+
+    result.date_to = zonedTimeToUtc(year, month, day, 23, 59, 59, 999, timeZone).toISOString()
+  }
+
+  return result
 }
 
 export function formatAttendanceDateLabel(
@@ -88,12 +131,14 @@ export function formatAttendanceDateTime(iso: string | null | undefined): string
   if (!iso)
     return '—'
   const d = new Date(iso)
+
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
 }
 
 export function formatAttendanceTime(iso: string | null | undefined): string {
   if (!iso)
     return '—'
+
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
@@ -104,14 +149,18 @@ export interface LastAttendanceInfo {
 }
 
 /** Human-readable line for product list / QR cards. */
-export function formatLastAttendance(p: LastAttendanceInfo): string {
+export function formatLastAttendance(
+  p: LastAttendanceInfo,
+  options?: { compact?: boolean },
+): string {
   if (!p.last_event_at)
     return 'No scans yet'
 
   const when = formatAttendanceDateTime(p.last_event_at)
   const action = p.attendance_status === 'checked_in' ? 'Checked in' : 'Checked out'
   const where = p.last_event_location?.trim()
-  if (where)
+  if (where && !options?.compact)
     return `${action} · ${when} · ${where}`
+
   return `${action} · ${when}`
 }

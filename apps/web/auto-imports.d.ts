@@ -12,6 +12,7 @@ declare global {
   const ATTENDANCE_TIMEZONE: typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const EffectScope: typeof import('vue')['EffectScope']
+  const PRODUCT_QR_IMAGE_SIZE: typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
@@ -61,6 +62,8 @@ declare global {
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const filterSelectedTableRows: typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
+  const formatApiDetail: typeof import('./src/utils/formatApiDetail')['formatApiDetail']
+  const formatApiError: typeof import('./src/utils/formatApiDetail')['formatApiError']
   const formatAttendanceDateLabel: typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateLabel']
   const formatAttendanceDateTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']
   const formatAttendanceTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']
@@ -75,6 +78,7 @@ declare global {
   const getAttendanceRole: typeof import('./src/utils/attendanceSession')['getAttendanceRole']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getDateRangeIso: typeof import('./src/utils/attendanceDisplay')['getDateRangeIso']
   const getTodayRangeIso: typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
@@ -165,6 +169,7 @@ declare global {
   const shallowReactive: typeof import('vue')['shallowReactive']
   const shallowReadonly: typeof import('vue')['shallowReadonly']
   const shallowRef: typeof import('vue')['shallowRef']
+  const shiftDateKey: typeof import('./src/utils/attendanceDisplay')['shiftDateKey']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const syncRef: typeof import('@vueuse/core')['syncRef']
   const syncRefs: typeof import('@vueuse/core')['syncRefs']
@@ -313,6 +318,7 @@ declare global {
   const usePreferredLanguages: typeof import('@vueuse/core')['usePreferredLanguages']
   const usePreferredReducedMotion: typeof import('@vueuse/core')['usePreferredReducedMotion']
   const usePrevious: typeof import('@vueuse/core')['usePrevious']
+  const useProductQrDialog: typeof import('./src/composables/useProductQrDialog')['useProductQrDialog']
   const useProjection: typeof import('@vueuse/math')['useProjection']
   const useQrImageUrl: typeof import('./src/composables/useQrImageUrl')['useQrImageUrl']
   const useRafFn: typeof import('@vueuse/core')['useRafFn']
@@ -414,6 +420,7 @@ declare module 'vue' {
     readonly ATTENDANCE_TIMEZONE: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly PRODUCT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
@@ -462,6 +469,8 @@ declare module 'vue' {
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly filterSelectedTableRows: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
+    readonly formatApiDetail: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiDetail']>
+    readonly formatApiError: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiError']>
     readonly formatAttendanceDateLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateLabel']>
     readonly formatAttendanceDateTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']>
     readonly formatAttendanceTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']>
@@ -476,6 +485,7 @@ declare module 'vue' {
     readonly getAttendanceRole: UnwrapRef<typeof import('./src/utils/attendanceSession')['getAttendanceRole']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getDateRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getDateRangeIso']>
     readonly getTodayRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
@@ -566,6 +576,7 @@ declare module 'vue' {
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
+    readonly shiftDateKey: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['shiftDateKey']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
@@ -714,6 +725,7 @@ declare module 'vue' {
     readonly usePreferredLanguages: UnwrapRef<typeof import('@vueuse/core')['usePreferredLanguages']>
     readonly usePreferredReducedMotion: UnwrapRef<typeof import('@vueuse/core')['usePreferredReducedMotion']>
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
+    readonly useProductQrDialog: UnwrapRef<typeof import('./src/composables/useProductQrDialog')['useProductQrDialog']>
     readonly useProjection: UnwrapRef<typeof import('@vueuse/math')['useProjection']>
     readonly useQrImageUrl: UnwrapRef<typeof import('./src/composables/useQrImageUrl')['useQrImageUrl']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>

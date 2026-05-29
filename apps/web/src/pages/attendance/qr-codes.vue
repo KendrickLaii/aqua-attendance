@@ -1,35 +1,67 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listProducts } from '@/api/attendance/products'
-import { getQRToken, refreshQRToken } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
-import { copyToClipboard } from '@/utils/copyToClipboard'
-import { useQrImageUrl } from '@/composables/useQrImageUrl'
+import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 
 definePage({ meta: {} })
+
+const PRODUCT_PAGE_SIZE = 200
+const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const products = ref<Product[]>([])
 const loading = ref(true)
+const refreshing = ref(false)
+const loadError = ref('')
 const filterType = ref('')
 const searchQuery = ref('')
+const qrDialogsRef = ref<InstanceType<typeof ProductQrDialogs> | null>(null)
 
-const qrDialog = ref(false)
-const qrProduct = ref<Product | null>(null)
-const qrToken = ref('')
-const qrError = ref('')
-const qrLoading = ref(false)
-const rotateConfirmOpen = ref(false)
-const rotating = ref(false)
-const rotateError = ref('')
+const typeOptions = [
+  { title: 'Student', value: 'student' },
+  { title: 'Staff', value: 'staff' },
+]
 
-function openRotateConfirm() {
-  rotateError.value = ''
-  rotateConfirmOpen.value = true
-}
+const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE)
+const checkedInCount = computed(() => products.value.filter(p => p.attendance_status === 'checked_in').length)
+
+const pageSubtitle = computed(() => {
+  if (loading.value && !refreshing.value)
+    return 'Loading…'
+
+  const total = products.value.length
+  const countLabel = productsCapped.value ? `${PRODUCT_PAGE_SIZE}+` : String(total)
+
+  return `${countLabel} active · ${checkedInCount.value} checked in`
+})
+
+const listCaption = computed(() => {
+  if (loading.value || products.value.length === 0)
+    return ''
+
+  const total = products.value.length
+  if (productsCapped.value)
+    return `Showing ${total} of ${PRODUCT_PAGE_SIZE}+ active products`
+  if (searchQuery.value || filterType.value)
+    return `Showing ${total} matching active product${total === 1 ? '' : 's'}`
+
+  return `${total} active product${total === 1 ? '' : 's'}`
+})
+
+const emptyStateMessage = computed(() => {
+  if (searchQuery.value || filterType.value)
+    return 'No matching active products'
+
+  return 'No active products found'
+})
+
+const showEmptyProductsCta = computed(() =>
+  !searchQuery.value && !filterType.value,
+)
 
 onMounted(async () => {
   authStore.restoreSession()
@@ -38,114 +70,105 @@ onMounted(async () => {
 
     return
   }
+  if (!authStore.isAdmin) {
+    router.replace({ name: 'attendance-dashboard' })
+
+    return
+  }
   await loadProducts()
 })
 
-async function loadProducts() {
-  loading.value = true
+async function loadProducts(isRefresh = false) {
+  const softRefresh = isRefresh === true
+
+  if (softRefresh)
+    refreshing.value = true
+  else
+    loading.value = true
+  loadError.value = ''
   try {
     products.value = await listProducts({
       search: searchQuery.value || undefined,
       product_type: filterType.value || undefined,
       is_active: true,
+      page_size: PRODUCT_PAGE_SIZE,
     })
+  }
+  catch (e) {
+    console.error('Failed to load QR products', e)
+    loadError.value = 'Failed to load products. Please try again.'
   }
   finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
-async function openQR(p: Product) {
-  qrProduct.value = p
-  qrLoading.value = true
-  qrToken.value = ''
-  qrError.value = ''
-  qrDialog.value = true
-  try {
-    const data = await getQRToken(p.id)
+const debouncedLoadProducts = useDebounceFn(() => loadProducts(true), SEARCH_DEBOUNCE_MS)
 
-    qrToken.value = data.qr_token
-  }
-  catch (e: any) {
-    qrToken.value = ''
-    qrError.value = e?.data?.detail || 'Failed to load QR token'
-  }
-  finally {
-    qrLoading.value = false
-  }
+watch(searchQuery, () => {
+  debouncedLoadProducts()
+})
+
+watch(filterType, () => {
+  loadProducts(true)
+})
+
+function openQR(p: Product) {
+  qrDialogsRef.value?.openQR(p)
 }
-
-async function confirmRotate() {
-  if (!qrProduct.value)
-    return
-  rotating.value = true
-  rotateError.value = ''
-  try {
-    const data = await refreshQRToken(qrProduct.value.id)
-
-    qrToken.value = data.qr_token
-    qrProduct.value = { ...qrProduct.value, qr_token_version: data.token_version }
-    rotateConfirmOpen.value = false
-    await loadProducts()
-  }
-  catch (e: unknown) {
-    const data = e && typeof e === 'object' && 'data' in e ? (e as { data?: { detail?: unknown } }).data : undefined
-    const detail = data?.detail
-
-    rotateError.value = typeof detail === 'string' ? detail : 'Could not rotate QR code'
-  }
-  finally {
-    rotating.value = false
-  }
-}
-
-const copied = ref(false)
-const copyFailOpen = ref(false)
-let copiedHideTimer: ReturnType<typeof setTimeout> | null = null
-
-async function copyQrToken() {
-  if (!qrToken.value)
-    return
-  const ok = await copyToClipboard(qrToken.value)
-  if (ok) {
-    copyFailOpen.value = false
-    copied.value = true
-    if (copiedHideTimer)
-      clearTimeout(copiedHideTimer)
-    copiedHideTimer = setTimeout(() => {
-      copied.value = false
-    }, 2500)
-  }
-  else {
-    copied.value = false
-    copyFailOpen.value = true
-  }
-}
-
-function selectTokenField(ev: FocusEvent) {
-  const el = ev.target as HTMLInputElement | null
-
-  el?.select()
-}
-
-const SCAN_TOKEN_SESSION_KEY = 'attendance-scan-token'
-
-function openWebScanner() {
-  if (qrToken.value && typeof sessionStorage !== 'undefined')
-    sessionStorage.setItem(SCAN_TOKEN_SESSION_KEY, qrToken.value)
-  qrDialog.value = false
-  router.push({ name: 'attendance-scanner' })
-}
-
-const { qrImageUrl, qrImageError, qrImageLoading } = useQrImageUrl(qrToken, 300)
 
 function typeColor(type: string) {
   return type === 'staff' ? 'info' : 'success'
+}
+
+function typeLabel(type: string) {
+  return typeOptions.find(o => o.value === type)?.title ?? type
 }
 </script>
 
 <template>
   <VContainer>
+    <VRow
+      class="mb-2"
+      align="center"
+    >
+      <VCol
+        cols="12"
+        sm="8"
+      >
+        <div class="text-h5 font-weight-medium">
+          QR Codes
+        </div>
+        <div class="text-body-2 text-medium-emphasis">
+          {{ pageSubtitle }}
+        </div>
+      </VCol>
+      <VCol
+        cols="12"
+        sm="4"
+        class="d-flex flex-wrap justify-sm-end gap-2"
+      >
+        <VBtn
+          variant="outlined"
+          color="primary"
+          prepend-icon="ri-group-line"
+          :to="{ name: 'attendance-products' }"
+        >
+          Manage products
+        </VBtn>
+        <VBtn
+          variant="tonal"
+          color="primary"
+          prepend-icon="ri-refresh-line"
+          :loading="refreshing"
+          @click="loadProducts(true)"
+        >
+          Refresh
+        </VBtn>
+      </VCol>
+    </VRow>
+
     <VRow
       class="mb-4"
       align="center"
@@ -156,12 +179,11 @@ function typeColor(type: string) {
       >
         <VTextField
           v-model="searchQuery"
-          placeholder="Search..."
+          placeholder="Search products..."
           prepend-inner-icon="ri-search-line"
           density="compact"
           hide-details
           clearable
-          @update:model-value="loadProducts"
         />
       </VCol>
       <VCol
@@ -170,248 +192,145 @@ function typeColor(type: string) {
       >
         <VSelect
           v-model="filterType"
-          :items="[{ title: 'All Types', value: '' }, { title: 'Staff', value: 'staff' }, { title: 'Student', value: 'student' }]"
+          :items="[{ title: 'All Types', value: '' }, ...typeOptions]"
           label="Type"
           density="compact"
           hide-details
-          @update:model-value="loadProducts"
         />
       </VCol>
     </VRow>
 
-    <VRow v-if="loading">
-      <VCol
-        cols="12"
-        class="text-center py-12"
-      >
-        <VProgressCircular
-          indeterminate
-          color="primary"
-          size="48"
-        />
-      </VCol>
-    </VRow>
-
-    <VRow v-else>
-      <VCol
-        v-for="p in products"
-        :key="p.id"
-        cols="12"
-        sm="6"
-        md="4"
-        lg="3"
-      >
-        <VCard
-          class="text-center"
-          hover
-          @click="openQR(p)"
-        >
-          <VCardText>
-            <VIcon
-              icon="ri-qr-code-line"
-              size="48"
-              color="primary"
-              class="mb-2"
-            />
-            <div class="text-subtitle-1 font-weight-bold">
-              {{ p.full_name }}
-            </div>
-            <div class="text-body-2 text-medium-emphasis mb-2">
-              {{ p.code }}
-            </div>
-            <div class="d-flex justify-center gap-2 mb-2">
-              <VChip
-                :color="typeColor(p.product_type)"
-                size="small"
-                label
-              >
-                {{ p.product_type }}
-              </VChip>
-            </div>
-            <div
-              class="text-caption mt-2"
-              :class="p.last_event_at && p.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
-            >
-              {{ formatLastAttendance(p) }}
-            </div>
-          </VCardText>
-        </VCard>
-      </VCol>
-
-      <VCol
-        v-if="products.length === 0"
-        cols="12"
-      >
-        <VCard>
-          <VCardText class="text-center text-medium-emphasis py-12">
-            No active products found
-          </VCardText>
-        </VCard>
-      </VCol>
-    </VRow>
-
-    <!-- QR Code Dialog -->
-    <VDialog
-      v-model="qrDialog"
-      max-width="420"
+    <VAlert
+      v-if="loadError"
+      type="error"
+      variant="tonal"
+      class="mb-4"
+      closable
+      @click:close="loadError = ''"
     >
-      <VCard class="text-center pa-6">
-        <VCardTitle class="text-h6">
-          {{ qrProduct?.full_name }}
-        </VCardTitle>
-        <VCardSubtitle>{{ qrProduct?.code }} · {{ qrProduct?.product_type }}</VCardSubtitle>
+      {{ loadError }}
+      <template #append>
+        <VBtn
+          variant="text"
+          size="small"
+          @click="loadProducts(true)"
+        >
+          Retry
+        </VBtn>
+      </template>
+    </VAlert>
 
+    <VCard :loading="loading">
+      <VCardTitle class="d-flex align-center justify-space-between flex-wrap gap-2">
+        <span>Active products</span>
+        <span
+          v-if="listCaption"
+          class="text-caption text-medium-emphasis"
+        >
+          {{ listCaption }}
+        </span>
+      </VCardTitle>
+
+      <VCardText class="pa-4">
         <div
-          v-if="qrLoading"
-          class="py-12"
+          v-if="!loading && products.length === 0 && !loadError"
+          class="text-center text-medium-emphasis py-12"
         >
-          <VProgressCircular
-            indeterminate
+          <div class="mb-3">
+            {{ emptyStateMessage }}
+          </div>
+          <VBtn
+            v-if="showEmptyProductsCta"
             color="primary"
-            size="48"
-          />
+            prepend-icon="ri-group-line"
+            :to="{ name: 'attendance-products' }"
+          >
+            Go to Product Management
+          </VBtn>
         </div>
-        <template v-else-if="qrToken">
-          <div
-            class="my-4 d-flex justify-center align-center"
-            style="min-height: 300px"
-          >
-            <VProgressCircular
-              v-if="qrImageLoading"
-              indeterminate
-              color="primary"
-              size="40"
-            />
-            <VAlert
-              v-else-if="qrImageError"
-              type="error"
-              variant="tonal"
-              density="compact"
-            >
-              Could not render QR image.
-            </VAlert>
-            <VImg
-              v-else-if="qrImageUrl"
-              :src="qrImageUrl"
-              width="300"
-              height="300"
-              class="rounded"
-              style="border: 4px solid rgb(var(--v-theme-primary))"
-            />
-          </div>
-          <div class="text-caption text-medium-emphasis mb-3">
-            This QR stays valid until you rotate it. On scan, choose Check In or Check Out
-            (mobile app or web scanner). Same code works every day.
-          </div>
-          <div class="d-flex justify-center flex-wrap gap-2 mb-2">
-            <VBtn
-              variant="tonal"
-              size="small"
-              color="primary"
-              prepend-icon="ri-qr-scan-2-line"
-              @click="openWebScanner"
-            >
-              Web scanner
-            </VBtn>
-            <VBtn
-              variant="outlined"
-              size="small"
-              :prepend-icon="copied ? 'ri-check-line' : 'ri-file-copy-line'"
-              :color="copied ? 'success' : undefined"
-              @click="copyQrToken"
-            >
-              {{ copied ? 'Copied' : 'Copy token' }}
-            </VBtn>
-            <VBtn
-              variant="text"
-              size="small"
-              color="warning"
-              prepend-icon="ri-refresh-line"
-              @click="openRotateConfirm"
-            >
-              Rotate QR
-            </VBtn>
-          </div>
-          <VTextField
-            :model-value="qrToken"
-            readonly
-            label="Raw token (tap to select, then copy)"
-            density="compact"
-            variant="outlined"
-            class="text-start mt-4"
-            hide-details
-            @focus="selectTokenField"
-          />
-          <div class="text-caption text-disabled mt-2">
-            Token version: {{ qrProduct?.qr_token_version }}
-          </div>
-        </template>
-        <VAlert
-          v-else
-          type="error"
-          variant="tonal"
-          class="mt-4"
-        >
-          {{ qrError || 'Failed to generate QR code' }}
-        </VAlert>
 
-        <VCardActions class="justify-center mt-2">
-          <VBtn @click="qrDialog = false">
-            Close
-          </VBtn>
-        </VCardActions>
-      </VCard>
-    </VDialog>
+        <VRow v-else-if="!loading">
+          <VCol
+            v-for="p in products"
+            :key="p.id"
+            cols="12"
+            sm="6"
+            md="4"
+            lg="3"
+          >
+            <VCard
+              class="qr-product-card text-center"
+              hover
+              tabindex="0"
+              role="button"
+              :aria-label="`View QR code for ${p.full_name}`"
+              @click="openQR(p)"
+              @keydown.enter="openQR(p)"
+              @keydown.space.prevent="openQR(p)"
+            >
+              <VCardText>
+                <VIcon
+                  icon="ri-qr-code-line"
+                  size="48"
+                  color="primary"
+                  class="mb-2"
+                />
+                <div
+                  class="qr-product-name text-subtitle-1 font-weight-bold"
+                  :title="p.full_name"
+                >
+                  {{ p.full_name }}
+                </div>
+                <div class="text-body-2 text-medium-emphasis mb-2">
+                  {{ p.code }}
+                </div>
+                <div class="d-flex justify-center gap-2 mb-2">
+                  <VChip
+                    :color="typeColor(p.product_type)"
+                    size="small"
+                    label
+                  >
+                    {{ typeLabel(p.product_type) }}
+                  </VChip>
+                </div>
+                <div
+                  class="text-caption mt-2"
+                  :class="p.last_event_at && p.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
+                >
+                  {{ formatLastAttendance(p, { compact: true }) }}
+                </div>
+                <div class="text-caption text-disabled mt-2">
+                  Tap to view QR
+                </div>
+              </VCardText>
+            </VCard>
+          </VCol>
+        </VRow>
+      </VCardText>
+    </VCard>
 
-    <!-- Rotate confirmation -->
-    <VDialog
-      v-model="rotateConfirmOpen"
-      max-width="420"
-      persistent
-    >
-      <VCard>
-        <VCardTitle>Rotate QR for {{ qrProduct?.full_name }}?</VCardTitle>
-        <VCardText>
-          <VAlert
-            v-if="rotateError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-3"
-            closable
-            @click:close="rotateError = ''"
-          >
-            {{ rotateError }}
-          </VAlert>
-          The current QR will stop working. Use this only if the printed
-          code was lost or shared with someone who shouldn't have it.
-        </VCardText>
-        <VCardActions>
-          <VSpacer />
-          <VBtn
-            variant="text"
-            @click="rotateConfirmOpen = false"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            color="warning"
-            :loading="rotating"
-            @click="confirmRotate"
-          >
-            Rotate
-          </VBtn>
-        </VCardActions>
-      </VCard>
-    </VDialog>
-
-    <VSnackbar
-      v-model="copyFailOpen"
-      color="error"
-      location="bottom"
-      :timeout="7000"
-    >
-      Could not copy automatically. Select the text in the field above and copy manually (Ctrl+C or long-press).
-    </VSnackbar>
+    <ProductQrDialogs
+      ref="qrDialogsRef"
+      @rotated="loadProducts(true)"
+    />
   </VContainer>
 </template>
+
+<style scoped lang="scss">
+.qr-product-card {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid rgb(var(--v-theme-primary));
+    outline-offset: 2px;
+  }
+}
+
+.qr-product-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+</style>

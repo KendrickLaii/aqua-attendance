@@ -8,21 +8,32 @@ import {
   type LocationDetailPhoto,
   type LocationItem,
 } from '@/api/attendance/locations'
+import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
+
+const LOCATION_PAGE_SIZE = 200
+const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const locations = ref<LocationItem[]>([])
 const loading = ref(true)
+const refreshing = ref(false)
+const loadError = ref('')
 const search = ref('')
 const showInactive = ref(false)
-const error = ref('')
 
 const dialogOpen = ref(false)
 const saving = ref(false)
+const saveError = ref('')
 const editing = ref<LocationItem | null>(null)
+
+const deleteConfirmOpen = ref(false)
+const deleteTarget = ref<LocationItem | null>(null)
+const deleting = ref(false)
+const deleteError = ref('')
 const formTab = ref('basic')
 
 interface DetailPhotoRow {
@@ -135,33 +146,84 @@ const regionOptions = computed(() =>
   [...new Set(locations.value.map(l => l.region).filter((r): r is string => !!r))].sort(),
 )
 
+const locationsCapped = computed(() => locations.value.length >= LOCATION_PAGE_SIZE)
+const activeCount = computed(() => locations.value.filter(l => l.is_active).length)
+
+const pageSubtitle = computed(() => {
+  if (loading.value && !refreshing.value)
+    return 'Loading…'
+
+  const total = locations.value.length
+  const countLabel = locationsCapped.value ? `${LOCATION_PAGE_SIZE}+` : String(total)
+
+  return `${countLabel} locations · ${activeCount.value} active`
+})
+
+const listCaption = computed(() => {
+  if (loading.value || locations.value.length === 0)
+    return ''
+
+  const total = locations.value.length
+  if (locationsCapped.value)
+    return `Showing ${total} of ${LOCATION_PAGE_SIZE}+ locations`
+  if (search.value.trim() || showInactive.value)
+    return `Showing ${total} matching location${total === 1 ? '' : 's'}`
+
+  return `${total} location${total === 1 ? '' : 's'}`
+})
+
+const showEmptyCreateCta = computed(() => !search.value.trim() && !showInactive.value)
+
 onMounted(async () => {
   authStore.restoreSession()
   if (!authStore.isLoggedIn) {
     router.replace({ name: 'attendance-login' })
+
+    return
+  }
+  if (!authStore.isAdmin) {
+    router.replace({ name: 'attendance-dashboard' })
+
     return
   }
   await loadLocations()
 })
 
-async function loadLocations() {
-  loading.value = true
-  error.value = ''
+async function loadLocations(isRefresh = false) {
+  const softRefresh = isRefresh === true
+
+  if (softRefresh)
+    refreshing.value = true
+  else
+    loading.value = true
+  loadError.value = ''
   try {
     locations.value = await listLocations({
       is_active: showInactive.value ? undefined : true,
       search: search.value.trim() || undefined,
       page: 1,
-      page_size: 200,
+      page_size: LOCATION_PAGE_SIZE,
     })
   }
-  catch (e: any) {
-    error.value = e?.data?.detail || 'Failed to load locations'
+  catch (e) {
+    console.error('Failed to load locations', e)
+    loadError.value = 'Failed to load locations. Please try again.'
   }
   finally {
     loading.value = false
+    refreshing.value = false
   }
 }
+
+const debouncedLoadLocations = useDebounceFn(() => loadLocations(true), SEARCH_DEBOUNCE_MS)
+
+watch(search, () => {
+  debouncedLoadLocations()
+})
+
+watch(showInactive, () => {
+  loadLocations(true)
+})
 
 function resetForm() {
   Object.assign(form, {
@@ -188,13 +250,20 @@ function resetForm() {
   formTab.value = 'basic'
 }
 
+function closeEditDialog() {
+  dialogOpen.value = false
+  saveError.value = ''
+}
+
 function openCreate() {
+  saveError.value = ''
   editing.value = null
   resetForm()
   dialogOpen.value = true
 }
 
 function openEdit(item: LocationItem) {
+  saveError.value = ''
   editing.value = item
   Object.assign(form, {
     code: item.code || '',
@@ -281,12 +350,13 @@ function buildPayloadDetails(): Record<string, unknown> {
 
 async function handleSave() {
   if (!form.name_en.trim()) {
-    error.value = 'English name is required'
+    saveError.value = 'English name is required'
     formTab.value = 'basic'
+
     return
   }
   saving.value = true
-  error.value = ''
+  saveError.value = ''
   try {
     const payload = {
       code: form.code.trim() || null,
@@ -311,44 +381,188 @@ async function handleSave() {
     else
       await createLocation(payload)
 
-    dialogOpen.value = false
-    await loadLocations()
+    closeEditDialog()
+    await loadLocations(true)
   }
-  catch (e: any) {
-    error.value = e?.data?.detail || e?.message || 'Save failed'
+  catch (e: unknown) {
+    saveError.value = formatApiError(e, 'Could not save location')
   }
   finally {
     saving.value = false
   }
 }
 
-async function handleDelete(item: LocationItem) {
-  const label = item.name_en || item.name_zh || item.id
-  const ok = window.confirm(`Delete location "${label}"?`)
-  if (!ok)
+function openDeleteConfirm(item: LocationItem) {
+  deleteError.value = ''
+  deleteTarget.value = item
+  deleteConfirmOpen.value = true
+}
+
+function closeDeleteConfirm() {
+  deleteConfirmOpen.value = false
+  deleteError.value = ''
+  deleteTarget.value = null
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value)
     return
-  error.value = ''
+
+  deleting.value = true
+  deleteError.value = ''
   try {
-    await deleteLocation(item.id)
-    await loadLocations()
+    await deleteLocation(deleteTarget.value.id)
+    closeDeleteConfirm()
+    await loadLocations(true)
   }
-  catch (e: any) {
-    error.value = e?.data?.detail || 'Delete failed'
+  catch (e: unknown) {
+    deleteError.value = formatApiError(e, 'Could not delete location')
+  }
+  finally {
+    deleting.value = false
   }
 }
 
 function displayName(l: LocationItem) {
   if (l.name_zh)
     return `${l.name_zh} / ${l.name_en}`
+
   return l.name_en
+}
+
+const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
+
+interface HoursScheduleEntry {
+  day: string
+  isOpen: boolean
+  openTime: string
+  closeTime: string
+}
+
+function compressDayRange(dayKeys: string[]): string {
+  const sorted = [...new Set(dayKeys)].sort(
+    (a, b) => DAY_ORDER.indexOf(a as typeof DAY_ORDER[number]) - DAY_ORDER.indexOf(b as typeof DAY_ORDER[number]),
+  )
+  const joined = sorted.join(',')
+
+  if (joined === 'mon,tue,wed,thu,fri,sat,sun')
+    return 'Daily'
+  if (joined === 'mon,tue,wed,thu,fri')
+    return 'Mon–Fri'
+  if (joined === 'mon,tue,wed,thu,fri,sat')
+    return 'Mon–Sat'
+
+  return sorted.map(k => DAYS.find(d => d.key === k)?.short ?? k).join(', ')
+}
+
+/** Short one-line summary for location cards (avoids wall-of-text business hours). */
+function formatCardBusinessHours(l: LocationItem): string {
+  const rawSchedule = l.details?.hours_schedule
+  const schedule = Array.isArray(rawSchedule) ? rawSchedule as HoursScheduleEntry[] : undefined
+
+  if (schedule?.length) {
+    const open = schedule.filter(s => s.isOpen)
+    if (!open.length)
+      return ''
+
+    const first = open[0]
+    const sameHours = open.every(s => s.openTime === first.openTime && s.closeTime === first.closeTime)
+
+    if (sameHours)
+      return `${compressDayRange(open.map(s => s.day))} ${first.openTime}–${first.closeTime}`
+
+    const preview = open.slice(0, 2).map((s) => {
+      const short = DAYS.find(d => d.key === s.day)?.short ?? s.day
+
+      return `${short} ${s.openTime}–${s.closeTime}`
+    }).join(' · ')
+
+    return open.length > 2 ? `${preview}…` : preview
+  }
+
+  const raw = l.business_hours?.trim()
+  if (!raw)
+    return ''
+
+  const parts = raw.split(' · ')
+  if (parts.length <= 2)
+    return raw
+
+  const timePattern = /\d{2}:\d{2}[–-]\d{2}:\d{2}$/
+  const times = parts.map(p => p.match(timePattern)?.[0]).filter(Boolean)
+
+  if (times.length === parts.length && new Set(times).size === 1) {
+    if (parts.length === 7)
+      return `Daily ${times[0]}`
+    if (parts.length === 5)
+      return `Mon–Fri ${times[0]}`
+    if (parts.length === 6)
+      return `Mon–Sat ${times[0]}`
+
+    return `${parts.length} days · ${times[0]}`
+  }
+
+  return `${parts[0]} · ${parts[1]}…`
+}
+
+function showCardIcon(l: LocationItem): boolean {
+  return !!l.icon_url && l.icon_url !== l.main_photo_url
+}
+
+function cardCoverUrl(l: LocationItem): string | null {
+  return l.main_photo_url || l.icon_url || null
 }
 </script>
 
 <template>
   <VContainer>
-    <!-- toolbar -->
-    <VRow class="mb-4" align="center">
-      <VCol cols="12" sm="5">
+    <VRow
+      class="mb-2"
+      align="center"
+    >
+      <VCol
+        cols="12"
+        sm="8"
+      >
+        <div class="text-h5 font-weight-medium">
+          Location Management
+        </div>
+        <div class="text-body-2 text-medium-emphasis">
+          {{ pageSubtitle }}
+        </div>
+      </VCol>
+      <VCol
+        cols="12"
+        sm="4"
+        class="d-flex flex-wrap justify-sm-end gap-2"
+      >
+        <VBtn
+          variant="tonal"
+          color="primary"
+          prepend-icon="ri-refresh-line"
+          :loading="refreshing"
+          @click="loadLocations(true)"
+        >
+          Refresh
+        </VBtn>
+        <VBtn
+          color="primary"
+          prepend-icon="ri-add-line"
+          @click="openCreate"
+        >
+          Add Location
+        </VBtn>
+      </VCol>
+    </VRow>
+
+    <VRow
+      class="mb-4"
+      align="center"
+    >
+      <VCol
+        cols="12"
+        sm="6"
+      >
         <VTextField
           v-model="search"
           placeholder="Search locations..."
@@ -356,7 +570,6 @@ function displayName(l: LocationItem) {
           density="compact"
           hide-details
           clearable
-          @update:model-value="loadLocations"
         />
       </VCol>
       <VCol cols="auto">
@@ -365,39 +578,71 @@ function displayName(l: LocationItem) {
           label="Show inactive"
           hide-details
           density="compact"
-          @update:model-value="loadLocations"
         />
       </VCol>
-      <VCol class="text-end">
-        <VBtn color="primary" prepend-icon="ri-map-pin-add-line" @click="openCreate">
-          Add Location
-        </VBtn>
+      <VCol
+        v-if="listCaption"
+        cols="auto"
+        class="ms-sm-auto"
+      >
+        <span class="text-caption text-medium-emphasis">{{ listCaption }}</span>
       </VCol>
     </VRow>
 
-    <VAlert v-if="error" type="error" variant="tonal" class="mb-4" closable @click:close="error = ''">
-      {{ error }}
+    <VAlert
+      v-if="loadError"
+      type="error"
+      variant="tonal"
+      class="mb-4"
+      closable
+      @click:close="loadError = ''"
+    >
+      {{ loadError }}
+      <template #append>
+        <VBtn
+          variant="text"
+          size="small"
+          @click="loadLocations(true)"
+        >
+          Retry
+        </VBtn>
+      </template>
     </VAlert>
 
-    <!-- location card grid -->
-    <VRow v-if="loading">
-      <VCol cols="12" class="text-center py-12">
-        <VProgressCircular indeterminate color="primary" size="48" />
+    <VRow v-if="loading && !refreshing">
+      <VCol
+        cols="12"
+        class="text-center py-12"
+      >
+        <VProgressCircular
+          indeterminate
+          color="primary"
+          size="48"
+        />
       </VCol>
     </VRow>
 
-    <VRow v-else-if="locations.length === 0">
+    <VRow v-else-if="locations.length === 0 && !loadError">
       <VCol cols="12">
-        <VCard>
+        <VCard variant="outlined">
           <VCardText class="text-center text-medium-emphasis py-12">
-            <VIcon icon="ri-map-pin-line" size="48" class="mb-3" />
-            <div>No locations found. Click <strong>Add Location</strong> to get started.</div>
+            <VIcon
+              icon="ri-map-pin-line"
+              size="48"
+              class="mb-3"
+            />
+            <div v-if="showEmptyCreateCta">
+              No locations yet. Click <strong>Add Location</strong> to get started.
+            </div>
+            <div v-else>
+              No locations match your filters.
+            </div>
           </VCardText>
         </VCard>
       </VCol>
     </VRow>
 
-    <VRow v-else>
+    <VRow v-else-if="!loadError">
       <VCol
         v-for="l in locations"
         :key="l.id"
@@ -406,65 +651,141 @@ function displayName(l: LocationItem) {
         md="4"
         lg="3"
       >
-        <VCard :opacity="l.is_active ? 1 : 0.6" height="100%">
-          <!-- cover image -->
-          <VImg
-            v-if="l.main_photo_url || l.icon_url"
-            :src="l.main_photo_url || l.icon_url || ''"
-            height="140"
-            cover
-            class="bg-grey-lighten-3"
-          />
-          <div v-else class="bg-grey-lighten-4 d-flex align-center justify-center" style="height:140px">
-            <VIcon icon="ri-image-line" size="40" color="grey" />
+        <VCard
+          class="location-card d-flex flex-column"
+          variant="outlined"
+          :opacity="l.is_active ? 1 : 0.65"
+          height="100%"
+        >
+          <div class="location-card__cover">
+            <VImg
+              v-if="cardCoverUrl(l)"
+              :src="cardCoverUrl(l) || ''"
+              height="120"
+              cover
+              class="bg-grey-lighten-3"
+            />
+            <div
+              v-else
+              class="location-card__cover-placeholder bg-grey-lighten-4"
+            >
+              <VIcon
+                icon="ri-map-pin-line"
+                size="36"
+                color="grey"
+              />
+            </div>
+            <VChip
+              class="location-card__status"
+              :color="l.is_active ? 'success' : 'grey'"
+              size="x-small"
+              label
+            >
+              {{ l.is_active ? 'Active' : 'Inactive' }}
+            </VChip>
           </div>
 
-          <VCardText class="pa-3">
-            <div class="d-flex align-start gap-2 mb-1">
-              <!-- icon thumbnail -->
-              <VAvatar v-if="l.icon_url" size="32" rounded="sm" class="flex-shrink-0 mt-1">
-                <VImg :src="l.icon_url" cover />
+          <VCardText class="location-card__body pa-3 flex-grow-1">
+            <div class="d-flex align-start gap-2">
+              <VAvatar
+                v-if="showCardIcon(l)"
+                size="28"
+                rounded="sm"
+                class="flex-shrink-0"
+              >
+                <VImg
+                  :src="l.icon_url || ''"
+                  cover
+                />
               </VAvatar>
-              <div class="flex-grow-1 min-w-0">
+              <div class="min-w-0 flex-grow-1">
                 <div class="text-subtitle-2 font-weight-bold text-truncate">
                   {{ l.name_en }}
                 </div>
-                <div v-if="l.name_zh" class="text-caption text-medium-emphasis text-truncate">
+                <div
+                  v-if="l.name_zh"
+                  class="text-caption text-medium-emphasis text-truncate"
+                >
                   {{ l.name_zh }}
+                </div>
+                <div
+                  v-if="l.code"
+                  class="text-caption text-disabled text-truncate"
+                >
+                  {{ l.code }}
                 </div>
               </div>
             </div>
 
-            <div class="d-flex flex-wrap gap-1 my-2">
-              <VChip v-if="l.location_type" size="x-small" color="primary" variant="tonal">
+            <div
+              v-if="l.location_type || l.region"
+              class="d-flex flex-wrap gap-1 mt-2"
+            >
+              <VChip
+                v-if="l.location_type"
+                size="x-small"
+                color="primary"
+                variant="tonal"
+              >
                 {{ l.location_type }}
               </VChip>
-              <VChip v-if="l.region" size="x-small" color="secondary" variant="tonal" prepend-icon="ri-map-pin-line">
+              <VChip
+                v-if="l.region"
+                size="x-small"
+                color="secondary"
+                variant="tonal"
+                prepend-icon="ri-map-pin-line"
+              >
                 {{ l.region }}
-              </VChip>
-              <VChip v-if="l.code" size="x-small" variant="outlined">
-                {{ l.code }}
-              </VChip>
-              <VChip :color="l.is_active ? 'success' : 'grey'" size="x-small" label>
-                {{ l.is_active ? 'Active' : 'Inactive' }}
               </VChip>
             </div>
 
-            <div v-if="l.business_hours" class="text-caption text-medium-emphasis mb-1">
-              <VIcon icon="ri-time-line" size="13" class="me-1" />{{ l.business_hours }}
+            <div
+              v-if="formatCardBusinessHours(l)"
+              class="location-card__meta mt-2"
+            >
+              <VIcon
+                icon="ri-time-line"
+                size="14"
+                class="flex-shrink-0 mt-1"
+              />
+              <span class="location-card__meta-text">{{ formatCardBusinessHours(l) }}</span>
             </div>
-            <div v-if="l.address" class="text-caption text-medium-emphasis">
-              <VIcon icon="ri-road-map-line" size="13" class="me-1" />{{ l.address }}
+            <div
+              v-if="l.address"
+              class="location-card__meta"
+            >
+              <VIcon
+                icon="ri-road-map-line"
+                size="14"
+                class="flex-shrink-0 mt-1"
+              />
+              <span class="location-card__meta-text location-card__address">{{ l.address }}</span>
             </div>
           </VCardText>
 
           <VDivider />
           <VCardActions class="pa-1 justify-end">
-            <VBtn size="small" variant="text" prepend-icon="ri-edit-line" @click="openEdit(l)">
-              Edit
+            <VBtn
+              icon
+              size="small"
+              variant="text"
+              title="Edit"
+              :aria-label="`Edit ${l.name_en}`"
+              @click="openEdit(l)"
+            >
+              <VIcon icon="ri-edit-line" />
             </VBtn>
-            <VBtn size="small" variant="text" color="error" prepend-icon="ri-delete-bin-line" @click="handleDelete(l)">
-              Delete
+            <VBtn
+              icon
+              size="small"
+              variant="text"
+              color="error"
+              title="Delete"
+              :aria-label="`Delete ${l.name_en}`"
+              @click="openDeleteConfirm(l)"
+            >
+              <VIcon icon="ri-delete-bin-line" />
             </VBtn>
           </VCardActions>
         </VCard>
@@ -478,12 +799,20 @@ function displayName(l: LocationItem) {
           <VIcon :icon="editing ? 'ri-edit-line' : 'ri-map-pin-add-line'" class="me-2" />
           {{ editing ? `Edit — ${editing.name_en || editing.name_zh}` : 'Create Location' }}
           <VSpacer />
-          <VBtn icon variant="text" size="small" @click="dialogOpen = false">
+          <VBtn
+            icon
+            variant="text"
+            size="small"
+            @click="closeEditDialog"
+          >
             <VIcon icon="ri-close-line" />
           </VBtn>
         </VCardTitle>
 
-        <VTabs v-model="formTab" class="px-4">
+        <VTabs
+          v-model="formTab"
+          class="px-4"
+        >
           <VTab value="basic">
             Basic Info
           </VTab>
@@ -500,7 +829,24 @@ function displayName(l: LocationItem) {
         <VDivider />
 
         <VCardText style="height: 62vh; overflow-y: auto">
-          <VAlert type="info" variant="tonal" density="compact" class="mb-4" icon="ri-information-line">
+          <VAlert
+            v-if="saveError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            closable
+            @click:close="saveError = ''"
+          >
+            {{ saveError }}
+          </VAlert>
+          <VAlert
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            icon="ri-information-line"
+          >
             Photos use external URLs in v1. File upload is planned later.
           </VAlert>
 
@@ -768,24 +1114,135 @@ function displayName(l: LocationItem) {
         </VCardText>
 
         <VDivider />
-        <VCardActions class="pa-4 justify-space-between">
+        <div class="dialog-footer">
+          <VBtn
+            variant="outlined"
+            color="primary"
+            @click="closeEditDialog"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            variant="flat"
+            color="primary"
+            :loading="saving"
+            @click="handleSave"
+          >
+            Save
+          </VBtn>
+        </div>
+      </VCard>
+    </VDialog>
+
+    <VDialog
+      v-model="deleteConfirmOpen"
+      max-width="420"
+      persistent
+    >
+      <VCard>
+        <VCardTitle>
+          Delete {{ deleteTarget ? displayName(deleteTarget) : 'location' }}?
+        </VCardTitle>
+        <VCardText>
           <VAlert
-            v-if="error"
+            v-if="deleteError"
             type="error"
             variant="tonal"
             density="compact"
-            class="flex-grow-1 me-4 ma-0 pa-2"
-            :text="error"
-          />
-          <VSpacer v-else />
-          <VBtn variant="outlined" @click="dialogOpen = false">
+            class="mb-3"
+            closable
+            @click:close="deleteError = ''"
+          >
+            {{ deleteError }}
+          </VAlert>
+          <template v-if="deleteTarget">
+            This will permanently remove
+            <strong>{{ displayName(deleteTarget) }}</strong>
+            <span v-if="deleteTarget.code"> ({{ deleteTarget.code }})</span>.
+            Locations referenced by attendance records cannot be deleted.
+          </template>
+        </VCardText>
+        <VDivider />
+        <div class="dialog-footer">
+          <VBtn
+            variant="outlined"
+            color="primary"
+            @click="closeDeleteConfirm"
+          >
             Cancel
           </VBtn>
-          <VBtn color="primary" :loading="saving" prepend-icon="ri-save-line" @click="handleSave">
-            Save
+          <VBtn
+            variant="flat"
+            color="error"
+            :loading="deleting"
+            @click="confirmDelete"
+          >
+            Delete
           </VBtn>
-        </VCardActions>
+        </div>
       </VCard>
     </VDialog>
   </VContainer>
 </template>
+
+<style scoped lang="scss">
+.location-card {
+  &__cover {
+    position: relative;
+  }
+
+  &__cover-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 120px;
+  }
+
+  &__status {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
+  &__meta {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+
+    & + & {
+      margin-top: 4px;
+    }
+  }
+
+  &__meta-text {
+    line-height: 1.35;
+    min-width: 0;
+  }
+
+  &__address {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+
+  :deep(.v-btn) {
+    height: 36px;
+    min-height: 36px;
+    padding-inline: 16px;
+    font-size: 0.875rem;
+    letter-spacing: normal;
+  }
+}
+</style>

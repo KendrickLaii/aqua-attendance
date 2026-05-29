@@ -40,6 +40,11 @@ export async function scanQR(payload: {
   return await $attendanceApi('/attendance/scan', { method: 'POST', body: payload })
 }
 
+export interface AttendanceListResult {
+  items: AttendanceEvent[]
+  total: number
+}
+
 export async function listAttendance(params?: {
   product_id?: string
   product_type?: string
@@ -49,7 +54,32 @@ export async function listAttendance(params?: {
   page?: number
   page_size?: number
 }): Promise<AttendanceEvent[]> {
-  return await $attendanceApi('/attendance', { params })
+  const result = await listAttendanceWithTotal(params)
+
+  return result.items
+}
+
+export async function listAttendanceWithTotal(params?: {
+  product_id?: string
+  product_type?: string
+  date_from?: string
+  date_to?: string
+  event_type?: string
+  page?: number
+  page_size?: number
+}): Promise<AttendanceListResult> {
+  let total = 0
+
+  const items = await $attendanceApi<AttendanceEvent[]>('/attendance', {
+    params,
+    onResponse({ response }) {
+      const header = response.headers.get('X-Total-Count')
+      if (header)
+        total = Number.parseInt(header, 10) || 0
+    },
+  })
+
+  return { items, total: total || items.length }
 }
 
 export async function createManualCorrection(payload: {

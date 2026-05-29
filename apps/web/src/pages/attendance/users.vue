@@ -10,6 +10,7 @@ import {
 import { createUser, deleteUser, listUsers, updateUser } from '@/api/attendance/users'
 import type { AttendanceUser } from '@/api/attendance/auth'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
+import { formatApiDetail } from '@/utils/formatApiDetail'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
 
@@ -84,23 +85,6 @@ function openEdit(u: AttendanceUser) {
   })
   dialogOpen.value = true
   nextTick(() => userFormRef.value?.resetValidation())
-}
-
-function formatApiDetail(detail: unknown): string {
-  if (detail == null) return ''
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) {
-    return detail
-      .filter((e): e is Record<string, unknown> => Boolean(e && typeof e === 'object'))
-      .map(e => {
-        const loc = e.loc
-        const msg = e.msg
-        const path = Array.isArray(loc) ? loc.filter((x): x is string => typeof x === 'string' && x !== 'body').join('.') : ''
-        return path ? `${path}: ${msg}` : String(msg ?? 'Invalid value')
-      })
-      .join(' · ')
-  }
-  return String(detail)
 }
 
 async function handleSave() {

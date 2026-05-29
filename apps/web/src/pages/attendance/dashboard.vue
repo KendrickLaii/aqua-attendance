@@ -45,6 +45,13 @@ const recentEventsCaption = computed(() => {
 const todayCheckInsTotal = computed(() => todayCheckInsStudent.value + todayCheckInsStaff.value)
 const todayCheckOutsTotal = computed(() => todayCheckOutsStudent.value + todayCheckOutsStaff.value)
 
+const pageSubtitle = computed(() => {
+  if (loading.value && !refreshing.value)
+    return 'Loading…'
+
+  return todayLabel.value
+})
+
 async function loadDashboard(isRefresh = false) {
   if (isRefresh)
     refreshing.value = true
@@ -106,6 +113,66 @@ function eventColor(type: string) {
 <template>
   <VContainer>
     <VRow
+      class="mb-2"
+      align="center"
+    >
+      <VCol
+        cols="12"
+        sm="8"
+      >
+        <div class="text-h5 font-weight-medium">
+          Today's Overview
+        </div>
+        <div class="text-body-2 text-medium-emphasis">
+          {{ pageSubtitle }}
+        </div>
+      </VCol>
+      <VCol
+        cols="12"
+        sm="4"
+        class="d-flex flex-wrap justify-sm-end gap-2"
+      >
+        <VBtn
+          variant="tonal"
+          color="primary"
+          prepend-icon="ri-refresh-line"
+          :loading="refreshing"
+          :disabled="loading"
+          @click="loadDashboard(true)"
+        >
+          Refresh
+        </VBtn>
+        <VBtn
+          variant="outlined"
+          :to="{ name: 'attendance-log' }"
+          prepend-icon="ri-list-check"
+        >
+          Full Log
+        </VBtn>
+      </VCol>
+    </VRow>
+
+    <VAlert
+      v-if="loadError"
+      type="error"
+      variant="tonal"
+      class="mb-4"
+      closable
+      @click:close="loadError = ''"
+    >
+      {{ loadError }}
+      <template #append>
+        <VBtn
+          variant="text"
+          size="small"
+          @click="loadDashboard(true)"
+        >
+          Retry
+        </VBtn>
+      </template>
+    </VAlert>
+
+    <VRow
       v-if="loading"
       class="mb-4"
     >
@@ -122,65 +189,6 @@ function eventColor(type: string) {
     </VRow>
 
     <template v-else>
-      <VAlert
-        v-if="loadError"
-        type="error"
-        variant="tonal"
-        class="mb-4"
-        closable
-        @click:close="loadError = ''"
-      >
-        {{ loadError }}
-        <template #append>
-          <VBtn
-            variant="text"
-            size="small"
-            @click="loadDashboard(true)"
-          >
-            Retry
-          </VBtn>
-        </template>
-      </VAlert>
-
-      <VRow
-        class="mb-2"
-        align="center"
-      >
-        <VCol
-          cols="12"
-          sm="8"
-        >
-          <div class="text-h5 font-weight-medium">
-            Today's Overview
-          </div>
-          <div class="text-body-2 text-medium-emphasis">
-            {{ todayLabel }}
-          </div>
-        </VCol>
-        <VCol
-          cols="12"
-          sm="4"
-          class="d-flex flex-wrap justify-sm-end gap-2"
-        >
-          <VBtn
-            variant="tonal"
-            color="primary"
-            prepend-icon="ri-refresh-line"
-            :loading="refreshing"
-            @click="loadDashboard(true)"
-          >
-            Refresh
-          </VBtn>
-          <VBtn
-            variant="outlined"
-            :to="{ name: 'attendance-log' }"
-            prepend-icon="ri-list-check"
-          >
-            Full Log
-          </VBtn>
-        </VCol>
-      </VRow>
-
       <VRow class="mb-2">
         <VCol
           cols="12"

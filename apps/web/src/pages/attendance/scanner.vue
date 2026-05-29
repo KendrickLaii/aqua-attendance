@@ -3,6 +3,7 @@ import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { scanQR } from '@/api/attendance/events'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
@@ -60,7 +61,7 @@ onMounted(async () => {
 })
 
 async function handleScan(qrToken?: string) {
-  const token = qrToken || manualInput.value.trim()
+  const token = typeof qrToken === 'string' ? qrToken : manualInput.value.trim()
   if (!token)
     return
 
@@ -87,8 +88,8 @@ async function handleScan(qrToken?: string) {
     manualInput.value = ''
     tokenFromQrPage.value = false
   }
-  catch (e: any) {
-    error.value = e?.data?.detail || 'Scan failed — QR may be expired or invalid.'
+  catch (e: unknown) {
+    error.value = formatApiError(e, 'Scan failed — QR may be expired or invalid.')
     showResult.value = true
   }
   finally {
@@ -161,7 +162,7 @@ function resetResult() {
     <VCard class="w-100 mb-6">
       <VCardTitle>Manual Token Input</VCardTitle>
       <VCardText>
-        <VForm @submit.prevent="handleScan">
+        <VForm @submit.prevent="() => handleScan()">
           <div class="text-body-2 text-medium-emphasis mb-2">
             Action
           </div>

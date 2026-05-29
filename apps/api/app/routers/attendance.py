@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from io import StringIO
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from jose import JWTError
 from sqlalchemy import select
@@ -121,6 +121,7 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
 async def list_attendance(
     _admin: AdminOnly,
     db: DB,
+    response: Response,
     product_id: uuid.UUID | None = None,
     product_type: str | None = None,
     date_from: datetime | None = None,
@@ -130,7 +131,7 @@ async def list_attendance(
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AttendanceOut]:
     """List attendance events (admin or superadmin only)."""
-    events, _total = await att_svc.list_events(
+    events, total = await att_svc.list_events(
         db,
         product_id=product_id,
         product_type=product_type,
@@ -140,6 +141,7 @@ async def list_attendance(
         page=page,
         page_size=page_size,
     )
+    response.headers["X-Total-Count"] = str(total)
     return [_event_to_out(e) for e in events]
 
 
