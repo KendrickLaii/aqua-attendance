@@ -213,7 +213,7 @@ Roles on **users**: `admin`, `superadmin`.
 | GET | `/api/users/:id` | Admin | Get user |
 | PATCH | `/api/users/:id` | Admin | Update user |
 | DELETE | `/api/users/:id` | Superadmin | Delete user |
-| GET | `/api/products` | Admin | List products (filters: type, active, search, `attendance_status`, pagination) |
+| GET | `/api/products` | Admin | List products (filters: type, `employment_type`, active, search, `attendance_status`, pagination) |
 | POST | `/api/products` | Admin | Create product |
 | GET | `/api/products/:id` | Admin | Get product |
 | PATCH | `/api/products/:id` | Admin | Update product |

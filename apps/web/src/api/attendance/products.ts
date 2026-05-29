@@ -7,6 +7,7 @@ export interface Product {
   full_name: string
   english_name: string | null
   product_type: string
+  employment_type: 'part_time' | 'full_time' | null
   is_active: boolean
   status: string
   attendance_status: 'checked_in' | 'checked_out'
@@ -36,6 +37,7 @@ export interface Product {
 
 export async function listProducts(params?: {
   product_type?: string
+  employment_type?: 'part_time' | 'full_time'
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
@@ -49,6 +51,7 @@ export async function listProducts(params?: {
 
 export async function listProductsWithTotal(params?: {
   product_type?: string
+  employment_type?: 'part_time' | 'full_time' | null
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
@@ -67,6 +70,7 @@ export async function createProduct(payload: {
   full_name: string
   english_name?: string | null
   product_type: string
+  employment_type?: 'part_time' | 'full_time' | null
   status?: string
   gender?: string | null
   date_of_birth?: string | null
@@ -94,6 +98,7 @@ export async function updateProduct(productId: string, payload: {
   full_name?: string
   english_name?: string | null
   product_type?: string
+  employment_type?: 'part_time' | 'full_time' | null
   is_active?: boolean
   status?: string
   gender?: string | null

@@ -33,6 +33,7 @@ const form = reactive({
   full_name: '',
   english_name: '',
   product_type: 'student' as string,
+  employment_type: '' as '' | 'part_time' | 'full_time',
   is_active: true,
   status: 'active',
   gender: '',
@@ -60,6 +61,7 @@ const searchQuery = ref('')
 const filterType = ref('')
 const filterActive = ref('')
 const filterAttendance = ref('')
+const filterEmployment = ref('')
 const qrDialogsRef = ref<InstanceType<typeof ProductQrDialogs> | null>(null)
 
 const deleteConfirmOpen = ref(false)
@@ -88,6 +90,17 @@ const attendanceFilterOptions = [
   { title: 'All attendance', value: '' },
   { title: 'Checked in', value: 'checked_in' },
   { title: 'Checked out', value: 'checked_out' },
+]
+
+const employmentFilterOptions = [
+  { title: 'All employment', value: '' },
+  { title: 'Full-time', value: 'full_time' },
+  { title: 'Part-time', value: 'part_time' },
+]
+
+const employmentTypeOptions = [
+  { title: 'Full-time', value: 'full_time' },
+  { title: 'Part-time', value: 'part_time' },
 ]
 
 const genderOptions = [
@@ -180,6 +193,9 @@ async function loadProducts(isRefresh = false, resetPage = false) {
       attendance_status: filterAttendance.value === 'checked_in' || filterAttendance.value === 'checked_out'
         ? filterAttendance.value
         : undefined,
+      employment_type: filterEmployment.value === 'part_time' || filterEmployment.value === 'full_time'
+        ? filterEmployment.value
+        : undefined,
       page: page.value,
       page_size: PRODUCT_PAGE_SIZE,
     })
@@ -204,6 +220,8 @@ watch(searchQuery, () => {
 })
 
 watch(filterType, () => {
+  if (filterType.value === 'student')
+    filterEmployment.value = ''
   loadProducts(true, true)
 })
 
@@ -213,6 +231,15 @@ watch(filterActive, () => {
 
 watch(filterAttendance, () => {
   loadProducts(true, true)
+})
+
+watch(filterEmployment, () => {
+  loadProducts(true, true)
+})
+
+watch(() => form.product_type, type => {
+  if (type !== 'staff')
+    form.employment_type = ''
 })
 
 function goToPrevPage() {
@@ -237,6 +264,7 @@ function openCreate() {
     full_name: '',
     english_name: '',
     product_type: 'student',
+    employment_type: '',
     is_active: true,
     status: 'active',
     gender: '',
@@ -269,6 +297,7 @@ function openEdit(p: Product) {
     full_name: p.full_name,
     english_name: p.english_name ?? '',
     product_type: p.product_type,
+    employment_type: p.employment_type ?? '',
     is_active: p.is_active,
     status: p.status ?? 'active',
     gender: p.gender ?? '',
@@ -302,6 +331,12 @@ function normalizeString(value: string): string | null {
 async function handleSave() {
   saveError.value = null
 
+  if (form.product_type === 'staff' && !form.employment_type) {
+    saveError.value = 'Employment type is required for staff'
+
+    return
+  }
+
   const validation = await productFormRef.value?.validate()
   if (validation && !validation.valid)
     return
@@ -313,6 +348,9 @@ async function handleSave() {
       full_name: form.full_name.trim(),
       english_name: normalizeString(form.english_name),
       product_type: form.product_type,
+      employment_type: form.product_type === 'staff'
+        ? (form.employment_type as 'part_time' | 'full_time')
+        : null,
       status: form.status,
       gender: normalizeString(form.gender),
       date_of_birth: normalizeString(form.date_of_birth),
@@ -391,6 +429,15 @@ function typeColor(type: string) {
 
 function typeLabel(type: string) {
   return typeOptions.find(o => o.value === type)?.title ?? type
+}
+
+function employmentTypeLabel(value: string | null | undefined) {
+  if (value === 'full_time')
+    return 'Full-time'
+  if (value === 'part_time')
+    return 'Part-time'
+
+  return '—'
 }
 
 function statusColor(status: string) {
@@ -530,6 +577,20 @@ function rowStatusChip(p: Product) {
           hide-details
         />
       </VCol>
+      <VCol
+        cols="12"
+        sm="4"
+        md="3"
+      >
+        <VSelect
+          v-model="filterEmployment"
+          :items="employmentFilterOptions"
+          label="Employment"
+          density="compact"
+          hide-details
+          :disabled="filterType === 'student'"
+        />
+      </VCol>
     </VRow>
 
     <VAlert
@@ -569,6 +630,7 @@ function rowStatusChip(p: Product) {
               <th>Code</th>
               <th>Full Name</th>
               <th>Type</th>
+              <th>Employment</th>
               <th>Status</th>
               <th>Last check-in / out</th>
               <th class="col-phone">
@@ -598,6 +660,13 @@ function rowStatusChip(p: Product) {
                 >
                   {{ typeLabel(p.product_type) }}
                 </VChip>
+              </td>
+              <td>
+                <span v-if="p.product_type === 'staff'">{{ employmentTypeLabel(p.employment_type) }}</span>
+                <span
+                  v-else
+                  class="text-medium-emphasis"
+                >—</span>
               </td>
               <td>
                 <VChip
@@ -767,6 +836,21 @@ function rowStatusChip(p: Product) {
               item-title="title"
               item-value="value"
               label="Status"
+            />
+          </VCol>
+          <VCol
+            v-if="form.product_type === 'staff'"
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VSelect
+              v-model="form.employment_type"
+              :items="employmentTypeOptions"
+              item-title="title"
+              item-value="value"
+              label="Employment *"
+              :rules="[v => !!v || 'Required for staff']"
             />
           </VCol>
           <VCol

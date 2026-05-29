@@ -13,7 +13,9 @@ declare global {
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const EffectScope: typeof import('vue')['EffectScope']
   const LOCATION_DAYS: typeof import('./src/utils/locationHours')['LOCATION_DAYS']
+  const PRODUCT_QR_CARD_IMAGE_SIZE: typeof import('./src/utils/printProductQrs')['PRODUCT_QR_CARD_IMAGE_SIZE']
   const PRODUCT_QR_IMAGE_SIZE: typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']
+  const PRODUCT_QR_PRINT_IMAGE_SIZE: typeof import('./src/utils/printProductQrs')['PRODUCT_QR_PRINT_IMAGE_SIZE']
   const SCAN_ENTRY_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']
   const SCAN_TOKEN_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
@@ -72,6 +74,7 @@ declare global {
   const entriesOf: typeof import('./src/utils/review-format')['entriesOf']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const fetchAttendanceListWithTotal: typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']
+  const fetchProductQrPrintItems: typeof import('./src/utils/printProductQrs')['fetchProductQrPrintItems']
   const filterSelectedTableRows: typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
   const formatApiDetail: typeof import('./src/utils/formatApiDetail')['formatApiDetail']
@@ -152,10 +155,13 @@ declare global {
   const onUnmounted: typeof import('vue')['onUnmounted']
   const onUpdated: typeof import('vue')['onUpdated']
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
+  const openProductQrPrintPlaceholder: typeof import('./src/utils/printProductQrs')['openProductQrPrintPlaceholder']
+  const openProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['openProductQrPrintWindow']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
+  const printProductQrs: typeof import('./src/utils/printProductQrs')['printProductQrs']
   const provide: typeof import('vue')['provide']
   const provideLocal: typeof import('@vueuse/core')['provideLocal']
   const reactify: typeof import('@vueuse/core')['reactify']
@@ -174,6 +180,7 @@ declare global {
   const regexValidator: typeof import('./src/@core/utils/validators')['regexValidator']
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const removeDetailPhotoRow: typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']
+  const renderProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['renderProductQrPrintWindow']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
@@ -438,7 +445,9 @@ declare module 'vue' {
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly LOCATION_DAYS: UnwrapRef<typeof import('./src/utils/locationHours')['LOCATION_DAYS']>
+    readonly PRODUCT_QR_CARD_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printProductQrs')['PRODUCT_QR_CARD_IMAGE_SIZE']>
     readonly PRODUCT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']>
+    readonly PRODUCT_QR_PRINT_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printProductQrs')['PRODUCT_QR_PRINT_IMAGE_SIZE']>
     readonly SCAN_ENTRY_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']>
     readonly SCAN_TOKEN_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
@@ -496,6 +505,7 @@ declare module 'vue' {
     readonly entriesOf: UnwrapRef<typeof import('./src/utils/review-format')['entriesOf']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly fetchAttendanceListWithTotal: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']>
+    readonly fetchProductQrPrintItems: UnwrapRef<typeof import('./src/utils/printProductQrs')['fetchProductQrPrintItems']>
     readonly filterSelectedTableRows: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
     readonly formatApiDetail: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiDetail']>
@@ -576,10 +586,12 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly openProductQrPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printProductQrs')['openProductQrPrintPlaceholder']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
+    readonly printProductQrs: UnwrapRef<typeof import('./src/utils/printProductQrs')['printProductQrs']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
@@ -598,6 +610,7 @@ declare module 'vue' {
     readonly regexValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['regexValidator']>
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly removeDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']>
+    readonly renderProductQrPrintWindow: UnwrapRef<typeof import('./src/utils/printProductQrs')['renderProductQrPrintWindow']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>

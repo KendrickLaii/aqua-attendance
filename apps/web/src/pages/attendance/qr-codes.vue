@@ -3,8 +3,8 @@ import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listProducts } from '@/api/attendance/products'
 import type { Product } from '@/api/attendance/products'
 import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
-import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { openProductQrPrintPlaceholder, printProductQrs } from '@/utils/printProductQrs'
 
 definePage({ meta: {} })
 
@@ -21,6 +21,9 @@ const loadError = ref('')
 const filterType = ref('')
 const searchQuery = ref('')
 const qrDialogsRef = ref<InstanceType<typeof ProductQrDialogs> | null>(null)
+const selectedIds = ref<Set<string>>(new Set())
+const printing = ref(false)
+const printError = ref('')
 
 const typeOptions = [
   { title: 'Student', value: 'student' },
@@ -29,6 +32,15 @@ const typeOptions = [
 
 const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE)
 const checkedInCount = computed(() => products.value.filter(p => p.attendance_status === 'checked_in').length)
+const selectedCount = computed(() => selectedIds.value.size)
+
+const allVisibleSelected = computed(() =>
+  products.value.length > 0 && products.value.every(p => selectedIds.value.has(p.id)),
+)
+
+const selectedProducts = computed(() =>
+  products.value.filter(p => selectedIds.value.has(p.id)),
+)
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
@@ -115,16 +127,62 @@ watch(filterType, () => {
   loadProducts(true)
 })
 
+function isSelected(id: string) {
+  return selectedIds.value.has(id)
+}
+
+function setSelected(id: string, value: boolean) {
+  const next = new Set(selectedIds.value)
+  if (value)
+    next.add(id)
+  else
+    next.delete(id)
+  selectedIds.value = next
+}
+
+function toggleSelectAllVisible() {
+  if (allVisibleSelected.value) {
+    selectedIds.value = new Set()
+
+    return
+  }
+  selectedIds.value = new Set(products.value.map(p => p.id))
+}
+
+function clearSelection() {
+  selectedIds.value = new Set()
+}
+
 function openQR(p: Product) {
   qrDialogsRef.value?.openQR(p)
 }
 
-function typeColor(type: string) {
-  return type === 'staff' ? 'info' : 'success'
-}
+async function printSelected() {
+  if (!selectedProducts.value.length)
+    return
 
-function typeLabel(type: string) {
-  return typeOptions.find(o => o.value === type)?.title ?? type
+  let printWindow: Window | null = null
+
+  try {
+    printWindow = openProductQrPrintPlaceholder()
+  }
+  catch (e) {
+    printError.value = formatApiError(e, 'Could not open print window')
+
+    return
+  }
+
+  printing.value = true
+  printError.value = ''
+  try {
+    await printProductQrs(selectedProducts.value, printWindow)
+  }
+  catch (e) {
+    printError.value = formatApiError(e, 'Could not print selected QR codes')
+  }
+  finally {
+    printing.value = false
+  }
 }
 </script>
 
@@ -200,6 +258,39 @@ function typeLabel(type: string) {
         />
       </VCol>
       <VCol
+        cols="12"
+        sm="5"
+        class="d-flex flex-wrap align-center gap-2"
+      >
+        <VBtn
+          variant="tonal"
+          size="small"
+          :prepend-icon="allVisibleSelected ? 'ri-checkbox-blank-line' : 'ri-checkbox-multiple-line'"
+          :disabled="!products.length || loading"
+          @click="toggleSelectAllVisible"
+        >
+          {{ allVisibleSelected ? 'Deselect all' : 'Select all' }}
+        </VBtn>
+        <VBtn
+          v-if="selectedCount"
+          variant="text"
+          size="small"
+          @click="clearSelection"
+        >
+          Clear ({{ selectedCount }})
+        </VBtn>
+        <VBtn
+          color="primary"
+          size="small"
+          prepend-icon="ri-printer-line"
+          :disabled="!selectedCount"
+          :loading="printing"
+          @click="printSelected"
+        >
+          Print selected{{ selectedCount ? ` (${selectedCount})` : '' }}
+        </VBtn>
+      </VCol>
+      <VCol
         v-if="listCaption"
         cols="auto"
         class="ms-sm-auto"
@@ -226,6 +317,17 @@ function typeLabel(type: string) {
           Retry
         </VBtn>
       </template>
+    </VAlert>
+
+    <VAlert
+      v-if="printError"
+      type="error"
+      variant="tonal"
+      class="mb-4"
+      closable
+      @click:close="printError = ''"
+    >
+      {{ printError }}
     </VAlert>
 
     <VRow v-if="loading && !refreshing">
@@ -267,52 +369,12 @@ function typeLabel(type: string) {
         md="4"
         lg="3"
       >
-        <VCard
-          class="qr-product-card text-center"
-          hover
-          tabindex="0"
-          role="button"
-          :aria-label="`View QR code for ${p.full_name}`"
-          @click="openQR(p)"
-          @keydown.enter="openQR(p)"
-          @keydown.space.prevent="openQR(p)"
-        >
-          <VCardText>
-            <VIcon
-              icon="ri-qr-code-line"
-              size="48"
-              color="primary"
-              class="mb-2"
-            />
-            <div
-              class="qr-product-name text-subtitle-1 font-weight-bold"
-              :title="p.full_name"
-            >
-              {{ p.full_name }}
-            </div>
-            <div class="text-body-2 text-medium-emphasis mb-2">
-              {{ p.code }}
-            </div>
-            <div class="d-flex justify-center gap-2 mb-2">
-              <VChip
-                :color="typeColor(p.product_type)"
-                size="small"
-                label
-              >
-                {{ typeLabel(p.product_type) }}
-              </VChip>
-            </div>
-            <div
-              class="text-caption mt-2"
-              :class="p.last_event_at && p.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
-            >
-              {{ formatLastAttendance(p, { compact: true }) }}
-            </div>
-            <div class="text-caption text-disabled mt-2">
-              Tap to view QR
-            </div>
-          </VCardText>
-        </VCard>
+        <ProductQrCard
+          :product="p"
+          :selected="isSelected(p.id)"
+          @update:selected="setSelected(p.id, $event)"
+          @open-detail="openQR(p)"
+        />
       </VCol>
     </VRow>
 
@@ -322,22 +384,3 @@ function typeLabel(type: string) {
     />
   </VContainer>
 </template>
-
-<style scoped lang="scss">
-.qr-product-card {
-  cursor: pointer;
-
-  &:focus-visible {
-    outline: 2px solid rgb(var(--v-theme-primary));
-    outline-offset: 2px;
-  }
-}
-
-.qr-product-name {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-</style>

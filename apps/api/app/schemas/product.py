@@ -1,7 +1,11 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.models.product import EmploymentType
+
+_VALID_EMPLOYMENT_TYPES = {e.value for e in EmploymentType}
 
 
 class ProductCreate(BaseModel):
@@ -9,6 +13,7 @@ class ProductCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     english_name: str | None = Field(default=None, max_length=255)
     product_type: str = Field(min_length=1, max_length=50)
+    employment_type: str | None = Field(default=None, max_length=20)
     status: str = Field(default="active", max_length=20)
     gender: str | None = Field(default=None, max_length=20)
     date_of_birth: date | None = None
@@ -28,12 +33,22 @@ class ProductCreate(BaseModel):
     whatsapp_enabled: bool = False
     remarks: str | None = None
 
+    @field_validator("employment_type")
+    @classmethod
+    def validate_employment_type(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if value not in _VALID_EMPLOYMENT_TYPES:
+            raise ValueError("employment_type must be part_time or full_time")
+        return value
+
 
 class ProductUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=100)
     full_name: str | None = Field(default=None, min_length=1, max_length=255)
     english_name: str | None = Field(default=None, max_length=255)
     product_type: str | None = Field(default=None, min_length=1, max_length=50)
+    employment_type: str | None = Field(default=None, max_length=20)
     is_active: bool | None = None
     status: str | None = Field(default=None, max_length=20)
     gender: str | None = Field(default=None, max_length=20)
@@ -54,6 +69,15 @@ class ProductUpdate(BaseModel):
     whatsapp_enabled: bool | None = None
     remarks: str | None = None
 
+    @field_validator("employment_type")
+    @classmethod
+    def validate_employment_type(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if value not in _VALID_EMPLOYMENT_TYPES:
+            raise ValueError("employment_type must be part_time or full_time")
+        return value
+
 
 class ProductOut(BaseModel):
     id: uuid.UUID
@@ -61,6 +85,7 @@ class ProductOut(BaseModel):
     full_name: str
     english_name: str | None = None
     product_type: str
+    employment_type: str | None = None
     is_active: bool
     status: str
     attendance_status: str = "checked_out"

@@ -10,6 +10,7 @@ from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
 router = APIRouter(prefix="/products", tags=["products"])
 
 _VALID_ATTENDANCE_STATUSES = frozenset({"checked_in", "checked_out"})
+_VALID_EMPLOYMENT_TYPES = frozenset({"part_time", "full_time"})
 
 
 def _product_filters(
@@ -18,6 +19,7 @@ def _product_filters(
     is_active: bool | None,
     search: str | None,
     attendance_status: str | None,
+    employment_type: str | None,
 ) -> list:
     clauses = []
     if product_type:
@@ -32,6 +34,8 @@ def _product_filters(
         )
     if attendance_status:
         clauses.append(Product.attendance_status == attendance_status)
+    if employment_type:
+        clauses.append(Product.employment_type == employment_type)
     return clauses
 
 
@@ -44,6 +48,7 @@ async def list_products(
     is_active: bool | None = None,
     search: str | None = None,
     attendance_status: str | None = None,
+    employment_type: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[Product]:
@@ -53,11 +58,18 @@ async def list_products(
             detail="attendance_status must be checked_in or checked_out",
         )
 
+    if employment_type and employment_type not in _VALID_EMPLOYMENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="employment_type must be part_time or full_time",
+        )
+
     clauses = _product_filters(
         product_type=product_type,
         is_active=is_active,
         search=search,
         attendance_status=attendance_status,
+        employment_type=employment_type,
     )
 
     count_q = select(func.count()).select_from(Product)

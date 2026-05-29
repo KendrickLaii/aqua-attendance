@@ -15,6 +15,11 @@ class AttendanceStatus(str, enum.Enum):
     checked_out = "checked_out"
 
 
+class EmploymentType(str, enum.Enum):
+    part_time = "part_time"
+    full_time = "full_time"
+
+
 class Product(Base):
     """A managed entity (staff member, student, etc.) that can check in/out."""
 
@@ -25,6 +30,7 @@ class Product(Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     english_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     product_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    employment_type: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
 

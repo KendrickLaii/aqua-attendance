@@ -73,3 +73,42 @@ async def test_list_products_invalid_attendance_status(client: AsyncClient, admi
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_product_employment_type(client: AsyncClient, admin_token: str) -> None:
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    code = f"EMP-{uuid.uuid4().hex[:6]}"
+
+    create = await client.post(
+        "/api/products",
+        json={
+            "code": code,
+            "full_name": "Part-time Tutor",
+            "product_type": "staff",
+            "employment_type": "part_time",
+        },
+        headers=headers,
+    )
+    assert create.status_code == 201
+    assert create.json()["employment_type"] == "part_time"
+
+    listed = await client.get(
+        "/api/products",
+        params={"employment_type": "part_time"},
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert any(p["code"] == code for p in listed.json())
+
+    invalid = await client.post(
+        "/api/products",
+        json={
+            "code": f"BAD-{uuid.uuid4().hex[:6]}",
+            "full_name": "Bad",
+            "product_type": "staff",
+            "employment_type": "contract",
+        },
+        headers=headers,
+    )
+    assert invalid.status_code == 422

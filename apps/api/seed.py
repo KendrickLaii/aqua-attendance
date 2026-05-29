@@ -16,8 +16,8 @@ SEED_USERS = [
 ]
 
 SEED_PRODUCTS = [
-    {"code": "STAFF-001", "full_name": "Tanaka Sensei", "product_type": "staff", "status": "active"},
-    {"code": "STAFF-002", "full_name": "Yamamoto Sensei", "product_type": "staff", "status": "active"},
+    {"code": "STAFF-001", "full_name": "Tanaka Sensei", "product_type": "staff", "employment_type": "full_time", "status": "active"},
+    {"code": "STAFF-002", "full_name": "Yamamoto Sensei", "product_type": "staff", "employment_type": "part_time", "status": "active"},
     {"code": "STU-001", "full_name": "Suzuki Taro", "product_type": "student", "status": "active", "school_name": "Tokyo High", "grade_class": "3-A"},
     {"code": "STU-002", "full_name": "Yamada Hanako", "product_type": "student", "status": "active", "school_name": "Osaka Middle", "grade_class": "2-B"},
 ]
