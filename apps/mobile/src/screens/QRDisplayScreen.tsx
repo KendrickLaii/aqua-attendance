@@ -26,8 +26,7 @@ export default function QRDisplayScreen() {
         <Text style={styles.heading}>QR codes are managed per product</Text>
         <Text style={styles.body}>
           Open the web app's <Text style={styles.bold}>QR Codes</Text> page (admin only) to print
-          or display a product's QR. The same QR toggles check-in / check-out — staff scan it
-          here from the Scan tab.
+          or display a product's QR. Before scanning, choose Check In or Check Out on the Scan tab.
         </Text>
       </View>
     </View>

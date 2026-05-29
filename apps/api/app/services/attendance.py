@@ -85,8 +85,13 @@ async def record_scan(
     device_id: str | None = None,
     location_id: uuid.UUID | None = None,
     location: str | None = None,
+    event_type: str | None = None,
 ) -> tuple[AttendanceEvent, bool]:
-    """Record a scan, toggling the product's attendance status.
+    """Record a scan and update the product's attendance status.
+
+    When ``event_type`` is omitted, check-in vs check-out is inferred from
+    the product's current status (toggle).  Callers may pass an explicit
+    ``check_in`` or ``check_out`` so kiosk staff choose the action.
 
     Returns (event, created). If a scan landed within the debounce window
     for this product, returns the existing event with created=False so
@@ -98,12 +103,15 @@ async def record_scan(
         return recent, False
 
     now = _now()
-    event_type = _next_event_type(product, now)
+    if event_type in (EventType.check_in.value, EventType.check_out.value):
+        resolved_event_type = event_type
+    else:
+        resolved_event_type = _next_event_type(product, now)
     loc = _normalize_location(location)
 
     event = AttendanceEvent(
         product_id=product.id,
-        event_type=event_type,
+        event_type=resolved_event_type,
         recorded_at=now,
         qr_jti=jti,
         recorded_by_user_id=recorded_by_user_id,
@@ -115,7 +123,7 @@ async def record_scan(
 
     product.attendance_status = (
         AttendanceStatus.checked_in.value
-        if event_type == EventType.check_in.value
+        if resolved_event_type == EventType.check_in.value
         else AttendanceStatus.checked_out.value
     )
     product.last_event_at = now

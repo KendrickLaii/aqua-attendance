@@ -36,7 +36,6 @@ Optional template vars (`VITE_MAPBOX_ACCESS_TOKEN`, etc.) are unused by attendan
 | `/attendance/products` | Product CRUD |
 | `/attendance/qr-codes` | Fetch / rotate / preview QRs |
 | `/attendance/log` | Event log, manual correction, CSV |
-| `/attendance/scanner` | Paste QR token (dev/kiosk without camera) |
 | `/attendance/users` | User CRUD (admin) |
 
 Navigation: `src/navigation/vertical/custom-pages.ts` (prod uses this list only).

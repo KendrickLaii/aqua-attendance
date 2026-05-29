@@ -11,6 +11,7 @@ class ScanRequest(BaseModel):
     device_id: str | None = Field(default=None, max_length=255)
     location_id: uuid.UUID | None = None
     location: str | None = Field(default=None, max_length=255)
+    event_type: EventType | None = None
 
 
 class AttendanceOut(BaseModel):

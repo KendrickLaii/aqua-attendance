@@ -21,6 +21,7 @@ This file tracks intentional MVP limitations and mismatches between **current co
 | ~~Logout~~ | ~~Template logout missed attendance cookies~~ | **Done** — `UserProfile` + store clear all session cookies |
 | ~~CSV export~~ | ~~`window.open` without auth~~ | **Done** — `exportAttendanceCSV` blob download with Bearer |
 | ~~QR preview~~ | ~~`api.qrserver.com` leaked token~~ | **Done** — local `qrcode` data URL in browser |
+| Product attendance filter | Product Management has Type search only; no **Checked in / out** filter | **Later** — add `attendance_status` (and optional `has_scans`) to `GET /api/products`, then a filter on `products.vue`. Use Dashboard for “who is here now”; client-only filter on 200 rows is not accurate enough |
 | Template bloat | Large AQUA demo tree still in repo; prod nav is trimmed only |
 
 ## Mobile app

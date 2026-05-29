@@ -9,6 +9,7 @@ declare global {
   const $api: typeof import('./src/utils/api')['$api']
   const $attendanceApi: typeof import('./src/utils/attendanceApi')['$attendanceApi']
   const $authApi: typeof import('./src/utils/authApi')['$authApi']
+  const ATTENDANCE_TIMEZONE: typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const EffectScope: typeof import('vue')['EffectScope']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
@@ -60,6 +61,7 @@ declare global {
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const filterSelectedTableRows: typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
+  const formatAttendanceDateLabel: typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateLabel']
   const formatAttendanceDateTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']
   const formatAttendanceTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
@@ -73,6 +75,7 @@ declare global {
   const getAttendanceRole: typeof import('./src/utils/attendanceSession')['getAttendanceRole']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
+  const getTodayRangeIso: typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
@@ -408,6 +411,7 @@ declare module 'vue' {
     readonly $api: UnwrapRef<typeof import('./src/utils/api')['$api']>
     readonly $attendanceApi: UnwrapRef<typeof import('./src/utils/attendanceApi')['$attendanceApi']>
     readonly $authApi: UnwrapRef<typeof import('./src/utils/authApi')['$authApi']>
+    readonly ATTENDANCE_TIMEZONE: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
@@ -458,6 +462,7 @@ declare module 'vue' {
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly filterSelectedTableRows: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
+    readonly formatAttendanceDateLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateLabel']>
     readonly formatAttendanceDateTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']>
     readonly formatAttendanceTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
@@ -471,6 +476,7 @@ declare module 'vue' {
     readonly getAttendanceRole: UnwrapRef<typeof import('./src/utils/attendanceSession')['getAttendanceRole']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
+    readonly getTodayRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>

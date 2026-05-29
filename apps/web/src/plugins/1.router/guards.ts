@@ -53,7 +53,7 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
         return undefined
     }
 
-    const bypassNavCheck = new Set(['index', 'login', 'attendance-login', 'attendance', 'attendance-scanner', 'not-authorized', '$error'])
+    const bypassNavCheck = new Set(['index', 'login', 'attendance-login', 'attendance', 'not-authorized', '$error'])
     if (
       isLoggedIn
       && to.name

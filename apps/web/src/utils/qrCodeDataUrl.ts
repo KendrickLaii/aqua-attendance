@@ -8,6 +8,7 @@ export async function toQrDataUrl(text: string, sizePx = 280): Promise<string> {
   return QRCode.toDataURL(text, {
     width: sizePx,
     margin: 2,
-    errorCorrectionLevel: 'M',
+    // L = smaller/denser modules; still fine for ~250-char JWT tokens
+    errorCorrectionLevel: 'L',
   })
 }

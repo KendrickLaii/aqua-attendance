@@ -52,7 +52,9 @@ cp .env.example .env
 pip install -r requirements.txt
 alembic upgrade head
 python seed.py
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload 
+or
+python -m uvicorn app.main:app --reload
 ```
 
 API: http://localhost:8000/docs  
@@ -236,7 +238,6 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/products` | Admin | Product CRUD |
 | `/attendance/qr-codes` | Logged in | Browse/fetch/rotate QRs |
 | `/attendance/log` | Logged in | Event log, manual correction, CSV export |
-| `/attendance/scanner` | Logged in | Paste QR token (no camera) |
 | `/attendance/users` | Admin (CASL) | User CRUD |
 
 Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos (not used in production nav).

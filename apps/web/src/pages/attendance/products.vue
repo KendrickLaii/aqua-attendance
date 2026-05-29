@@ -14,11 +14,16 @@ import { formatLastAttendance } from '@/utils/attendanceDisplay'
 
 definePage({ meta: {} })
 
+const PRODUCT_PAGE_SIZE = 200
+const SEARCH_DEBOUNCE_MS = 300
+
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const products = ref<Product[]>([])
 const loading = ref(true)
+const refreshing = ref(false)
+const loadError = ref('')
 const dialogOpen = ref(false)
 const editingProduct = ref<Product | null>(null)
 
@@ -56,7 +61,13 @@ const filterType = ref('')
 const qrDialog = ref(false)
 const qrProduct = ref<Product | null>(null)
 const qrToken = ref('')
+const qrError = ref('')
 const qrLoading = ref(false)
+
+const deleteConfirmOpen = ref(false)
+const deleteTarget = ref<Product | null>(null)
+const deleting = ref(false)
+const deleteError = ref('')
 
 const statusOptions = [
   { title: 'Active', value: 'active' },
@@ -89,40 +100,100 @@ const productFormRef = ref<VForm>()
 const codeRules = [requiredValidator, maxCharsRule(100, 'Code')] as const
 const fullNameRules = [requiredValidator, maxCharsRule(255, 'Full name')] as const
 
+const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE)
+const checkedInCount = computed(() => products.value.filter(p => p.attendance_status === 'checked_in').length)
+
+const pageSubtitle = computed(() => {
+  const total = products.value.length
+  const countLabel = productsCapped.value ? `${PRODUCT_PAGE_SIZE}+` : String(total)
+
+  return `${countLabel} products · ${checkedInCount.value} checked in`
+})
+
+const listCaption = computed(() => {
+  if (loading.value || products.value.length === 0)
+    return ''
+
+  const total = products.value.length
+  if (productsCapped.value)
+    return `Showing ${total} of ${PRODUCT_PAGE_SIZE}+ products`
+  if (searchQuery.value || filterType.value)
+    return `Showing ${total} matching product${total === 1 ? '' : 's'}`
+
+  return `${total} product${total === 1 ? '' : 's'}`
+})
+
+const showEmptyCreateCta = computed(() =>
+  !searchQuery.value && !filterType.value,
+)
+
 onMounted(async () => {
   authStore.restoreSession()
-  if (!authStore.isAdmin) {
+  if (!authStore.isLoggedIn) {
     router.replace({ name: 'attendance-login' })
+
+    return
+  }
+  if (!authStore.isAdmin) {
+    router.replace({ name: 'attendance-dashboard' })
+
     return
   }
   await loadProducts()
 })
 
-async function loadProducts() {
-  loading.value = true
+async function loadProducts(isRefresh = false) {
+  if (isRefresh)
+    refreshing.value = true
+  else
+    loading.value = true
+  loadError.value = ''
   try {
     products.value = await listProducts({
       search: searchQuery.value || undefined,
       product_type: filterType.value || undefined,
+      page_size: PRODUCT_PAGE_SIZE,
     })
+  }
+  catch (e) {
+    console.error('Failed to load products', e)
+    loadError.value = 'Failed to load products. Please try again.'
   }
   finally {
     loading.value = false
+    refreshing.value = false
   }
 }
+
+const debouncedLoadProducts = useDebounceFn(loadProducts, SEARCH_DEBOUNCE_MS)
 
 function openCreate() {
   saveError.value = null
   editingProduct.value = null
   Object.assign(form, {
-    code: '', full_name: '', english_name: '', product_type: 'student',
-    is_active: true, status: 'active', gender: '', date_of_birth: '',
-    phone: '', address: '', email: '',
-    emergency_contact_name: '', emergency_contact_phone: '',
-    school_name: '', grade_class: '',
-    guardian1_name: '', guardian1_relationship: '', guardian1_phone: '',
-    guardian2_name: '', guardian2_relationship: '', guardian2_phone: '',
-    whatsapp_enabled: true, remarks: '',
+    code: '',
+    full_name: '',
+    english_name: '',
+    product_type: 'student',
+    is_active: true,
+    status: 'active',
+    gender: '',
+    date_of_birth: '',
+    phone: '',
+    address: '',
+    email: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+    school_name: '',
+    grade_class: '',
+    guardian1_name: '',
+    guardian1_relationship: '',
+    guardian1_phone: '',
+    guardian2_name: '',
+    guardian2_relationship: '',
+    guardian2_phone: '',
+    whatsapp_enabled: true,
+    remarks: '',
   })
   dialogOpen.value = true
   nextTick(() => productFormRef.value?.resetValidation())
@@ -162,12 +233,15 @@ function openEdit(p: Product) {
 
 function normalizeString(value: string): string | null {
   const normalized = value.trim()
+
   return normalized.length > 0 ? normalized : null
 }
 
 function formatApiDetail(detail: unknown): string {
-  if (detail == null) return ''
-  if (typeof detail === 'string') return detail
+  if (detail == null)
+    return ''
+  if (typeof detail === 'string')
+    return detail
   if (Array.isArray(detail)) {
     return detail
       .filter((e): e is Record<string, unknown> => Boolean(e && typeof e === 'object'))
@@ -175,17 +249,21 @@ function formatApiDetail(detail: unknown): string {
         const loc = e.loc
         const msg = e.msg
         const path = Array.isArray(loc) ? loc.filter((x): x is string => typeof x === 'string' && x !== 'body').join('.') : ''
+
         return path ? `${path}: ${msg}` : String(msg ?? 'Invalid value')
       })
       .join(' · ')
   }
+
   return String(detail)
 }
 
 async function handleSave() {
   saveError.value = null
+
   const validation = await productFormRef.value?.validate()
-  if (validation && !validation.valid) return
+  if (validation && !validation.valid)
+    return
 
   saving.value = true
   try {
@@ -214,17 +292,18 @@ async function handleSave() {
       remarks: normalizeString(form.remarks),
     }
 
-    if (editingProduct.value) {
+    if (editingProduct.value)
       await updateProduct(editingProduct.value.id, { ...payload, is_active: form.is_active })
-    }
-    else {
+
+    else
       await createProduct(payload)
-    }
+
     dialogOpen.value = false
     await loadProducts()
   }
   catch (e: unknown) {
     const data = e && typeof e === 'object' && 'data' in e ? (e as { data?: { detail?: unknown } }).data : undefined
+
     saveError.value = formatApiDetail(data?.detail) || (e instanceof Error ? e.message : 'Could not save product')
   }
   finally {
@@ -232,24 +311,53 @@ async function handleSave() {
   }
 }
 
-async function handleDelete(p: Product) {
-  if (!confirm(`Delete ${p.full_name} (${p.code})?`)) return
-  await deleteProduct(p.id)
-  await loadProducts()
+function openDeleteConfirm(p: Product) {
+  deleteError.value = ''
+  deleteTarget.value = p
+  deleteConfirmOpen.value = true
+}
+
+function closeDeleteConfirm() {
+  deleteConfirmOpen.value = false
+  deleteError.value = ''
+  deleteTarget.value = null
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value)
+    return
+
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await deleteProduct(deleteTarget.value.id)
+    closeDeleteConfirm()
+    await loadProducts()
+  }
+  catch (e: unknown) {
+    const data = e && typeof e === 'object' && 'data' in e ? (e as { data?: { detail?: unknown } }).data : undefined
+
+    deleteError.value = formatApiDetail(data?.detail) || (e instanceof Error ? e.message : 'Could not delete product')
+  }
+  finally {
+    deleting.value = false
+  }
 }
 
 async function openQR(p: Product) {
   qrProduct.value = p
   qrLoading.value = true
   qrToken.value = ''
+  qrError.value = ''
   qrDialog.value = true
   try {
     const data = await getQRToken(p.id)
 
     qrToken.value = data.qr_token
   }
-  catch {
+  catch (e: any) {
     qrToken.value = ''
+    qrError.value = e?.data?.detail || 'Failed to load QR token'
   }
   finally {
     qrLoading.value = false
@@ -258,10 +366,18 @@ async function openQR(p: Product) {
 
 const rotateConfirmOpen = ref(false)
 const rotating = ref(false)
+const rotateError = ref('')
+
+function openRotateConfirm() {
+  rotateError.value = ''
+  rotateConfirmOpen.value = true
+}
 
 async function confirmRotate() {
-  if (!qrProduct.value) return
+  if (!qrProduct.value)
+    return
   rotating.value = true
+  rotateError.value = ''
   try {
     const data = await refreshQRToken(qrProduct.value.id)
 
@@ -269,6 +385,11 @@ async function confirmRotate() {
     qrProduct.value = { ...qrProduct.value, qr_token_version: data.token_version }
     rotateConfirmOpen.value = false
     await loadProducts()
+  }
+  catch (e: unknown) {
+    const data = e && typeof e === 'object' && 'data' in e ? (e as { data?: { detail?: unknown } }).data : undefined
+
+    rotateError.value = formatApiDetail(data?.detail) || (e instanceof Error ? e.message : 'Could not rotate QR code')
   }
   finally {
     rotating.value = false
@@ -300,7 +421,17 @@ async function copyQrToken() {
 
 function selectTokenField(ev: FocusEvent) {
   const el = ev.target as HTMLInputElement | null
+
   el?.select()
+}
+
+const SCAN_TOKEN_SESSION_KEY = 'attendance-scan-token'
+
+function openWebScanner() {
+  if (qrToken.value && typeof sessionStorage !== 'undefined')
+    sessionStorage.setItem(SCAN_TOKEN_SESSION_KEY, qrToken.value)
+  qrDialog.value = false
+  router.push({ name: 'attendance-scanner' })
 }
 
 const { qrImageUrl, qrImageError, qrImageLoading } = useQrImageUrl(qrToken, 280)
@@ -310,23 +441,65 @@ function typeColor(type: string) {
 }
 
 function statusColor(status: string) {
-  if (status === 'active') return 'success'
-  if (status === 'suspended') return 'warning'
+  if (status === 'active')
+    return 'success'
+  if (status === 'suspended')
+    return 'warning'
 
   return 'grey'
-}
-
-function attendanceChip(p: Product) {
-  return p.attendance_status === 'checked_in'
-    ? { color: 'success', label: 'In' }
-    : { color: 'grey', label: 'Out' }
 }
 </script>
 
 <template>
   <VContainer>
-    <VRow class="mb-4" align="center">
-      <VCol cols="12" sm="4">
+    <VRow
+      class="mb-2"
+      align="center"
+    >
+      <VCol
+        cols="12"
+        sm="8"
+      >
+        <div class="text-h5 font-weight-medium">
+          Product Management
+        </div>
+        <div class="text-body-2 text-medium-emphasis">
+          {{ pageSubtitle }}
+        </div>
+      </VCol>
+      <VCol
+        cols="12"
+        sm="4"
+        class="d-flex flex-wrap justify-sm-end gap-2"
+      >
+        <VBtn
+          variant="tonal"
+          color="primary"
+          prepend-icon="ri-refresh-line"
+          :loading="refreshing"
+          @click="loadProducts(true)"
+        >
+          Refresh
+        </VBtn>
+        <VBtn
+          color="primary"
+          prepend-icon="ri-add-line"
+          @click="openCreate"
+        >
+          Add Product
+        </VBtn>
+      </VCol>
+    </VRow>
+
+    <!-- Attendance filter (checked in / out): deferred — see docs/KNOWN-GAPS.md -->
+    <VRow
+      class="mb-4"
+      align="center"
+    >
+      <VCol
+        cols="12"
+        sm="4"
+      >
         <VTextField
           v-model="searchQuery"
           placeholder="Search products..."
@@ -334,10 +507,13 @@ function attendanceChip(p: Product) {
           density="compact"
           hide-details
           clearable
-          @update:model-value="loadProducts"
+          @update:model-value="debouncedLoadProducts"
         />
       </VCol>
-      <VCol cols="12" sm="3">
+      <VCol
+        cols="12"
+        sm="3"
+      >
         <VSelect
           v-model="filterType"
           :items="[{ title: 'All Types', value: '' }, ...typeOptions]"
@@ -347,14 +523,38 @@ function attendanceChip(p: Product) {
           @update:model-value="loadProducts"
         />
       </VCol>
-      <VCol cols="12" sm="5" class="text-end">
-        <VBtn color="primary" prepend-icon="ri-add-line" @click="openCreate">
-          Add Product
-        </VBtn>
-      </VCol>
     </VRow>
 
+    <VAlert
+      v-if="loadError"
+      type="error"
+      variant="tonal"
+      class="mb-4"
+      closable
+      @click:close="loadError = ''"
+    >
+      {{ loadError }}
+      <template #append>
+        <VBtn
+          variant="text"
+          size="small"
+          @click="loadProducts(true)"
+        >
+          Retry
+        </VBtn>
+      </template>
+    </VAlert>
+
     <VCard :loading="loading">
+      <VCardTitle class="d-flex align-center justify-space-between flex-wrap gap-2">
+        <span>Products</span>
+        <span
+          v-if="listCaption"
+          class="text-caption text-medium-emphasis"
+        >
+          {{ listCaption }}
+        </span>
+      </VCardTitle>
       <VTable>
         <thead>
           <tr>
@@ -369,40 +569,91 @@ function attendanceChip(p: Product) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="p in products" :key="p.id">
-            <td class="font-weight-medium">{{ p.code }}</td>
+          <tr
+            v-for="p in products"
+            :key="p.id"
+            :class="{ 'product-row-inactive': !p.is_active }"
+          >
+            <td class="font-weight-medium">
+              {{ p.code }}
+            </td>
             <td>{{ p.full_name }}</td>
             <td>
-              <VChip :color="typeColor(p.product_type)" size="small" label>
+              <VChip
+                :color="typeColor(p.product_type)"
+                size="small"
+                label
+              >
                 {{ p.product_type }}
               </VChip>
             </td>
             <td>
-              <VChip :color="statusColor(p.status)" size="small" label>
+              <VChip
+                :color="statusColor(p.status)"
+                size="small"
+                label
+              >
                 {{ p.status }}
               </VChip>
             </td>
             <td style="min-width: 220px">
-              <div class="d-flex align-center gap-2 mb-1">
-                <VChip :color="attendanceChip(p).color" size="small" label>
-                  {{ attendanceChip(p).label }}
-                </VChip>
-              </div>
-              <div class="text-caption text-medium-emphasis">
+              <div
+                class="text-caption"
+                :class="p.last_event_at && p.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
+              >
                 {{ formatLastAttendance(p) }}
               </div>
             </td>
             <td>{{ p.phone || '-' }}</td>
             <td>{{ p.school_name ? `${p.school_name} / ${p.grade_class || '-'}` : '-' }}</td>
             <td>
-              <VBtn icon size="small" variant="text" color="primary" @click="openQR(p)" title="QR Code">
+              <VBtn
+                icon
+                size="small"
+                variant="text"
+                color="primary"
+                :disabled="!p.is_active"
+                :title="p.is_active ? 'QR Code' : 'QR unavailable — product is inactive'"
+                @click="openQR(p)"
+              >
                 <VIcon icon="ri-qr-code-line" />
               </VBtn>
-              <VBtn icon size="small" variant="text" @click="openEdit(p)" title="Edit">
+              <VBtn
+                icon
+                size="small"
+                variant="text"
+                title="Edit"
+                @click="openEdit(p)"
+              >
                 <VIcon icon="ri-edit-line" />
               </VBtn>
-              <VBtn icon size="small" variant="text" color="error" @click="handleDelete(p)" title="Delete">
+              <VBtn
+                icon
+                size="small"
+                variant="text"
+                color="error"
+                title="Delete"
+                @click="openDeleteConfirm(p)"
+              >
                 <VIcon icon="ri-delete-bin-line" />
+              </VBtn>
+            </td>
+          </tr>
+          <tr v-if="products.length === 0 && !loading">
+            <td
+              colspan="8"
+              class="text-center text-medium-emphasis py-6"
+            >
+              <div class="mb-3">
+                {{ searchQuery || filterType ? 'No products match your search or filters' : 'No products yet' }}
+              </div>
+              <VBtn
+                v-if="showEmptyCreateCta"
+                color="primary"
+                prepend-icon="ri-add-line"
+                @click="openCreate"
+              >
+                Add Product
               </VBtn>
             </td>
           </tr>
@@ -411,17 +662,32 @@ function attendanceChip(p: Product) {
     </VCard>
 
     <!-- Create/Edit Dialog -->
-    <VDialog v-model="dialogOpen" max-width="900" scrollable>
+    <VDialog
+      v-model="dialogOpen"
+      max-width="900"
+      scrollable
+    >
       <VCard>
         <VCardTitle class="text-h6 py-4">
           {{ editingProduct ? 'Edit Product' : 'Create Product' }}
         </VCardTitle>
         <VDivider />
         <VCardText class="pa-4">
-          <VAlert v-if="saveError" type="error" variant="tonal" density="compact" class="mb-4" closable @click:close="saveError = null">
+          <VAlert
+            v-if="saveError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+            closable
+            @click:close="saveError = null"
+          >
             {{ saveError }}
           </VAlert>
-          <VForm ref="productFormRef" @submit.prevent="handleSave">
+          <VForm
+            ref="productFormRef"
+            @submit.prevent="handleSave"
+          >
             <VDefaultsProvider
               :defaults="{
                 VTextField: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
@@ -434,7 +700,11 @@ function attendanceChip(p: Product) {
                 Basic info
               </h4>
               <VRow class="dense-form-row">
-                <VCol cols="12" sm="6" md="4">
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
                   <VTextField
                     v-model="form.code"
                     label="Code *"
@@ -443,20 +713,64 @@ function attendanceChip(p: Product) {
                     :rules="codeRules"
                   />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VSelect v-model="form.product_type" :items="typeOptions" item-title="title" item-value="value" label="Type *" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VSelect
+                    v-model="form.product_type"
+                    :items="typeOptions"
+                    item-title="title"
+                    item-value="value"
+                    label="Type *"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VSelect v-model="form.status" :items="statusOptions" item-title="title" item-value="value" label="Status" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VSelect
+                    v-model="form.status"
+                    :items="statusOptions"
+                    item-title="title"
+                    item-value="value"
+                    label="Status"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6">
-                  <VTextField v-model="form.full_name" label="Full name *" maxlength="255" :rules="fullNameRules" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                >
+                  <VTextField
+                    v-model="form.full_name"
+                    label="Full name *"
+                    maxlength="255"
+                    :rules="fullNameRules"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6">
-                  <VTextField v-model="form.english_name" label="English name" maxlength="255" :rules="[maxCharsRule(255, 'English name')]" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                >
+                  <VTextField
+                    v-model="form.english_name"
+                    label="English name"
+                    maxlength="255"
+                    :rules="[maxCharsRule(255, 'English name')]"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6">
-                  <VTextField v-model="form.email" label="Email" maxlength="255" :rules="[maxCharsRule(255, 'Email')]" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                >
+                  <VTextField
+                    v-model="form.email"
+                    label="Email"
+                    maxlength="255"
+                    :rules="[maxCharsRule(255, 'Email')]"
+                  />
                 </VCol>
               </VRow>
 
@@ -464,17 +778,50 @@ function attendanceChip(p: Product) {
                 Contact & personal
               </h4>
               <VRow class="dense-form-row">
-                <VCol cols="12" sm="6" md="4">
-                  <VSelect v-model="form.gender" :items="genderOptions" item-title="title" item-value="value" label="Gender" clearable />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VSelect
+                    v-model="form.gender"
+                    :items="genderOptions"
+                    item-title="title"
+                    item-value="value"
+                    label="Gender"
+                    clearable
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.date_of_birth" label="Date of birth" type="date" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.date_of_birth"
+                    label="Date of birth"
+                    type="date"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.phone" label="Phone" maxlength="50" :rules="[maxCharsRule(50, 'Phone')]" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.phone"
+                    label="Phone"
+                    maxlength="50"
+                    :rules="[maxCharsRule(50, 'Phone')]"
+                  />
                 </VCol>
                 <VCol cols="12">
-                  <VTextField v-model="form.address" label="Address" maxlength="500" :rules="[maxCharsRule(500, 'Address')]" />
+                  <VTextField
+                    v-model="form.address"
+                    label="Address"
+                    maxlength="500"
+                    :rules="[maxCharsRule(500, 'Address')]"
+                  />
                 </VCol>
               </VRow>
 
@@ -482,11 +829,25 @@ function attendanceChip(p: Product) {
                 Emergency contact
               </h4>
               <VRow class="dense-form-row">
-                <VCol cols="12" sm="6">
-                  <VTextField v-model="form.emergency_contact_name" label="Emergency contact name" maxlength="255" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                >
+                  <VTextField
+                    v-model="form.emergency_contact_name"
+                    label="Emergency contact name"
+                    maxlength="255"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6">
-                  <VTextField v-model="form.emergency_contact_phone" label="Emergency contact phone" maxlength="50" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                >
+                  <VTextField
+                    v-model="form.emergency_contact_phone"
+                    label="Emergency contact phone"
+                    maxlength="50"
+                  />
                 </VCol>
               </VRow>
 
@@ -494,42 +855,143 @@ function attendanceChip(p: Product) {
                 School & guardian
               </h4>
               <VRow class="dense-form-row">
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.school_name" label="School name" maxlength="255" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.school_name"
+                    label="School name"
+                    maxlength="255"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.grade_class" label="Grade / class" maxlength="100" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.grade_class"
+                    label="Grade / class"
+                    maxlength="100"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4" class="d-flex align-center">
-                  <VSwitch v-model="form.whatsapp_enabled" label="WhatsApp enabled" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                  class="d-flex align-center"
+                >
+                  <VSwitch
+                    v-model="form.whatsapp_enabled"
+                    label="WhatsApp enabled"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.guardian1_name" label="Guardian 1 name" maxlength="255" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.guardian1_name"
+                    label="Guardian 1 name"
+                    maxlength="255"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VSelect v-model="form.guardian1_relationship" :items="relationshipOptions" label="Guardian 1 relationship" clearable />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VSelect
+                    v-model="form.guardian1_relationship"
+                    :items="relationshipOptions"
+                    label="Guardian 1 relationship"
+                    clearable
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.guardian1_phone" label="Guardian 1 phone" maxlength="50" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.guardian1_phone"
+                    label="Guardian 1 phone"
+                    maxlength="50"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.guardian2_name" label="Guardian 2 name" maxlength="255" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.guardian2_name"
+                    label="Guardian 2 name"
+                    maxlength="255"
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VSelect v-model="form.guardian2_relationship" :items="relationshipOptions" label="Guardian 2 relationship" clearable />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VSelect
+                    v-model="form.guardian2_relationship"
+                    :items="relationshipOptions"
+                    label="Guardian 2 relationship"
+                    clearable
+                  />
                 </VCol>
-                <VCol cols="12" sm="6" md="4">
-                  <VTextField v-model="form.guardian2_phone" label="Guardian 2 phone" maxlength="50" />
+                <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model="form.guardian2_phone"
+                    label="Guardian 2 phone"
+                    maxlength="50"
+                  />
                 </VCol>
               </VRow>
 
-              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">Notes</h4>
-              <VTextarea v-model="form.remarks" label="Remarks" rows="2" auto-grow class="mb-2" />
+              <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+                Notes
+              </h4>
+              <VTextarea
+                v-model="form.remarks"
+                label="Remarks"
+                rows="2"
+                auto-grow
+                class="mb-2"
+              />
 
-              <VSwitch v-if="editingProduct" v-model="form.is_active" label="Active" class="mt-1" />
+              <VSwitch
+                v-if="editingProduct"
+                v-model="form.is_active"
+                label="Active"
+                class="mt-1"
+              />
               <div class="d-flex justify-end gap-2 mt-4">
-                <VBtn variant="text" density="compact" @click="dialogOpen = false">Cancel</VBtn>
-                <VBtn type="submit" color="primary" density="compact" size="small" :loading="saving">Save</VBtn>
+                <VBtn
+                  variant="text"
+                  density="compact"
+                  @click="dialogOpen = false"
+                >
+                  Cancel
+                </VBtn>
+                <VBtn
+                  type="submit"
+                  color="primary"
+                  density="compact"
+                  size="small"
+                  :loading="saving"
+                >
+                  Save
+                </VBtn>
               </div>
             </VDefaultsProvider>
           </VForm>
@@ -538,17 +1000,40 @@ function attendanceChip(p: Product) {
     </VDialog>
 
     <!-- QR Code Dialog -->
-    <VDialog v-model="qrDialog" max-width="400">
+    <VDialog
+      v-model="qrDialog"
+      max-width="400"
+    >
       <VCard class="text-center pa-6">
         <VCardTitle>{{ qrProduct?.full_name }}</VCardTitle>
         <VCardSubtitle>{{ qrProduct?.code }} ({{ qrProduct?.product_type }})</VCardSubtitle>
-        <div v-if="qrLoading" class="py-12">
-          <VProgressCircular indeterminate color="primary" size="48" />
+        <div
+          v-if="qrLoading"
+          class="py-12"
+        >
+          <VProgressCircular
+            indeterminate
+            color="primary"
+            size="48"
+          />
         </div>
         <template v-else-if="qrToken">
-          <div class="my-4 d-flex justify-center align-center" style="min-height: 280px">
-            <VProgressCircular v-if="qrImageLoading" indeterminate color="primary" size="40" />
-            <VAlert v-else-if="qrImageError" type="error" variant="tonal" density="compact">
+          <div
+            class="my-4 d-flex justify-center align-center"
+            style="min-height: 280px"
+          >
+            <VProgressCircular
+              v-if="qrImageLoading"
+              indeterminate
+              color="primary"
+              size="40"
+            />
+            <VAlert
+              v-else-if="qrImageError"
+              type="error"
+              variant="tonal"
+              density="compact"
+            >
               Could not render QR image.
             </VAlert>
             <VImg
@@ -561,14 +1046,19 @@ function attendanceChip(p: Product) {
             />
           </div>
           <div class="text-caption text-medium-emphasis mb-3">
-            This QR stays valid — scan it again to toggle check-in / check-out.
-            Paste the token on the
-            <RouterLink :to="{ name: 'attendance-scanner' }" class="text-primary">
-              web scanner
-            </RouterLink>
-            to test.
+            This QR stays valid until you rotate it. On scan, choose Check In or Check Out
+            (mobile app or web scanner). Same code works every day.
           </div>
           <div class="d-flex justify-center flex-wrap gap-2 mb-2">
+            <VBtn
+              variant="tonal"
+              size="small"
+              color="primary"
+              prepend-icon="ri-qr-scan-2-line"
+              @click="openWebScanner"
+            >
+              Web scanner
+            </VBtn>
             <VBtn
               variant="outlined"
               size="small"
@@ -583,7 +1073,7 @@ function attendanceChip(p: Product) {
               size="small"
               color="warning"
               prepend-icon="ri-refresh-line"
-              @click="rotateConfirmOpen = true"
+              @click="openRotateConfirm"
             >
               Rotate QR
             </VBtn>
@@ -602,32 +1092,113 @@ function attendanceChip(p: Product) {
             Token version: {{ qrProduct?.qr_token_version }}
           </div>
         </template>
-        <VAlert v-else type="error" variant="tonal" class="mt-4">
-          Failed to generate QR code
+        <VAlert
+          v-else
+          type="error"
+          variant="tonal"
+          class="mt-4"
+        >
+          {{ qrError || 'Failed to generate QR code' }}
         </VAlert>
         <VCardActions class="justify-center">
-          <VBtn @click="qrDialog = false">Close</VBtn>
+          <VBtn @click="qrDialog = false">
+            Close
+          </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>
 
     <!-- Rotate confirmation -->
-    <VDialog v-model="rotateConfirmOpen" max-width="420" persistent>
+    <VDialog
+      v-model="rotateConfirmOpen"
+      max-width="420"
+      persistent
+    >
       <VCard>
         <VCardTitle>Rotate QR for {{ qrProduct?.full_name }}?</VCardTitle>
         <VCardText>
+          <VAlert
+            v-if="rotateError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+            closable
+            @click:close="rotateError = ''"
+          >
+            {{ rotateError }}
+          </VAlert>
           The current QR will stop working. Use this only if the printed
           code was lost or shared with someone who shouldn't have it.
         </VCardText>
         <VCardActions>
           <VSpacer />
-          <VBtn variant="text" @click="rotateConfirmOpen = false">Cancel</VBtn>
-          <VBtn color="warning" :loading="rotating" @click="confirmRotate">Rotate</VBtn>
+          <VBtn
+            variant="text"
+            @click="rotateConfirmOpen = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="warning"
+            :loading="rotating"
+            @click="confirmRotate"
+          >
+            Rotate
+          </VBtn>
         </VCardActions>
       </VCard>
     </VDialog>
 
-    <VSnackbar v-model="copyFailOpen" color="error" location="bottom" :timeout="7000">
+    <!-- Delete confirmation -->
+    <VDialog
+      v-model="deleteConfirmOpen"
+      max-width="420"
+      persistent
+    >
+      <VCard>
+        <VCardTitle>Delete {{ deleteTarget?.full_name }}?</VCardTitle>
+        <VCardText>
+          <VAlert
+            v-if="deleteError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+            closable
+            @click:close="deleteError = ''"
+          >
+            {{ deleteError }}
+          </VAlert>
+          This will permanently remove
+          <strong>{{ deleteTarget?.full_name }}</strong> ({{ deleteTarget?.code }}).
+          This action cannot be undone.
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn
+            variant="text"
+            @click="closeDeleteConfirm"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="error"
+            :loading="deleting"
+            @click="confirmDelete"
+          >
+            Delete
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VSnackbar
+      v-model="copyFailOpen"
+      color="error"
+      location="bottom"
+      :timeout="7000"
+    >
       Could not copy automatically. Select the text in the field above and copy manually (Ctrl+C or long-press).
     </VSnackbar>
   </VContainer>
@@ -636,5 +1207,9 @@ function attendanceChip(p: Product) {
 <style scoped lang="scss">
 .dense-form-row :deep(.v-col) {
   padding-block: 4px !important;
+}
+
+.product-row-inactive {
+  opacity: 0.55;
 }
 </style>

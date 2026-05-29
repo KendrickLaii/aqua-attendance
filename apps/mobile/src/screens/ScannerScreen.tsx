@@ -8,6 +8,7 @@ const THEME = { primary: '#160D47', bg: '#F4F5FA', success: '#56CA00', warning: 
 export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(true);
+  const [selectedEventType, setSelectedEventType] = useState<'check_in' | 'check_out'>('check_in');
   const [result, setResult] = useState<AttendanceEvent | null>(null);
   const [error, setError] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
@@ -21,7 +22,7 @@ export default function ScannerScreen() {
     setResult(null);
 
     try {
-      const evt = await scanQR(data, `mobile-${Platform.OS}`);
+      const evt = await scanQR(data, `mobile-${Platform.OS}`, selectedEventType);
       setResult(evt);
     } catch (e: any) {
       setError(e.message || 'Scan failed');
@@ -66,6 +67,26 @@ export default function ScannerScreen() {
         <Text style={styles.hint}>
           {processing ? 'Processing...' : 'Point camera at student QR code'}
         </Text>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, selectedEventType === 'check_in' && styles.actionBtnActiveIn]}
+            onPress={() => setSelectedEventType('check_in')}
+            disabled={processing}
+          >
+            <Text style={[styles.actionBtnText, selectedEventType === 'check_in' && styles.actionBtnTextActive]}>
+              Check In
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBtn, selectedEventType === 'check_out' && styles.actionBtnActiveOut]}
+            onPress={() => setSelectedEventType('check_out')}
+            disabled={processing}
+          >
+            <Text style={[styles.actionBtnText, selectedEventType === 'check_out' && styles.actionBtnTextActive]}>
+              Check Out
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Result modal */}
@@ -114,6 +135,19 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
   scanFrame: { width: 260, height: 260, borderWidth: 3, borderColor: '#fff', borderRadius: 20, opacity: 0.7 },
   hint: { color: '#fff', fontSize: 14, marginTop: 20, textAlign: 'center' },
+  actionRow: { flexDirection: 'row', marginTop: 24, gap: 12 },
+  actionBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  actionBtnActiveIn: { borderColor: THEME.success, backgroundColor: THEME.success },
+  actionBtnActiveOut: { borderColor: THEME.warning, backgroundColor: THEME.warning },
+  actionBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  actionBtnTextActive: { color: '#fff' },
   permText: { color: THEME.primary, fontSize: 16, textAlign: 'center', marginBottom: 16, paddingHorizontal: 30 },
   permBtn: { backgroundColor: THEME.primary, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
   permBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },

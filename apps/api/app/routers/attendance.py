@@ -65,9 +65,10 @@ async def _reload_with_product(db, event_id: uuid.UUID) -> AttendanceEvent:
 async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
     """Scan a product's QR.
 
-    The same QR toggles check-in / check-out on each scan based on the
-    product's current `attendance_status`.  Rapid duplicate scans within
-    `SCAN_DEBOUNCE_SECONDS` return the existing event (no duplicate row).
+    Pass ``event_type`` (``check_in`` or ``check_out``) to record that
+    action explicitly.  When omitted, the server toggles based on the
+    product's current ``attendance_status``.  Rapid duplicate scans within
+    ``SCAN_DEBOUNCE_SECONDS`` return the existing event (no duplicate row).
     """
     try:
         payload = verify_qr_token(body.qr_token)
@@ -93,6 +94,14 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
         )
     location_id, location_name = await _resolve_location(db, body.location_id, body.location)
 
+    explicit_type = None
+    if body.event_type is not None:
+        explicit_type = (
+            body.event_type.value
+            if hasattr(body.event_type, "value")
+            else body.event_type
+        )
+
     event, _created = await att_svc.record_scan(
         db,
         product=product,
@@ -101,6 +110,7 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
         device_id=body.device_id,
         location_id=location_id,
         location=location_name,
+        event_type=explicit_type,
     )
 
     event = await _reload_with_product(db, event.id)

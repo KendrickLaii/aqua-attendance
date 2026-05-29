@@ -24,10 +24,18 @@ export async function getQRToken(productId: string): Promise<QRPayload> {
   return apiRequest(`/qr/token/${productId}`);
 }
 
-export async function scanQR(qrToken: string, deviceId?: string): Promise<AttendanceEvent> {
+export async function scanQR(
+  qrToken: string,
+  deviceId?: string,
+  eventType?: 'check_in' | 'check_out',
+): Promise<AttendanceEvent> {
   return apiRequest('/attendance/scan', {
     method: 'POST',
-    body: JSON.stringify({ qr_token: qrToken, device_id: deviceId }),
+    body: JSON.stringify({
+      qr_token: qrToken,
+      device_id: deviceId,
+      event_type: eventType,
+    }),
   });
 }
 

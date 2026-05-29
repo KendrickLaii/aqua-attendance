@@ -35,6 +35,7 @@ export async function scanQR(payload: {
   device_id?: string
   location_id?: string
   location?: string
+  event_type?: 'check_in' | 'check_out'
 }): Promise<AttendanceEvent> {
   return await $attendanceApi('/attendance/scan', { method: 'POST', body: payload })
 }

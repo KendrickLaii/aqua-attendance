@@ -129,6 +129,43 @@ async def test_refresh_invalidates_old_token(
 
 
 @pytest.mark.asyncio
+async def test_scan_with_explicit_event_type(
+    client: AsyncClient, admin_token: str, sample_product: dict
+):
+    """Caller may pass event_type to force check_in or check_out."""
+    product_id = sample_product["id"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    qr_token = (
+        await client.get(f"/api/qr/token/{product_id}", headers=headers)
+    ).json()["qr_token"]
+
+    # Product starts checked_out; explicit check_out should stay check_out (not toggle to check_in).
+    resp = await client.post(
+        "/api/attendance/scan",
+        json={"qr_token": qr_token, "event_type": "check_out"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["event_type"] == "check_out"
+    assert body["attendance_status"] == "checked_out"
+
+    import asyncio
+    await asyncio.sleep(3.2)
+
+    resp2 = await client.post(
+        "/api/attendance/scan",
+        json={"qr_token": qr_token, "event_type": "check_in"},
+        headers=headers,
+    )
+    assert resp2.status_code == 200
+    body2 = resp2.json()
+    assert body2["event_type"] == "check_in"
+    assert body2["attendance_status"] == "checked_in"
+
+
+@pytest.mark.asyncio
 async def test_unauthenticated_cannot_scan(client: AsyncClient):
     """Unauthenticated requests cannot use the scan endpoint."""
     resp = await client.post(

@@ -197,9 +197,9 @@ module.exports = {
     //   },
     // }],
 
-    // Internal Rules
-    'valid-appcardcode-code-prop': 'error',
-    'valid-appcardcode-demo-sfc': 'error',
+    // Internal Rules (require eslint-internal-rules/ via --rulesdir; disabled when dir absent)
+    // 'valid-appcardcode-code-prop': 'error',
+    // 'valid-appcardcode-demo-sfc': 'error',
 
     // https://github.com/gmullerb/eslint-plugin-regex
     'regex/invalid': [
@@ -244,8 +244,13 @@ module.exports = {
   },
   settings: {
     'import/resolver': {
-      node: true,
-      typescript: {},
+      typescript: {
+        alwaysTryTypes: true,
+        project: `${__dirname}/tsconfig.json`,
+      },
+      node: {
+        extensions: ['.js', '.jsx', '.ts', '.tsx', '.vue'],
+      },
     },
   },
 }
