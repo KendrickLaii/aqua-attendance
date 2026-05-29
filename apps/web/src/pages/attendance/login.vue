@@ -2,6 +2,7 @@
 import { useAbility } from '@casl/vue'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { attendanceRoleToCaslRules } from '@/utils/attendanceCasl'
+import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({
   meta: {
@@ -12,12 +13,31 @@ definePage({
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
+const route = useRoute()
 const ability = useAbility()
 
 const form = reactive({ username: '', password: '' })
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref('')
+
+function resolvePostLoginTarget(): string | { name: 'attendance-dashboard' } {
+  const raw = route.query.to
+  const target = typeof raw === 'string'
+    ? raw.trim()
+    : Array.isArray(raw)
+      ? raw[0]?.trim() ?? ''
+      : ''
+
+  if (
+    target.startsWith('/attendance')
+    && target !== '/attendance'
+    && !target.startsWith('/attendance/login')
+  )
+    return target
+
+  return { name: 'attendance-dashboard' }
+}
 
 async function handleLogin() {
   loading.value = true
@@ -39,10 +59,10 @@ async function handleLogin() {
     useCookie('userAbilityRules').value = userAbilityRules as any
     ability.update(userAbilityRules)
 
-    router.push({ name: 'attendance-dashboard' })
+    await router.push(resolvePostLoginTarget())
   }
-  catch (e: any) {
-    error.value = e?.data?.detail || 'Login failed. Check credentials.'
+  catch (e: unknown) {
+    error.value = formatApiError(e, 'Login failed. Check credentials.')
   }
   finally {
     loading.value = false

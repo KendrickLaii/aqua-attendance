@@ -5,6 +5,24 @@ import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
 
 const ATTENDANCE_PUBLIC_ROUTE_NAMES = new Set(['attendance-login', 'attendance'])
 
+function resolveAttendanceRedirectTarget(to: { query: Record<string, unknown>; fullPath: string }) {
+  const raw = to.query.to
+  const target = typeof raw === 'string'
+    ? raw.trim()
+    : Array.isArray(raw)
+      ? String(raw[0] ?? '').trim()
+      : ''
+
+  if (
+    target.startsWith('/attendance')
+    && target !== '/attendance'
+    && !target.startsWith('/attendance/login')
+  )
+    return target
+
+  return { name: 'attendance-dashboard' as const }
+}
+
 export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]: any }>) => {
   const allowedRouteNames = getAllowedRouteNames()
 
@@ -27,7 +45,7 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
       }
 
       if (routeName === 'attendance-login' && loggedIn)
-        return { name: 'attendance-dashboard' }
+        return resolveAttendanceRedirectTarget(to)
 
       if (loggedIn && to.path.startsWith('/attendance/users')) {
         const role = getAttendanceRole()

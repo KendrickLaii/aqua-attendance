@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { listAttendance } from '@/api/attendance/events'
+import { listAttendanceWithTotal } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso } from '@/utils/attendanceDisplay'
@@ -63,13 +63,15 @@ async function loadDashboard(isRefresh = false) {
 
     const range = getTodayRangeIso()
 
-    const [events, products] = await Promise.all([
-      listAttendance({ date_from: range.date_from, date_to: range.date_to, page_size: EVENTS_PAGE_SIZE }),
+    const [eventsResult, products] = await Promise.all([
+      listAttendanceWithTotal({ date_from: range.date_from, date_to: range.date_to, page_size: EVENTS_PAGE_SIZE }),
       listProducts({ is_active: true, page_size: 200 }),
     ])
 
-    todayEventTotal.value = events.length
-    todayEventsCapped.value = events.length >= EVENTS_PAGE_SIZE
+    const events = eventsResult.items
+
+    todayEventTotal.value = eventsResult.total
+    todayEventsCapped.value = eventsResult.total > EVENTS_PAGE_SIZE
     recentEvents.value = events.slice(0, RECENT_EVENTS_LIMIT)
     presentStudentCount.value = products.filter(p => p.product_type === 'student' && p.attendance_status === 'checked_in').length
     presentStaffCount.value = products.filter(p => p.product_type === 'staff' && p.attendance_status === 'checked_in').length
