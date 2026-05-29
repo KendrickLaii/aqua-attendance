@@ -16,7 +16,7 @@ Review backlog from attendance frontend pass — all **P1–P3** items below are
 | P3 | Product **Checked in / out** filter (server-side) | **Done** |
 | P3 | List pagination — products, users, locations | **Done** |
 
-**Deferred (not in P1–P3):** `locations.vue` component split (~1.3k lines).
+**Deferred (not in P1–P3):** none from original web polish backlog.
 
 **Suggested next (see tables below):** mobile superadmin Scan tab → dashboard stats accuracy → commit/ship → optional cookie unification / template trim.
 
@@ -28,7 +28,7 @@ Open items — not blocking ship; track here when planning refactors.
 |------|------|--------|
 | Web | **Dual cookies** | Login mirrors `attendanceAccessToken` → `accessToken` and `attendanceUserData` → `userData` for Materio layout/CASL. Logout clears both (`clearAttendanceSessionCookies`). **Unify:** pick one cookie set; see `login.vue`, `attendanceSession.ts`, `UserProfile.vue`, `guards.ts`. |
 | Web | ~~**Dashboard check-in/out stats**~~ | ~~Today event *total* is accurate; check-in/out counts still derived from first 200 events when >200/day.~~ | **Done** — `GET /attendance/stats` aggregate endpoint + dashboard uses it |
-| Web | **`locations.vue` split** | ~1.3k lines — candidate for tab/hours/photos sub-components. |
+| Web | ~~**`locations.vue` split**~~ | ~~`~1.3k lines — candidate for tab/hours/photos sub-components.~~ | **Done** — `LocationCard`, tab components, `locationHours` / `locationPhotos` utils |
 | Web | **Template bloat** | Large AQUA demo tree (`pages/apps/`, `dashboards/`, etc.); prod nav trimmed only. |
 | Web | ~~**Load errors**~~ | ~~Most pages use fixed strings; API detail via `formatApiError` not used everywhere.~~ | **Done** — load catch blocks use `formatApiError` on all attendance list pages |
 | Mobile | **Scan tab + role types** | Gating uses `admin \| staff`; API uses `admin \| superadmin`. Role TS types mismatch. |

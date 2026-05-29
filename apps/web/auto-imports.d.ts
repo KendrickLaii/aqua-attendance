@@ -12,19 +12,25 @@ declare global {
   const ATTENDANCE_TIMEZONE: typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const EffectScope: typeof import('vue')['EffectScope']
+  const LOCATION_DAYS: typeof import('./src/utils/locationHours')['LOCATION_DAYS']
   const PRODUCT_QR_IMAGE_SIZE: typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']
   const SCAN_ENTRY_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']
   const SCAN_TOKEN_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
+  const addDetailPhotoRow: typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
+  const applyHoursPreset: typeof import('./src/utils/locationHours')['applyHoursPreset']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
   const attendanceCreatePasswordValidator: typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']
   const attendanceRoleToCaslRules: typeof import('./src/utils/attendanceCasl')['attendanceRoleToCaslRules']
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
+  const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
+  const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
+  const cardCoverUrl: typeof import('./src/utils/locationHours')['cardCoverUrl']
   const clearAttendanceSessionCookies: typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']
   const computed: typeof import('vue')['computed']
   const computedAsync: typeof import('@vueuse/core')['computedAsync']
@@ -52,11 +58,14 @@ declare global {
   const customRef: typeof import('vue')['customRef']
   const debouncedRef: typeof import('@vueuse/core')['debouncedRef']
   const debouncedWatch: typeof import('@vueuse/core')['debouncedWatch']
+  const defaultDetailPhotoRows: typeof import('./src/utils/locationPhotos')['defaultDetailPhotoRows']
+  const defaultHoursSchedule: typeof import('./src/utils/locationHours')['defaultHoursSchedule']
   const defineAsyncComponent: typeof import('vue')['defineAsyncComponent']
   const defineComponent: typeof import('vue')['defineComponent']
   const defineLoader: typeof import('vue-router/auto')['defineLoader']
   const definePage: typeof import('unplugin-vue-router/runtime')['definePage']
   const defineStore: typeof import('pinia')['defineStore']
+  const detailPhotosToRows: typeof import('./src/utils/locationPhotos')['detailPhotosToRows']
   const eagerComputed: typeof import('@vueuse/core')['eagerComputed']
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
@@ -70,6 +79,7 @@ declare global {
   const formatAttendanceDateLabel: typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateLabel']
   const formatAttendanceDateTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']
   const formatAttendanceTime: typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']
+  const formatCardBusinessHours: typeof import('./src/utils/locationHours')['formatCardBusinessHours']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
@@ -85,6 +95,7 @@ declare global {
   const getTodayRangeIso: typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
+  const hoursScheduleToPayload: typeof import('./src/utils/locationHours')['hoursScheduleToPayload']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
   const inject: typeof import('vue')['inject']
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
@@ -108,6 +119,7 @@ declare global {
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
+  const loadHoursSchedule: typeof import('./src/utils/locationHours')['loadHoursSchedule']
   const logicAnd: typeof import('@vueuse/math')['logicAnd']
   const logicNot: typeof import('@vueuse/math')['logicNot']
   const logicOr: typeof import('@vueuse/math')['logicOr']
@@ -161,6 +173,7 @@ declare global {
   const refWithControl: typeof import('@vueuse/core')['refWithControl']
   const regexValidator: typeof import('./src/@core/utils/validators')['regexValidator']
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
+  const removeDetailPhotoRow: typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
@@ -173,6 +186,7 @@ declare global {
   const shallowReadonly: typeof import('vue')['shallowReadonly']
   const shallowRef: typeof import('vue')['shallowRef']
   const shiftDateKey: typeof import('./src/utils/attendanceDisplay')['shiftDateKey']
+  const showCardIcon: typeof import('./src/utils/locationHours')['showCardIcon']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const syncRef: typeof import('@vueuse/core')['syncRef']
   const syncRefs: typeof import('@vueuse/core')['syncRefs']
@@ -423,19 +437,25 @@ declare module 'vue' {
     readonly ATTENDANCE_TIMEZONE: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly LOCATION_DAYS: UnwrapRef<typeof import('./src/utils/locationHours')['LOCATION_DAYS']>
     readonly PRODUCT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']>
     readonly SCAN_ENTRY_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']>
     readonly SCAN_TOKEN_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
+    readonly addDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
+    readonly applyHoursPreset: UnwrapRef<typeof import('./src/utils/locationHours')['applyHoursPreset']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly attendanceCreatePasswordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']>
     readonly attendanceRoleToCaslRules: UnwrapRef<typeof import('./src/utils/attendanceCasl')['attendanceRoleToCaslRules']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
+    readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
+    readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
+    readonly cardCoverUrl: UnwrapRef<typeof import('./src/utils/locationHours')['cardCoverUrl']>
     readonly clearAttendanceSessionCookies: UnwrapRef<typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
@@ -463,10 +483,13 @@ declare module 'vue' {
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
     readonly debouncedRef: UnwrapRef<typeof import('@vueuse/core')['debouncedRef']>
     readonly debouncedWatch: UnwrapRef<typeof import('@vueuse/core')['debouncedWatch']>
+    readonly defaultDetailPhotoRows: UnwrapRef<typeof import('./src/utils/locationPhotos')['defaultDetailPhotoRows']>
+    readonly defaultHoursSchedule: UnwrapRef<typeof import('./src/utils/locationHours')['defaultHoursSchedule']>
     readonly defineAsyncComponent: UnwrapRef<typeof import('vue')['defineAsyncComponent']>
     readonly defineComponent: UnwrapRef<typeof import('vue')['defineComponent']>
     readonly definePage: UnwrapRef<typeof import('unplugin-vue-router/runtime')['definePage']>
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
+    readonly detailPhotosToRows: UnwrapRef<typeof import('./src/utils/locationPhotos')['detailPhotosToRows']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
@@ -480,6 +503,7 @@ declare module 'vue' {
     readonly formatAttendanceDateLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateLabel']>
     readonly formatAttendanceDateTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceDateTime']>
     readonly formatAttendanceTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatAttendanceTime']>
+    readonly formatCardBusinessHours: UnwrapRef<typeof import('./src/utils/locationHours')['formatCardBusinessHours']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
@@ -495,6 +519,7 @@ declare module 'vue' {
     readonly getTodayRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
+    readonly hoursScheduleToPayload: UnwrapRef<typeof import('./src/utils/locationHours')['hoursScheduleToPayload']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
@@ -518,6 +543,7 @@ declare module 'vue' {
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
+    readonly loadHoursSchedule: UnwrapRef<typeof import('./src/utils/locationHours')['loadHoursSchedule']>
     readonly logicAnd: UnwrapRef<typeof import('@vueuse/math')['logicAnd']>
     readonly logicNot: UnwrapRef<typeof import('@vueuse/math')['logicNot']>
     readonly logicOr: UnwrapRef<typeof import('@vueuse/math')['logicOr']>
@@ -571,6 +597,7 @@ declare module 'vue' {
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
     readonly regexValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['regexValidator']>
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
+    readonly removeDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
@@ -583,6 +610,7 @@ declare module 'vue' {
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly shiftDateKey: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['shiftDateKey']>
+    readonly showCardIcon: UnwrapRef<typeof import('./src/utils/locationHours')['showCardIcon']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
