@@ -1132,7 +1132,7 @@ function cardCoverUrl(l: LocationItem): string | null {
         </VCardText>
 
         <VDivider />
-        <div class="dialog-footer">
+        <DialogFooter>
           <VBtn
             variant="outlined"
             color="primary"
@@ -1148,7 +1148,7 @@ function cardCoverUrl(l: LocationItem): string | null {
           >
             Save
           </VBtn>
-        </div>
+        </DialogFooter>
       </VCard>
     </VDialog>
 
@@ -1181,7 +1181,7 @@ function cardCoverUrl(l: LocationItem): string | null {
           </template>
         </VCardText>
         <VDivider />
-        <div class="dialog-footer">
+        <DialogFooter>
           <VBtn
             variant="outlined"
             color="primary"
@@ -1197,7 +1197,7 @@ function cardCoverUrl(l: LocationItem): string | null {
           >
             Delete
           </VBtn>
-        </div>
+        </DialogFooter>
       </VCard>
     </VDialog>
   </VContainer>
@@ -1316,22 +1316,6 @@ function cardCoverUrl(l: LocationItem): string | null {
     margin-top: auto;
     padding-top: 12px;
     border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  }
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-
-  :deep(.v-btn) {
-    height: 36px;
-    min-height: 36px;
-    padding-inline: 16px;
-    font-size: 0.875rem;
-    letter-spacing: normal;
   }
 }
 </style>

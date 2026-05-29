@@ -15,6 +15,11 @@ export default [
     to: 'attendance-qr-codes',
   },
   {
+    title: 'Web Scanner',
+    icon: { icon: 'ri-qr-scan-2-line' },
+    to: 'attendance-scanner',
+  },
+  {
     title: 'Attendance Log',
     icon: { icon: 'ri-list-check' },
     to: 'attendance-log',

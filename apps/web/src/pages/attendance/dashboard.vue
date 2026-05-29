@@ -151,6 +151,14 @@ function eventColor(type: string) {
         >
           Full Log
         </VBtn>
+        <VBtn
+          v-if="authStore.isAdmin"
+          variant="outlined"
+          :to="{ name: 'attendance-scanner' }"
+          prepend-icon="ri-qr-scan-2-line"
+        >
+          Web Scanner
+        </VBtn>
       </VCol>
     </VRow>
 

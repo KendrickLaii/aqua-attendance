@@ -944,7 +944,7 @@ function rowStatusChip(p: Product) {
           </VForm>
         </VCardText>
         <VDivider />
-        <div class="dialog-footer">
+        <DialogFooter>
           <VBtn
             variant="outlined"
             color="primary"
@@ -960,7 +960,7 @@ function rowStatusChip(p: Product) {
           >
             Save
           </VBtn>
-        </div>
+        </DialogFooter>
       </VCard>
     </VDialog>
 
@@ -989,7 +989,7 @@ function rowStatusChip(p: Product) {
           This action cannot be undone.
         </VCardText>
         <VDivider />
-        <div class="dialog-footer">
+        <DialogFooter>
           <VBtn
             variant="outlined"
             color="primary"
@@ -1005,7 +1005,7 @@ function rowStatusChip(p: Product) {
           >
             Delete
           </VBtn>
-        </div>
+        </DialogFooter>
       </VCard>
     </VDialog>
 
@@ -1023,22 +1023,6 @@ function rowStatusChip(p: Product) {
 
 .product-row-inactive {
   opacity: 0.55;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-
-  :deep(.v-btn) {
-    height: 36px;
-    min-height: 36px;
-    padding-inline: 16px;
-    font-size: 0.875rem;
-    letter-spacing: normal;
-  }
 }
 
 .products-table-scroll {

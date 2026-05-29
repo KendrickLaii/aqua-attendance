@@ -165,11 +165,15 @@ defineExpose({ openQR })
       </VCardText>
 
       <VDivider />
-      <VCardActions class="justify-center pa-4 pt-3">
-        <VBtn @click="qrDialog = false">
+      <DialogFooter>
+        <VBtn
+          variant="flat"
+          color="primary"
+          @click="qrDialog = false"
+        >
           Close
         </VBtn>
-      </VCardActions>
+      </DialogFooter>
     </VCard>
   </VDialog>
 
@@ -196,22 +200,24 @@ defineExpose({ openQR })
         The current QR will stop working. Use this only if the printed
         code was lost or shared with someone who shouldn't have it.
       </VCardText>
-      <VCardActions>
-        <VSpacer />
+      <VDivider />
+      <DialogFooter>
         <VBtn
-          variant="text"
+          variant="outlined"
+          color="primary"
           @click="closeRotateConfirm"
         >
           Cancel
         </VBtn>
         <VBtn
+          variant="flat"
           color="warning"
           :loading="rotating"
           @click="confirmRotate"
         >
           Rotate
         </VBtn>
-      </VCardActions>
+      </DialogFooter>
     </VCard>
   </VDialog>
 

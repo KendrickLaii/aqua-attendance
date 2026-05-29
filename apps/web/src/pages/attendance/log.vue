@@ -657,7 +657,7 @@ async function handleCorrection() {
           </VForm>
         </VCardText>
         <VDivider />
-        <div class="dialog-footer">
+        <DialogFooter>
           <VBtn
             variant="outlined"
             color="primary"
@@ -673,7 +673,7 @@ async function handleCorrection() {
           >
             Save
           </VBtn>
-        </div>
+        </DialogFooter>
       </VCard>
     </VDialog>
   </VContainer>
@@ -683,22 +683,6 @@ async function handleCorrection() {
 .log-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-
-  :deep(.v-btn) {
-    height: 36px;
-    min-height: 36px;
-    padding-inline: 16px;
-    font-size: 0.875rem;
-    letter-spacing: normal;
-  }
 }
 
 @media (max-width: 960px) {

@@ -10,6 +10,81 @@ const attendanceAuth = useAttendanceAuthStore()
 // TODO: Get type from backend
 const userData = useCookie<any>('userData')
 
+const isAttendanceMode = computed(() =>
+  router.currentRoute.value.path.startsWith('/attendance')
+  || isAttendanceLoggedIn(),
+)
+
+interface ProfileNavItem {
+  type: 'navItem'
+  icon: string
+  title: string
+  to: { name: string, params?: Record<string, string | number> }
+  badgeProps?: Record<string, unknown>
+}
+
+interface ProfileDivider {
+  type: 'divider'
+}
+
+type ProfileListItem = ProfileNavItem | ProfileDivider
+
+const templateProfileList: ProfileListItem[] = [
+  { type: 'divider' },
+  {
+    type: 'navItem',
+    icon: 'ri-user-line',
+    title: 'Profile',
+    to: { name: 'apps-user-view-id', params: { id: 21 } },
+  },
+  {
+    type: 'navItem',
+    icon: 'ri-settings-4-line',
+    title: 'Settings',
+    to: { name: 'pages-account-settings-tab', params: { tab: 'account' } },
+  },
+  {
+    type: 'navItem',
+    icon: 'ri-question-line',
+    title: 'FAQ',
+    to: { name: 'pages-faq' },
+  },
+  { type: 'divider' },
+]
+
+const attendanceProfileList = computed((): ProfileListItem[] => {
+  const items: ProfileListItem[] = [
+    { type: 'divider' },
+    {
+      type: 'navItem',
+      icon: 'ri-dashboard-line',
+      title: 'Dashboard',
+      to: { name: 'attendance-dashboard' },
+    },
+  ]
+
+  if (attendanceAuth.isAdmin) {
+    items.push({
+      type: 'navItem',
+      icon: 'ri-qr-scan-2-line',
+      title: 'Web Scanner',
+      to: { name: 'attendance-scanner' },
+    })
+  }
+
+  items.push({ type: 'divider' })
+
+  return items
+})
+
+const userProfileList = computed(() =>
+  isAttendanceMode.value ? attendanceProfileList.value : templateProfileList,
+)
+
+onMounted(() => {
+  attendanceAuth.restoreSession()
+})
+
 const logout = async () => {
   const onAttendanceApp =
     router.currentRoute.value.path.startsWith('/attendance')
@@ -28,44 +103,6 @@ const logout = async () => {
   useCookie('userAbilityRules').value = null
   ability.update([])
 }
-
-const userProfileList = [
-  { type: 'divider' },
-  {
-    type: 'navItem',
-    icon: 'ri-user-line',
-    title: 'Profile',
-    to: { name: 'apps-user-view-id', params: { id: 21 } },
-  },
-  {
-    type: 'navItem',
-    icon: 'ri-settings-4-line',
-    title: 'Settings',
-    to: { name: 'pages-account-settings-tab', params: { tab: 'account' } },
-  },
-  // {
-  //   type: 'navItem',
-  //   icon: 'ri-file-text-line',
-  //   title: 'Billing Plan',
-  //   to: { name: 'pages-account-settings-tab', params: { tab: 'billing-plans' } },
-  //   badgeProps: { color: 'error', content: '4' },
-  // },
-  // { type: 'divider' },
-  // {
-  //   type: 'navItem',
-  //   icon: 'ri-money-dollar-circle-line',
-  //   title: 'Pricing',
-  //   to: { name: 'pages-pricing' },
-  // },
-  {
-    type: 'navItem',
-    icon: 'ri-question-line',
-    title: 'FAQ',
-    to: { name: 'pages-faq' },
-  },
-  { type: 'divider' },
-
-]
 </script>
 
 <template>
@@ -141,7 +178,7 @@ const userProfileList = [
           <PerfectScrollbar :options="{ wheelPropagation: false }">
             <template
               v-for="item in userProfileList"
-              :key="item.title"
+              :key="item.type === 'navItem' ? item.title : 'divider'"
             >
               <VListItem
                 v-if="item.type === 'navItem'"

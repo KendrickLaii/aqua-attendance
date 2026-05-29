@@ -562,7 +562,7 @@ function canDeleteUser(u: AttendanceUser) {
           </VForm>
         </VCardText>
         <VDivider />
-        <div class="dialog-footer">
+        <DialogFooter>
           <VBtn
             variant="outlined"
             color="primary"
@@ -578,7 +578,7 @@ function canDeleteUser(u: AttendanceUser) {
           >
             Save
           </VBtn>
-        </div>
+        </DialogFooter>
       </VCard>
     </VDialog>
 
@@ -608,7 +608,7 @@ function canDeleteUser(u: AttendanceUser) {
           </template>
         </VCardText>
         <VDivider />
-        <div class="dialog-footer">
+        <DialogFooter>
           <VBtn
             variant="outlined"
             color="primary"
@@ -624,7 +624,7 @@ function canDeleteUser(u: AttendanceUser) {
           >
             Delete
           </VBtn>
-        </div>
+        </DialogFooter>
       </VCard>
     </VDialog>
   </VContainer>
@@ -633,22 +633,6 @@ function canDeleteUser(u: AttendanceUser) {
 <style scoped lang="scss">
 .user-row-inactive {
   opacity: 0.55;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-
-  :deep(.v-btn) {
-    height: 36px;
-    min-height: 36px;
-    padding-inline: 16px;
-    font-size: 0.875rem;
-    letter-spacing: normal;
-  }
 }
 
 .users-table-scroll {
