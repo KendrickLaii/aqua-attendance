@@ -27,12 +27,22 @@
       "adaptiveIcon": {
         "backgroundColor": "#160D47"
       },
-      "package": "com.juku.attendance"
+      "package": "com.juku.attendance",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "scheme": "juku-attendance",
     "updates": {
       "enabled": false,
       "checkAutomatically": "NEVER"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "407c4bab-6c6f-4ea4-9f26-2cd15d64c64a"
+      }
     }
   }
 }
