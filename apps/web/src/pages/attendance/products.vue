@@ -700,7 +700,9 @@ function rowStatusChip(p: Product) {
               <th class="col-school">
                 School / Class
               </th>
-              <th>Actions</th>
+              <th class="col-actions">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -757,40 +759,42 @@ function rowStatusChip(p: Product) {
               <td class="col-school">
                 {{ p.school_name ? `${p.school_name} / ${p.grade_class || '-'}` : '-' }}
               </td>
-              <td>
-                <VBtn
-                  icon
-                  size="small"
-                  variant="text"
-                  color="primary"
-                  :disabled="!p.is_active"
-                  :title="p.is_active ? 'QR Code' : 'QR unavailable — product is inactive'"
-                  :aria-label="`View QR code for ${p.full_name}`"
-                  @click="openQR(p)"
-                >
-                  <VIcon icon="ri-qr-code-line" />
-                </VBtn>
-                <VBtn
-                  icon
-                  size="small"
-                  variant="text"
-                  title="Edit"
-                  :aria-label="`Edit ${p.full_name}`"
-                  @click="openEdit(p)"
-                >
-                  <VIcon icon="ri-edit-line" />
-                </VBtn>
-                <VBtn
-                  icon
-                  size="small"
-                  variant="text"
-                  color="error"
-                  title="Delete"
-                  :aria-label="`Delete ${p.full_name}`"
-                  @click="openDeleteConfirm(p)"
-                >
-                  <VIcon icon="ri-delete-bin-line" />
-                </VBtn>
+              <td class="col-actions">
+                <div class="d-flex flex-nowrap align-center">
+                  <VBtn
+                    icon
+                    size="small"
+                    variant="text"
+                    color="primary"
+                    :disabled="!p.is_active"
+                    :title="p.is_active ? 'QR Code' : 'QR unavailable — product is inactive'"
+                    :aria-label="`View QR code for ${p.full_name}`"
+                    @click="openQR(p)"
+                  >
+                    <VIcon icon="ri-qr-code-line" />
+                  </VBtn>
+                  <VBtn
+                    icon
+                    size="small"
+                    variant="text"
+                    title="Edit"
+                    :aria-label="`Edit ${p.full_name}`"
+                    @click="openEdit(p)"
+                  >
+                    <VIcon icon="ri-edit-line" />
+                  </VBtn>
+                  <VBtn
+                    icon
+                    size="small"
+                    variant="text"
+                    color="error"
+                    title="Delete"
+                    :aria-label="`Delete ${p.full_name}`"
+                    @click="openDeleteConfirm(p)"
+                  >
+                    <VIcon icon="ri-delete-bin-line" />
+                  </VBtn>
+                </div>
               </td>
             </tr>
             <tr v-if="products.length === 0 && !loading">
@@ -1234,6 +1238,12 @@ function rowStatusChip(p: Product) {
 .products-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.products-table :deep(.col-actions) {
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 @media (max-width: 960px) {
