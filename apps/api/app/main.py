@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import async_session_factory
+from app.database import get_db
 from app.routers import attendance, auth, locations, products, qr, users
 
 app = FastAPI(
@@ -30,11 +31,10 @@ app.include_router(attendance.router, prefix="/api")
 
 
 @app.get("/api/health")
-async def health() -> dict:
+async def health(db: AsyncSession = Depends(get_db)) -> dict:
     """Liveness + database connectivity (for deploy health checks)."""
     try:
-        async with async_session_factory() as session:
-            await session.execute(text("SELECT 1"))
+        await db.execute(text("SELECT 1"))
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

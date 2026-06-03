@@ -1,3 +1,8 @@
+import os
+
+# CI/deploy hosts may set ENV=production; tests need development defaults on import.
+os.environ["ENV"] = "development"
+
 import uuid
 from typing import AsyncGenerator
 

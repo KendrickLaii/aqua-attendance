@@ -14,6 +14,8 @@ jobs:
   api-tests:
     name: API (pytest)
     runs-on: ubuntu-latest
+    env:
+      ENV: development
     defaults:
       run:
         working-directory: apps/api
