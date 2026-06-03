@@ -61,6 +61,49 @@ async def test_login_wrong_password(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_user_email_case_insensitive_duplicate(
+    client: AsyncClient, admin_token: str
+) -> None:
+    base = uuid.uuid4().hex[:8]
+    await _insert_test_user(
+        username=f"existing_{base}",
+        email=f"Owner@{base}.test.com",
+        password="testpass123",
+    )
+    resp = await client.post(
+        "/api/users",
+        json={
+            "username": f"new_{base}",
+            "email": f"owner@{base}.test.com",
+            "password": "testpass123",
+            "full_name": "Duplicate Email",
+            "role": "admin",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp.status_code == 409
+    assert "email" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_user_email_stored_lowercase(client: AsyncClient, admin_token: str) -> None:
+    base = uuid.uuid4().hex[:8]
+    resp = await client.post(
+        "/api/users",
+        json={
+            "username": f"user_{base}",
+            "email": f"MixedCase@{base}.Test.COM",
+            "password": "testpass123",
+            "full_name": "Mixed Case",
+            "role": "admin",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["email"] == f"mixedcase@{base}.test.com"
+
+
+@pytest.mark.asyncio
 async def test_refresh_token(client: AsyncClient):
     uname = f"user_{uuid.uuid4().hex[:8]}"
     await _insert_test_user(username=uname, email=f"{uname}@test.com", password="testpass123")

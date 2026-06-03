@@ -2,10 +2,17 @@ import enum
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Table, Text, Uuid, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+product_allowed_locations = Table(
+    "product_allowed_locations",
+    Base.metadata,
+    Column("product_id", Uuid, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True),
+    Column("location_id", Uuid, ForeignKey("locations.id", ondelete="RESTRICT"), primary_key=True),
+)
 
 
 class AttendanceStatus(str, enum.Enum):
@@ -38,6 +45,9 @@ class Product(Base):
         String(20), nullable=False, default=AttendanceStatus.checked_out.value
     )
     qr_token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    home_location_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_event_location_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("locations.id"), nullable=True, index=True
@@ -72,5 +82,15 @@ class Product(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    attendance_events = relationship("AttendanceEvent", back_populates="product", lazy="selectin")
-    last_event_location_ref = relationship("Location", foreign_keys=[last_event_location_id], back_populates="products")
+    attendance_events = relationship("AttendanceEvent", back_populates="product", lazy="select")
+    home_location = relationship("Location", foreign_keys=[home_location_id], back_populates="home_products")
+    allowed_locations = relationship(
+        "Location",
+        secondary=product_allowed_locations,
+        lazy="selectin",
+    )
+    last_event_location_ref = relationship(
+        "Location",
+        foreign_keys=[last_event_location_id],
+        back_populates="last_event_products",
+    )

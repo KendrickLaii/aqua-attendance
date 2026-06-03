@@ -1,9 +1,15 @@
+import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.attendance import EventType
+
+
+class ScanEventType(str, enum.Enum):
+    check_in = "check_in"
+    check_out = "check_out"
 
 
 class ScanRequest(BaseModel):
@@ -11,7 +17,10 @@ class ScanRequest(BaseModel):
     device_id: str | None = Field(default=None, max_length=255)
     location_id: uuid.UUID | None = None
     location: str | None = Field(default=None, max_length=255)
-    event_type: EventType | None = None
+    event_type: ScanEventType | None = Field(
+        default=None,
+        description="Explicit check-in or check-out. Omit to auto-toggle from product status.",
+    )
 
 
 class AttendanceOut(BaseModel):
@@ -40,6 +49,17 @@ class ManualCorrectionRequest(BaseModel):
     location_id: uuid.UUID | None = None
     location: str | None = Field(default=None, max_length=255)
     notes: str | None = None
+
+    @field_validator("recorded_at", mode="before")
+    @classmethod
+    def ensure_utc(cls, v: object) -> datetime | None:
+        if v is None:
+            return None
+        if not isinstance(v, datetime):
+            raise ValueError("recorded_at must be a datetime")
+        if v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v.astimezone(timezone.utc)
 
 
 class AttendanceListParams(BaseModel):

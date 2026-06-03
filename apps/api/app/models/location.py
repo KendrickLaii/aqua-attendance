@@ -13,7 +13,7 @@ class Location(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     code: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True, index=True)
     name_zh: Mapped[str] = mapped_column(String(255), nullable=False)
-    name_en: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    name_en: Mapped[str] = mapped_column(String(255), nullable=False)
     location_type: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     region: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     business_hours: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -35,4 +35,13 @@ class Location(Base):
     )
 
     attendance_events = relationship("AttendanceEvent", back_populates="location_ref")
-    products = relationship("Product", back_populates="last_event_location_ref")
+    home_products = relationship(
+        "Product",
+        foreign_keys="Product.home_location_id",
+        back_populates="home_location",
+    )
+    last_event_products = relationship(
+        "Product",
+        foreign_keys="Product.last_event_location_id",
+        back_populates="last_event_location_ref",
+    )

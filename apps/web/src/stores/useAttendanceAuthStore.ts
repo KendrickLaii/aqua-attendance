@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { attendanceGetMe, attendanceLogin } from '@/api/attendance/auth'
+import { attendanceGetMe, attendanceLogin, attendanceLogout } from '@/api/attendance/auth'
 import type { AttendanceUser, AttendanceLoginPayload } from '@/api/attendance/auth'
 import { clearAttendanceSessionCookies } from '@/utils/attendanceSession'
 
@@ -23,7 +23,16 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
       this.isLoggedIn = true
       useCookie('attendanceUserData').value = JSON.stringify(me)
     },
-    logout() {
+    async logout() {
+      const refreshToken = useCookie('attendanceRefreshToken').value
+      if (refreshToken) {
+        try {
+          await attendanceLogout(refreshToken)
+        }
+        catch {
+          // still clear local session if API is down or token already invalid
+        }
+      }
       clearAttendanceSessionCookies()
       this.user = null
       this.isLoggedIn = false

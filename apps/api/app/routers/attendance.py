@@ -9,6 +9,10 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from sqlalchemy.orm import selectinload
+
 from app.deps import DB, AdminOnly
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
@@ -52,7 +56,7 @@ async def _resolve_location(db: DB, location_id: uuid.UUID | None, location_text
     return location.id, display_name
 
 
-async def _reload_with_product(db, event_id: uuid.UUID) -> AttendanceEvent:
+async def _reload_with_product(db: AsyncSession, event_id: uuid.UUID) -> AttendanceEvent:
     result = await db.execute(
         select(AttendanceEvent)
         .options(selectinload(AttendanceEvent.product))
@@ -80,7 +84,11 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
     except (KeyError, ValueError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid QR: bad subject")
 
-    result = await db.execute(select(Product).where(Product.id == target_product_id))
+    result = await db.execute(
+        select(Product)
+        .options(selectinload(Product.allowed_locations))
+        .where(Product.id == target_product_id)
+    )
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -94,13 +102,18 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
         )
     location_id, location_name = await _resolve_location(db, body.location_id, body.location)
 
-    explicit_type = None
-    if body.event_type is not None:
-        explicit_type = (
-            body.event_type.value
-            if hasattr(body.event_type, "value")
-            else body.event_type
+    if location_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="location_id is required for scan",
         )
+    if not any(loc.id == location_id for loc in product.allowed_locations):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Product is not allowed to scan at this location",
+        )
+
+    explicit_type = body.event_type.value if body.event_type is not None else None
 
     event, _created = await att_svc.record_scan(
         db,
@@ -170,7 +183,7 @@ async def create_manual_correction(
     event = await att_svc.manual_correction(
         db,
         product=product,
-        event_type=body.event_type.value if hasattr(body.event_type, 'value') else body.event_type,
+        event_type=body.event_type.value,
         recorded_at=body.recorded_at,
         location_id=location_id,
         location=location_name,
@@ -190,14 +203,18 @@ async def export_csv(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> StreamingResponse:
-    events, _ = await att_svc.list_events(
+    if date_from is None or date_to is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="date_from and date_to are required for CSV export",
+        )
+
+    events, truncated = await att_svc.list_events_for_export(
         db,
         product_id=product_id,
         product_type=product_type,
         date_from=date_from,
         date_to=date_to,
-        page=1,
-        page_size=10000,
     )
     buf = StringIO()
     writer = csv.writer(buf)
@@ -231,8 +248,11 @@ async def export_csv(
             e.notes or "",
         ])
     buf.seek(0)
+    headers = {"Content-Disposition": "attachment; filename=attendance_export.csv"}
+    if truncated:
+        headers["X-Export-Truncated"] = "true"
     return StreamingResponse(
         buf,
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=attendance_export.csv"},
+        headers=headers,
     )

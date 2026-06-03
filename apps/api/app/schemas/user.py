@@ -27,7 +27,7 @@ def _flex_email(value: object) -> str:
     if any(c.isspace() for c in local_part) or any(c.isspace() for c in domain_part):
         raise ValueError('email must not contain whitespace in the local or domain part')
 
-    return normalized
+    return normalized.lower()
 
 
 class UserCreate(BaseModel):

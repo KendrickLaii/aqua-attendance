@@ -3,11 +3,10 @@ Attendance event model.
 
 Tracks check-in / check-out events for products (staff, students, etc.).
 
-The event_type (check_in / check_out) is derived from the product's current
-`attendance_status` — each scan toggles it.  The same QR token can therefore
-be re-scanned to perform both check-in and check-out without rotating the
-code.  Admins may insert manual corrections with event_type =
-"manual_correction".
+Each scan records check_in or check_out.  The client may pass an explicit
+``event_type``; otherwise the server toggles from the product's
+``attendance_status``.  The same QR token can be re-scanned without rotation.
+Admins may insert manual corrections with event_type = ``manual_correction``.
 
 Replay / double-tap protection is handled in the scan service by a short
 debounce window (same product scanned twice within a few seconds returns

@@ -2,9 +2,26 @@
 
 Vue 3 + Vite admin console for attendance. **Attendance UI** lives under `src/pages/attendance/`. The rest of the repo tree is the AQUA admin template (demos); production navigation only links attendance pages.
 
-## Quick start
+## Daily development
 
-From repo root, ensure API is running (see [apps/api/README.md](../api/README.md)).
+Each session (with API + DB already set up):
+
+```bash
+# Terminal 1 — repo root (skip if already running)
+docker compose up -d db
+
+# Terminal 2 — apps/api
+python -m uvicorn app.main:app --reload
+
+# Terminal 3 — apps/web
+npm run dev
+```
+
+Full workflow: root [README.md](../../README.md#daily-development-recommended).
+
+## First-time setup
+
+Ensure API is running (see [apps/api/README.md](../api/README.md)).
 
 ```bash
 cd apps/web

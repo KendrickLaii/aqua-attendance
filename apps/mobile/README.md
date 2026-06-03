@@ -1,8 +1,24 @@
 # Juku Attendance — Mobile App
 
-Expo (React Native) app for **scanning product QR codes** and viewing attendance history. Login accounts are **admins** (API role `admin` or `superadmin`), not students.
+Expo (React Native) app for **scanning product QR codes** and viewing attendance history. Login accounts are **admins** (`admin` or `superadmin`), not students.
 
 Students and staff **do not log in** — they carry a product QR created in the web app (**QR Codes** / **Product Management**).
+
+## API URL by platform
+
+| How you run the app | `EXPO_PUBLIC_API_URL` |
+|---------------------|------------------------|
+| **Android emulator** (press `a`) | `http://10.0.2.2:8000/api` |
+| **Expo web** (press `w`) | `http://localhost:8000/api` |
+| **Physical phone** (Expo Go QR) | `http://<PC-LAN-IP>:8000/api` + API `--host 0.0.0.0` |
+
+`10.0.2.2` is the emulator’s alias for your PC’s `127.0.0.1`.
+
+## Web vs phone
+
+Pressing **`w`** opens the app in a **browser**. Tokens use `localStorage` on web (`src/services/storage.ts`).
+
+For **QR camera scanning**, use the **Android emulator** (`a`) or a **physical device** — not the browser.
 
 ## Quick start
 
@@ -13,46 +29,58 @@ npm install
 npx expo start
 ```
 
+### Expo Go: `Failed to download remote update`
+
+The phone could not reach Metro on your PC (firewall, VPN, or Wi‑Fi isolation). Try in order:
+
+1. **Tunnel mode** (most reliable): `npm run start:tunnel` — scan the new QR code in Expo Go.
+2. Turn off **VPN** on PC and phone (e.g. Surfshark).
+3. Same **Wi‑Fi**; Windows Firewall: allow **Node.js** on private networks (ports **8081**, **8000**).
+4. Update **Expo Go** from the store (project uses **Expo SDK 54** — must match phone app).
+5. Expo Go app menu → clear cache, or `npx expo start -c` on PC.
+
+API URL in `.env` must stay your PC LAN IP (not `localhost`) when using Expo Go on a phone.
+
 ### Environment
 
 | Variable | Example | Notes |
 |----------|---------|-------|
 | `EXPO_PUBLIC_API_URL` | `http://192.168.1.50:8000/api` | Use your machine's **LAN IP** on a physical device (not `localhost`) |
 
-Ensure the API is running and `CORS_ORIGINS` includes your Expo dev origin if you hit CORS from web tooling; native fetch is not CORS-limited.
+Ensure the API is running. Native fetch is not CORS-limited; web tooling may still need `CORS_ORIGINS` if applicable.
 
 ### Seed login (after API `python seed.py`)
 
 | Username | Password | Scan tab |
 |----------|----------|----------|
-| admin | admin123 | Yes (`admin` role) |
-| superadmin | super123 | **May be hidden** — app checks `staff` role name; see KNOWN-GAPS |
+| admin | admin123 | Yes |
+| superadmin | super123 | Yes |
 
 ## Features
 
 | Tab | Description |
 |-----|-------------|
-| **My QR** | Info placeholder — real QRs are managed on the **web** app per product |
-| **Scan** | Camera QR scanner → `POST /api/attendance/scan` (admin login required) |
-| **History** | Lists attendance events from API |
+| **My QR** | Help text — product QRs are managed on the **web** app |
+| **Scan** | Camera QR → `POST /api/attendance/scan` with optional **location** and **check in/out** |
+| **History** | Recent attendance events (pull to refresh) |
 
-## Entry point (important)
+## Entry point
 
-The attendance UI is implemented in **`App.tsx`** at the project root.
+The app loads from **`App.tsx`** via `"main": "expo/AppEntry.js"` in `package.json`.
 
-`package.json` currently sets `"main": "expo-router/entry"`, and `app/index.tsx` is only an Expo Router **stub**. If Expo Go shows "Hello World" instead of the login screen, switch the entry to the classic Expo app entry (or migrate screens into expo-router). Details: [docs/KNOWN-GAPS.md](../../docs/KNOWN-GAPS.md).
+`app/index.tsx` is an Expo Router stub only — do not use `expo-router/entry` as `main` or Expo Go may show the wrong screen.
 
 ## Manual test flow
 
-1. Start API + seed: `admin` / `admin123`, products `STU-001`, etc.
-2. Web: log in → **QR Codes** → select **STU-001** → copy QR token or show QR on another screen.
-3. Mobile: log in as `admin` → **Scan** → point camera at QR.
-4. Confirm modal shows check-in (or check-out on second scan after debounce window).
-5. **History** → pull to refresh → event appears.
-6. **Debounce:** scan twice within 3 seconds → same event returned (no duplicate row).
-7. **Rotate QR:** web **Refresh QR** → old QR should fail with rotation error.
-
-QR tokens **do not expire** by time; they invalidate only when an admin rotates them.
+1. Start API + DB + seed: `admin` / `admin123`, products `STU-001`, etc.
+2. Web: create an active **location** (English name required).
+3. Web: **QR Codes** → **STU-001** → show QR on another screen.
+4. Mobile: log in → **Scan** → select location → 簽到/簽退 → scan QR.
+5. Confirm modal shows name + location.
+6. **History** → event appears with location.
+7. **Logout** → server refresh token revoked.
+8. **Debounce:** same action twice within 3s → no duplicate row.
+9. **Rotate QR:** web **Refresh QR** → old QR fails.
 
 ## Project layout
 
@@ -61,21 +89,20 @@ App.tsx                 # Root: login vs tabs
 src/
   navigation/AppNavigator.tsx
   screens/LoginScreen.tsx, ScannerScreen.tsx, HistoryScreen.tsx, QRDisplayScreen.tsx
-  services/api.ts, auth.ts, attendance.ts
+  services/api.ts, auth.ts, attendance.ts, locations.ts
 app/index.tsx           # Expo Router stub (not the attendance app)
 ```
 
+## Sprint & release docs
+
+- [docs/MOBILE-SPRINT.md](../../docs/MOBILE-SPRINT.md) — phased backlog (Phase 1–4)
+- [docs/MOBILE-RELEASE-CHECKLIST.md](../../docs/MOBILE-RELEASE-CHECKLIST.md) — pre-launch checklist
+- [docs/KNOWN-GAPS.md](../../docs/KNOWN-GAPS.md) — remaining debt
+
 ## Production builds
 
-Not yet documented in CI. For a physical deployment:
-
-1. Set `EXPO_PUBLIC_API_URL` to your production API, e.g. `https://api.yourdomain.com/api`
+1. Set `EXPO_PUBLIC_API_URL` to production API, e.g. `https://api.yourdomain.com/api`
 2. Build with EAS or `expo prebuild` + native toolchain
-3. Distribute via app store or internal MDM
+3. Follow [MOBILE-RELEASE-CHECKLIST.md](../../docs/MOBILE-RELEASE-CHECKLIST.md)
 
-See root [README.md](../../README.md) roadmap for mobile CI.
-
-## More docs
-
-- [docs/KNOWN-GAPS.md](../../docs/KNOWN-GAPS.md) — mobile entry point, role gating  
-- [docs/DEPLOY.md](../../docs/DEPLOY.md) — server deploy (API URL for builds)  
+See root [README.md](../../README.md) and [docs/DEPLOY.md](../../docs/DEPLOY.md).

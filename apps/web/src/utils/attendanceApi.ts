@@ -31,7 +31,12 @@ function isAttendanceAuthRequestUrl(request: Parameters<typeof ofetch>[0]): bool
           ? String(request)
           : ''
 
-  return s.includes('/auth/login') || s.includes('/auth/register') || s.includes('/auth/refresh')
+  return (
+    s.includes('/auth/login')
+    || s.includes('/auth/register')
+    || s.includes('/auth/refresh')
+    || s.includes('/auth/logout')
+  )
 }
 
 async function refreshAttendanceTokens(): Promise<boolean> {

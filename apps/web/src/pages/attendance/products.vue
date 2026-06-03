@@ -6,6 +6,8 @@ import {
 } from '@core/utils/validators'
 import { createProduct, deleteProduct, listProductsWithTotal, updateProduct } from '@/api/attendance/products'
 import type { Product } from '@/api/attendance/products'
+import { listLocations } from '@/api/attendance/locations'
+import type { LocationItem } from '@/api/attendance/locations'
 import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
@@ -20,6 +22,7 @@ const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
 const products = ref<Product[]>([])
+const locations = ref<LocationItem[]>([])
 const totalCount = ref(0)
 const page = ref(1)
 const loading = ref(true)
@@ -53,6 +56,8 @@ const form = reactive({
   guardian2_phone: '',
   whatsapp_enabled: true,
   remarks: '',
+  home_location_id: '' as string,
+  allowed_location_ids: [] as string[],
 })
 
 const saving = ref(false)
@@ -102,6 +107,15 @@ const employmentTypeOptions = [
   { title: 'Full-time', value: 'full_time' },
   { title: 'Part-time', value: 'part_time' },
 ]
+
+const locationOptions = computed(() =>
+  locations.value
+    .filter(loc => loc.is_active)
+    .map(loc => ({
+      title: loc.name_en || loc.name_zh || loc.code || loc.id,
+      value: loc.id,
+    })),
+)
 
 const genderOptions = [
   { title: 'Male', value: 'male' },
@@ -172,8 +186,18 @@ onMounted(async () => {
 
     return
   }
+  await loadLocations()
   await loadProducts()
 })
+
+async function loadLocations() {
+  try {
+    locations.value = await listLocations({ is_active: true, page_size: 200 })
+  }
+  catch (e) {
+    console.error('Failed to load locations', e)
+  }
+}
 
 async function loadProducts(isRefresh = false, resetPage = false) {
   const softRefresh = isRefresh === true
@@ -284,6 +308,8 @@ function openCreate() {
     guardian2_phone: '',
     whatsapp_enabled: true,
     remarks: '',
+    home_location_id: locations.value[0]?.id ?? '',
+    allowed_location_ids: locations.value[0] ? [locations.value[0].id] : [],
   })
   dialogOpen.value = true
   nextTick(() => productFormRef.value?.resetValidation())
@@ -317,6 +343,8 @@ function openEdit(p: Product) {
     guardian2_phone: p.guardian2_phone ?? '',
     whatsapp_enabled: p.whatsapp_enabled,
     remarks: p.remarks ?? '',
+    home_location_id: p.home_location_id,
+    allowed_location_ids: [...p.allowed_location_ids],
   })
   dialogOpen.value = true
   nextTick(() => productFormRef.value?.resetValidation())
@@ -333,6 +361,18 @@ async function handleSave() {
 
   if (form.product_type === 'staff' && !form.employment_type) {
     saveError.value = 'Employment type is required for staff'
+
+    return
+  }
+
+  if (!form.home_location_id) {
+    saveError.value = 'Home location is required'
+
+    return
+  }
+
+  if (form.allowed_location_ids.length === 0) {
+    saveError.value = 'Select at least one allowed scan location'
 
     return
   }
@@ -369,6 +409,8 @@ async function handleSave() {
       guardian2_phone: normalizeString(form.guardian2_phone),
       whatsapp_enabled: form.whatsapp_enabled,
       remarks: normalizeString(form.remarks),
+      home_location_id: form.home_location_id,
+      allowed_location_ids: [...form.allowed_location_ids],
     }
 
     if (editingProduct.value)
@@ -438,6 +480,23 @@ function employmentTypeLabel(value: string | null | undefined) {
     return 'Part-time'
 
   return '—'
+}
+
+function locationLabel(location: Product['home_location']) {
+  if (!location)
+    return '—'
+
+  return location.name_en || location.name_zh || location.code || '—'
+}
+
+function allowedLocationsLabel(p: Product) {
+  if (!p.allowed_locations?.length)
+    return '—'
+
+  return p.allowed_locations
+    .map(loc => loc.name_en || loc.name_zh || loc.code || '')
+    .filter(Boolean)
+    .join(', ')
 }
 
 function statusColor(status: string) {
@@ -630,6 +689,8 @@ function rowStatusChip(p: Product) {
               <th>Code</th>
               <th>Full Name</th>
               <th>Type</th>
+              <th>Home location</th>
+              <th>Allowed locations</th>
               <th>Employment</th>
               <th>Status</th>
               <th>Last check-in / out</th>
@@ -660,6 +721,10 @@ function rowStatusChip(p: Product) {
                 >
                   {{ typeLabel(p.product_type) }}
                 </VChip>
+              </td>
+              <td>{{ locationLabel(p.home_location) }}</td>
+              <td class="col-school">
+                {{ allowedLocationsLabel(p) }}
               </td>
               <td>
                 <span v-if="p.product_type === 'staff'">{{ employmentTypeLabel(p.employment_type) }}</span>
@@ -887,6 +952,49 @@ function rowStatusChip(p: Product) {
             />
           </VCol>
         </VRow>
+
+        <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+          Locations
+        </h4>
+        <VRow class="dense-form-row">
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VSelect
+              v-model="form.home_location_id"
+              :items="locationOptions"
+              item-title="title"
+              item-value="value"
+              label="Home location *"
+              :rules="[v => !!v || 'Required']"
+              :disabled="locationOptions.length === 0"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VSelect
+              v-model="form.allowed_location_ids"
+              :items="locationOptions"
+              item-title="title"
+              item-value="value"
+              label="Allowed scan locations *"
+              multiple
+              chips
+              closable-chips
+              :rules="[v => Array.isArray(v) && v.length > 0 || 'Select at least one']"
+              :disabled="locationOptions.length === 0"
+            />
+          </VCol>
+        </VRow>
+        <p
+          v-if="locationOptions.length === 0"
+          class="text-caption text-warning mb-0"
+        >
+          No active locations found. Create locations first.
+        </p>
 
         <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
           Contact & personal

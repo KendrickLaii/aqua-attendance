@@ -17,16 +17,21 @@ export default function QRDisplayScreen() {
         {user && (
           <>
             <Text style={styles.name}>{user.full_name || user.username}</Text>
-            <View style={[styles.badge, { backgroundColor: user.role === 'student' ? THEME.success : '#16B1FF' }]}>
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: user.role === 'superadmin' ? THEME.warning : '#16B1FF' },
+              ]}
+            >
               <Text style={styles.badgeText}>{user.role}</Text>
             </View>
           </>
         )}
         <Text style={styles.iconBig}>🪪</Text>
-        <Text style={styles.heading}>QR codes are managed per product</Text>
+        <Text style={styles.heading}>產品 QR 請用 Web 管理</Text>
         <Text style={styles.body}>
-          Open the web app's <Text style={styles.bold}>QR Codes</Text> page (admin only) to print
-          or display a product's QR. Before scanning, choose Check In or Check Out on the Scan tab.
+          登入 Web → <Text style={styles.bold}>QR Codes</Text> 列印或顯示學生/職員 QR。
+          手機請用 <Text style={styles.bold}>Scan</Text> 分頁，先選簽到/簽退同地點再掃描。
         </Text>
       </View>
     </View>

@@ -53,23 +53,32 @@ def _next_event_type(product: Product, now: datetime) -> str:
 
 
 async def find_recent_event(
-    db: AsyncSession, *, product_id: uuid.UUID, within_seconds: int
+    db: AsyncSession,
+    *,
+    product_id: uuid.UUID,
+    within_seconds: int,
+    event_type: str | None = None,
 ) -> AttendanceEvent | None:
-    """Return the latest scan event for this product within the debounce window."""
+    """Return the latest scan event for this product within the debounce window.
+
+    When ``event_type`` is set, only debounce duplicate scans of the same action
+    (so check-in followed quickly by check-out still creates two events).
+    """
     if within_seconds <= 0:
         return None
     cutoff = _now() - timedelta(seconds=within_seconds)
+    conditions = [
+        AttendanceEvent.product_id == product_id,
+        AttendanceEvent.recorded_at >= cutoff,
+        AttendanceEvent.event_type.in_(
+            [EventType.check_in.value, EventType.check_out.value]
+        ),
+    ]
+    if event_type in (EventType.check_in.value, EventType.check_out.value):
+        conditions.append(AttendanceEvent.event_type == event_type)
     result = await db.execute(
         select(AttendanceEvent)
-        .where(
-            and_(
-                AttendanceEvent.product_id == product_id,
-                AttendanceEvent.recorded_at >= cutoff,
-                AttendanceEvent.event_type.in_(
-                    [EventType.check_in.value, EventType.check_out.value]
-                ),
-            )
-        )
+        .where(and_(*conditions))
         .order_by(AttendanceEvent.recorded_at.desc())
         .limit(1)
     )
@@ -98,15 +107,25 @@ async def record_scan(
     rapid double-taps at a kiosk do not produce duplicate rows.
     """
     debounce = getattr(settings, "SCAN_DEBOUNCE_SECONDS", 3)
-    recent = await find_recent_event(db, product_id=product.id, within_seconds=debounce)
-    if recent is not None:
-        return recent, False
-
     now = _now()
     if event_type in (EventType.check_in.value, EventType.check_out.value):
         resolved_event_type = event_type
     else:
         resolved_event_type = _next_event_type(product, now)
+
+    debounce_type = (
+        resolved_event_type
+        if event_type in (EventType.check_in.value, EventType.check_out.value)
+        else None
+    )
+    recent = await find_recent_event(
+        db,
+        product_id=product.id,
+        within_seconds=debounce,
+        event_type=debounce_type,
+    )
+    if recent is not None:
+        return recent, False
     loc = _normalize_location(location)
 
     event = AttendanceEvent(
@@ -246,6 +265,45 @@ async def event_day_stats(
                 stats["check_outs_staff"] = count
 
     return stats
+
+
+async def list_events_for_export(
+    db: AsyncSession,
+    *,
+    product_id: uuid.UUID | None = None,
+    product_type: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> tuple[list[AttendanceEvent], bool]:
+    """Load events for CSV export in pages, capped at ``CSV_EXPORT_MAX_ROWS``."""
+    max_rows = settings.CSV_EXPORT_MAX_ROWS
+    page_size = settings.CSV_EXPORT_PAGE_SIZE
+    all_events: list[AttendanceEvent] = []
+    page = 1
+    truncated = False
+
+    while len(all_events) < max_rows:
+        events, total = await list_events(
+            db,
+            product_id=product_id,
+            product_type=product_type,
+            date_from=date_from,
+            date_to=date_to,
+            page=page,
+            page_size=page_size,
+        )
+        if not events:
+            break
+        all_events.extend(events)
+        if len(all_events) >= total:
+            break
+        if len(all_events) >= max_rows:
+            truncated = True
+            all_events = all_events[:max_rows]
+            break
+        page += 1
+
+    return all_events, truncated
 
 
 async def manual_correction(

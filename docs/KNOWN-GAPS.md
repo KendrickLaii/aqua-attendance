@@ -25,7 +25,7 @@ Review backlog from attendance frontend pass — all **P1–P3** items below are
 
 **Ship:** [RELEASE-2026-05.md](./RELEASE-2026-05.md) — pre/post deploy checklist for this release.
 
-**Suggested next (see tables below):** mobile superadmin Scan tab → optional cookie unification / template trim.
+**Suggested next (see tables below):** mobile Phase 3 (history filters) → optional cookie unification / template trim.
 
 ## Technical debt (技術債)
 
@@ -35,9 +35,9 @@ Open items — not blocking ship; track here when planning refactors.
 |------|------|--------|
 | Web | **Dual cookies** | Login mirrors `attendanceAccessToken` → `accessToken` and `attendanceUserData` → `userData` for Materio layout/CASL. Logout clears both (`clearAttendanceSessionCookies`). **Unify:** pick one cookie set; see `login.vue`, `attendanceSession.ts`, `UserProfile.vue`, `guards.ts`. |
 | Web | **Template bloat** | Large AQUA demo tree (`pages/apps/`, `dashboards/`, etc.); prod nav trimmed only. |
-| Mobile | **Scan tab + role types** | Gating uses `admin \| staff`; API uses `admin \| superadmin`. Role TS types mismatch. |
-| Mobile | **Entry / My QR** | Expo router stub; My QR tab placeholder. |
-| API | **Refresh token rotation** | New pair issued without revoking old refresh token. |
+| Mobile | **History filters** | List capped at 50 rows; no date range UI. See [MOBILE-SPRINT.md](./MOBILE-SPRINT.md) M3.1. |
+| Mobile | **My QR tab** | Help placeholder only; product QRs on web. |
+| Mobile | **EAS / store build** | No `eas.json` in repo yet — [MOBILE-RELEASE-CHECKLIST.md](./MOBILE-RELEASE-CHECKLIST.md). |
 | API | **Scan race** | No row lock on product during debounce window. |
 | API | **RBAC tests** | ~24 tests; no full permission matrix. |
 | Data | **Location photo upload** | v1 URL-only; upload + S3/R2 later — [LOCATIONS.md](./LOCATIONS.md). |
@@ -50,7 +50,7 @@ Open items — not blocking ship; track here when planning refactors.
 | ~~Scan authorization~~ | ~~Any Bearer user~~ | **Done** — `AdminOnly` |
 | ~~List attendance~~ | ~~Any Bearer user~~ | **Done** — `AdminOnly` |
 | ~~Default secrets~~ | ~~No startup guard~~ | **Done** — API fails fast when `ENV=production` and keys are weak/placeholder |
-| Refresh tokens | New pair issued without revoking old refresh token | Optional rotation / token family |
+| ~~Refresh tokens~~ | ~~No rotation~~ | **Done** — DB-backed rotation + logout revoke |
 
 ## Web app
 
@@ -72,11 +72,13 @@ Open items — not blocking ship; track here when planning refactors.
 
 | Issue | Notes |
 |-------|--------|
-| Entry point | `package.json` `"main": "expo-router/entry"` but UI lives in `App.tsx`; `app/index.tsx` is a stub |
-| Scan tab gating | Code checks `admin \|\| staff`; API roles are `admin \|\| superadmin` — **superadmin may not see Scan** |
-| My QR tab | Placeholder screen; products use web **QR Codes** for real tokens |
-| Role types | `User.role` typed as `admin \| staff \| student`; does not match API |
-| `.env.example` | Was `API_URL`; must be `EXPO_PUBLIC_API_URL` |
+| ~~Entry point~~ | ~~expo-router entry~~ | **Done** — `expo/AppEntry.js` → `App.tsx` |
+| ~~Scan tab gating~~ | ~~staff role~~ | **Done** — `admin \| superadmin` |
+| ~~Logout~~ | ~~local only~~ | **Done** — `POST /auth/logout` |
+| ~~Scan location~~ | ~~missing~~ | **Done** — location picker + `location_id` (2026-06) |
+| My QR tab | Help placeholder; product QRs on web **QR Codes** |
+| History | No date filter / pagination UI — Phase 3 in [MOBILE-SPRINT.md](./MOBILE-SPRINT.md) |
+| Production build | EAS not configured — [MOBILE-RELEASE-CHECKLIST.md](./MOBILE-RELEASE-CHECKLIST.md) |
 
 ## API / data
 

@@ -1,13 +1,19 @@
-import * as SecureStore from 'expo-secure-store';
 import { apiRequest, setTokens, clearTokens } from './api';
+import { deleteItemAsync, getItemAsync, setItemAsync } from './storage';
+
+export type UserRole = 'admin' | 'superadmin';
 
 export interface User {
   id: string;
   username: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'staff' | 'student';
+  role: UserRole;
   is_active: boolean;
+}
+
+export function canScanAttendance(role: string): boolean {
+  return role === 'admin' || role === 'superadmin';
 }
 
 export async function login(username: string, password: string): Promise<User> {
@@ -17,7 +23,7 @@ export async function login(username: string, password: string): Promise<User> {
   );
   await setTokens(tokens.access_token, tokens.refresh_token);
   const me = await apiRequest<User>('/auth/me');
-  await SecureStore.setItemAsync('userData', JSON.stringify(me));
+  await setItemAsync('userData', JSON.stringify(me));
   return me;
 }
 
@@ -26,11 +32,26 @@ export async function getMe(): Promise<User> {
 }
 
 export async function logout(): Promise<void> {
+  const refreshToken = await getItemAsync('refreshToken');
+  if (refreshToken) {
+    try {
+      await apiRequest('/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    } catch {
+      // still clear local session if API unreachable or token already invalid
+    }
+  }
   await clearTokens();
 }
 
 export async function getSavedUser(): Promise<User | null> {
-  const raw = await SecureStore.getItemAsync('userData');
+  const raw = await getItemAsync('userData');
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+  try {
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
 }

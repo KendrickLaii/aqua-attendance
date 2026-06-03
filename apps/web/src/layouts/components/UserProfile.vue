@@ -77,7 +77,7 @@ const logout = async () => {
     || isAttendanceLoggedIn()
 
   if (onAttendanceApp) {
-    attendanceAuth.logout()
+    await attendanceAuth.logout()
     ability.update([])
     await router.push({ name: 'attendance-login' })
     return

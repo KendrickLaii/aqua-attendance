@@ -29,3 +29,11 @@ export async function attendanceLogin(payload: AttendanceLoginPayload): Promise<
 export async function attendanceGetMe(): Promise<AttendanceUser> {
   return await $attendanceApi('/auth/me')
 }
+
+/** Revoke refresh token on sign-out (idempotent; safe if token already expired). */
+export async function attendanceLogout(refreshToken: string): Promise<void> {
+  await $attendanceApi('/auth/logout', {
+    method: 'POST',
+    body: { refresh_token: refreshToken },
+  })
+}

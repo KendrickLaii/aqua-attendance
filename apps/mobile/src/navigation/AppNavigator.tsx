@@ -16,7 +16,7 @@ interface Props {
 }
 
 export default function AppNavigator({ user, onLogout }: Props) {
-  const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+  const canScan = user.role === 'admin' || user.role === 'superadmin';
 
   return (
     <Tab.Navigator
@@ -40,7 +40,7 @@ export default function AppNavigator({ user, onLogout }: Props) {
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📱</Text>,
         }}
       />
-      {isStaffOrAdmin && (
+      {canScan && (
         <Tab.Screen
           name="Scanner"
           component={ScannerScreen}

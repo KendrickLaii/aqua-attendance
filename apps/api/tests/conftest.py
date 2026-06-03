@@ -1,4 +1,3 @@
-import asyncio
 import uuid
 from typing import AsyncGenerator
 
@@ -9,7 +8,8 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
-from app.main import app
+import app.models  # noqa: F401 — register all tables on Base.metadata
+from app.main import app as fastapi_app
 from app.models.user import User
 from app.services.auth import hash_password
 
@@ -27,13 +27,6 @@ def _set_sqlite_pragma(dbapi_conn, _):
     cursor.close()
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():
     async with engine.begin() as conn:
@@ -48,12 +41,12 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-app.dependency_overrides[get_db] = override_get_db
+fastapi_app.dependency_overrides[get_db] = override_get_db
 
 
 @pytest_asyncio.fixture
 async def client():
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=fastapi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
@@ -88,7 +81,29 @@ async def admin_token(client: AsyncClient) -> str:
 
 
 @pytest_asyncio.fixture
-async def sample_product(client: AsyncClient, admin_token: str) -> dict:
+async def sample_location(client: AsyncClient, admin_token: str) -> dict:
+    resp = await client.post(
+        "/api/locations",
+        json={"name_en": "Test Branch A", "name_zh": "測試分店 A"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+@pytest_asyncio.fixture
+async def sample_location_b(client: AsyncClient, admin_token: str) -> dict:
+    resp = await client.post(
+        "/api/locations",
+        json={"name_en": "Test Branch B", "name_zh": "測試分店 B"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+@pytest_asyncio.fixture
+async def sample_product(client: AsyncClient, admin_token: str, sample_location: dict) -> dict:
     """Create a sample product and return its data."""
     code = f"STU-{uuid.uuid4().hex[:6]}"
     resp = await client.post(
@@ -97,7 +112,16 @@ async def sample_product(client: AsyncClient, admin_token: str) -> dict:
             "code": code,
             "full_name": "Test Student",
             "product_type": "student",
+            "home_location_id": sample_location["id"],
+            "allowed_location_ids": [sample_location["id"]],
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
+    assert resp.status_code == 201
     return resp.json()
+
+
+def scan_body(qr_token: str, product: dict, **extra) -> dict:
+    """Build scan JSON with a whitelisted location_id."""
+    location_id = extra.pop("location_id", product["allowed_location_ids"][0])
+    return {"qr_token": qr_token, "location_id": location_id, **extra}

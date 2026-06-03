@@ -1,12 +1,13 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.deps import DB, AdminOnly, SuperAdminOnly
 from app.models.user import Role, User
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.services.auth import hash_password
+from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -25,7 +26,7 @@ def _forbid_admin_managing_superadmin(actor: User, *, target_role: str | None = 
 
 @router.get("", response_model=list[UserOut])
 async def list_users(
-    _admin: AdminOnly,
+    actor: AdminOnly,
     db: DB,
     response: Response,
     role: str | None = None,
@@ -34,13 +35,26 @@ async def list_users(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[User]:
+    if actor.role != Role.superadmin.value and role == Role.superadmin.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Insufficient permissions to filter by superadmin role.",
+        )
+
     clauses = []
+    if actor.role != Role.superadmin.value:
+        clauses.append(User.role != Role.superadmin.value)
     if role:
         clauses.append(User.role == role)
     if is_active is not None:
         clauses.append(User.is_active == is_active)
     if search:
-        clauses.append(User.username.ilike(f"%{search}%") | User.full_name.ilike(f"%{search}%"))
+        clauses.append(
+            or_(
+                ilike_contains(User.username, search),
+                ilike_contains(User.full_name, search),
+            )
+        )
 
     count_q = select(func.count()).select_from(User)
     if clauses:
@@ -62,7 +76,8 @@ async def create_user(body: UserCreate, actor: AdminOnly, db: DB) -> User:
 
     existing = await db.execute(
         select(User).where(
-            (func.lower(User.username) == body.username.lower()) | (User.email == body.email)
+            (func.lower(User.username) == body.username.lower())
+            | (func.lower(User.email) == body.email.lower())
         )
     )
     if existing.scalar_one_or_none():
@@ -82,11 +97,12 @@ async def create_user(body: UserCreate, actor: AdminOnly, db: DB) -> User:
 
 
 @router.get("/{user_id}", response_model=UserOut)
-async def get_user(user_id: uuid.UUID, _admin: AdminOnly, db: DB) -> User:
+async def get_user(user_id: uuid.UUID, actor: AdminOnly, db: DB) -> User:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _forbid_admin_managing_superadmin(actor, target_role=user.role)
     return user
 
 
@@ -100,6 +116,17 @@ async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db
     update_data = body.model_dump(exclude_unset=True)
     new_role = _role_value(update_data["role"]) if "role" in update_data else None
     _forbid_admin_managing_superadmin(actor, target_role=user.role, new_role=new_role)
+
+    if "email" in update_data:
+        dup = await db.execute(
+            select(User).where(
+                func.lower(User.email) == update_data["email"].lower(),
+                User.id != user_id,
+            )
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Email already exists")
+
     if 'password' in update_data:
         pwd = update_data.pop('password')
         if pwd:
@@ -114,7 +141,12 @@ async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: uuid.UUID, _admin: SuperAdminOnly, db: DB) -> None:
+async def delete_user(user_id: uuid.UUID, actor: SuperAdminOnly, db: DB) -> None:
+    if user_id == actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You cannot delete your own account.",
+        )
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:

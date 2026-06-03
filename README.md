@@ -39,12 +39,45 @@ Check-in / check-out for a cram school (juku). **Staff and students are not logi
 | `deploy/` | Production: Caddy + web + api + db (see `docs/DEPLOY.md`) |
 | `docs/` | Deploy guide, CI/CD explainer |
 
-## Quick start — full stack
+## Daily development (recommended)
+
+**Hybrid mode:** PostgreSQL in Docker; API and web run on your machine (hot reload).
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Your machine                                                 │
+│  Terminal 2: uvicorn (apps/api)  ──▶  localhost:5432        │
+│  Terminal 3: npm run dev (apps/web)                           │
+│  Terminal 1: docker compose up -d db  ──▶  Postgres container │
+└──────────────────────────────────────────────────────────────┘
+```
+
+| Terminal | Directory | Command | When |
+|----------|-----------|---------|------|
+| 1 | repo root | `docker compose up -d db` | After reboot or if DB is not running (`docker compose ps db`) |
+| 2 | `apps/api` | `python -m uvicorn app.main:app --reload` | Every dev session |
+| 3 | `apps/web` | `npm run dev` | Every dev session |
+
+Closing terminals 2–3 stops API/web only. The DB container keeps running until you stop Docker or run `docker compose down`. Data persists in the Docker volume across restarts.
+
+| Task | When |
+|------|------|
+| `alembic upgrade head` | After pulling new migrations |
+| `python seed.py` | Optional — (re)load sample users/products |
+| `npm install` / `pip install -r requirements.txt` | After pulling dependency changes |
+
+**URLs:** API http://localhost:8000/docs · Web http://localhost:5173/attendance/login (Vite may use 5174+ if 5173 is busy)
+
+**Alternative — API in Docker too:** from repo root, `docker compose up -d` (runs db + api; migrations on container start). You still run `npm run dev` separately for the web app.
+
+**Inspect the DB (DBeaver, etc.):** only terminal 1 is needed — connect to `127.0.0.1:5432`, database/user/password `attendance` / `attendance` (defaults from `docker-compose.yml`).
+
+## First-time setup — full stack
 
 ### 1. Database and API
 
 ```bash
-# From repo root
+# From repo root — requires Docker Desktop running
 docker compose up -d db
 
 cd apps/api
@@ -52,19 +85,11 @@ cp .env.example .env
 pip install -r requirements.txt
 alembic upgrade head
 python seed.py
-uvicorn app.main:app --reload 
-or
 python -m uvicorn app.main:app --reload
 ```
 
 API: http://localhost:8000/docs  
 Health: http://localhost:8000/api/health
-
-Or run API in Docker:
-
-```bash
-docker compose up -d
-```
 
 ### 2. Web app
 
@@ -75,7 +100,7 @@ npm install
 npm run dev
 ```
 
-Open: http://localhost:5173/attendance/login (Vite may use 5174+ if 5173 is busy)
+Open: http://localhost:5173/attendance/login
 
 ### 3. Mobile app
 
