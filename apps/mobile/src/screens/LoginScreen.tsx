@@ -13,6 +13,7 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Field from '../components/ui/Field';
 import { useI18n } from '../i18n/I18nContext';
+import { API_URL } from '../services/api';
 import { login, type User } from '../services/auth';
 import { colors, layout, spacing, typography } from '../theme';
 
@@ -83,6 +84,9 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
             secureTextEntry
           />
           <Button label={t('login.signIn')} onPress={handleLogin} loading={loading} />
+          <Text style={styles.apiHint} selectable>
+            API: {API_URL}
+          </Text>
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -126,4 +130,10 @@ const styles = StyleSheet.create({
     borderColor: '#F5C2C0',
   },
   errorText: { color: colors.error, fontSize: 14, textAlign: 'center' },
+  apiHint: {
+    marginTop: spacing.lg,
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
 });

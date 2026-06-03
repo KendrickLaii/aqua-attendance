@@ -1,7 +1,20 @@
 import { Platform } from 'react-native';
 import { deleteItemAsync, getItemAsync, setItemAsync } from './storage';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api').trim();
+
+function networkErrorHint(): string {
+  const u = API_URL.toLowerCase();
+  if (u.includes('localhost') || u.includes('127.0.0.1') || u.includes('10.0.2.2')) {
+    return Platform.OS === 'web'
+      ? 'Browser: set EXPO_PUBLIC_API_URL=http://localhost:8000/api in apps/mobile/.env, then npx expo start -c'
+      : 'Use your PC LAN IP in .env (ipconfig), API: uvicorn --host 0.0.0.0, then npx expo start -c';
+  }
+  if (u.startsWith('http://')) {
+    return 'Cloud API uses HTTP. Use a rebuilt APK (EAS build), not Expo Go. On phone, open the API URL in the browser to test Wi‑Fi.';
+  }
+  return 'Check phone internet, API URL in .env / eas.json, then rebuild or npx expo start -c';
+}
 
 const AUTH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
 
@@ -78,11 +91,7 @@ async function apiRequest<T = unknown>(
   try {
     res = await fetch(`${API_URL}${path}`, { ...options, headers });
   } catch {
-    const hint =
-      Platform.OS === 'web'
-        ? 'Browser: set EXPO_PUBLIC_API_URL=http://localhost:8000/api in apps/mobile/.env, then npx expo start -c'
-        : 'Phone: start API with --host 0.0.0.0 and use your PC LAN IP in .env (ipconfig)';
-    throw new Error(`Cannot reach API at ${API_URL}. ${hint}`);
+    throw new Error(`Cannot reach API at ${API_URL}. ${networkErrorHint()}`);
   }
 
   if (res.status === 401 && !isAuthPath(path)) {

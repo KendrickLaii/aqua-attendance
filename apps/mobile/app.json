@@ -2,7 +2,7 @@
   "expo": {
     "name": "Juku Attendance",
     "slug": "juku-attendance",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,22 @@
         }
       ],
       "expo-asset",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          },
+          "ios": {
+            "infoPlist": {
+              "NSAppTransportSecurity": {
+                "NSAllowsArbitraryLoads": true
+              }
+            }
+          }
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
@@ -28,6 +43,7 @@
         "backgroundColor": "#160D47"
       },
       "package": "com.juku.attendance",
+      "versionCode": 2,
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.CAMERA",
