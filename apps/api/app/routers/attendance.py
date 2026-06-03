@@ -19,6 +19,8 @@ from app.schemas.attendance import (
     AttendanceDayStatsOut,
     AttendanceOut,
     ManualCorrectionRequest,
+    ScanAllowedLocation,
+    ScanLocationNotAllowedDetail,
     ScanPreviewOut,
     ScanPreviewRequest,
     ScanRequest,
@@ -70,6 +72,28 @@ async def _reload_with_product(db: AsyncSession, event_id: uuid.UUID) -> Attenda
     return result.scalar_one()
 
 
+def _raise_location_not_allowed(product: Product) -> None:
+    allowed = [
+        ScanAllowedLocation(
+            id=loc.id,
+            code=loc.code,
+            name_zh=loc.name_zh,
+            name_en=loc.name_en,
+        )
+        for loc in product.scan_locations
+    ]
+    detail = ScanLocationNotAllowedDetail(
+        message="Product is not allowed to scan at this location",
+        product_name=product.full_name,
+        product_code=product.code,
+        allowed_locations=allowed,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=detail.model_dump(mode="json"),
+    )
+
+
 async def _resolve_product_for_scan(
     db: AsyncSession,
     *,
@@ -112,10 +136,7 @@ async def _resolve_product_for_scan(
             detail="location_id is required for scan",
         )
     if not any(loc.id == resolved_location_id for loc in product.scan_locations):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Product is not allowed to scan at this location",
-        )
+        _raise_location_not_allowed(product)
     return product, resolved_location_id, location_name, payload
 
 

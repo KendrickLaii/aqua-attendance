@@ -760,9 +760,34 @@ async def test_scan_rejects_location_not_in_whitelist(
     )
 
     assert resp.status_code == 403
+    body = resp.json()["detail"]
+    assert body["code"] == "location_not_allowed"
+    assert len(body["allowed_locations"]) >= 1
+    allowed_ids = {loc["id"] for loc in body["allowed_locations"]}
+    assert str(sample_product["scan_location_ids"][0]) in allowed_ids
+    assert str(sample_location_b["id"]) not in allowed_ids
 
 
-
+@pytest.mark.asyncio
+async def test_scan_preview_rejects_location_with_allowed_list(
+    client: AsyncClient,
+    admin_token: str,
+    sample_product: dict,
+    sample_location_b: dict,
+):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    qr_token = (
+        await client.get(f"/api/qr/token/{sample_product['id']}", headers=headers)
+    ).json()["qr_token"]
+    resp = await client.post(
+        "/api/attendance/scan/preview",
+        json=scan_body(qr_token, sample_product, location_id=sample_location_b["id"]),
+        headers=headers,
+    )
+    assert resp.status_code == 403
+    detail = resp.json()["detail"]
+    assert detail["product_name"] == sample_product["full_name"]
+    assert len(detail["allowed_locations"]) >= 1
 
 
 @pytest.mark.asyncio

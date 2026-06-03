@@ -37,6 +37,21 @@ class ScanPreviewOut(BaseModel):
     location: str | None = None
 
 
+class ScanAllowedLocation(BaseModel):
+    id: uuid.UUID
+    code: str | None = None
+    name_zh: str
+    name_en: str
+
+
+class ScanLocationNotAllowedDetail(BaseModel):
+    code: str = "location_not_allowed"
+    message: str
+    product_name: str | None = None
+    product_code: str | None = None
+    allowed_locations: list[ScanAllowedLocation] = Field(default_factory=list)
+
+
 class AttendanceOut(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID

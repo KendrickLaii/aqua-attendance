@@ -1,122 +1,129 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import LanguagePicker from '../components/LanguagePicker';
-import { useI18n } from '../i18n/I18nContext';
-import { login, type User } from '../services/auth';
-
-const THEME = { primary: '#160D47', bg: '#F4F5FA', error: '#9d1c24' };
-
-interface Props {
-  onLoginSuccess: (user: User) => void;
-}
-
-export default function LoginScreen({ onLoginSuccess }: Props) {
-  const { t } = useI18n();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  async function handleLogin() {
-    if (!username.trim() || !password.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      const me = await login(username.trim(), password);
-      onLoginSuccess(me);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('login.failed'));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={styles.card}>
-        <LanguagePicker />
-        <Text style={styles.title}>{t('login.title')}</Text>
-        <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <TextInput
-          style={styles.input}
-          placeholder={t('login.username')}
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder={t('login.password')}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>{t('login.signIn')}</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: THEME.bg },
-  card: {
-    width: '85%',
-    maxWidth: 400,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  title: { fontSize: 26, fontWeight: '700', color: THEME.primary, textAlign: 'center', marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 24 },
-  error: { color: THEME.error, textAlign: 'center', marginBottom: 12, fontSize: 13 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    marginBottom: 14,
-    backgroundColor: '#fafafa',
-  },
-  button: {
-    backgroundColor: THEME.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-});
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LanguagePicker from '../components/LanguagePicker';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import Field from '../components/ui/Field';
+import { useI18n } from '../i18n/I18nContext';
+import { login, type User } from '../services/auth';
+import { colors, layout, spacing, typography } from '../theme';
+
+interface Props {
+  onLoginSuccess: (user: User) => void;
+}
+
+export default function LoginScreen({ onLoginSuccess }: Props) {
+  const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleLogin() {
+    if (!username.trim() || !password.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const me = await login(username.trim(), password);
+      onLoginSuccess(me);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('login.failed'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={[styles.hero, { paddingTop: insets.top + spacing.xxl }]}>
+        <Text style={styles.heroTitle}>{t('login.title')}</Text>
+        <Text style={styles.heroSubtitle}>{t('login.subtitle')}</Text>
+      </View>
+
+      <ScrollView
+        style={styles.sheetScroll}
+        contentContainerStyle={[
+          styles.sheetContent,
+          { paddingBottom: insets.bottom + spacing.xxl },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Card style={styles.formCard}>
+          <LanguagePicker />
+          {error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+          <Field
+            label={t('login.username')}
+            placeholder={t('login.username')}
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Field
+            label={t('login.password')}
+            placeholder={t('login.password')}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+          <Button label={t('login.signIn')} onPress={handleLogin} loading={loading} />
+        </Card>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.primary },
+  hero: {
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xxxl + 8,
+    alignItems: 'flex-start',
+  },
+  heroTitle: {
+    ...typography.hero,
+    color: colors.headerText,
+  },
+  heroSubtitle: {
+    ...typography.subtitle,
+    color: 'rgba(255,255,255,0.82)',
+    marginTop: spacing.sm,
+  },
+  sheetScroll: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -20,
+  },
+  sheetContent: {
+    paddingHorizontal: layout.screenPadding,
+    paddingTop: spacing.xxl,
+  },
+  formCard: { width: '100%' },
+  errorBox: {
+    backgroundColor: colors.errorSoft,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: '#F5C2C0',
+  },
+  errorText: { color: colors.error, fontSize: 14, textAlign: 'center' },
+});

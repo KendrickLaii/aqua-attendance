@@ -4,22 +4,33 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Modal,
   Platform,
   FlatList,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { deleteItemAsync, getItemAsync, setItemAsync } from '../services/storage';
+import Button from '../components/ui/Button';
+import { colors, layout, radius, spacing, typography } from '../theme';
 import { previewScanQR, scanQR, type AttendanceEvent, type ScanPreview } from '../services/attendance';
 import { normalizeQrToken } from '../utils/qrToken';
 import { listLocations, locationDisplayName, type LocationItem } from '../services/locations';
 import { useI18n } from '../i18n/I18nContext';
-
-const THEME = { primary: '#160D47', bg: '#F4F5FA', success: '#56CA00', warning: '#FFB400', error: '#9d1c24' };
-
-const SCAN_LOCATION_KEY = 'attendance-scan-location-id';
-const SCAN_EVENT_TYPE_KEY = 'attendance-scan-event-type';
+import {
+  allowedLocationLabel,
+  getLocationNotAllowedDetail,
+  isLocationNotAllowedError,
+  type AllowedLocationRef,
+} from '../utils/scanErrors';
+import {
+  clearDefaultLocation,
+  loadScanPrefs,
+  resolveDefaultLocationId,
+  saveDefaultLocation,
+  type ScanEventType,
+} from '../services/scanPrefs';
 
 type Phase = 'setup' | 'camera';
 
@@ -28,10 +39,12 @@ export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [phase, setPhase] = useState<Phase>('setup');
   const [scanning, setScanning] = useState(true);
-  const [selectedEventType, setSelectedEventType] = useState<'check_in' | 'check_out'>('check_in');
+  const [selectedEventType, setSelectedEventType] = useState<ScanEventType>('check_in');
   const [locations, setLocations] = useState<LocationItem[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(true);
   const [locationsError, setLocationsError] = useState('');
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [hasDefaultLocation, setHasDefaultLocation] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [pendingToken, setPendingToken] = useState<string | null>(null);
@@ -39,6 +52,8 @@ export default function ScannerScreen() {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [result, setResult] = useState<AttendanceEvent | null>(null);
   const [error, setError] = useState('');
+  const [errorAllowedLocations, setErrorAllowedLocations] = useState<AllowedLocationRef[]>([]);
+  const [errorProductName, setErrorProductName] = useState<string | null>(null);
   const [resultVisible, setResultVisible] = useState(false);
   const [processing, setProcessing] = useState(false);
 
@@ -49,8 +64,21 @@ export default function ScannerScreen() {
     setLocationsLoading(true);
     setLocationsError('');
     try {
+      const prefs = await loadScanPrefs();
       const data = await listLocations({ is_active: true, page_size: 200 });
       setLocations(data);
+
+      const validId = resolveDefaultLocationId(
+        prefs.locationId,
+        data.map((l) => l.id),
+      );
+      if (prefs.locationId && !validId) {
+        await clearDefaultLocation();
+      }
+      setSelectedLocationId(validId);
+      setHasDefaultLocation(Boolean(validId));
+      // Check-in/out is chosen each session on the setup screen (not auto-skipped).
+      setSelectedEventType('check_in');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('scanner.loadLocationsFailed');
       setLocationsError(msg);
@@ -60,28 +88,49 @@ export default function ScannerScreen() {
   }, [t]);
 
   useEffect(() => {
-    (async () => {
-      const [storedLoc, storedType] = await Promise.all([
-        getItemAsync(SCAN_LOCATION_KEY),
-        getItemAsync(SCAN_EVENT_TYPE_KEY),
-      ]);
-      if (storedLoc) setSelectedLocationId(storedLoc);
-      if (storedType === 'check_out' || storedType === 'check_in')
-        setSelectedEventType(storedType);
-      await loadLocations();
-    })();
+    void loadLocations();
   }, [loadLocations]);
 
   async function selectLocation(id: string | null) {
     setSelectedLocationId(id);
     setLocationPickerOpen(false);
-    if (id) await setItemAsync(SCAN_LOCATION_KEY, id);
-    else await deleteItemAsync(SCAN_LOCATION_KEY);
+    if (id) {
+      await saveDefaultLocation(id);
+      setHasDefaultLocation(true);
+    } else {
+      await clearDefaultLocation();
+      setHasDefaultLocation(false);
+    }
   }
 
-  async function selectEventType(type: 'check_in' | 'check_out') {
+  async function clearDefault() {
+    await clearDefaultLocation();
+    setSelectedLocationId(null);
+    setHasDefaultLocation(false);
+    setPhase('setup');
+  }
+
+  function selectEventType(type: ScanEventType) {
     setSelectedEventType(type);
-    await setItemAsync(SCAN_EVENT_TYPE_KEY, type);
+  }
+
+  function clearScanError() {
+    setError('');
+    setErrorAllowedLocations([]);
+    setErrorProductName(null);
+  }
+
+  function applyScanError(e: unknown) {
+    if (isLocationNotAllowedError(e)) {
+      const info = getLocationNotAllowedDetail(e);
+      setError(info.message);
+      setErrorAllowedLocations(info.allowedLocations);
+      setErrorProductName(info.productName);
+      return;
+    }
+    setError(e instanceof Error ? e.message : t('scanner.scanFailed'));
+    setErrorAllowedLocations([]);
+    setErrorProductName(null);
   }
 
   function handleStartCamera() {
@@ -91,7 +140,7 @@ export default function ScannerScreen() {
     setPendingToken(null);
     setPendingPreview(null);
     setConfirmVisible(false);
-    setError('');
+    clearScanError();
     setResult(null);
   }
 
@@ -119,7 +168,7 @@ export default function ScannerScreen() {
     setProcessing(true);
     setPendingToken(token);
     setPendingPreview(null);
-    setError('');
+    clearScanError();
 
     try {
       const preview = await previewScanQR(token, {
@@ -128,7 +177,7 @@ export default function ScannerScreen() {
       setPendingPreview(preview);
       setConfirmVisible(true);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('scanner.qrUnrecognized'));
+      applyScanError(e);
       setResultVisible(true);
       setPendingToken(null);
     } finally {
@@ -171,7 +220,7 @@ export default function ScannerScreen() {
   function handleDismissResult() {
     setResultVisible(false);
     setResult(null);
-    setError('');
+    clearScanError();
     if (phase === 'camera') {
       setTimeout(() => setScanning(true), 500);
     }
@@ -225,65 +274,99 @@ export default function ScannerScreen() {
   if (phase === 'setup') {
     return (
       <View style={styles.setupContainer}>
-        <Text style={styles.setupTitle}>掃描設定</Text>
-        <Text style={styles.setupSubtitle}>請先選擇簽到／簽退與地點，再進入相機掃描</Text>
-
-        <Text style={styles.sectionLabel}>類型</Text>
-        <View style={styles.setupActionRow}>
-          <TouchableOpacity
-            style={[styles.setupActionBtn, selectedEventType === 'check_in' && styles.setupActionBtnIn]}
-            onPress={() => selectEventType('check_in')}
-          >
-            <Text
-              style={[
-                styles.setupActionBtnText,
-                selectedEventType === 'check_in' && styles.setupActionBtnTextActive,
-              ]}
-            >
-              {t('scanner.checkIn')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.setupActionBtn, selectedEventType === 'check_out' && styles.setupActionBtnOut]}
-            onPress={() => selectEventType('check_out')}
-          >
-            <Text
-              style={[
-                styles.setupActionBtnText,
-                selectedEventType === 'check_out' && styles.setupActionBtnTextActive,
-              ]}
-            >
-              {t('scanner.checkOut')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.sectionLabel}>{t('scanner.sectionLocation')}</Text>
-        <TouchableOpacity
-          style={styles.setupLocationBtn}
-          onPress={() => setLocationPickerOpen(true)}
-          disabled={locationsLoading}
+        <ScrollView
+          contentContainerStyle={styles.setupScroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.setupLocationValue} numberOfLines={2}>
-            {selectedLocation
-              ? locationDisplayName(selectedLocation)
-              : locationsLoading
-                ? t('common.loading')
-                : t('scanner.selectLocation')}
+          <Text style={styles.setupTitle}>{t('scanner.setupTitle')}</Text>
+          <Text style={styles.setupSubtitle}>
+            {hasDefaultLocation ? t('scanner.setupSubtitleWithDefault') : t('scanner.setupSubtitle')}
           </Text>
-        </TouchableOpacity>
-        {locationsError ? <Text style={styles.setupError}>{locationsError}</Text> : null}
-        {!selectedLocationId && !locationsLoading && !locationsError ? (
-          <Text style={styles.setupHint}>{t('scanner.selectLocationRequired')}</Text>
-        ) : null}
 
-        <TouchableOpacity
-          style={[styles.startBtn, !canStartCamera && styles.startBtnDisabled]}
-          onPress={handleStartCamera}
-          disabled={!canStartCamera}
-        >
-          <Text style={styles.startBtnText}>{t('scanner.startScan')}</Text>
-        </TouchableOpacity>
+          <Text style={styles.sectionLabel}>{t('scanner.sectionType')}</Text>
+          <Text style={styles.sectionHint}>{t('scanner.eventTypeRequired')}</Text>
+          <View style={styles.segmentTrack}>
+            <Pressable
+              style={[styles.segment, selectedEventType === 'check_in' && styles.segmentInActive]}
+              onPress={() => selectEventType('check_in')}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  selectedEventType === 'check_in' && styles.segmentTextActive,
+                ]}
+              >
+                {t('scanner.checkIn')}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.segment, selectedEventType === 'check_out' && styles.segmentOutActive]}
+              onPress={() => selectEventType('check_out')}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  selectedEventType === 'check_out' && styles.segmentTextActive,
+                ]}
+              >
+                {t('scanner.checkOut')}
+              </Text>
+            </Pressable>
+          </View>
+
+          <Text style={[styles.sectionLabel, { marginTop: spacing.xl }]}>
+            {t('scanner.defaultLocationLabel')}
+          </Text>
+          {selectedLocation ? (
+            <View style={styles.defaultBanner}>
+              <Text style={styles.defaultBannerText}>
+                {t('scanner.defaultLocationActive', {
+                  name: locationDisplayName(selectedLocation),
+                })}
+              </Text>
+            </View>
+          ) : null}
+          <Pressable
+            style={styles.setupLocationBtn}
+            onPress={() => setLocationPickerOpen(true)}
+            disabled={locationsLoading}
+          >
+            <View style={styles.locationBtnInner}>
+              <View style={styles.locationBtnText}>
+                <Text style={styles.setupLocationBtnLabel}>
+                  {selectedLocation ? t('scanner.changeDefaultLocation') : t('scanner.selectLocation')}
+                </Text>
+                <Text style={styles.setupLocationValue} numberOfLines={2}>
+                  {selectedLocation
+                    ? locationDisplayName(selectedLocation)
+                    : locationsLoading
+                      ? t('common.loading')
+                      : t('scanner.selectLocation')}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </View>
+          </Pressable>
+          <Text style={styles.defaultHint}>{t('scanner.defaultLocationHint')}</Text>
+          {locationsError ? <Text style={styles.setupError}>{locationsError}</Text> : null}
+          {!selectedLocationId && !locationsLoading && !locationsError ? (
+            <Text style={styles.setupHint}>{t('scanner.selectLocationRequired')}</Text>
+          ) : null}
+          {hasDefaultLocation && selectedLocation ? (
+            <Pressable style={styles.clearDefaultBtn} onPress={clearDefault}>
+              <Text style={styles.clearDefaultText}>{t('scanner.clearDefaultLocation')}</Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+
+        <View style={styles.setupFooter}>
+          <Button
+            label={t('scanner.startScan')}
+            onPress={handleStartCamera}
+            disabled={!canStartCamera}
+          />
+        </View>
 
         {locationPickerModal}
       </View>
@@ -293,7 +376,7 @@ export default function ScannerScreen() {
   if (!permission) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={THEME.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -348,11 +431,11 @@ export default function ScannerScreen() {
       <Modal visible={confirmVisible} transparent animationType="fade">
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
-            <Text style={styles.confirmTitle}>確認{eventLabel}？</Text>
+            <Text style={styles.confirmTitle}>{t('scanner.confirmTitle', { action: eventLabel })}</Text>
             {pendingPreview ? (
               <>
                 <Text style={styles.confirmName}>
-                  {pendingPreview.product_name || pendingPreview.product_code || '—'}
+                  {pendingPreview.product_name || pendingPreview.product_code || t('common.dash')}
                 </Text>
                 {pendingPreview.product_type ? (
                   <Text style={styles.confirmType}>
@@ -360,14 +443,16 @@ export default function ScannerScreen() {
                   </Text>
                 ) : null}
                 {pendingPreview.product_code ? (
-                  <Text style={styles.confirmCode}>編號：{pendingPreview.product_code}</Text>
+                  <Text style={styles.confirmCode}>
+                    {t('scanner.codeLabel', { code: pendingPreview.product_code })}
+                  </Text>
                 ) : null}
               </>
             ) : null}
-            <Text style={styles.confirmBody}>即將記錄「{eventLabel}」</Text>
+            <Text style={styles.confirmBody}>{t('scanner.confirmRecord', { action: eventLabel })}</Text>
             {selectedLocation ? (
               <Text style={styles.confirmDetail}>
-                地點：{locationDisplayName(selectedLocation)}
+                {t('scanner.locationLabel', { name: locationDisplayName(selectedLocation) })}
               </Text>
             ) : null}
             <View style={styles.confirmRow}>
@@ -376,7 +461,7 @@ export default function ScannerScreen() {
                 onPress={handleCancelConfirm}
                 disabled={processing}
               >
-                <Text style={styles.cancelBtnText}>取消</Text>
+                <Text style={styles.cancelBtnText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmBtn, selectedEventType === 'check_in' ? styles.confirmBtnIn : styles.confirmBtnOut]}
@@ -386,7 +471,7 @@ export default function ScannerScreen() {
                 {processing ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.confirmBtnText}>確認{eventLabel}</Text>
+                  <Text style={styles.confirmBtnText}>{t('scanner.confirmAction', { action: eventLabel })}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -399,14 +484,24 @@ export default function ScannerScreen() {
           <View style={styles.modalCard}>
             {result ? (
               <>
-                <Text
+                <View
                   style={[
-                    styles.resultIcon,
-                    { color: result.event_type === 'check_in' ? THEME.success : THEME.warning },
+                    styles.resultIconWrap,
+                    {
+                      backgroundColor:
+                        result.event_type === 'check_in' ? colors.checkInSoft : colors.checkOutSoft,
+                    },
                   ]}
                 >
-                  {result.event_type === 'check_in' ? '✓' : '↩'}
-                </Text>
+                  <Text
+                    style={[
+                      styles.resultGlyph,
+                      { color: result.event_type === 'check_in' ? colors.checkIn : colors.checkOut },
+                    ]}
+                  >
+                    {result.event_type === 'check_in' ? '✓' : '↩'}
+                  </Text>
+                </View>
                 <Text style={styles.resultType}>
                   {result.event_type === 'check_in'
                     ? t('scanner.checkInSuccess')
@@ -436,9 +531,29 @@ export default function ScannerScreen() {
               </>
             ) : error ? (
               <>
-                <Text style={[styles.resultIcon, { color: THEME.error }]}>✗</Text>
-                <Text style={styles.resultType}>{t('scanner.scanFailed')}</Text>
+                <View style={[styles.resultIconWrap, { backgroundColor: colors.errorSoft }]}>
+                  <Text style={[styles.resultGlyph, { color: colors.error }]}>✕</Text>
+                </View>
+                <Text style={styles.resultType}>
+                  {errorAllowedLocations.length > 0
+                    ? t('scanner.locationNotAllowedTitle')
+                    : t('scanner.scanFailed')}
+                </Text>
                 <Text style={styles.errorMsg}>{error}</Text>
+                {errorAllowedLocations.length > 0 ? (
+                  <View style={styles.allowedBox}>
+                    <Text style={styles.allowedTitle}>
+                      {errorProductName
+                        ? t('scanner.allowedLocationsForProduct', { name: errorProductName })
+                        : t('scanner.allowedLocationsTitle')}
+                    </Text>
+                    {errorAllowedLocations.map((loc) => (
+                      <Text key={loc.id} style={styles.allowedItem}>
+                        • {allowedLocationLabel(loc)}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
               </>
             ) : null}
             <TouchableOpacity style={styles.okBtn} onPress={handleDismissResult}>
@@ -454,51 +569,78 @@ export default function ScannerScreen() {
 }
 
 const styles = StyleSheet.create({
-  setupContainer: {
-    flex: 1,
-    backgroundColor: THEME.bg,
-    padding: 24,
-    paddingTop: Platform.OS === 'ios' ? 56 : 24,
+  setupContainer: { flex: 1, backgroundColor: colors.background },
+  setupScroll: {
+    padding: layout.screenPadding,
+    paddingBottom: spacing.xl,
   },
-  setupTitle: { fontSize: 24, fontWeight: '700', color: THEME.primary, marginBottom: 8 },
-  setupSubtitle: { fontSize: 14, color: '#666', marginBottom: 28 },
-  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#888', marginBottom: 8, marginTop: 8 },
-  setupActionRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
-  setupActionBtn: {
+  setupFooter: {
+    padding: layout.screenPadding,
+    paddingTop: spacing.md,
+    paddingBottom: Platform.OS === 'ios' ? spacing.xxl : spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  setupTitle: { ...typography.hero, fontSize: 22, marginBottom: spacing.sm },
+  setupSubtitle: { ...typography.subtitle, marginBottom: spacing.xxl },
+  sectionLabel: { ...typography.label, marginBottom: spacing.sm },
+  sectionHint: { ...typography.caption, marginBottom: spacing.md },
+  segmentTrack: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  segment: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#ccc',
-    backgroundColor: '#fff',
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  setupActionBtnIn: { borderColor: THEME.success, backgroundColor: THEME.success },
-  setupActionBtnOut: { borderColor: THEME.warning, backgroundColor: THEME.warning },
-  setupActionBtnText: { fontSize: 17, fontWeight: '600', color: THEME.primary },
-  setupActionBtnTextActive: { color: '#fff' },
-  setupLocationBtn: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#ddd',
-    marginBottom: 8,
+    borderColor: colors.border,
   },
-  setupLocationValue: { fontSize: 16, fontWeight: '600', color: THEME.primary },
-  setupError: { color: THEME.error, fontSize: 13, marginBottom: 8 },
-  setupHint: { color: '#888', fontSize: 13, marginBottom: 16 },
-  startBtn: {
-    marginTop: 32,
-    backgroundColor: THEME.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
+  segmentInActive: { backgroundColor: colors.checkIn, borderColor: colors.checkIn },
+  segmentOutActive: { backgroundColor: colors.checkOut, borderColor: colors.checkOut },
+  segmentText: { fontSize: 15, fontWeight: '600', color: colors.text },
+  segmentTextActive: { color: '#fff' },
+  defaultBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  startBtnDisabled: { opacity: 0.45 },
-  startBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  defaultBannerText: { ...typography.bodyStrong, color: colors.primary, flex: 1 },
+  defaultHint: { ...typography.caption, marginBottom: spacing.md, lineHeight: 18 },
+  setupLocationBtn: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: spacing.sm,
+  },
+  locationBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  locationBtnText: { flex: 1 },
+  chevron: { fontSize: 22, color: colors.textMuted, fontWeight: '300' },
+  setupLocationBtnLabel: { ...typography.label, marginBottom: spacing.xs, textTransform: 'none' as const, letterSpacing: 0 },
+  setupLocationValue: { ...typography.bodyStrong },
+  clearDefaultBtn: { alignSelf: 'flex-start', marginBottom: spacing.sm, paddingVertical: spacing.xs },
+  clearDefaultText: { fontSize: 13, color: colors.error, fontWeight: '600' },
+  setupError: { color: colors.error, fontSize: 13, marginBottom: spacing.sm },
+  setupHint: { ...typography.caption, marginBottom: spacing.lg },
   container: { flex: 1, backgroundColor: '#000' },
-  centered: { flex: 1, backgroundColor: THEME.bg, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  centered: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: layout.screenPadding },
   overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
   cameraTopBar: {
     position: 'absolute',
@@ -510,38 +652,44 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   backBtn: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 10,
+    backgroundColor: colors.cameraOverlay,
+    borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   backBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   cameraSummary: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 10,
+    backgroundColor: colors.cameraOverlay,
+    borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   cameraSummaryLine: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  scanFrame: { width: 260, height: 260, borderWidth: 3, borderColor: '#fff', borderRadius: 20, opacity: 0.7 },
+  scanFrame: {
+    width: 248,
+    height: 248,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderRadius: radius.xl,
+  },
   hint: { color: '#fff', fontSize: 14, marginTop: 20, textAlign: 'center', paddingHorizontal: 24 },
   backLink: { position: 'absolute', top: Platform.OS === 'ios' ? 56 : 24, left: 24 },
-  backLinkText: { color: THEME.primary, fontSize: 15, fontWeight: '600' },
-  permText: { color: THEME.primary, fontSize: 16, textAlign: 'center', marginBottom: 16 },
-  permBtn: { backgroundColor: THEME.primary, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
+  backLinkText: { color: colors.primary, fontSize: 15, fontWeight: '600' },
+  permText: { color: colors.primary, fontSize: 16, textAlign: 'center', marginBottom: 16 },
+  permBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
   permBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   modalBg: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalCard: {
-    width: '85%',
-    maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
+    width: '88%',
+    maxWidth: 380,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.xxl,
     alignItems: 'center',
   },
   pickerCard: { maxHeight: '70%', width: '90%' },
-  pickerTitle: { fontSize: 18, fontWeight: '700', color: THEME.primary, marginBottom: 12, alignSelf: 'flex-start' },
+  pickerTitle: { fontSize: 18, fontWeight: '700', color: colors.primary, marginBottom: 12, alignSelf: 'flex-start' },
   pickerRow: {
     paddingVertical: 12,
     paddingHorizontal: 8,
@@ -549,13 +697,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
     width: '100%',
   },
-  pickerRowSelected: { backgroundColor: '#f0eeff' },
+  pickerRowSelected: { backgroundColor: colors.primaryMuted },
   pickerRowText: { fontSize: 16, color: '#333' },
   pickerRowSub: { fontSize: 12, color: '#888', marginTop: 2 },
   pickerEmpty: { textAlign: 'center', color: '#999', padding: 16 },
-  confirmTitle: { fontSize: 22, fontWeight: '700', color: THEME.primary, marginBottom: 12 },
+  confirmTitle: { fontSize: 22, fontWeight: '700', color: colors.primary, marginBottom: 12 },
   confirmName: { fontSize: 20, fontWeight: '700', color: '#333', textAlign: 'center', marginBottom: 4 },
-  confirmType: { fontSize: 15, color: THEME.primary, fontWeight: '600', marginBottom: 4 },
+  confirmType: { fontSize: 15, color: colors.primary, fontWeight: '600', marginBottom: 4 },
   confirmCode: { fontSize: 13, color: '#888', marginBottom: 12 },
   confirmBody: { fontSize: 15, color: '#555', textAlign: 'center', marginBottom: 8 },
   confirmDetail: { fontSize: 14, color: '#555', marginBottom: 24, textAlign: 'center' },
@@ -577,16 +725,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 44,
   },
-  confirmBtnIn: { backgroundColor: THEME.success },
-  confirmBtnOut: { backgroundColor: THEME.warning },
+  confirmBtnIn: { backgroundColor: colors.checkIn },
+  confirmBtnOut: { backgroundColor: colors.checkOut },
   confirmBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  resultIcon: { fontSize: 72, fontWeight: '700', marginBottom: 8 },
-  resultType: { fontSize: 22, fontWeight: '700', color: THEME.primary, marginBottom: 8 },
+  resultIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  resultGlyph: { fontSize: 36, fontWeight: '700' },
+  resultType: { fontSize: 22, fontWeight: '700', color: colors.primary, marginBottom: 8 },
   resultName: { fontSize: 18, color: '#333', marginBottom: 4 },
   resultLocation: { fontSize: 14, color: '#555', marginBottom: 6 },
   resultStatus: { fontSize: 13, color: '#555', marginBottom: 6, fontWeight: '600' },
   resultTime: { fontSize: 14, color: '#888', marginBottom: 20 },
-  errorMsg: { fontSize: 14, color: THEME.error, textAlign: 'center', marginBottom: 20 },
-  okBtn: { backgroundColor: THEME.primary, borderRadius: 10, paddingHorizontal: 32, paddingVertical: 12 },
+  errorMsg: { fontSize: 14, color: colors.error, textAlign: 'center', marginBottom: 12 },
+  allowedBox: {
+    width: '100%',
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  allowedTitle: { fontSize: 13, fontWeight: '600', color: colors.primary, marginBottom: 8 },
+  allowedItem: { fontSize: 14, color: '#444', marginBottom: 4, textAlign: 'left' },
+  okBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 32, paddingVertical: 12 },
   okBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
 });

@@ -31,14 +31,36 @@ async function clearTokens(): Promise<void> {
   await deleteItemAsync('userData');
 }
 
-async function parseErrorBody(res: Response): Promise<string> {
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(message: string, status: number, detail?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+async function parseErrorBody(res: Response): Promise<{ message: string; detail: unknown }> {
   const err = await res.json().catch(() => null);
-  if (!err) return res.statusText || 'Request failed';
+  if (!err) {
+    return { message: res.statusText || 'Request failed', detail: undefined };
+  }
   const detail = err.detail;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail))
-    return detail.map((x: { msg?: string }) => x.msg || String(x)).join('; ');
-  return 'Request failed';
+  if (typeof detail === 'string') return { message: detail, detail };
+  if (Array.isArray(detail)) {
+    return {
+      message: detail.map((x: { msg?: string }) => x.msg || String(x)).join('; '),
+      detail,
+    };
+  }
+  if (typeof detail === 'object' && detail !== null) {
+    const obj = detail as { message?: string };
+    if (typeof obj.message === 'string') return { message: obj.message, detail };
+  }
+  return { message: 'Request failed', detail };
 }
 
 async function apiRequest<T = unknown>(
@@ -77,7 +99,10 @@ async function apiRequest<T = unknown>(
           await setTokens(data.access_token, data.refresh_token);
           headers.Authorization = `Bearer ${data.access_token}`;
           const retry = await fetch(`${API_URL}${path}`, { ...options, headers });
-          if (!retry.ok) throw new Error(await parseErrorBody(retry));
+          if (!retry.ok) {
+            const parsed = await parseErrorBody(retry);
+            throw new ApiError(`HTTP ${retry.status}: ${parsed.message}`, retry.status, parsed.detail);
+          }
           if (retry.status === 204) return undefined as T;
           return retry.json();
         }
@@ -90,8 +115,8 @@ async function apiRequest<T = unknown>(
   }
 
   if (!res.ok) {
-    const detail = await parseErrorBody(res);
-    throw new Error(`HTTP ${res.status}: ${detail}`);
+    const parsed = await parseErrorBody(res);
+    throw new ApiError(`HTTP ${res.status}: ${parsed.message}`, res.status, parsed.detail);
   }
 
   if (res.status === 204) return undefined as T;

@@ -50,7 +50,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   if (!value) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F5FA' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F4F8' }}>
         <ActivityIndicator size="large" color="#160D47" />
       </View>
     );

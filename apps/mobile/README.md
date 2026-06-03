@@ -81,7 +81,7 @@ The app loads from **`App.tsx`** via `"main": "expo/AppEntry.js"` in `package.js
 1. Start API + DB + seed: `admin` / `admin123`, products `STU-001`, etc.
 2. Web: create an active **location** (English name required).
 3. Web: **QR Codes** → **STU-001** → show QR on another screen.
-4. Mobile: log in → **Scan** → select location → 簽到/簽退 → scan QR.
+4. Mobile: log in → **Scan** → pick a **default location** (saved on device) → choose **簽到/簽退** each time → **Start scanning** → scan QR.
 5. Confirm modal shows name + location.
 6. **History** → event appears with location.
 7. **Logout** → server refresh token revoked.
