@@ -26,6 +26,28 @@ export async function getQRToken(productId: string): Promise<QRPayload> {
   return apiRequest(`/qr/token/${productId}`);
 }
 
+export interface ScanPreview {
+  product_id: string;
+  product_code: string | null;
+  product_name: string | null;
+  product_type: string | null;
+  attendance_status: 'checked_in' | 'checked_out' | null;
+  location: string | null;
+}
+
+export async function previewScanQR(
+  qrToken: string,
+  options?: { locationId?: string },
+): Promise<ScanPreview> {
+  return apiRequest('/attendance/scan/preview', {
+    method: 'POST',
+    body: JSON.stringify({
+      qr_token: qrToken,
+      location_id: options?.locationId || undefined,
+    }),
+  });
+}
+
 export async function scanQR(
   qrToken: string,
   options?: {

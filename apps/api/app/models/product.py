@@ -7,8 +7,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-product_allowed_locations = Table(
-    "product_allowed_locations",
+product_scan_locations = Table(
+    "product_scan_locations",
     Base.metadata,
     Column("product_id", Uuid, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True),
     Column("location_id", Uuid, ForeignKey("locations.id", ondelete="RESTRICT"), primary_key=True),
@@ -45,7 +45,7 @@ class Product(Base):
         String(20), nullable=False, default=AttendanceStatus.checked_out.value
     )
     qr_token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    home_location_id: Mapped[uuid.UUID] = mapped_column(
+    registered_location_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -83,10 +83,12 @@ class Product(Base):
     )
 
     attendance_events = relationship("AttendanceEvent", back_populates="product", lazy="select")
-    home_location = relationship("Location", foreign_keys=[home_location_id], back_populates="home_products")
-    allowed_locations = relationship(
+    registered_location = relationship(
+        "Location", foreign_keys=[registered_location_id], back_populates="registered_products"
+    )
+    scan_locations = relationship(
         "Location",
-        secondary=product_allowed_locations,
+        secondary=product_scan_locations,
         lazy="selectin",
     )
     last_event_location_ref = relationship(

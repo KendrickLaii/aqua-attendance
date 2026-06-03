@@ -39,12 +39,12 @@ async def fetch_active_locations(
     return locations
 
 
-def validate_allowed_location_ids(allowed_location_ids: list[uuid.UUID]) -> list[uuid.UUID]:
-    unique_ids = list(dict.fromkeys(allowed_location_ids))
+def validate_scan_location_ids(scan_location_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    unique_ids = list(dict.fromkeys(scan_location_ids))
     if not unique_ids:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="allowed_location_ids must contain at least one location",
+            detail="scan_location_ids must contain at least one location",
         )
     return unique_ids
 
@@ -52,22 +52,22 @@ def validate_allowed_location_ids(allowed_location_ids: list[uuid.UUID]) -> list
 async def resolve_product_locations(
     db: AsyncSession,
     *,
-    home_location_id: uuid.UUID,
-    allowed_location_ids: list[uuid.UUID],
+    registered_location_id: uuid.UUID,
+    scan_location_ids: list[uuid.UUID],
 ) -> tuple[Location, list[Location]]:
-    allowed_ids = validate_allowed_location_ids(allowed_location_ids)
-    lookup_ids = list(dict.fromkeys([home_location_id, *allowed_ids]))
+    scan_ids = validate_scan_location_ids(scan_location_ids)
+    lookup_ids = list(dict.fromkeys([registered_location_id, *scan_ids]))
     location_map = await fetch_active_locations(db, lookup_ids)
-    home = location_map[home_location_id]
-    allowed = [location_map[loc_id] for loc_id in allowed_ids]
-    return home, allowed
+    registered = location_map[registered_location_id]
+    scan_locs = [location_map[loc_id] for loc_id in scan_ids]
+    return registered, scan_locs
 
 
-async def replace_allowed_locations(
+async def replace_scan_locations(
     product: Product,
-    allowed: list[Location],
+    scan_locations: list[Location],
 ) -> None:
-    product.allowed_locations = allowed
+    product.scan_locations = scan_locations
 
 
 async def load_product_with_locations(
@@ -77,8 +77,8 @@ async def load_product_with_locations(
     result = await db.execute(
         select(Product)
         .options(
-            selectinload(Product.home_location),
-            selectinload(Product.allowed_locations),
+            selectinload(Product.registered_location),
+            selectinload(Product.scan_locations),
         )
         .where(Product.id == product_id)
     )
@@ -88,4 +88,4 @@ async def load_product_with_locations(
 def product_allows_location(product: Product, location_id: uuid.UUID | None) -> bool:
     if location_id is None:
         return False
-    return any(loc.id == location_id for loc in product.allowed_locations)
+    return any(loc.id == location_id for loc in product.scan_locations)

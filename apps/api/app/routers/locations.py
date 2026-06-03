@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, select
 from app.deps import AdminOnly, DB
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
-from app.models.product import Product, product_allowed_locations
+from app.models.product import Product, product_scan_locations
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
 from app.utils.search import ilike_contains
 
@@ -122,17 +122,19 @@ async def delete_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
 
     used_in_events = await db.execute(select(AttendanceEvent.id).where(AttendanceEvent.location_id == location_id).limit(1))
     used_in_products = await db.execute(select(Product.id).where(Product.last_event_location_id == location_id).limit(1))
-    used_as_home = await db.execute(select(Product.id).where(Product.home_location_id == location_id).limit(1))
-    used_in_allowed = await db.execute(
-        select(product_allowed_locations.c.product_id)
-        .where(product_allowed_locations.c.location_id == location_id)
+    used_as_registered = await db.execute(
+        select(Product.id).where(Product.registered_location_id == location_id).limit(1)
+    )
+    used_in_scan = await db.execute(
+        select(product_scan_locations.c.product_id)
+        .where(product_scan_locations.c.location_id == location_id)
         .limit(1)
     )
     if (
         used_in_events.scalar_one_or_none()
         or used_in_products.scalar_one_or_none()
-        or used_as_home.scalar_one_or_none()
-        or used_in_allowed.first()
+        or used_as_registered.scalar_one_or_none()
+        or used_in_scan.first()
     ):
         raise HTTPException(
             status_code=409,

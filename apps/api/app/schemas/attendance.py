@@ -23,6 +23,20 @@ class ScanRequest(BaseModel):
     )
 
 
+class ScanPreviewRequest(BaseModel):
+    qr_token: str
+    location_id: uuid.UUID | None = None
+
+
+class ScanPreviewOut(BaseModel):
+    product_id: uuid.UUID
+    product_code: str | None = None
+    product_name: str | None = None
+    product_type: str | None = None
+    attendance_status: str | None = None
+    location: str | None = None
+
+
 class AttendanceOut(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID

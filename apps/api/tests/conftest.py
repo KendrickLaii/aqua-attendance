@@ -112,8 +112,8 @@ async def sample_product(client: AsyncClient, admin_token: str, sample_location:
             "code": code,
             "full_name": "Test Student",
             "product_type": "student",
-            "home_location_id": sample_location["id"],
-            "allowed_location_ids": [sample_location["id"]],
+            "registered_location_id": sample_location["id"],
+            "scan_location_ids": [sample_location["id"]],
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -123,5 +123,5 @@ async def sample_product(client: AsyncClient, admin_token: str, sample_location:
 
 def scan_body(qr_token: str, product: dict, **extra) -> dict:
     """Build scan JSON with a whitelisted location_id."""
-    location_id = extra.pop("location_id", product["allowed_location_ids"][0])
+    location_id = extra.pop("location_id", product["scan_location_ids"][0])
     return {"qr_token": qr_token, "location_id": location_id, **extra}

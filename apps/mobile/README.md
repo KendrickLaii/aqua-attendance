@@ -20,6 +20,12 @@ Pressing **`w`** opens the app in a **browser**. Tokens use `localStorage` on we
 
 For **QR camera scanning**, use the **Android emulator** (`a`) or a **physical device** — not the browser.
 
+## Languages
+
+The app supports **English** and **繁體中文**. Use the **EN / 繁中** switch on the login screen or in the top bar after sign-in. Your choice is saved on the device; first launch follows the phone language (Chinese → 繁中, otherwise English).
+
+Translation files: `src/i18n/locales/en.ts`, `src/i18n/locales/zh-Hant.ts`.
+
 ## Quick start
 
 ```bash

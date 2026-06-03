@@ -5,6 +5,13 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 const AUTH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
 
+let onUnauthorized: (() => void) | null = null;
+
+/** Register handler when refresh fails (e.g. return user to login). */
+export function setOnUnauthorized(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
 function isAuthPath(path: string): boolean {
   return AUTH_PATHS.some((p) => path.startsWith(p));
 }
@@ -78,7 +85,8 @@ async function apiRequest<T = unknown>(
         await clearTokens();
       }
     }
-    throw new Error('Unauthorized');
+    onUnauthorized?.();
+    throw new Error('Session expired. Please sign in again.');
   }
 
   if (!res.ok) {

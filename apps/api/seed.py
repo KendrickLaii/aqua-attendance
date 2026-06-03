@@ -108,21 +108,21 @@ async def main() -> None:
         for p in SEED_PRODUCTS:
             allowed_codes = p.pop("allowed_codes")
             home_code = p.pop("home_code")
-            home_location = location_by_code[home_code]
-            allowed_locations = [location_by_code[code] for code in allowed_codes]
+            registered_location = location_by_code[home_code]
+            scan_locations = [location_by_code[code] for code in allowed_codes]
 
             existing = await db.execute(select(Product).where(Product.code == p["code"]))
             product = existing.scalar_one_or_none()
             if product:
                 for field, value in p.items():
                     setattr(product, field, value)
-                product.home_location_id = home_location.id
-                product.allowed_locations = allowed_locations
+                product.registered_location_id = registered_location.id
+                product.scan_locations = scan_locations
                 print(f"  updated {p['code']} ({p['product_type']})")
                 continue
 
-            product = Product(**p, home_location_id=home_location.id)
-            product.allowed_locations = allowed_locations
+            product = Product(**p, registered_location_id=registered_location.id)
+            product.scan_locations = scan_locations
             db.add(product)
             print(f"  created {p['code']} - {p['full_name']} ({p['product_type']})")
 

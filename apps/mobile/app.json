@@ -4,6 +4,7 @@
     "slug": "juku-attendance",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "backgroundColor": "#160D47"
@@ -15,7 +16,8 @@
           "cameraPermission": "Allow Juku Attendance to use the camera for QR code scanning."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-localization"
     ],
     "ios": {
       "supportsTablet": true,

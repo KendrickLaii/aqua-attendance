@@ -56,8 +56,8 @@ const form = reactive({
   guardian2_phone: '',
   whatsapp_enabled: true,
   remarks: '',
-  home_location_id: '' as string,
-  allowed_location_ids: [] as string[],
+  registered_location_id: '' as string,
+  scan_location_ids: [] as string[],
 })
 
 const saving = ref(false)
@@ -308,8 +308,8 @@ function openCreate() {
     guardian2_phone: '',
     whatsapp_enabled: true,
     remarks: '',
-    home_location_id: locations.value[0]?.id ?? '',
-    allowed_location_ids: locations.value[0] ? [locations.value[0].id] : [],
+    registered_location_id: locations.value[0]?.id ?? '',
+    scan_location_ids: locations.value[0] ? [locations.value[0].id] : [],
   })
   dialogOpen.value = true
   nextTick(() => productFormRef.value?.resetValidation())
@@ -343,8 +343,8 @@ function openEdit(p: Product) {
     guardian2_phone: p.guardian2_phone ?? '',
     whatsapp_enabled: p.whatsapp_enabled,
     remarks: p.remarks ?? '',
-    home_location_id: p.home_location_id,
-    allowed_location_ids: [...p.allowed_location_ids],
+    registered_location_id: p.registered_location_id,
+    scan_location_ids: [...p.scan_location_ids],
   })
   dialogOpen.value = true
   nextTick(() => productFormRef.value?.resetValidation())
@@ -365,14 +365,14 @@ async function handleSave() {
     return
   }
 
-  if (!form.home_location_id) {
-    saveError.value = 'Home location is required'
+  if (!form.registered_location_id) {
+    saveError.value = 'Registered location is required'
 
     return
   }
 
-  if (form.allowed_location_ids.length === 0) {
-    saveError.value = 'Select at least one allowed scan location'
+  if (form.scan_location_ids.length === 0) {
+    saveError.value = 'Select at least one scan location'
 
     return
   }
@@ -409,8 +409,8 @@ async function handleSave() {
       guardian2_phone: normalizeString(form.guardian2_phone),
       whatsapp_enabled: form.whatsapp_enabled,
       remarks: normalizeString(form.remarks),
-      home_location_id: form.home_location_id,
-      allowed_location_ids: [...form.allowed_location_ids],
+      registered_location_id: form.registered_location_id,
+      scan_location_ids: [...form.scan_location_ids],
     }
 
     if (editingProduct.value)
@@ -482,18 +482,18 @@ function employmentTypeLabel(value: string | null | undefined) {
   return '—'
 }
 
-function locationLabel(location: Product['home_location']) {
+function locationLabel(location: Product['registered_location']) {
   if (!location)
     return '—'
 
   return location.name_en || location.name_zh || location.code || '—'
 }
 
-function allowedLocationsLabel(p: Product) {
-  if (!p.allowed_locations?.length)
+function scanLocationsLabel(p: Product) {
+  if (!p.scan_locations?.length)
     return '—'
 
-  return p.allowed_locations
+  return p.scan_locations
     .map(loc => loc.name_en || loc.name_zh || loc.code || '')
     .filter(Boolean)
     .join(', ')
@@ -689,8 +689,8 @@ function rowStatusChip(p: Product) {
               <th>Code</th>
               <th>Full Name</th>
               <th>Type</th>
-              <th>Home location</th>
-              <th>Allowed locations</th>
+              <th>Registered location</th>
+              <th>Scan locations</th>
               <th>Employment</th>
               <th>Status</th>
               <th>Last check-in / out</th>
@@ -722,9 +722,9 @@ function rowStatusChip(p: Product) {
                   {{ typeLabel(p.product_type) }}
                 </VChip>
               </td>
-              <td>{{ locationLabel(p.home_location) }}</td>
+              <td>{{ locationLabel(p.registered_location) }}</td>
               <td class="col-school">
-                {{ allowedLocationsLabel(p) }}
+                {{ scanLocationsLabel(p) }}
               </td>
               <td>
                 <span v-if="p.product_type === 'staff'">{{ employmentTypeLabel(p.employment_type) }}</span>
@@ -962,11 +962,11 @@ function rowStatusChip(p: Product) {
             sm="6"
           >
             <VSelect
-              v-model="form.home_location_id"
+              v-model="form.registered_location_id"
               :items="locationOptions"
               item-title="title"
               item-value="value"
-              label="Home location *"
+              label="Registered location *"
               :rules="[v => !!v || 'Required']"
               :disabled="locationOptions.length === 0"
             />
@@ -976,11 +976,12 @@ function rowStatusChip(p: Product) {
             sm="6"
           >
             <VSelect
-              v-model="form.allowed_location_ids"
+              v-model="form.scan_location_ids"
               :items="locationOptions"
               item-title="title"
               item-value="value"
-              label="Allowed scan locations *"
+              label="Scan locations *"
+              hint="Check-in and check-out at these locations"
               multiple
               chips
               closable-chips

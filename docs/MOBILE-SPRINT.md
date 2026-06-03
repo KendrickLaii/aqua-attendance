@@ -51,11 +51,15 @@ Attendance Expo app (`apps/mobile`). Tracks work by phase; update status when it
 | ID | Task | Priority | Notes |
 |----|------|----------|-------|
 | M3.1 | History: date filter + pagination | P2 | Use `date_from` / `date_to`, `X-Total-Count` |
-| M3.2 | History: pull-to-refresh error toast | P3 | Show message instead of `console.warn` only |
-| M3.3 | My QR tab: remove or rename to help | P3 | Products use **Web → QR Codes** |
-| M3.4 | Login: show API connection hint on failure | P3 | LAN IP / `EXPO_PUBLIC_API_URL` |
+| M3.2 | History: pull-to-refresh error toast | P3 | **Done** — error banner + 重試 |
+| M3.3 | My QR tab: remove or rename to help | P3 | **Done** — tab「說明」 |
+| M3.4 | Login: show API connection hint on failure | P3 | **Done** — via `api.ts` network hints |
 | M3.5 | Optional: display product QR on mobile (admin) | P4 | `GET /qr/token/{id}` + `react-native-qrcode-svg` |
-| M3.6 | Username login trim (API already case-insensitive) | P3 | Trim input on `LoginScreen` |
+| M3.6 | Username login trim (API already case-insensitive) | P3 | **Done** — trim on login |
+| M3.8 | Session: validate token via `/auth/me` on start | P2 | **Done** — `App.tsx` |
+| M3.9 | 401 → return to login | P2 | **Done** — `setOnUnauthorized` |
+| M3.10 | QR token normalize (URL / quotes) | P2 | **Done** — `utils/qrToken.ts` |
+| M3.11 | App icon + metro.config.js | P3 | **Done** — `assets/icon.png` |
 | M3.7 | Dark status bar on scanner | P4 | Polish |
 
 ---

@@ -19,10 +19,10 @@ export interface Product {
   status: string
   attendance_status: 'checked_in' | 'checked_out'
   qr_token_version: number
-  home_location_id: string
-  home_location: ProductLocationRef | null
-  allowed_location_ids: string[]
-  allowed_locations: ProductLocationRef[]
+  registered_location_id: string
+  registered_location: ProductLocationRef | null
+  scan_location_ids: string[]
+  scan_locations: ProductLocationRef[]
   last_event_at: string | null
   last_event_location: string | null
   gender: string | null
@@ -83,8 +83,8 @@ export async function createProduct(payload: {
   product_type: string
   employment_type?: 'part_time' | 'full_time' | null
   status?: string
-  home_location_id: string
-  allowed_location_ids: string[]
+  registered_location_id: string
+  scan_location_ids: string[]
   gender?: string | null
   date_of_birth?: string | null
   phone?: string | null
@@ -114,8 +114,8 @@ export async function updateProduct(productId: string, payload: {
   employment_type?: 'part_time' | 'full_time' | null
   is_active?: boolean
   status?: string
-  home_location_id?: string
-  allowed_location_ids?: string[]
+  registered_location_id?: string
+  scan_location_ids?: string[]
   gender?: string | null
   date_of_birth?: string | null
   phone?: string | null

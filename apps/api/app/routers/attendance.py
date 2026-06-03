@@ -11,13 +11,18 @@ from sqlalchemy.orm import selectinload
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy.orm import selectinload
-
 from app.deps import DB, AdminOnly
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
 from app.models.product import Product
-from app.schemas.attendance import AttendanceDayStatsOut, AttendanceOut, ManualCorrectionRequest, ScanRequest
+from app.schemas.attendance import (
+    AttendanceDayStatsOut,
+    AttendanceOut,
+    ManualCorrectionRequest,
+    ScanPreviewOut,
+    ScanPreviewRequest,
+    ScanRequest,
+)
 from app.services import attendance as att_svc
 from app.services.qr import verify_qr_token
 
@@ -65,17 +70,16 @@ async def _reload_with_product(db: AsyncSession, event_id: uuid.UUID) -> Attenda
     return result.scalar_one()
 
 
-@router.post("/scan", response_model=AttendanceOut)
-async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
-    """Scan a product's QR.
-
-    Pass ``event_type`` (``check_in`` or ``check_out``) to record that
-    action explicitly.  When omitted, the server toggles based on the
-    product's current ``attendance_status``.  Rapid duplicate scans within
-    ``SCAN_DEBOUNCE_SECONDS`` return the existing event (no duplicate row).
-    """
+async def _resolve_product_for_scan(
+    db: AsyncSession,
+    *,
+    qr_token: str,
+    location_id: uuid.UUID | None,
+    location_text: str | None = None,
+) -> tuple[Product, uuid.UUID, str | None, dict]:
+    """Validate QR and location; return product, location, and JWT payload. Does not record attendance."""
     try:
-        payload = verify_qr_token(body.qr_token)
+        payload = verify_qr_token(qr_token)
     except JWTError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid QR: {e}")
 
@@ -86,7 +90,7 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
 
     result = await db.execute(
         select(Product)
-        .options(selectinload(Product.allowed_locations))
+        .options(selectinload(Product.scan_locations))
         .where(Product.id == target_product_id)
     )
     product = result.scalar_one_or_none()
@@ -100,18 +104,54 @@ async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid QR: token has been rotated, please refresh the QR",
         )
-    location_id, location_name = await _resolve_location(db, body.location_id, body.location)
 
-    if location_id is None:
+    resolved_location_id, location_name = await _resolve_location(db, location_id, location_text)
+    if resolved_location_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="location_id is required for scan",
         )
-    if not any(loc.id == location_id for loc in product.allowed_locations):
+    if not any(loc.id == resolved_location_id for loc in product.scan_locations):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Product is not allowed to scan at this location",
         )
+    return product, resolved_location_id, location_name, payload
+
+
+@router.post("/scan/preview", response_model=ScanPreviewOut)
+async def scan_preview(body: ScanPreviewRequest, _admin: AdminOnly, db: DB) -> ScanPreviewOut:
+    """Resolve QR to product identity without recording attendance (for confirm UI)."""
+    product, _location_id, location_name, _payload = await _resolve_product_for_scan(
+        db,
+        qr_token=body.qr_token,
+        location_id=body.location_id,
+    )
+    return ScanPreviewOut(
+        product_id=product.id,
+        product_code=product.code,
+        product_name=product.full_name,
+        product_type=product.product_type,
+        attendance_status=product.attendance_status,
+        location=location_name,
+    )
+
+
+@router.post("/scan", response_model=AttendanceOut)
+async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
+    """Scan a product's QR.
+
+    Pass ``event_type`` (``check_in`` or ``check_out``) to record that
+    action explicitly.  When omitted, the server toggles based on the
+    product's current ``attendance_status``.  Rapid duplicate scans within
+    ``SCAN_DEBOUNCE_SECONDS`` return the existing event (no duplicate row).
+    """
+    product, location_id, location_name, payload = await _resolve_product_for_scan(
+        db,
+        qr_token=body.qr_token,
+        location_id=body.location_id,
+        location_text=body.location,
+    )
 
     explicit_type = body.event_type.value if body.event_type is not None else None
 
