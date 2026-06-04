@@ -44,33 +44,51 @@ function isAttendanceAuthRequestUrl(request: Parameters<typeof ofetch>[0]): bool
   )
 }
 
-async function refreshAttendanceTokens(): Promise<boolean> {
-  const refreshToken = useCookie('refreshToken').value
-  if (!refreshToken) {
-    redirectToLogin()
-    return false
-  }
+let attendanceRefreshing: Promise<boolean> | null = null
 
-  try {
-    const data = await ofetch<{ access_token: string; refresh_token: string }>(
-      `${getBaseURL()}/auth/refresh`,
-      {
-        method: 'POST',
-        body: { refresh_token: refreshToken },
-      },
-    )
+/**
+ * Single-flight token refresh. Concurrent 401s share one /auth/refresh call so
+ * the server's consume-once rotation doesn't invalidate parallel refreshes and
+ * force a spurious logout / redirect to login.
+ */
+function refreshAttendanceTokens(): Promise<boolean> {
+  if (attendanceRefreshing)
+    return attendanceRefreshing
 
-    useCookie('accessToken').value = data.access_token
-    useCookie('refreshToken').value = data.refresh_token
+  attendanceRefreshing = (async (): Promise<boolean> => {
+    const refreshToken = useCookie('refreshToken').value
+    if (!refreshToken) {
+      redirectToLogin()
+      return false
+    }
 
-    return true
-  }
-  catch {
-    clearAttendanceSessionCookies()
-    redirectToLogin()
+    try {
+      const data = await ofetch<{ access_token: string; refresh_token: string }>(
+        `${getBaseURL()}/auth/refresh`,
+        {
+          method: 'POST',
+          body: { refresh_token: refreshToken },
+        },
+      )
 
-    return false
-  }
+      useCookie('accessToken').value = data.access_token
+      useCookie('refreshToken').value = data.refresh_token
+
+      return true
+    }
+    catch {
+      clearAttendanceSessionCookies()
+      redirectToLogin()
+
+      return false
+    }
+  })()
+
+  attendanceRefreshing.finally(() => {
+    attendanceRefreshing = null
+  })
+
+  return attendanceRefreshing
 }
 
 /** Single-flight inner client (401 handling is in $attendanceApi wrapper). */

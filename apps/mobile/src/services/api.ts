@@ -44,6 +44,45 @@ async function clearTokens(): Promise<void> {
   await deleteItemAsync('userData');
 }
 
+let refreshing: Promise<boolean> | null = null;
+
+/**
+ * Single-flight token refresh. Concurrent 401s share one /auth/refresh call so
+ * the server's consume-once rotation doesn't invalidate parallel refreshes and
+ * force a spurious logout. Returns true if a fresh access token is now stored.
+ */
+async function refreshAccessToken(): Promise<boolean> {
+  if (refreshing) return refreshing;
+
+  refreshing = (async (): Promise<boolean> => {
+    const refreshToken = await getItemAsync('refreshToken');
+    if (!refreshToken) return false;
+    try {
+      const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!refreshRes.ok) {
+        await clearTokens();
+        return false;
+      }
+      const data = await refreshRes.json();
+      await setTokens(data.access_token, data.refresh_token);
+      return true;
+    } catch {
+      await clearTokens();
+      return false;
+    }
+  })();
+
+  try {
+    return await refreshing;
+  } finally {
+    refreshing = null;
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   detail: unknown;
@@ -98,28 +137,19 @@ async function _rawRequest(
   }
 
   if (res.status === 401 && !isAuthPath(path)) {
-    const refreshToken = await getItemAsync('refreshToken');
-    if (refreshToken) {
-      try {
-        const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        if (refreshRes.ok) {
-          const data = await refreshRes.json();
-          await setTokens(data.access_token, data.refresh_token);
-          headers.Authorization = `Bearer ${data.access_token}`;
-          const retry = await fetch(`${API_URL}${path}`, { ...options, headers });
-          if (!retry.ok) {
-            const parsed = await parseErrorBody(retry);
-            throw new ApiError(`HTTP ${retry.status}: ${parsed.message}`, retry.status, parsed.detail);
-          }
-          return { body: retry.status === 204 ? undefined : await retry.json(), status: retry.status, headers: retry.headers };
-        }
-      } catch {
-        await clearTokens();
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      const newToken = await getToken();
+      if (newToken) headers.Authorization = `Bearer ${newToken}`;
+      const retry = await fetch(`${API_URL}${path}`, { ...options, headers });
+      if (!retry.ok) {
+        const parsed = await parseErrorBody(retry);
+        const friendly = retry.status === 429
+          ? `${parsed.message || 'Too many requests'}. Please try again later.`
+          : parsed.message;
+        throw new ApiError(`HTTP ${retry.status}: ${friendly}`, retry.status, parsed.detail);
       }
+      return { body: retry.status === 204 ? undefined : await retry.json(), status: retry.status, headers: retry.headers };
     }
     onUnauthorized?.();
     throw new Error('Session expired. Please sign in again.');

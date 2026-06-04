@@ -18,7 +18,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -32,6 +32,12 @@ class EventType(str, enum.Enum):
 
 class AttendanceEvent(Base):
     __tablename__ = "attendance_events"
+
+    # Indexes mirror migration 013 — keep in sync with create_all (tests) and alembic.
+    __table_args__ = (
+        Index("ix_attendance_events_recorded_at", "recorded_at"),
+        Index("ix_attendance_events_product_recorded", "product_id", "recorded_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("products.id"), nullable=False, index=True)
