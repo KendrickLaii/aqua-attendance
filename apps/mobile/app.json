@@ -57,8 +57,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "407c4bab-6c6f-4ea4-9f26-2cd15d64c64a"
+        "projectId": "101ab907-e883-4389-a3b8-492c19285d9b"
       }
-    }
+    },
+    "owner": "kendrickolo"
   }
 }

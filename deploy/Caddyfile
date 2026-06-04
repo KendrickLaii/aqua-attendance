@@ -1,5 +1,11 @@
-# Same host (IP or one domain): web at /, API at /api/* and /docs
-{$APP_DOMAIN} {
+# IP-only / HTTP UAT: listen on :80 (no TLS). No APP_DOMAIN required in the container.
+# When you add a real domain + HTTPS, replace :80 with:  {$APP_DOMAIN} { ... }
+# and set caddy.environment APP_DOMAIN in docker-compose.prod.yml.
+{
+	auto_https off
+}
+
+:80 {
 	encode gzip
 
 	handle /api/* {
@@ -20,7 +26,7 @@
 	}
 }
 
-# Separate API hostname only (e.g. api.example.com). Uncomment if API_DOMAIN differs from APP_DOMAIN.
+# Separate API hostname (uncomment when API_DOMAIN differs and you use domain TLS).
 # {$API_DOMAIN} {
 # 	encode gzip
 # 	reverse_proxy api:8000
