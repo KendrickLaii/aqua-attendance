@@ -17,8 +17,8 @@ export function useAttendanceCaslSync() {
     if (route.name === 'attendance-login')
       return
 
-    const token = useCookie('attendanceAccessToken').value
-    const raw = useCookie('attendanceUserData').value
+    const token = useCookie('accessToken').value
+    const raw = useCookie('userData').value
     if (!token || !raw)
       return
 

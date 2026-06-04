@@ -1,16 +1,17 @@
-/** Cookie keys used by the attendance app (and mirrored template keys on login). */
+/** Canonical cookie names shared between attendance app and AQUA template. */
 
 export const SCAN_TOKEN_SESSION_KEY = 'attendance-scan-token'
 export const SCAN_ENTRY_SESSION_KEY = 'attendance-scan-entry'
+
 export function isAttendanceLoggedIn(): boolean {
   return !!(
-    useCookie('attendanceAccessToken').value
-    && useCookie('attendanceUserData').value
+    useCookie('accessToken').value
+    && useCookie('userData').value
   )
 }
 
 export function getAttendanceRole(): string | undefined {
-  const raw = useCookie('attendanceUserData').value
+  const raw = useCookie('userData').value
   if (!raw)
     return undefined
   try {
@@ -22,12 +23,10 @@ export function getAttendanceRole(): string | undefined {
   }
 }
 
-/** Clear attendance + template auth cookies set on attendance login. */
+/** Clear all auth cookies (used by attendance login and template logout). */
 export function clearAttendanceSessionCookies() {
-  useCookie('attendanceAccessToken').value = null
-  useCookie('attendanceRefreshToken').value = null
-  useCookie('attendanceUserData').value = null
-  useCookie('userData').value = null
   useCookie('accessToken').value = null
+  useCookie('refreshToken').value = null
+  useCookie('userData').value = null
   useCookie('userAbilityRules').value = null
 }

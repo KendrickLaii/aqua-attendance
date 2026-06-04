@@ -16,15 +16,21 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
   actions: {
     async login(payload: AttendanceLoginPayload) {
       const tokens = await attendanceLogin(payload)
-      useCookie('attendanceAccessToken').value = tokens.access_token
-      useCookie('attendanceRefreshToken').value = tokens.refresh_token
+      useCookie('accessToken').value = tokens.access_token
+      useCookie('refreshToken').value = tokens.refresh_token
       const me = await attendanceGetMe()
       this.user = me
       this.isLoggedIn = true
-      useCookie('attendanceUserData').value = JSON.stringify(me)
+      // Template-compatible shape so navbar + CASL work without mirroring
+      useCookie('userData').value = JSON.stringify({
+        id: me.id,
+        username: me.username,
+        role: me.role,
+        fullName: me.full_name,
+      })
     },
     async logout() {
-      const refreshToken = useCookie('attendanceRefreshToken').value
+      const refreshToken = useCookie('refreshToken').value
       if (refreshToken) {
         try {
           await attendanceLogout(refreshToken)
@@ -38,11 +44,20 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
       this.isLoggedIn = false
     },
     restoreSession() {
-      const raw = useCookie('attendanceUserData').value
-      const token = useCookie('attendanceAccessToken').value
+      const raw = useCookie('userData').value
+      const token = useCookie('accessToken').value
       if (raw && token) {
         try {
-          this.user = typeof raw === 'string' ? JSON.parse(raw) : raw
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+          // Normalise template shape (fullName) back to API shape (full_name)
+          this.user = {
+            ...parsed,
+            full_name: parsed.fullName ?? parsed.full_name ?? '',
+            email: parsed.email ?? '',
+            is_active: parsed.is_active ?? true,
+            created_at: parsed.created_at ?? '',
+            updated_at: parsed.updated_at ?? '',
+          } as AttendanceUser
           this.isLoggedIn = true
         }
         catch {

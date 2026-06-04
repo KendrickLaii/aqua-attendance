@@ -4,6 +4,11 @@ import { clearAttendanceSessionCookies } from '@/utils/attendanceSession'
 const getBaseURL = (): string =>
   import.meta.env.VITE_ATTENDANCE_API_URL || 'http://localhost:8000/api'
 
+function redirectToLogin() {
+  if (typeof window !== 'undefined')
+    window.location.href = '/attendance/login'
+}
+
 /**
  * Normalize headers then set Authorization from the latest cookie every time —
  * reused options objects can otherwise keep a stale Bearer after refresh.
@@ -14,7 +19,7 @@ function attachAttendanceAuthHeaders(options: { headers?: HeadersInit }) {
   headers.delete('Authorization')
   headers.delete('authorization')
 
-  const accessToken = useCookie('attendanceAccessToken').value
+  const accessToken = useCookie('accessToken').value
   if (accessToken)
     headers.set('Authorization', `Bearer ${accessToken}`)
 
@@ -40,9 +45,11 @@ function isAttendanceAuthRequestUrl(request: Parameters<typeof ofetch>[0]): bool
 }
 
 async function refreshAttendanceTokens(): Promise<boolean> {
-  const refreshToken = useCookie('attendanceRefreshToken').value
-  if (!refreshToken)
+  const refreshToken = useCookie('refreshToken').value
+  if (!refreshToken) {
+    redirectToLogin()
     return false
+  }
 
   try {
     const data = await ofetch<{ access_token: string; refresh_token: string }>(
@@ -53,13 +60,14 @@ async function refreshAttendanceTokens(): Promise<boolean> {
       },
     )
 
-    useCookie('attendanceAccessToken').value = data.access_token
-    useCookie('attendanceRefreshToken').value = data.refresh_token
+    useCookie('accessToken').value = data.access_token
+    useCookie('refreshToken').value = data.refresh_token
 
     return true
   }
   catch {
     clearAttendanceSessionCookies()
+    redirectToLogin()
 
     return false
   }

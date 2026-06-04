@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { isAttendanceLoggedIn } from '@/utils/attendanceSession'
+import { clearAttendanceSessionCookies, isAttendanceLoggedIn } from '@/utils/attendanceSession'
 
 const router = useRouter()
 const ability = useAbility()
@@ -83,10 +83,8 @@ const logout = async () => {
     return
   }
 
-  useCookie('accessToken').value = null
-  userData.value = null
+  clearAttendanceSessionCookies()
   await router.push('/login')
-  useCookie('userAbilityRules').value = null
   ability.update([])
 }
 </script>

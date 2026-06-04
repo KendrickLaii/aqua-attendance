@@ -45,18 +45,7 @@ async function handleLogin() {
   try {
     await authStore.login({ username: form.username.trim(), password: form.password })
 
-    const userData = {
-      id: authStore.user?.id,
-      username: authStore.user?.username,
-      role: authStore.user?.role,
-      fullName: authStore.user?.full_name,
-    }
-
     const userAbilityRules = attendanceRoleToCaslRules(authStore.user?.role)
-
-    useCookie('userData').value = userData as any
-    useCookie('accessToken').value = useCookie('attendanceAccessToken').value
-    useCookie('userAbilityRules').value = userAbilityRules as any
     ability.update(userAbilityRules)
 
     await router.push(resolvePostLoginTarget())

@@ -35,6 +35,8 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       QR_SECRET: ${QR_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5/minute}
+      SCAN_RATE_LIMIT: ${SCAN_RATE_LIMIT:-30/minute}
       PYTHONPATH: /app
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
