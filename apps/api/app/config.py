@@ -66,6 +66,9 @@ class Settings(BaseSettings):
 
     ENV: str = "development"
 
+    LOGIN_RATE_LIMIT: str = "5/minute"
+    SCAN_RATE_LIMIT: str = "30/minute"
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

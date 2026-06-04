@@ -1,10 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
-from jose import JWTError
+from fastapi import APIRouter, HTTPException, Request, status
+import jwt
 from sqlalchemy import func, select
 
+from app.config import settings
 from app.deps import DB, CurrentUser
+from app.limiter import limiter
 from app.models.user import User
 from app.schemas.auth import TokenPair, TokenRefresh
 from app.schemas.user import UserLogin, UserOut
@@ -31,7 +33,8 @@ async def register() -> None:
 
 
 @router.post("/login", response_model=TokenPair)
-async def login(body: UserLogin, db: DB) -> dict:
+@limiter.limit(settings.LOGIN_RATE_LIMIT)
+async def login(request: Request, body: UserLogin, db: DB) -> dict:
     result = await db.execute(
         select(User).where(func.lower(User.username) == body.username.lower())
     )
@@ -49,7 +52,7 @@ async def login(body: UserLogin, db: DB) -> dict:
 async def refresh(body: TokenRefresh, db: DB) -> dict:
     try:
         payload = decode_token(body.refresh_token, expected_type="refresh")
-    except JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     try:
@@ -83,7 +86,7 @@ async def logout(body: TokenRefresh, db: DB) -> None:
         jti = payload.get("jti")
         if jti:
             await revoke_refresh_token(db, jti=jti)
-    except JWTError:
+    except jwt.PyJWTError:
         pass  # expired / invalid token — nothing to revoke
 
 

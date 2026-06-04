@@ -38,8 +38,10 @@ Open items — not blocking ship; track here when planning refactors.
 | Mobile | **History filters** | List capped at 50 rows; no date range UI. See [MOBILE-SPRINT.md](./MOBILE-SPRINT.md) M3.1. |
 | Mobile | **My QR tab** | Help placeholder only; product QRs on web. |
 | Mobile | **EAS / store build** | No `eas.json` in repo yet — [MOBILE-RELEASE-CHECKLIST.md](./MOBILE-RELEASE-CHECKLIST.md). |
-| API | **Scan race** | No row lock on product during debounce window. |
-| API | **RBAC tests** | ~24 tests; no full permission matrix. |
+| API | ~~**Scan race**~~ | ~~No row lock on product during debounce window.~~ | **Done** — `SELECT FOR UPDATE` on PostgreSQL (`_resolve_product_for_scan`) |
+| API | **python-jose** | Unmaintained, known CVEs. | **Done** — migrated to `PyJWT` 2.10.1 |
+| API | **Rate limiting** | No throttling on login/scan. | **Done** — `slowapi` on `/auth/login` (5/min) and `/attendance/scan` (30/min) |
+| API | **RBAC tests** | ~53 tests; no full permission matrix. |
 | Data | **Location photo upload** | v1 URL-only; upload + S3/R2 later — [LOCATIONS.md](./LOCATIONS.md). |
 
 ## Security (high priority)
@@ -84,7 +86,7 @@ Open items — not blocking ship; track here when planning refactors.
 
 | Issue | Notes |
 |-------|--------|
-| Scan race | No row lock on product during debounce window |
+| ~~Scan race~~ | ~~No row lock on product during debounce window~~ | **Done** — `SELECT FOR UPDATE` in `_resolve_product_for_scan` |
 | ~~CSV quoting~~ | ~~Commas in names can break CSV rows~~ | **Done** — `csv.writer` in export endpoint |
 | Location photos | v1: URL fields only (`icon_url`, `main_photo_url`, `detail_photos`) | **Later** — admin file upload + S3/R2; see [LOCATIONS.md](./LOCATIONS.md) |
 | Migration 003 | Upgrading very old DBs with `user_id` attendance rows may need manual migration |

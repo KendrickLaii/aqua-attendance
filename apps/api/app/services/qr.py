@@ -19,7 +19,7 @@ Security design:
 import uuid
 from datetime import datetime, timezone
 
-from jose import JWTError, jwt
+import jwt
 
 from app.config import settings
 
@@ -43,13 +43,13 @@ def verify_qr_token(token: str) -> dict:
     """
     Verify signature and `type` claim.  Returns the decoded payload dict.
 
-    Raises JWTError on any failure (bad signature, malformed, wrong type).
+    Raises InvalidTokenError on any failure (bad signature, malformed, wrong type).
     Note: the caller must additionally verify that `ver` matches the
     product's current `qr_token_version`.
     """
     payload = jwt.decode(token, settings.QR_SECRET, algorithms=[_ALGORITHM])
     if payload.get("type") != "qr":
-        raise JWTError("Not a QR token")
+        raise jwt.InvalidTokenError("Not a QR token")
     if "sub" not in payload or "ver" not in payload:
-        raise JWTError("QR token missing required claims")
+        raise jwt.InvalidTokenError("QR token missing required claims")
     return payload

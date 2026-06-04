@@ -155,6 +155,8 @@ Change all seed passwords before any shared or production use.
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `CORS_ORIGINS` | localhost dev URLs | Comma-separated allowed origins |
 | `ENV` | `development` | `development` enables SQL echo |
+| `LOGIN_RATE_LIMIT` | `5/minute` | Per-IP login attempts |
+| `SCAN_RATE_LIMIT` | `30/minute` | Per-IP QR scan attempts |
 
 ### Web (`apps/web/.env`)
 

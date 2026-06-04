@@ -3,15 +3,17 @@ import uuid
 from datetime import datetime
 from io import StringIO
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
-from jose import JWTError
+import jwt
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.deps import DB, AdminOnly
+from app.limiter import limiter
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
 from app.models.product import Product
@@ -104,7 +106,7 @@ async def _resolve_product_for_scan(
     """Validate QR and location; return product, location, and JWT payload. Does not record attendance."""
     try:
         payload = verify_qr_token(qr_token)
-    except JWTError as e:
+    except jwt.PyJWTError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid QR: {e}")
 
     try:
@@ -112,11 +114,16 @@ async def _resolve_product_for_scan(
     except (KeyError, ValueError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid QR: bad subject")
 
-    result = await db.execute(
+    product_query = (
         select(Product)
         .options(selectinload(Product.scan_locations))
         .where(Product.id == target_product_id)
     )
+    # PostgreSQL only: row lock prevents concurrent scans of the same product
+    # from creating duplicate attendance events within the debounce window.
+    if settings.DATABASE_URL.startswith("postgresql"):
+        product_query = product_query.with_for_update()
+    result = await db.execute(product_query)
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
@@ -159,7 +166,8 @@ async def scan_preview(body: ScanPreviewRequest, _admin: AdminOnly, db: DB) -> S
 
 
 @router.post("/scan", response_model=AttendanceOut)
-async def scan(body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
+@limiter.limit(settings.SCAN_RATE_LIMIT)
+async def scan(request: Request, body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
     """Scan a product's QR.
 
     Pass ``event_type`` (``check_in`` or ``check_out``) to record that

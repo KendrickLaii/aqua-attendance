@@ -73,6 +73,9 @@ async function parseErrorBody(res: Response): Promise<{ message: string; detail:
     const obj = detail as { message?: string };
     if (typeof obj.message === 'string') return { message: obj.message, detail };
   }
+  // slowapi 429 uses `error` instead of `detail`
+  const error = err.error;
+  if (typeof error === 'string') return { message: error, detail: error };
   return { message: 'Request failed', detail };
 }
 
@@ -125,7 +128,10 @@ async function apiRequest<T = unknown>(
 
   if (!res.ok) {
     const parsed = await parseErrorBody(res);
-    throw new ApiError(`HTTP ${res.status}: ${parsed.message}`, res.status, parsed.detail);
+    const friendly = res.status === 429
+      ? `${parsed.message || 'Too many requests'}. Please try again later.`
+      : parsed.message;
+    throw new ApiError(`HTTP ${res.status}: ${friendly}`, res.status, parsed.detail);
   }
 
   if (res.status === 204) return undefined as T;

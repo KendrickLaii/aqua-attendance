@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from jose import JWTError, jwt
+import jwt
 from passlib.context import CryptContext
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,10 +48,12 @@ def create_refresh_token(subject: str) -> str:
 
 
 def decode_token(token: str, expected_type: str = "access") -> dict:
-    """Decode and validate a JWT. Raises JWTError on any problem."""
+    """Decode and validate a JWT. Raises InvalidTokenError on any problem."""
     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     if payload.get("type") != expected_type:
-        raise JWTError(f"Expected token type '{expected_type}', got '{payload.get('type')}'")
+        raise jwt.InvalidTokenError(
+            f"Expected token type '{expected_type}', got '{payload.get('type')}'"
+        )
     return payload
 
 

@@ -2,6 +2,8 @@ import os
 
 # CI/deploy hosts may set ENV=production; tests need development defaults on import.
 os.environ["ENV"] = "development"
+os.environ["LOGIN_RATE_LIMIT"] = "100/minute"
+os.environ["SCAN_RATE_LIMIT"] = "200/minute"
 
 import uuid
 from typing import AsyncGenerator

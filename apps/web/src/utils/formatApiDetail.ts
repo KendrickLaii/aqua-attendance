@@ -20,7 +20,18 @@ export function formatApiDetail(detail: unknown): string {
 }
 
 export function formatApiError(e: unknown, fallback: string): string {
-  const data = e && typeof e === 'object' && 'data' in e ? (e as { data?: { detail?: unknown } }).data : undefined
+  const data = e && typeof e === 'object' && 'data' in e
+    ? (e as { data?: { detail?: unknown; error?: string }; statusCode?: number }).data
+    : undefined
 
-  return formatApiDetail(data?.detail) || (e instanceof Error ? e.message : fallback)
+  const status = e && typeof e === 'object' && 'statusCode' in e ? (e as { statusCode?: number }).statusCode : undefined
+  const rawMessage = formatApiDetail(data?.detail)
+    || data?.error
+    || (e instanceof Error ? e.message : fallback)
+
+  if (status === 429) {
+    return `${rawMessage || 'Too many requests'}. Please try again later.`
+  }
+
+  return rawMessage
 }
