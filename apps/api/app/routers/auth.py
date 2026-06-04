@@ -49,7 +49,8 @@ async def login(request: Request, body: UserLogin, db: DB) -> dict:
 
 
 @router.post("/refresh", response_model=TokenPair)
-async def refresh(body: TokenRefresh, db: DB) -> dict:
+@limiter.limit("10/minute")
+async def refresh(request: Request, body: TokenRefresh, db: DB) -> dict:
     try:
         payload = decode_token(body.refresh_token, expected_type="refresh")
     except jwt.PyJWTError:

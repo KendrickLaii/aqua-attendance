@@ -32,7 +32,7 @@ function isAttendanceAuthRequestUrl(request: Parameters<typeof ofetch>[0]): bool
       ? request
       : request instanceof Request
         ? request.url
-        : typeof request?.toString === 'function'
+        : typeof (request as any)?.toString === 'function'
           ? String(request)
           : ''
 
@@ -83,9 +83,9 @@ const attendanceOfetch = ofetch.create({
 
 export async function $attendanceApi<T = unknown>(
   request: Parameters<typeof attendanceOfetch>[0],
-  options?: Exclude<Parameters<typeof attendanceOfetch>[1], undefined>,
+  options?: Parameters<typeof attendanceOfetch>[1],
 ): Promise<T> {
-  const invoke = (): Promise<T> => attendanceOfetch<T>(request, options)
+  const invoke = (): Promise<T> => attendanceOfetch<T>(request, options as any)
 
   try {
     return await invoke()

@@ -113,28 +113,22 @@ export default function HistoryScreen() {
     async (targetPage: number, append = false) => {
       setLoadError('');
       try {
-        const { events: data, total: t } = await listAttendance(buildParams(targetPage));
+        const { events: data, total: totalCount } = await listAttendance(buildParams(targetPage));
         setEvents((prev) => (append ? [...prev, ...data] : data));
-        setTotal(t);
+        setTotal(totalCount);
         setPage(targetPage);
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : t_string('history.loadFailed');
+        const msg = e instanceof Error ? e.message : t('history.loadFailed');
         setLoadError(msg);
         if (!append) setEvents([]);
       }
     },
-    [buildParams]
+    [buildParams, t]
   );
-
-  // Alias for t inside callbacks that also use the `t` total variable
-  function t_string(key: string): string {
-    return t(key as any);
-  }
 
   useEffect(() => {
     load(1, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventFilter, dateFilter]);
+  }, [load, eventFilter, dateFilter]);
 
   async function onRefresh() {
     setRefreshing(true);

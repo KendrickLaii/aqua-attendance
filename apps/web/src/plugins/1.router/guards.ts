@@ -60,10 +60,6 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
     const accessTokenCookie = useCookie('accessToken')
     const isLoggedIn = !!(userDataCookie.value && accessTokenCookie.value)
 
-    const role = (userDataCookie.value as any)?.role
-    if (isLoggedIn && to.path.startsWith('/attendance/users') && role !== 'admin' && role !== 'superadmin')
-      return { name: 'not-authorized' }
-
     if (to.meta.unauthenticatedOnly) {
       if (isLoggedIn)
         return '/'
