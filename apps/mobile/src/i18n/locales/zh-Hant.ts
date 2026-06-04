@@ -11,7 +11,7 @@ export const zhHant = {
     dash: '—',
   },
   login: {
-    title: 'Juku 出席',
+    title: 'AQUA 出席',
     subtitle: '請登入以繼續',
     username: '使用者名稱',
     password: '密碼',

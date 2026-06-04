@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "==> First boot setup for Juku Attendance"
+echo "==> First boot setup for AQUA Attendance"
 
 if [[ ! -f ".env" ]]; then
   if [[ -f ".env.example" ]]; then

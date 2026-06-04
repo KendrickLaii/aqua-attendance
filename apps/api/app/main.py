@@ -11,7 +11,7 @@ from app.limiter import limiter
 from app.routers import attendance, auth, locations, products, qr, users
 
 app = FastAPI(
-    title="Juku Attendance API",
+    title="AQUA Attendance API",
     version="2.0.0",
     description="Time & Attendance system for cram school (juku) — product-based tracking",
 )

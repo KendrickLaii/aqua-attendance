@@ -12,8 +12,8 @@ from app.models.user import User
 from app.services.auth import hash_password
 
 SEED_USERS = [
-    {"username": "admin", "email": "admin@juku.local", "password": "admin123", "full_name": "Admin User", "role": "admin"},
-    {"username": "superadmin", "email": "superadmin@juku.local", "password": "super123", "full_name": "Super Admin", "role": "superadmin"},
+    {"username": "admin", "email": "admin@aqua.local", "password": "admin123", "full_name": "Admin User", "role": "admin"},
+    {"username": "superadmin", "email": "superadmin@aqua.local", "password": "super123", "full_name": "Super Admin", "role": "superadmin"},
 ]
 
 SEED_LOCATIONS = [

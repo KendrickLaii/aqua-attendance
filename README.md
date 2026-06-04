@@ -1,4 +1,4 @@
-# Juku Time & Attendance System
+# AQUA Time & Attendance System
 
 Check-in / check-out for a cram school (juku). **Staff and students are not login accounts** — they are **products** with a printed or on-screen QR code. **Admins** (and **superadmins**) log into the web app and mobile app to manage data and scan QRs.
 

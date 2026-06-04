@@ -1,4 +1,4 @@
-# Juku Attendance — Web App
+# AQUA Attendance — Web App
 
 Vue 3 + Vite admin console for attendance. **Attendance UI** lives under `src/pages/attendance/`. The rest of the repo tree is the AQUA admin template (demos); production navigation only links attendance pages.
 

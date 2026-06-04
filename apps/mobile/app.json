@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Juku Attendance",
-    "slug": "juku-attendance",
+    "name": "AQUA Attendance",
+    "slug": "aqua-attendance",
     "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +13,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Juku Attendance to use the camera for QR code scanning."
+          "cameraPermission": "Allow AQUA Attendance to use the camera for QR code scanning."
         }
       ],
       "expo-asset",
@@ -36,13 +36,13 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.juku.attendance"
+      "bundleIdentifier": "com.aqua.attendance"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#160D47"
       },
-      "package": "com.juku.attendance",
+      "package": "com.aqua.attendance",
       "versionCode": 2,
       "usesCleartextTraffic": true,
       "permissions": [
@@ -50,7 +50,7 @@
         "android.permission.RECORD_AUDIO"
       ]
     },
-    "scheme": "juku-attendance",
+    "scheme": "aqua-attendance",
     "updates": {
       "enabled": false,
       "checkAutomatically": "NEVER"

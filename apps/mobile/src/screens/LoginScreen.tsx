@@ -49,7 +49,7 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={[styles.hero, { paddingTop: insets.top + spacing.xxl }]}>
-        <Text style={styles.heroTitle}>{t('login.title')}</Text>
+        <Text style={styles.heroTitle}>AQUA Attendance</Text>
         <Text style={styles.heroSubtitle}>{t('login.subtitle')}</Text>
       </View>
 

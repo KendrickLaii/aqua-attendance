@@ -75,7 +75,7 @@ async function handleLogin() {
     <VCard class="pa-6" max-width="440" width="100%">
       <VCardTitle class="text-h5 text-center mb-2">
         <VIcon icon="ri-time-line" class="me-2" />
-        Juku Attendance
+        AQUA Attendance
       </VCardTitle>
       <VCardSubtitle class="text-center mb-4">
         Sign in to continue

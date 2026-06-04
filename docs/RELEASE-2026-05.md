@@ -39,8 +39,8 @@ See [KNOWN-GAPS.md](./KNOWN-GAPS.md): dual cookies, mobile Scan tab roles, templ
 
 Mark before running `update.sh` on the server.
 
-- [ ] **GitHub Actions** — [CI](https://github.com/KendrickLaii/juku-attendance/actions) green on latest `main` commit
-- [ ] **Publish container images** — workflow green; images at `ghcr.io/kendricklaii/juku-attendance/{api,web}:main`
+- [ ] **GitHub Actions** — [CI](https://github.com/KendrickLaii/aqua-attendance/actions) green on latest `main` commit
+- [ ] **Publish container images** — workflow green; images at `ghcr.io/kendricklaii/aqua-attendance/{api,web}:main`
 - [ ] **`VITE_ATTENDANCE_API_URL`** — GitHub Actions variable matches prod API URL (IP-only: `http://<server-ip>/api`)
 - [ ] **Server `.env`** — `SECRET_KEY`, `QR_SECRET`, `POSTGRES_PASSWORD` not placeholders (see [DEPLOY.md](./DEPLOY.md))
 - [ ] **GHCR login** on server still valid (`docker login ghcr.io`)
@@ -48,7 +48,7 @@ Mark before running `update.sh` on the server.
 ## Deploy
 
 ```bash
-cd ~/juku-attendance/deploy
+cd ~/aqua-attendance/deploy
 sudo ./update.sh
 ```
 
@@ -71,7 +71,7 @@ If API fails after pull, check logs: `docker compose -f docker-compose.prod.yml 
 ## Rollback
 
 ```bash
-cd ~/juku-attendance/deploy
+cd ~/aqua-attendance/deploy
 # Pin images to previous SHA tag from GHCR, then:
 docker compose -f docker-compose.prod.yml --env-file .env pull
 docker compose -f docker-compose.prod.yml --env-file .env up -d

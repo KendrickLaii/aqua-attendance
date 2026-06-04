@@ -1,4 +1,4 @@
-# Juku Attendance — Mobile App
+# AQUA Attendance — Mobile App
 
 Expo (React Native) app for **scanning product QR codes** and viewing attendance history. Login accounts are **admins** (`admin` or `superadmin`), not students.
 

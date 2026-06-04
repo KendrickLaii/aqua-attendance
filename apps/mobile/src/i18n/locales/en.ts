@@ -9,7 +9,7 @@ export const en = {
     dash: '—',
   },
   login: {
-    title: 'Juku Attendance',
+    title: 'AQUA Attendance',
     subtitle: 'Sign in to continue',
     username: 'Username',
     password: 'Password',

@@ -1,4 +1,4 @@
-# Juku Attendance — API
+# AQUA Attendance — API
 
 FastAPI backend: login users, products (staff/students), signed QR tokens, attendance events, locations.
 

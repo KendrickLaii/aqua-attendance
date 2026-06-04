@@ -22,7 +22,7 @@ export const emailValidator = (value: unknown) => {
 }
 
 /**
- * Matches attendance API `_flex_email` (allows internal domains such as `@juku.local`).
+ * Matches attendance API `_flex_email` (allows internal domains such as `@aqua.local`).
  * Pair with {@link requiredValidator} when the address is mandatory.
  */
 export const internalEmailValidator = (value: unknown) => {

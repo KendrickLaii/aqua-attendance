@@ -119,7 +119,7 @@ Two workflows in `.github/workflows/`:
    ↓
 6. SSH into Lightsail server
    ↓
-7. cd ~/juku-attendance/deploy && sudo ./update.sh
+7. cd ~/aqua-attendance/deploy && sudo ./update.sh
    ↓
 8. update.sh runs:
    a. docker compose pull → fetch latest images
@@ -162,7 +162,7 @@ Two workflows in `.github/workflows/`:
 | Static IP | `<your-server-ip>` |
 | Domain | (none yet — using IP only) |
 | HTTPS | Not yet (no domain) |
-| GHCR images | `ghcr.io/kendricklaii/juku-attendance/api:main` and `/web:main` |
+| GHCR images | `ghcr.io/kendricklaii/aqua-attendance/api:main` and `/web:main` |
 | Reverse proxy | Caddy (HTTP-only path mode) |
 | Public URL | `http://<your-server-ip>` |
 | API docs | `http://<your-server-ip>/api/docs` |
@@ -188,7 +188,7 @@ Wait for **Publish container images** workflow → green ✅
 SSH into Lightsail → run:
 
 ```bash
-cd ~/juku-attendance/deploy
+cd ~/aqua-attendance/deploy
 sudo ./update.sh
 ```
 
@@ -212,7 +212,7 @@ sudo docker compose -f docker-compose.prod.yml --env-file .env logs db --tail=50
 ### Restart everything
 
 ```bash
-cd ~/juku-attendance/deploy
+cd ~/aqua-attendance/deploy
 sudo docker compose -f docker-compose.prod.yml --env-file .env restart
 ```
 
@@ -229,7 +229,7 @@ Creates `admin`, `superadmin`, and products `STAFF-001`, `STU-001`, etc. Change 
 ## 7. Files I created / matter
 
 ```
-juku-attendance/
+aqua-attendance/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                # Run tests on PR/main
@@ -288,13 +288,13 @@ sudo usermod -aG docker $USER
 exit  # then SSH back in
 ```
 
-### Image pull fails with `your-org-or-user/juku-attendance/...: not found`
+### Image pull fails with `your-org-or-user/aqua-attendance/...: not found`
 
 `.env` still has the placeholder. Set:
 
 ```env
-WEB_IMAGE=ghcr.io/<your-username-lowercase>/juku-attendance/web:main
-API_IMAGE=ghcr.io/<your-username-lowercase>/juku-attendance/api:main
+WEB_IMAGE=ghcr.io/<your-username-lowercase>/aqua-attendance/web:main
+API_IMAGE=ghcr.io/<your-username-lowercase>/aqua-attendance/api:main
 ```
 
 ### SSH disconnects randomly during long commands

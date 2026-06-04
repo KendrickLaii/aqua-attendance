@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
-const WEB_PREFIX = 'juku_attendance_';
+const WEB_PREFIX = 'aqua_attendance_';
 
 function webKey(key: string): string {
   return `${WEB_PREFIX}${key}`;

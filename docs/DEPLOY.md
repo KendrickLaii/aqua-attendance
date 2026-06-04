@@ -52,8 +52,8 @@ echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password
 ## 4) Prepare deploy folder
 
 ```bash
-mkdir -p ~/juku-attendance/deploy
-cd ~/juku-attendance/deploy
+mkdir -p ~/aqua-attendance/deploy
+cd ~/aqua-attendance/deploy
 ```
 
 Copy from this repo's `deploy/` folder:
@@ -105,7 +105,7 @@ Windows without OpenSSL: use WSL/Git Bash, or PowerShell:
 |----------|--------|
 | `APP_DOMAIN` | Your app hostname |
 | `API_DOMAIN` | Your API hostname |
-| `WEB_IMAGE` / `API_IMAGE` | `ghcr.io/<user>/juku-attendance/web:main` etc. |
+| `WEB_IMAGE` / `API_IMAGE` | `ghcr.io/<user>/aqua-attendance/web:main` etc. |
 | `POSTGRES_PASSWORD` | Strong password (not `change-this-db-password`) |
 | `SECRET_KEY` / `QR_SECRET` | Two unique `openssl rand -hex 32` values (see above) |
 | `CORS_ORIGINS` | `https://app.yourdomain.com` (must match browser URL; use `http://IP` if no TLS) |
@@ -169,7 +169,7 @@ Log in with seeded `admin` / `admin123`, create product QRs under **QR Codes**, 
 After CI pushes new images:
 
 ```bash
-cd ~/juku-attendance/deploy
+cd ~/aqua-attendance/deploy
 ./update.sh
 ```
 

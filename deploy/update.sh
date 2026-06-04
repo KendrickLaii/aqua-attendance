@@ -9,7 +9,7 @@ if [[ ! -f ".env" ]]; then
   exit 1
 fi
 
-echo "==> Updating Juku Attendance containers"
+echo "==> Updating AQUA Attendance containers"
 docker compose -f docker-compose.prod.yml --env-file .env pull
 docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
 docker image prune -f >/dev/null 2>&1 || true
