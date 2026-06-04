@@ -1,4 +1,4 @@
-import { apiRequest } from './api';
+import { apiRequest, apiRequestWithHeaders } from './api';
 
 export interface QRPayload {
   qr_token: string;
@@ -67,7 +67,14 @@ export async function scanQR(
   });
 }
 
-export async function listAttendance(params?: Record<string, string>): Promise<AttendanceEvent[]> {
+export interface ListAttendanceResult {
+  events: AttendanceEvent[];
+  total: number;
+}
+
+export async function listAttendance(params?: Record<string, string>): Promise<ListAttendanceResult> {
   const qs = params ? `?${new URLSearchParams(params).toString()}` : '';
-  return apiRequest(`/attendance${qs}`);
+  const { data, headers } = await apiRequestWithHeaders<AttendanceEvent[]>(`/attendance${qs}`);
+  const total = parseInt(headers.get('X-Total-Count') || '0', 10);
+  return { events: data, total };
 }

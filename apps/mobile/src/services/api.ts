@@ -138,4 +138,63 @@ async function apiRequest<T = unknown>(
   return res.json();
 }
 
+export async function apiRequestWithHeaders<T = unknown>(
+  path: string,
+  options: RequestInit = {},
+): Promise<{ data: T; headers: Headers }> {
+  const token = await getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  } catch {
+    throw new Error(`Cannot reach API at ${API_URL}. ${networkErrorHint()}`);
+  }
+
+  if (res.status === 401 && !isAuthPath(path)) {
+    const refreshToken = await getItemAsync('refreshToken');
+    if (refreshToken) {
+      try {
+        const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          await setTokens(data.access_token, data.refresh_token);
+          headers.Authorization = `Bearer ${data.access_token}`;
+          const retry = await fetch(`${API_URL}${path}`, { ...options, headers });
+          if (!retry.ok) {
+            const parsed = await parseErrorBody(retry);
+            throw new ApiError(`HTTP ${retry.status}: ${parsed.message}`, retry.status, parsed.detail);
+          }
+          if (retry.status === 204) return { data: undefined as T, headers: retry.headers };
+          return { data: await retry.json(), headers: retry.headers };
+        }
+      } catch {
+        await clearTokens();
+      }
+    }
+    onUnauthorized?.();
+    throw new Error('Session expired. Please sign in again.');
+  }
+
+  if (!res.ok) {
+    const parsed = await parseErrorBody(res);
+    const friendly = res.status === 429
+      ? `${parsed.message || 'Too many requests'}. Please try again later.`
+      : parsed.message;
+    throw new ApiError(`HTTP ${res.status}: ${friendly}`, res.status, parsed.detail);
+  }
+
+  if (res.status === 204) return { data: undefined as T, headers: res.headers };
+  return { data: await res.json(), headers: res.headers };
+}
+
 export { apiRequest, setTokens, clearTokens, getToken, API_URL };

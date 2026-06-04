@@ -46,6 +46,14 @@ export const zhHant = {
   history: {
     loadFailed: '無法載入紀錄',
     empty: '尚無出席紀錄',
+    filterTitle: '篩選',
+    all: '全部',
+    today: '今天',
+    yesterday: '昨天',
+    last7Days: '7 天',
+    last30Days: '30 天',
+    loadMore: '載入更多',
+    noMore: '沒有更多紀錄',
   },
   scanner: {
     setupTitle: '掃描設定',

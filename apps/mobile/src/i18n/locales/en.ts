@@ -44,6 +44,14 @@ export const en = {
   history: {
     loadFailed: 'Failed to load history',
     empty: 'No attendance records yet',
+    filterTitle: 'Filter',
+    all: 'All',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    last7Days: '7 days',
+    last30Days: '30 days',
+    loadMore: 'Load more',
+    noMore: 'No more records',
   },
   scanner: {
     setupTitle: 'Scan setup',
