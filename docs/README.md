@@ -1,23 +1,17 @@
-# Documentation
+# 文件總覽
 
-| Document | Audience | Contents |
-|----------|----------|----------|
-| [../README.md](../README.md) | Everyone | Architecture, quick start, API/web routes, security |
-| [DEPLOY.md](DEPLOY.md) | Operators | Production server: Docker, Caddy, GHCR, seed/reset |
-| [CICD-EXPLAINED.md](CICD-EXPLAINED.md) | Developers | How CI, GHCR, and deploy scripts fit together |
-| [KNOWN-GAPS.md](KNOWN-GAPS.md) | Maintainers | MVP limitations and planned hardening |
-| [RELEASE-2026-05.md](RELEASE-2026-05.md) | Operators | **Current release** — ship checklist and verification |
-| [LOCATIONS.md](LOCATIONS.md) | Admins / devs | Location master data, photo URLs (v1), upload planned |
-| [../apps/api/README.md](../apps/api/README.md) | Backend | API-only setup and tests |
-| [../apps/web/README.md](../apps/web/README.md) | Frontend | Web dev server and attendance pages |
-| [../apps/mobile/README.md](../apps/mobile/README.md) | Mobile | Expo scanner app setup |
-| [MOBILE-SPRINT.md](MOBILE-SPRINT.md) | Mobile / PM | Phased backlog (Phase 1–4), API parity matrix |
-| [MOBILE-RELEASE-CHECKLIST.md](MOBILE-RELEASE-CHECKLIST.md) | Operators | Pre-launch mobile + API smoke tests |
+所有專案文件已統合至 **[PROJECT-HANDBOOK.md](PROJECT-HANDBOOK.md)**。
 
-**Suggested reading order**
+| 文件 | 用途 |
+|------|------|
+| [PROJECT-HANDBOOK.md](PROJECT-HANDBOOK.md) | 統合手冊 — 架構、部署、CI/CD、運維手冊、代碼審查、Mobile sprint、發布紀錄 |
+| [../README.md](../README.md) | 架構總覽、快速開始、API/web 路由、安全設計 |
+| [../apps/api/README.md](../apps/api/README.md) | API 設定與測試 |
+| [../apps/web/README.md](../apps/web/README.md) | Web 開發伺服器與出勤頁面 |
+| [../apps/mobile/README.md](../apps/mobile/README.md) | Mobile QR 掃描器 App 設定 |
 
-1. Root README — understand products vs users and QR flow  
-2. App README for the layer you are changing  
-3. DEPLOY + CICD when shipping to a server  
-4. KNOWN-GAPS before opening the system to the public internet  
-5. MOBILE-SPRINT + MOBILE-RELEASE-CHECKLIST when shipping the Expo app  
+**建議閱讀順序**
+
+1. Root README — 理解 Product vs User 與 QR 流程
+2. 各 App README — 針對你正在修改的層級
+3. PROJECT-HANDBOOK — 部署到伺服器或審視已知缺口時

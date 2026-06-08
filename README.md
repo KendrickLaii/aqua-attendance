@@ -36,7 +36,7 @@ Check-in / check-out for a cram school (juku). **Staff and students are not logi
 | `apps/web/` | Vue 3 admin UI (`src/pages/attendance/`) on AQUA template |
 | `apps/mobile/` | Expo app — QR scanner + history (see mobile README for entry-point note) |
 | `docker-compose.yml` | Dev: PostgreSQL + API |
-| `deploy/` | Production: Caddy + web + api + db (see `docs/DEPLOY.md`) |
+| `deploy/` | Production: Caddy + web + api + db (see `docs/PROJECT-HANDBOOK.md`) |
 | `docs/` | Deploy guide, CI/CD explainer |
 
 ## Daily development (recommended)
@@ -172,7 +172,7 @@ Change all seed passwords before any shared or production use.
 
 ### Production server (`deploy/.env`)
 
-See [deploy/.env.example](deploy/.env.example) and [docs/DEPLOY.md](docs/DEPLOY.md).
+See [deploy/.env.example](deploy/.env.example) and [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md).
 
 ## Security design
 
@@ -218,7 +218,7 @@ Roles on **users**: `admin`, `superadmin`.
 | `POST /api/attendance/manual` | Admin |
 | `GET /api/attendance/export/csv` | Admin |
 
-> See [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) for remaining web/mobile hardening.
+> See [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §5 for remaining web/mobile hardening.
 
 ### Audit fields (`attendance_events`)
 
@@ -285,23 +285,19 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 
 - **CI:** `.github/workflows/ci.yml` — pytest + web build
 - **Images:** `.github/workflows/docker-publish.yml` — push API + web to GHCR on `main` / tags
-- **Server:** `deploy/` + [docs/DEPLOY.md](docs/DEPLOY.md)
-- **Overview:** [docs/CICD-EXPLAINED.md](docs/CICD-EXPLAINED.md)
+- **Server:** `deploy/` + [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md)
+- **Overview:** [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md)
 
 `first-boot.sh` starts containers but does **not** seed the database. After first deploy, run `python seed.py` in the API container or use `deploy/reset-db.sh` for a fresh DB + seed.
 
-## Documentation index
+## Documentation
 
 | Doc | Purpose |
 |-----|---------|
-| [docs/README.md](docs/README.md) | Doc index |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Production server setup |
-| [docs/CICD-EXPLAINED.md](docs/CICD-EXPLAINED.md) | Pipeline mental model |
-| [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | Doc/code mismatches and planned fixes |
-| [docs/RELEASE-2026-05.md](docs/RELEASE-2026-05.md) | **Current release** — deploy checklist |
-| [apps/api/README.md](apps/api/README.md) | API-only quick start |
+| [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — deploy, CI/CD, ops, mobile, code review, release notes |
+| [apps/api/README.md](apps/api/README.md) | API-only setup and tests |
 | [apps/web/README.md](apps/web/README.md) | Web-only quick start |
-| [apps/mobile/README.md](apps/mobile/README.md) | Mobile scanner app |
+| [apps/mobile/README.md](apps/mobile/README.md) | Mobile scanner app setup |
 
 ## Roadmap (not in v1)
 

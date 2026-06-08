@@ -1,13 +1,13 @@
 # AQUA Attendance — Web App
 
-Vue 3 + Vite admin console for attendance. **Attendance UI** lives under `src/pages/attendance/`. The rest of the repo tree is the AQUA admin template (demos); production navigation only links attendance pages.
+Vue 3 + Vite 管理後台。出勤相關 UI 位於 `src/pages/attendance/`。其餘為 AQUA 模板範例與示範頁面；生產環境導航僅連結 attendance 頁面。
 
-## Daily development
+## 日常開發
 
-Each session (with API + DB already set up):
+每次開發（API + DB 已就緒）：
 
 ```bash
-# Terminal 1 — repo root (skip if already running)
+# Terminal 1 — repo root（若未執行）
 docker compose up -d db
 
 # Terminal 2 — apps/api
@@ -17,11 +17,11 @@ python -m uvicorn app.main:app --reload
 npm run dev
 ```
 
-Full workflow: root [README.md](../../README.md#daily-development-recommended).
+完整流程請見根目錄 [README.md](../../README.md#daily-development-recommended)。
 
-## First-time setup
+## 首次設定
 
-Ensure API is running (see [apps/api/README.md](../api/README.md)).
+請先確認 API 正在運行（見 [apps/api/README.md](../api/README.md)）。
 
 ```bash
 cd apps/web
@@ -30,56 +30,56 @@ npm install
 npm run dev
 ```
 
-Open: http://localhost:5173/attendance/login
+開啟：http://localhost:5173/attendance/login
 
-Default login: `admin` / `admin123` (after API `python seed.py`).
+預設登入：`admin` / `admin123`（API 執行 `python seed.py` 後）。
 
-## Environment
+## 環境變數
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_ATTENDANCE_API_URL` | Yes for real API | e.g. `http://localhost:8000/api` |
+| 變數 | 必填 | 說明 |
+|------|------|------|
+| `VITE_ATTENDANCE_API_URL` | 使用真實 API 時必填 | 例如 `http://localhost:8000/api` |
 
-Optional template vars (`VITE_MAPBOX_ACCESS_TOKEN`, etc.) are unused by attendance pages.
+選用的模板變數（`VITE_MAPBOX_ACCESS_TOKEN` 等）與 attendance 頁面無關。
 
-**Production:** `VITE_ATTENDANCE_API_URL` is baked in at **image build** time. Set the GitHub Actions variable `VITE_ATTENDANCE_API_URL` before running the publish workflow.
+**生產環境**：`VITE_ATTENDANCE_API_URL` 在 **image build** 時烘焙進 bundle。執行 publish workflow 前，請先在 GitHub Actions Variables 設定 `VITE_ATTENDANCE_API_URL`。
 
-## Attendance pages
+## Attendance 頁面
 
-| Route | Purpose |
-|-------|---------|
-| `/attendance/login` | Login |
-| `/attendance/dashboard` | Dashboard |
+| 路由 | 用途 |
+|------|------|
+| `/attendance/login` | 登入 |
+| `/attendance/dashboard` | 儀表板 |
 | `/attendance/products` | Product CRUD |
-| `/attendance/qr-codes` | Fetch / rotate / preview QRs |
-| `/attendance/log` | Event log, manual correction, CSV |
-| `/attendance/users` | User CRUD (admin) |
+| `/attendance/qr-codes` | QR 取得 / 輪替 / 預覽 |
+| `/attendance/log` | 事件紀錄、手動校正、CSV 匯出 |
+| `/attendance/users` | User CRUD（admin） |
 
-Navigation: `src/navigation/vertical/custom-pages.ts` (prod uses this list only).
+導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。
 
-## API client
+## API 客戶端
 
-- `src/utils/attendanceApi.ts` — `ofetch`, Bearer token, 401 refresh
-- `src/api/attendance/` — typed endpoints
-- `src/stores/useAttendanceAuthStore.ts` — session + cookies
+- `src/utils/attendanceApi.ts` — `ofetch`，Bearer token，401 自動 refresh
+- `src/api/attendance/` — 型別化的 endpoint
+- `src/stores/useAttendanceAuthStore.ts` — session + cookie
 
-Tokens are stored in cookies (`attendanceAccessToken`). See [docs/KNOWN-GAPS.md](../../docs/KNOWN-GAPS.md) for logout/CSV caveats.
+Token 儲存在 cookie（`attendanceAccessToken`）。相關注意事項請見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md)。
 
-## Build
+## 建置
 
 ```bash
-npm run build      # output: dist/
-npm run preview    # preview production build locally
+npm run build      # 輸出：dist/
+npm run preview    # 本地預覽生產建置
 ```
 
-Docker production image: `prod.Dockerfile` (nginx serves `dist/`).
+Docker 生產 image：`prod.Dockerfile`（nginx 服務 `dist/`）。
 
-## Stop services
+## 停止服務
 
-- Dev server: `Ctrl+C` in the web terminal  
-- Database (from repo root): `docker compose down`
+- 開發伺服器：在 web terminal 按 `Ctrl+C`
+- 資料庫（從 repo root）：`docker compose down`
 
-## More docs
+## 更多文件
 
-- Root [README.md](../../README.md)  
-- [docs/DEPLOY.md](../../docs/DEPLOY.md) — production web image  
+- 根目錄 [README.md](../../README.md)
+- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 生產部署與運維手冊

@@ -1,65 +1,67 @@
-# Production Deploy
+# 生產部署
 
-Scripts and compose file for the production server.
+生產伺服器腳本與 compose 檔案。
 
-## Prerequisites
+詳細部署指南請見 [docs/PROJECT-HANDBOOK.md](../docs/PROJECT-HANDBOOK.md) §3。
 
-- Ubuntu 22.04+ (or any Linux with Docker)
-- GitHub Container Registry (GHCR) login for pulling private images
-- DNS A records pointing `APP_DOMAIN` and `API_DOMAIN` to the server IP
+## 前置需求
 
-## Initial setup
+- Ubuntu 22.04+（或任何有 Docker 的 Linux）
+- 已登入 GitHub Container Registry（GHCR）以拉取私有 image
+- DNS A 記錄將 `APP_DOMAIN` 與 `API_DOMAIN` 指向伺服器 IP
+
+## 首次設定
 
 ```bash
 cd deploy/
 cp .env.example .env
-# Edit .env — set SECRET_KEY, QR_SECRET, POSTGRES_PASSWORD, domains, image tags
+# 編輯 .env — 設定 SECRET_KEY、QR_SECRET、POSTGRES_PASSWORD、域名、image tag
 ./first-boot.sh
 ```
 
-## Update (new image version)
+## 更新（新版本 image）
 
 ```bash
 cd deploy/
 ./update.sh
 ```
 
-## Backup
+## 備份
 
-### Manual
+### 手動備份
 
 ```bash
 cd deploy/
 ./backup.sh
 ```
 
-Backups are written to `./backups/` and automatically rotated (last 14 kept).
+備份檔寫入 `./backups/`，自動保留最近 14 份。
 
-### Cron (recommended)
+### 排程備份（建議）
 
-Add to the server crontab for daily backups at 03:00:
+加入伺服器 crontab，每天 03:00 自動備份：
 
 ```bash
 0 3 * * * cd /path/to/deploy && ./backup.sh >> ./backups/backup.log 2>&1
 ```
 
-## Restore
+## 還原
 
 ```bash
 cd deploy/
 ./restore.sh backups/attendance_20250604_030000.sql.gz
 ```
 
-**Warning**: restore drops the existing database and recreates it from the backup. The API container is stopped during the operation.
+**警告**：還原會先 DROP 既有資料庫，再從備份重建。還原期間 API container 會被停止。
 
-## File reference
+## 檔案說明
 
-| File | Purpose |
-|------|---------|
-| `docker-compose.prod.yml` | Production services (Caddy, web, API, PostgreSQL) |
-| `Caddyfile` | Reverse proxy + HTTPS (auto-TLS) |
-| `.env` | Secrets and configuration (not in git) |
-| `first-boot.sh` | Install Docker, pull images, start services |
-| `update.sh` | Pull latest images and restart containers |
-| `backup.sh` | `pg_dump` with gzip + rotation |
-| `restore.sh` | Restore from `.sql.gz` backup |
+| 檔案 | 用途 |
+|------|------|
+| `docker-compose.prod.yml` | 生產服務（Caddy、web、API、PostgreSQL） |
+| `Caddyfile` | 反向代理 + HTTPS（自動 TLS） |
+| `.env` | 密鑰與設定（不在 git 中） |
+| `first-boot.sh` | 安裝 Docker、拉取 image、啟動服務 |
+| `update.sh` | 拉取最新 image 並重啟 container |
+| `backup.sh` | `pg_dump` + gzip + 輪替 |
+| `restore.sh` | 從 `.sql.gz` 備份還原 |
