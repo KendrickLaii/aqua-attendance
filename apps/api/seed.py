@@ -119,6 +119,26 @@ async def main() -> None:
                     setattr(product, field, value)
                 product.registered_location_id = registered_location.id
                 product.scan_locations = scan_locations
+
+                # Update or create profile for existing product
+                await db.flush()
+                if p["product_type"] == "staff" and profile_data:
+                    existing_sp = await db.execute(select(StaffProfile).where(StaffProfile.id == product.id))
+                    sp = existing_sp.scalar_one_or_none()
+                    if sp:
+                        for field, value in profile_data.items():
+                            setattr(sp, field, value)
+                    else:
+                        db.add(StaffProfile(id=product.id, **profile_data))
+                elif p["product_type"] == "student" and profile_data:
+                    existing_stp = await db.execute(select(StudentProfile).where(StudentProfile.id == product.id))
+                    stp = existing_stp.scalar_one_or_none()
+                    if stp:
+                        for field, value in profile_data.items():
+                            setattr(stp, field, value)
+                    else:
+                        db.add(StudentProfile(id=product.id, **profile_data))
+
                 print(f"  updated {p['code']} ({p['product_type']})")
                 continue
 

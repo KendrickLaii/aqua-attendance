@@ -22,6 +22,7 @@ class ProductCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     english_name: str | None = Field(default=None, max_length=255)
     product_type: Literal["staff", "student"]
+    is_active: bool = True
     status: str = Field(default="active", max_length=20)
     registered_location_id: uuid.UUID
     scan_location_ids: list[uuid.UUID] = Field(min_length=1)

@@ -4,14 +4,16 @@ import {
   maxCharsRule,
   requiredValidator,
 } from '@core/utils/validators'
-import { createProduct, deleteProduct, listProductsWithTotal, updateProduct } from '@/api/attendance/products'
+import { createProduct, deleteProduct, listProductsWithTotal, updateProduct, updateStaffProfile, updateStudentProfile } from '@/api/attendance/products'
 import type { Product } from '@/api/attendance/products'
 import { listLocations } from '@/api/attendance/locations'
 import type { LocationItem } from '@/api/attendance/locations'
 import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
+import AppToastStack from '@/components/AppToastStack.vue'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useToast } from '@/composables/useToast'
 
 definePage({ meta: {} })
 
@@ -19,6 +21,7 @@ const PRODUCT_PAGE_SIZE = 50
 const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
+const { show: showToast } = useToast()
 const router = useRouter()
 
 const products = ref<Product[]>([])
@@ -307,6 +310,14 @@ watch(() => form.product_type, type => {
   }
 })
 
+watch(() => form.is_active, (val) => {
+  form.status = val ? 'active' : 'inactive'
+})
+
+watch(() => form.status, (val) => {
+  form.is_active = val !== 'inactive'
+})
+
 function goToPrevPage() {
   if (page.value <= 1)
     return
@@ -534,17 +545,61 @@ async function handleSave() {
       }
     }
 
-    if (editingProduct.value)
-      await updateProduct(editingProduct.value.id, { ...payload, is_active: form.is_active })
+    const finalPayload = editingProduct.value
+      ? { ...payload, is_active: form.is_active }
+      : { ...payload, is_active: form.is_active }
 
-    else
-      await createProduct(payload as Parameters<typeof createProduct>[0])
+    if (editingProduct.value) {
+      await updateProduct(editingProduct.value.id, finalPayload)
+
+      // Update nested profile via dedicated endpoint (PATCH /products does not handle profiles)
+      if (form.product_type === 'staff') {
+        await updateStaffProfile(editingProduct.value.id, {
+          employee_id: normalizeString(form.staff_profile.employee_id),
+          employment_type: normalizeString(form.staff_profile.employment_type),
+          department: normalizeString(form.staff_profile.department),
+          position: normalizeString(form.staff_profile.position),
+          hire_date: normalizeString(form.staff_profile.hire_date),
+          termination_date: normalizeString(form.staff_profile.termination_date),
+          salary_grade: normalizeString(form.staff_profile.salary_grade),
+          work_schedule: normalizeString(form.staff_profile.work_schedule),
+          supervisor_id: normalizeString(form.staff_profile.supervisor_id),
+          employment_notes: normalizeString(form.staff_profile.employment_notes),
+        })
+      }
+      else if (form.product_type === 'student') {
+        const guardians: Record<string, unknown> = {}
+        form.guardians.forEach((g, idx) => {
+          if (g.name.trim()) {
+            guardians[`guardian${idx + 1}`] = {
+              name: normalizeString(g.name),
+              relationship: normalizeString(g.relationship),
+              phone: normalizeString(g.phone),
+            }
+          }
+        })
+        await updateStudentProfile(editingProduct.value.id, {
+          school_name: normalizeString(form.student_profile.school_name),
+          grade_class: normalizeString(form.student_profile.grade_class),
+          student_id: normalizeString(form.student_profile.student_id),
+          enrollment_date: normalizeString(form.student_profile.enrollment_date),
+          graduation_date: normalizeString(form.student_profile.graduation_date),
+          academic_notes: normalizeString(form.student_profile.academic_notes),
+          guardians: Object.keys(guardians).length > 0 ? guardians : null,
+        })
+      }
+    }
+    else {
+      await createProduct(finalPayload as Parameters<typeof createProduct>[0])
+    }
 
     dialogOpen.value = false
     await loadProducts(true)
+    showToast(editingProduct.value ? 'Product updated successfully.' : 'Product created successfully.', 'success')
   }
   catch (e: unknown) {
     saveError.value = formatApiError(e, 'Could not save product')
+    showToast(saveError.value, 'error')
   }
   finally {
     saving.value = false
@@ -1459,7 +1514,6 @@ function rowStatusChip(p: Product) {
         />
 
         <VSwitch
-          v-if="editingProduct"
           v-model="form.is_active"
           label="Active (can scan QR and appear in attendance)"
           class="mt-1"
@@ -1480,6 +1534,8 @@ function rowStatusChip(p: Product) {
       <strong>{{ deleteTarget?.full_name }}</strong> ({{ deleteTarget?.code }}).
       This action cannot be undone.
     </AttendanceConfirmDialog>
+
+    <AppToastStack />
 
     <ProductQrDialogs
       ref="qrDialogsRef"

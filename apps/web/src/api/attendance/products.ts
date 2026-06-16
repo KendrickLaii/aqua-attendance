@@ -129,6 +129,7 @@ export async function createProduct(payload: {
   full_name: string
   english_name?: string | null
   product_type: 'student' | 'staff'
+  is_active?: boolean
   status?: string
   registered_location_id: string
   scan_location_ids: string[]
@@ -179,4 +180,12 @@ export async function updateProduct(productId: string, payload: {
 
 export async function deleteProduct(productId: string): Promise<void> {
   await $attendanceApi(`/products/${productId}`, { method: 'DELETE' })
+}
+
+export async function updateStaffProfile(productId: string, payload: StaffProfileInput): Promise<void> {
+  await $attendanceApi(`/staff-profiles/${productId}`, { method: 'PATCH', body: payload })
+}
+
+export async function updateStudentProfile(productId: string, payload: StudentProfileInput): Promise<void> {
+  await $attendanceApi(`/student-profiles/${productId}`, { method: 'PATCH', body: payload })
 }

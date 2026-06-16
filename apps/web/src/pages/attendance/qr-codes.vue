@@ -19,6 +19,7 @@ const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 const filterType = ref('')
+const showInactive = ref(false)
 const searchQuery = ref('')
 const qrDialogsRef = ref<InstanceType<typeof ProductQrDialogs> | null>(null)
 const selectedIds = ref<Set<string>>(new Set())
@@ -59,21 +60,21 @@ const listCaption = computed(() => {
   const total = products.value.length
   if (productsCapped.value)
     return `Showing ${total} of ${PRODUCT_PAGE_SIZE}+ active products`
-  if (searchQuery.value || filterType.value)
+  if (searchQuery.value || filterType.value || showInactive.value)
     return `Showing ${total} matching active product${total === 1 ? '' : 's'}`
 
   return `${total} active product${total === 1 ? '' : 's'}`
 })
 
 const emptyStateMessage = computed(() => {
-  if (searchQuery.value || filterType.value)
+  if (searchQuery.value || filterType.value || showInactive.value)
     return 'No matching active products'
 
   return 'No active products found'
 })
 
 const showEmptyProductsCta = computed(() =>
-  !searchQuery.value && !filterType.value,
+  !searchQuery.value && !filterType.value && !showInactive.value,
 )
 
 onMounted(async () => {
@@ -103,7 +104,7 @@ async function loadProducts(isRefresh = false) {
     products.value = await listProducts({
       search: searchQuery.value || undefined,
       product_type: filterType.value || undefined,
-      is_active: true,
+      is_active: showInactive.value ? undefined : true,
       page_size: PRODUCT_PAGE_SIZE,
     })
   }
@@ -124,6 +125,10 @@ watch(searchQuery, () => {
 })
 
 watch(filterType, () => {
+  loadProducts(true)
+})
+
+watch(showInactive, () => {
   loadProducts(true)
 })
 
@@ -234,7 +239,7 @@ async function printSelected() {
     >
       <VCol
         cols="12"
-        sm="4"
+        sm="3"
       >
         <VTextField
           v-model="searchQuery"
@@ -247,7 +252,7 @@ async function printSelected() {
       </VCol>
       <VCol
         cols="12"
-        sm="3"
+        sm="2"
       >
         <VSelect
           v-model="filterType"
@@ -255,6 +260,14 @@ async function printSelected() {
           label="Type"
           density="compact"
           hide-details
+        />
+      </VCol>
+      <VCol cols="auto">
+        <VCheckbox
+          v-model="showInactive"
+          label="Show inactive"
+          hide-details
+          density="compact"
         />
       </VCol>
       <VCol
