@@ -137,17 +137,28 @@ function goToNextPage() {
   loadSummaries(true)
 }
 
-function statusColor(status: string) {
-  if (status === 'completed')
-    return 'success'
-  if (status === 'pending')
-    return 'warning'
+function statusLabel(s: AttendanceSummary) {
+  if (s.is_holiday)
+    return 'Holiday'
+  if (s.is_weekend)
+    return 'Weekend'
 
-  return 'grey'
+  return s.is_complete ? 'Complete' : 'Incomplete'
+}
+
+function statusColor(s: AttendanceSummary) {
+  if (s.is_holiday || s.is_weekend)
+    return 'info'
+
+  return s.is_complete ? 'success' : 'warning'
 }
 
 function formatHours(h: number) {
   return Number.isFinite(h) ? h.toFixed(2) : '-'
+}
+
+function minutesToHours(m: number) {
+  return Number.isFinite(m) ? (m / 60).toFixed(2) : '-'
 }
 </script>
 
@@ -255,7 +266,17 @@ function formatHours(h: number) {
             :key="s.id"
           >
             <td>{{ s.summary_date }}</td>
-            <td>{{ s.product_id }}</td>
+            <td>
+              <div class="font-weight-medium">
+                {{ s.product_name || '—' }}
+              </div>
+              <div
+                v-if="s.product_code"
+                class="text-caption text-medium-emphasis"
+              >
+                {{ s.product_code }}
+              </div>
+            </td>
             <td>
               <span
                 v-if="s.first_check_in"
@@ -277,21 +298,21 @@ function formatHours(h: number) {
               >—</span>
             </td>
             <td class="text-end">
-              {{ formatHours(s.total_regular_hours) }}
+              {{ formatHours(s.regular_hours) }}
             </td>
             <td class="text-end">
-              {{ formatHours(s.total_overtime_hours) }}
+              {{ formatHours(s.overtime_hours) }}
             </td>
             <td class="text-end">
-              {{ formatHours(s.total_break_hours) }}
+              {{ minutesToHours(s.total_break_minutes) }}
             </td>
             <td>
               <VChip
-                :color="statusColor(s.status)"
+                :color="statusColor(s)"
                 size="small"
                 label
               >
-                {{ s.status }}
+                {{ statusLabel(s) }}
               </VChip>
             </td>
           </tr>

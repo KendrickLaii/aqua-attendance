@@ -22,6 +22,8 @@ const filterTable = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const page = ref(1)
+const detailDialog = ref(false)
+const selectedLog = ref<AuditLog | null>(null)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / LOG_PAGE_SIZE)))
 const hasNextPage = computed(() => page.value < totalPages.value)
@@ -131,6 +133,16 @@ function actionColor(action: string) {
 
   return 'grey'
 }
+
+function openDetailDialog(log: AuditLog) {
+  selectedLog.value = log
+  detailDialog.value = true
+}
+
+function closeDetailDialog() {
+  detailDialog.value = false
+  selectedLog.value = null
+}
 </script>
 
 <template>
@@ -229,6 +241,7 @@ function actionColor(action: string) {
             <th>Description</th>
             <th>User</th>
             <th>IP</th>
+            <th class="col-action" />
           </tr>
         </thead>
         <tbody>
@@ -259,16 +272,41 @@ function actionColor(action: string) {
                 class="text-medium-emphasis"
               >—</span>
             </td>
-            <td class="text-caption">
-              {{ log.user_id ? log.user_id.slice(0, 8) + '…' : '—' }}
+            <td>
+              <template v-if="log.username || log.user_full_name">
+                <div class="text-body-2">
+                  {{ log.user_full_name || log.username }}
+                </div>
+                <div
+                  v-if="log.username && log.user_full_name"
+                  class="text-caption text-medium-emphasis"
+                >
+                  @{{ log.username }}
+                </div>
+              </template>
+              <span
+                v-else
+                class="text-medium-emphasis"
+              >—</span>
             </td>
             <td class="text-caption">
               {{ log.ip_address || '—' }}
             </td>
+            <td class="col-action">
+              <VBtn
+                icon
+                size="x-small"
+                variant="text"
+                title="View details"
+                @click="openDetailDialog(log)"
+              >
+                <VIcon>tabler-eye</VIcon>
+              </VBtn>
+            </td>
           </tr>
           <tr v-if="logs.length === 0 && !loading">
             <td
-              colspan="6"
+              colspan="7"
               class="text-center text-medium-emphasis py-6"
             >
               No audit logs found.
@@ -300,6 +338,117 @@ function actionColor(action: string) {
         </VBtn>
       </div>
     </div>
+
+    <VDialog
+      v-model="detailDialog"
+      max-width="560"
+    >
+      <VCard v-if="selectedLog">
+        <VCardTitle class="text-h6 d-flex align-center justify-space-between">
+          <span>Audit Log Detail</span>
+          <VBtn
+            icon
+            variant="text"
+            size="small"
+            @click="closeDetailDialog"
+          >
+            <VIcon>tabler-x</VIcon>
+          </VBtn>
+        </VCardTitle>
+        <VCardText>
+          <div class="mb-3">
+            <div class="text-caption text-medium-emphasis">
+              Action
+            </div>
+            <VChip
+              :color="actionColor(selectedLog.action)"
+              size="small"
+              label
+            >
+              {{ selectedLog.action }}
+            </VChip>
+            <span class="text-body-2 ms-2">{{ selectedLog.table_name }}</span>
+          </div>
+          <div class="mb-3">
+            <div class="text-caption text-medium-emphasis">
+              Description
+            </div>
+            <div class="text-body-2">
+              {{ selectedLog.description || '—' }}
+            </div>
+          </div>
+          <div class="mb-3">
+            <div class="text-caption text-medium-emphasis">
+              Record ID
+            </div>
+            <div class="text-body-2 font-mono">
+              {{ selectedLog.record_id || '—' }}
+            </div>
+          </div>
+          <VRow v-if="selectedLog.old_values">
+            <VCol cols="12">
+              <div class="text-caption text-medium-emphasis mb-1">
+                Old Values
+              </div>
+              <VCard
+                variant="outlined"
+                class="pa-2"
+              >
+                <pre class="text-caption" style="margin: 0; white-space: pre-wrap; word-break: break-word;">{{ JSON.stringify(selectedLog.old_values, null, 2) }}</pre>
+              </VCard>
+            </VCol>
+          </VRow>
+          <VRow v-if="selectedLog.new_values">
+            <VCol cols="12">
+              <div class="text-caption text-medium-emphasis mb-1">
+                New Values
+              </div>
+              <VCard
+                variant="outlined"
+                class="pa-2"
+              >
+                <pre class="text-caption" style="margin: 0; white-space: pre-wrap; word-break: break-word;">{{ JSON.stringify(selectedLog.new_values, null, 2) }}</pre>
+              </VCard>
+            </VCol>
+          </VRow>
+          <VRow>
+            <VCol
+              cols="6"
+              sm="4"
+            >
+              <div class="text-caption text-medium-emphasis">
+                User
+              </div>
+              <div class="text-body-2">
+                {{ selectedLog.user_full_name || selectedLog.username || selectedLog.user_id || '—' }}
+              </div>
+            </VCol>
+            <VCol
+              cols="6"
+              sm="4"
+            >
+              <div class="text-caption text-medium-emphasis">
+                IP
+              </div>
+              <div class="text-body-2">
+                {{ selectedLog.ip_address || '—' }}
+              </div>
+            </VCol>
+            <VCol
+              cols="6"
+              sm="4"
+            >
+              <div class="text-caption text-medium-emphasis">
+                Session
+              </div>
+              <div class="text-body-2">
+                {{ selectedLog.session_id || '—' }}
+              </div>
+            </VCol>
+          </VRow>
+        </VCardText>
+      </VCard>
+    </VDialog>
   </VContainer>
 </template>
 
@@ -320,5 +469,14 @@ function actionColor(action: string) {
 .audit-table :deep(th),
 .audit-table :deep(td) {
   white-space: nowrap;
+}
+
+.audit-table :deep(.col-action) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.font-mono {
+  font-family: monospace;
 }
 </style>

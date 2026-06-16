@@ -47,6 +47,8 @@ class PayrollRecordUpdate(BaseModel):
 class PayrollRecordOut(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID
+    product_name: str | None = None
+    product_code: str | None = None
     payroll_period_start: date
     payroll_period_end: date
     total_regular_hours: float

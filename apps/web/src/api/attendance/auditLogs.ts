@@ -4,6 +4,8 @@ import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils
 export interface AuditLog {
   id: string
   user_id: string | null
+  username: string | null
+  user_full_name: string | null
   action: string
   table_name: string
   record_id: string | null

@@ -23,6 +23,8 @@ class AuditLogCreate(BaseModel):
 class AuditLogOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID | None = None
+    username: str | None = None
+    user_full_name: str | None = None
     action: str
     table_name: str
     record_id: uuid.UUID | None = None

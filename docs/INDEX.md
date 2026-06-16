@@ -30,6 +30,7 @@
 | [../deploy/README.md](../deploy/README.md) | 部署 | 生產主機目錄結構、輔助腳本說明（`first-boot.sh`、`update.sh`、`reset-db.sh`） | 部署腳本變更時 |
 | [BACKEND_REVIEW.md](BACKEND_REVIEW.md) | 審查 | FastAPI 後端審查與修復計畫 — 架構評價、已修問題、待補缺口 | 後端重大變更時 |
 | [DATABASE_CHANGES.md](DATABASE_CHANGES.md) | 設計 | 資料庫設計 Single Source of Truth — ER 圖、欄位搬遷、OT 計算 | Schema 變更時 |
+| [../FRONTEND_ALIGNMENT_PLAN.md](../FRONTEND_ALIGNMENT_PLAN.md) | 計畫 | 前端對齊計畫（Web + Mobile）— 型別、表單、新頁面、權限 | 前後端對齊時 |
 
 ---
 

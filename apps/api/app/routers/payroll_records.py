@@ -3,12 +3,21 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB, SuperAdminOnly
 from app.models.payroll_record import PayrollRecord, PayrollStatus
 from app.schemas.payroll_record import PayrollRecordCreate, PayrollRecordOut, PayrollRecordUpdate
 
 router = APIRouter(prefix="/payroll-records", tags=["payroll-records"])
+
+
+def _record_to_out(record: PayrollRecord) -> PayrollRecordOut:
+    out = PayrollRecordOut.model_validate(record)
+    if record.product:
+        out.product_name = record.product.full_name
+        out.product_code = record.product.code
+    return out
 
 
 @router.get("", response_model=list[PayrollRecordOut])
@@ -21,7 +30,7 @@ async def list_payroll_records(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[PayrollRecordOut]:
-    q = select(PayrollRecord)
+    q = select(PayrollRecord).options(selectinload(PayrollRecord.product))
     count_q = select(func.count()).select_from(PayrollRecord)
 
     clauses = []
@@ -42,7 +51,7 @@ async def list_payroll_records(
     )
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return list(result.scalars().all())
+    return [_record_to_out(r) for r in result.scalars().all()]
 
 
 @router.post("", response_model=PayrollRecordOut, status_code=status.HTTP_201_CREATED)
@@ -53,7 +62,12 @@ async def create_payroll_record(
     db.add(record)
     await db.commit()
     await db.refresh(record)
-    return PayrollRecordOut.model_validate(record)
+    result = await db.execute(
+        select(PayrollRecord)
+        .options(selectinload(PayrollRecord.product))
+        .where(PayrollRecord.id == record.id)
+    )
+    return _record_to_out(result.scalar_one())
 
 
 @router.get("/{record_id}", response_model=PayrollRecordOut)
@@ -61,12 +75,14 @@ async def get_payroll_record(
     record_id: uuid.UUID, _admin: AdminOnly, db: DB
 ) -> PayrollRecordOut:
     result = await db.execute(
-        select(PayrollRecord).where(PayrollRecord.id == record_id)
+        select(PayrollRecord)
+        .options(selectinload(PayrollRecord.product))
+        .where(PayrollRecord.id == record_id)
     )
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Payroll record not found")
-    return PayrollRecordOut.model_validate(record)
+    return _record_to_out(record)
 
 
 @router.patch("/{record_id}", response_model=PayrollRecordOut)
@@ -95,7 +111,12 @@ async def update_payroll_record(
         setattr(record, field, value)
     await db.commit()
     await db.refresh(record)
-    return PayrollRecordOut.model_validate(record)
+    result = await db.execute(
+        select(PayrollRecord)
+        .options(selectinload(PayrollRecord.product))
+        .where(PayrollRecord.id == record.id)
+    )
+    return _record_to_out(result.scalar_one())
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)

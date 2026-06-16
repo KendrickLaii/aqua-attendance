@@ -19,6 +19,8 @@ const loadError = ref('')
 
 const filterStatus = ref('')
 const page = ref(1)
+const deleteDialog = ref(false)
+const deleteTarget = ref<PayrollRecord | null>(null)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / PAYROLL_PAGE_SIZE)))
 const hasNextPage = computed(() => page.value < totalPages.value)
@@ -126,11 +128,22 @@ async function updateStatus(record: PayrollRecord, newStatus: string) {
   }
 }
 
-async function removeRecord(record: PayrollRecord) {
-  if (!confirm(`Delete payroll record for period ${record.payroll_period_start} – ${record.payroll_period_end}?`))
+function openDeleteDialog(record: PayrollRecord) {
+  deleteTarget.value = record
+  deleteDialog.value = true
+}
+
+function closeDeleteDialog() {
+  deleteDialog.value = false
+  deleteTarget.value = null
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value)
     return
   try {
-    await deletePayrollRecord(record.id)
+    await deletePayrollRecord(deleteTarget.value.id)
+    closeDeleteDialog()
     await loadRecords(true)
   }
   catch (e) {
@@ -222,6 +235,7 @@ function formatCurrency(n: number) {
       >
         <thead>
           <tr>
+            <th>Product</th>
             <th>Period</th>
             <th>Regular</th>
             <th>OT</th>
@@ -238,6 +252,17 @@ function formatCurrency(n: number) {
             v-for="r in records"
             :key="r.id"
           >
+            <td>
+              <div class="font-weight-medium">
+                {{ r.product_name || '—' }}
+              </div>
+              <div
+                v-if="r.product_code"
+                class="text-caption text-medium-emphasis"
+              >
+                {{ r.product_code }}
+              </div>
+            </td>
             <td>
               <div class="text-caption">
                 {{ r.payroll_period_start }} – {{ r.payroll_period_end }}
@@ -292,7 +317,7 @@ function formatCurrency(n: number) {
                   size="small"
                   variant="text"
                   color="error"
-                  @click="removeRecord(r)"
+                  @click="openDeleteDialog(r)"
                 >
                   <VIcon>tabler-trash</VIcon>
                 </VBtn>
@@ -301,7 +326,7 @@ function formatCurrency(n: number) {
           </tr>
           <tr v-if="records.length === 0 && !loading">
             <td
-              colspan="9"
+              colspan="10"
               class="text-center text-medium-emphasis py-6"
             >
               No payroll records found.
@@ -333,6 +358,34 @@ function formatCurrency(n: number) {
         </VBtn>
       </div>
     </div>
+    <VDialog
+      v-model="deleteDialog"
+      max-width="400"
+    >
+      <VCard v-if="deleteTarget">
+        <VCardTitle class="text-h6">
+          Confirm Delete
+        </VCardTitle>
+        <VCardText>
+          Delete payroll record for <strong>{{ deleteTarget.product_name || deleteTarget.product_code || deleteTarget.product_id }}</strong> ({{ deleteTarget.payroll_period_start }} – {{ deleteTarget.payroll_period_end }})?
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="text"
+            @click="closeDeleteDialog"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="error"
+            variant="flat"
+            @click="confirmDelete"
+          >
+            Delete
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </VContainer>
 </template>
 

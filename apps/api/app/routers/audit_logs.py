@@ -3,12 +3,21 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Query, Response
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.deps import DB, SuperAdminOnly
 from app.models.audit_log import AuditLog
 from app.schemas.audit_log import AuditLogOut
 
 router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
+
+
+def _log_to_out(log: AuditLog) -> AuditLogOut:
+    out = AuditLogOut.model_validate(log)
+    if log.user:
+        out.username = log.user.username
+        out.user_full_name = log.user.full_name
+    return out
 
 
 @router.get("", response_model=list[AuditLogOut])
@@ -26,7 +35,7 @@ async def list_audit_logs(
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AuditLogOut]:
     """Query audit logs. Superadmin only."""
-    q = select(AuditLog)
+    q = select(AuditLog).options(selectinload(AuditLog.user))
     count_q = select(func.count()).select_from(AuditLog)
 
     clauses = []
@@ -55,4 +64,4 @@ async def list_audit_logs(
     )
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return list(result.scalars().all())
+    return [_log_to_out(log) for log in result.scalars().all()]

@@ -1260,4 +1260,4 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 ---
 
-> 本手冊統合來源：`README.md`、`docs/INDEX.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/KNOWN-GAPS.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/BACKEND_REVIEW.md`、`docs/DATABASE_CHANGES.md`。
+> 本手冊統合來源：`README.md`、`docs/INDEX.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/KNOWN-GAPS.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/BACKEND_REVIEW.md`、`docs/DATABASE_CHANGES.md`、`FRONTEND_ALIGNMENT_PLAN.md`。

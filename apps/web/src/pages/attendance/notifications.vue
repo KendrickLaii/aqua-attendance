@@ -117,6 +117,26 @@ async function toggleRead(n: Notification) {
   }
 }
 
+async function markAllAsRead() {
+  const unread = notifications.value.filter(n => !n.is_read)
+  if (unread.length === 0)
+    return
+  try {
+    await Promise.all(unread.map(n => markNotificationRead(n.id)))
+    notifications.value.forEach((n) => {
+      if (!n.is_read) {
+        n.is_read = true
+        n.read_at = new Date().toISOString()
+      }
+    })
+    unreadCount.value = 0
+  }
+  catch (e) {
+    console.error('Failed to mark all as read', e)
+    loadError.value = formatApiError(e, 'Could not mark all as read')
+  }
+}
+
 function goToPrevPage() {
   if (page.value <= 1)
     return
@@ -160,6 +180,16 @@ function goToNextPage() {
           hide-details
           class="filter-field"
         />
+        <VBtn
+          v-if="unreadCount > 0"
+          size="small"
+          variant="tonal"
+          color="primary"
+          prepend-icon="tabler-mail-opened"
+          @click="markAllAsRead"
+        >
+          Mark all read
+        </VBtn>
         <VBtn
           icon
           variant="text"
@@ -242,9 +272,21 @@ function goToNextPage() {
 
     <div
       v-if="notifications.length === 0 && !loading"
-      class="text-center text-medium-emphasis py-6"
+      class="text-center py-12"
     >
-      No notifications found.
+      <VIcon
+        size="64"
+        color="medium-emphasis"
+        class="mb-4"
+      >
+        tabler-bell-off
+      </VIcon>
+      <div class="text-h6 text-medium-emphasis mb-1">
+        No notifications
+      </div>
+      <div class="text-body-2 text-medium-emphasis">
+        You're all caught up
+      </div>
     </div>
 
     <div class="d-flex align-center justify-space-between mt-3">

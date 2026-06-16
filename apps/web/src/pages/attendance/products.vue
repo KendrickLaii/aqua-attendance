@@ -303,6 +303,7 @@ watch(() => form.product_type, type => {
     form.student_profile.graduation_date = ''
     form.student_profile.academic_notes = ''
     form.student_profile.guardians = {}
+    form.guardians = [{ name: '', relationship: '', phone: '' }]
   }
 })
 
@@ -495,7 +496,7 @@ async function handleSave() {
       const guardians: Record<string, unknown> = {}
       form.guardians.forEach((g, idx) => {
         if (g.name.trim()) {
-          guardians[`guardian_${idx + 1}`] = {
+          guardians[`guardian${idx + 1}`] = {
             name: normalizeString(g.name),
             relationship: normalizeString(g.relationship),
             phone: normalizeString(g.phone),

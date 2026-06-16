@@ -3,6 +3,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB
 from app.models.attendance_summary import AttendanceSummary
@@ -11,6 +12,14 @@ from app.services import audit_log as audit_log_svc
 from app.services.summary_generator import generate_monthly_summaries
 
 router = APIRouter(prefix="/attendance-summaries", tags=["attendance-summaries"])
+
+
+def _summary_to_out(summary: AttendanceSummary) -> AttendanceSummaryOut:
+    out = AttendanceSummaryOut.model_validate(summary)
+    if summary.product:
+        out.product_name = summary.product.full_name
+        out.product_code = summary.product.code
+    return out
 
 
 @router.get("", response_model=list[AttendanceSummaryOut])
@@ -23,7 +32,7 @@ async def list_attendance_summaries(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AttendanceSummaryOut]:
-    q = select(AttendanceSummary)
+    q = select(AttendanceSummary).options(selectinload(AttendanceSummary.product))
     count_q = select(func.count()).select_from(AttendanceSummary)
 
     clauses = []
@@ -44,7 +53,7 @@ async def list_attendance_summaries(
     )
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return list(result.scalars().all())
+    return [_summary_to_out(s) for s in result.scalars().all()]
 
 
 @router.post("", response_model=AttendanceSummaryOut, status_code=status.HTTP_201_CREATED)
@@ -55,7 +64,12 @@ async def create_attendance_summary(
     db.add(summary)
     await db.commit()
     await db.refresh(summary)
-    return AttendanceSummaryOut.model_validate(summary)
+    result = await db.execute(
+        select(AttendanceSummary)
+        .options(selectinload(AttendanceSummary.product))
+        .where(AttendanceSummary.id == summary.id)
+    )
+    return _summary_to_out(result.scalar_one())
 
 
 @router.get("/{summary_id}", response_model=AttendanceSummaryOut)
@@ -63,12 +77,14 @@ async def get_attendance_summary(
     summary_id: uuid.UUID, _admin: AdminOnly, db: DB
 ) -> AttendanceSummaryOut:
     result = await db.execute(
-        select(AttendanceSummary).where(AttendanceSummary.id == summary_id)
+        select(AttendanceSummary)
+        .options(selectinload(AttendanceSummary.product))
+        .where(AttendanceSummary.id == summary_id)
     )
     summary = result.scalar_one_or_none()
     if not summary:
         raise HTTPException(status_code=404, detail="Attendance summary not found")
-    return AttendanceSummaryOut.model_validate(summary)
+    return _summary_to_out(summary)
 
 
 @router.post("/generate", status_code=status.HTTP_200_OK)

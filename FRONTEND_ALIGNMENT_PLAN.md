@@ -2,7 +2,7 @@
 
 > 制定日期：2026-06-16
 > 目的：將前端對齊後端所有 schema 變更（多型 profile、新資料表、新欄位、新端點）
-> 後端現況：53 passed, 0 failed，DB 與 API 完全同步（見 `apps/docs/BACKEND_REVIEW.md`）
+> 後端現況：53 passed, 0 failed，DB 與 API 完全同步（見 `docs/BACKEND_REVIEW.md`）
 
 ---
 

@@ -26,6 +26,8 @@ class AttendanceSummaryCreate(BaseModel):
 class AttendanceSummaryOut(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID
+    product_name: str | None = None
+    product_code: str | None = None
     summary_date: date
     location_id: uuid.UUID
     first_check_in: datetime | None = None

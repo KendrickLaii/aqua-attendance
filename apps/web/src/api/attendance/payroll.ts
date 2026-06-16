@@ -4,6 +4,8 @@ import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils
 export interface PayrollRecord {
   id: string
   product_id: string
+  product_name: string | null
+  product_code: string | null
   payroll_period_start: string
   payroll_period_end: string
   total_regular_hours: number

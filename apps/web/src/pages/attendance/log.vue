@@ -51,6 +51,8 @@ const exporting = ref(false)
 const exportError = ref('')
 const voidingId = ref<string | null>(null)
 const voidError = ref('')
+const voidConfirmDialog = ref(false)
+const voidTarget = ref<AttendanceEvent | null>(null)
 
 const typeOptions = [
   { title: 'Student', value: 'student' },
@@ -329,13 +331,24 @@ async function handleCorrection() {
   }
 }
 
-async function voidEvent(evt: AttendanceEvent) {
-  if (!confirm(`Void this attendance event for ${evt.product_name || evt.product_id}?\nThis action cannot be undone.`))
+function openVoidDialog(evt: AttendanceEvent) {
+  voidTarget.value = evt
+  voidConfirmDialog.value = true
+}
+
+function closeVoidDialog() {
+  voidConfirmDialog.value = false
+  voidTarget.value = null
+}
+
+async function confirmVoid() {
+  if (!voidTarget.value)
     return
-  voidingId.value = evt.id
+  voidingId.value = voidTarget.value.id
   voidError.value = ''
   try {
-    await voidAttendanceEvent(evt.id)
+    await voidAttendanceEvent(voidTarget.value.id)
+    closeVoidDialog()
     await loadEvents(true)
   }
   catch (e: unknown) {
@@ -608,7 +621,7 @@ async function voidEvent(evt: AttendanceEvent) {
                   color="error"
                   :loading="voidingId === evt.id"
                   title="Void event"
-                  @click="voidEvent(evt)"
+                  @click="openVoidDialog(evt)"
                 >
                   <VIcon>tabler-ban</VIcon>
                 </VBtn>
@@ -701,6 +714,37 @@ async function voidEvent(evt: AttendanceEvent) {
             />
       </VForm>
     </AttendanceFormDialog>
+
+    <VDialog
+      v-model="voidConfirmDialog"
+      max-width="400"
+    >
+      <VCard>
+        <VCardTitle class="text-h6">
+          Confirm Void
+        </VCardTitle>
+        <VCardText>
+          Void attendance event for <strong>{{ voidTarget?.product_name || voidTarget?.product_code || voidTarget?.product_id }}</strong>?<br>
+          <span class="text-medium-emphasis">This action cannot be undone.</span>
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="text"
+            @click="closeVoidDialog"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="error"
+            variant="flat"
+            :loading="voidingId === voidTarget?.id"
+            @click="confirmVoid"
+          >
+            Void Event
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </VContainer>
 </template>
 
