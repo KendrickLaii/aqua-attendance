@@ -150,22 +150,32 @@ export default function HistoryScreen() {
     return eventType;
   }
 
+  function sourceLabel(source: string): string {
+    if (!source) return '';
+    return source.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+  }
+
   function renderItem({ item }: { item: AttendanceEvent }) {
     const d = new Date(item.recorded_at);
     const isIn = item.event_type === 'check_in';
+    const isVoided = !!item.voided_at;
     return (
-      <View style={styles.row}>
+      <View style={[styles.row, isVoided && styles.rowVoided]}>
         <View style={[styles.strip, { backgroundColor: isIn ? colors.checkIn : colors.checkOut }]} />
         <View style={styles.rowBody}>
           <View style={styles.rowTop}>
-            <Badge label={eventTypeLabel(item.event_type)} tone={isIn ? 'success' : 'warning'} />
+            <View style={styles.badgeGroup}>
+              <Badge label={eventTypeLabel(item.event_type)} tone={isIn ? 'success' : 'warning'} />
+              {item.source ? <Badge label={sourceLabel(item.source)} tone="neutral" style={{ marginLeft: spacing.sm }} /> : null}
+              {isVoided ? <Badge label="VOIDED" tone="error" style={{ marginLeft: spacing.sm }} /> : null}
+            </View>
             <Text style={styles.time}>
               {d.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}
             </Text>
           </View>
-          <Text style={styles.product}>{item.product_name || item.product_code || t('common.dash')}</Text>
-          {item.location ? <Text style={styles.location}>{item.location}</Text> : null}
-          <Text style={styles.date}>{d.toLocaleDateString(dateLocale)}</Text>
+          <Text style={[styles.product, isVoided && styles.textVoided]}>{item.product_name || item.product_code || t('common.dash')}</Text>
+          {item.location ? <Text style={[styles.location, isVoided && styles.textVoided]}>{item.location}</Text> : null}
+          <Text style={[styles.date, isVoided && styles.textVoided]}>{d.toLocaleDateString(dateLocale)}</Text>
         </View>
       </View>
     );
@@ -292,6 +302,9 @@ const styles = StyleSheet.create({
   product: { ...typography.bodyStrong, marginBottom: spacing.xs },
   location: { ...typography.caption, marginBottom: spacing.xs },
   date: { ...typography.caption },
+  rowVoided: { opacity: 0.6 },
+  textVoided: { textDecorationLine: 'line-through' as const },
+  badgeGroup: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   empty: { alignItems: 'center', marginTop: 64 },
   emptyText: { ...typography.body, textAlign: 'center' },
   loadMoreWrap: { alignItems: 'center', marginVertical: spacing.lg },

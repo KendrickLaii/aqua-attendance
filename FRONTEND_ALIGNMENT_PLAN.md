@@ -23,20 +23,21 @@
 
 **`src/api/attendance/products.ts`**
 
-- ❌ `Product` interface 仍含 `employment_type`、`school_name`、`grade_class`、`guardian1_name`…`guardian2_phone`（已搬到 profiles）
-- ❌ `createProduct` / `updateProduct` payload 仍送這些扁平欄位
-- ❌ 缺 `photo_url`、`enrollment_date`、`exit_date`
-- ❌ 缺 `student_profile` / `staff_profile` 巢狀物件
+- ✅ `Product` interface 已改為巢狀 `student_profile` / `staff_profile`
+- ✅ `createProduct` / `updateProduct` payload 支援巢狀 profile
+- ✅ 已加入 `photo_url`、`enrollment_date`、`exit_date`
+- ✅ `listProducts` 已移除 `employment_type` query 參數
 
 **`src/pages/attendance/products.vue`**
 
-- ❌ 表單「School & guardian」「Employment」區塊綁定扁平欄位
-- ❌ 列表 `School / Class` 欄讀 `p.school_name`（將為 undefined）
-- ❌ Employment 過濾送 `employment_type` query（後端已移除該 query）
+- ✅ 表單依 `product_type` 動態顯示 `student_profile` / `staff_profile` 欄位
+- ✅ guardians 改為動態陣列（可 add/remove）
+- ✅ 列表 `School / Class` 讀 `p.student_profile?.school_name`
+- ✅ Employment 過濾改為前端篩選
 
 **`src/api/attendance/events.ts`**
 
-- ❌ `AttendanceEvent` 缺 `created_at`、`voided_at`、`source`
+- ✅ `AttendanceEvent` 已補 `created_at`、`voided_at`、`source`
 
 **完全缺失的 API client（後端已就緒）**
 
@@ -59,45 +60,45 @@
 
 ### 階段一：型別與 API client 修正（解除破壞）🔴
 
-- [ ] **拆分 product 型別**：新增 `StudentProfile` / `StaffProfile` interface
-- [ ] 重寫 `Product` interface：移除扁平 profile 欄位，改為巢狀 `student_profile?` / `staff_profile?`
-- [ ] 加入 `photo_url` / `enrollment_date` / `exit_date`
-- [ ] `createProduct` payload 支援巢狀 `student_profile` / `staff_profile`（後端已支援同交易建立）
-- [ ] `events.ts` + mobile `attendance.ts`：`AttendanceEvent` 補 `created_at` / `voided_at` / `source`
-- [ ] 移除 `listProducts` 的 `employment_type` query 參數
+- [x] **拆分 product 型別**：新增 `StudentProfile` / `StaffProfile` interface
+- [x] 重寫 `Product` interface：移除扁平 profile 欄位，改為巢狀 `student_profile?` / `staff_profile?`
+- [x] 加入 `photo_url` / `enrollment_date` / `exit_date`
+- [x] `createProduct` payload 支援巢狀 `student_profile` / `staff_profile`（後端已支援同交易建立）
+- [x] `events.ts` + mobile `attendance.ts`：`AttendanceEvent` 補 `created_at` / `voided_at` / `source`
+- [x] 移除 `listProducts` 的 `employment_type` query 參數
 
 ### 階段二：產品表單與列表重構 🔴
 
-- [ ] `products.vue` 表單：依 `product_type` 動態顯示
+- [x] `products.vue` 表單：依 `product_type` 動態顯示
   - student → 顯示 `student_profile`（school_name、grade_class、guardians[]）
   - staff → 顯示 `staff_profile`（employment_type、department、position、hire_date…）
-- [ ] guardians 改為**動態陣列**（後端 `guardians` 為 JSON list，非固定 guardian1/2）
-- [ ] 列表欄位讀巢狀：`p.student_profile?.school_name`
-- [ ] Employment 過濾改為前端篩選或移除（後端不再支援該 query）
-- [ ] 送出時組裝巢狀 payload
+- [x] guardians 改為**動態陣列**（後端 `guardians` 為 JSON dict，前端渲染為陣列）
+- [x] 列表欄位讀巢狀：`p.student_profile?.school_name`
+- [x] Employment 過濾改為前端篩選（後端不再支援該 query）
+- [x] 送出時組裝巢狀 payload
 
 ### 階段三：新功能頁面（補齊後端能力）🟢
 
-- [ ] **Notifications**：通知中心頁 + 鈴鐺未讀數（`GET /notifications`、`PATCH` 標記已讀）
-- [ ] **Attendance Summaries**：月度彙總頁
+- [x] **Notifications**：通知中心頁 + 未讀數（`GET /notifications`、`PATCH` 標記已讀/未讀）
+- [x] **Attendance Summaries**：月度彙總頁
   - 選年月 → `POST /attendance-summaries/generate?year=&month=`
   - 表格顯示每日 regular/OT 工時
-- [ ] **Payroll Records**：薪資列表 + 審核按鈕（PATCH status → approved/paid）
-- [ ] **Audit Logs**：稽核查詢頁（superadmin only，多維度過濾）
-- [ ] **Attendance 作廢**：log 頁每列加「作廢」按鈕（`POST /attendance/{id}/void`）
-- [ ] **Auto-checkout**：dashboard 顯示「仍簽到中」人數 + 手動觸發按鈕
+- [x] **Payroll Records**：薪資列表 + 審核按鈕（PATCH status → approved/paid）
+- [x] **Audit Logs**：稽核查詢頁（superadmin only，多維度過濾）
+- [x] **Attendance 作廢**：log 頁每列加「作廢」按鈕 + source 顯示（`POST /attendance/{id}/void`）
+- [x] **Auto-checkout**：dashboard 顯示「仍簽到中」人數 + 手動觸發按鈕
 
 ### 階段四：選單與權限 🟢
 
-- [ ] 導航選單新增：Notifications、Summaries、Payroll、Audit Logs
-- [ ] Audit Logs / Payroll delete 限 superadmin（前端守衛 + 後端已強制）
-- [ ] 新頁面加入路由與麵包屑
+- [x] 導航選單新增：Notifications、Summaries、Payroll、Audit Logs
+- [x] Audit Logs 限 superadmin（前端守衛 + 後端已強制）
+- [x] 新頁面自動路由已生效
 
 ### 階段五：Mobile 補強（低優先）🟡
 
-- [ ] `attendance.ts` 型別補新欄位
-- [ ] 掃描歷史顯示 `source`（scan/manual/auto_checkout）標記
-- [ ] （選用）作廢事件在 mobile 歷史中標示
+- [x] `attendance.ts` 型別補新欄位（created_at / voided_at / source）
+- [x] 掃描歷史顯示 `source`（scan/manual/auto_checkout）標記
+- [x] 作廢事件在 mobile 歷史中標示（VOIDED badge + 降低 opacity + 刪除線）
 
 ---
 
@@ -118,14 +119,14 @@
 | 檔案 | 用途 |
 |---|---|
 | `src/api/attendance/profiles.ts` | student/staff profile CRUD |
-| `src/api/attendance/notifications.ts` | 通知 |
-| `src/api/attendance/summaries.ts` | 月度彙總 |
-| `src/api/attendance/payroll.ts` | 薪資 |
-| `src/api/attendance/auditLogs.ts` | 稽核 |
-| `src/pages/attendance/notifications.vue` | 通知中心 |
-| `src/pages/attendance/summaries.vue` | 彙總報表 |
-| `src/pages/attendance/payroll.vue` | 薪資管理 |
-| `src/pages/attendance/audit-logs.vue` | 稽核查詢 |
+| `src/api/attendance/notifications.ts` | 通知 ✅ |
+| `src/api/attendance/summaries.ts` | 月度彙總 ✅ |
+| `src/api/attendance/payroll.ts` | 薪資 ✅ |
+| `src/api/attendance/auditLogs.ts` | 稽核 ✅ |
+| `src/pages/attendance/notifications.vue` | 通知中心 ✅ |
+| `src/pages/attendance/summaries.vue` | 彙總報表 ✅ |
+| `src/pages/attendance/payroll.vue` | 薪資管理 ✅ |
+| `src/pages/attendance/audit-logs.vue` | 稽核查詢 ✅ |
 
 ### Mobile — 需修改
 

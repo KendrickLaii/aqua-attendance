@@ -20,6 +20,28 @@ export default [
     to: 'attendance-log',
   },
   {
+    title: 'Summaries',
+    icon: { icon: 'ri-calendar-todo-line' },
+    to: 'attendance-summaries',
+  },
+  {
+    title: 'Payroll',
+    icon: { icon: 'ri-money-cny-circle-line' },
+    to: 'attendance-payroll',
+  },
+  {
+    title: 'Notifications',
+    icon: { icon: 'ri-notification-3-line' },
+    to: 'attendance-notifications',
+  },
+  {
+    title: 'Audit Logs',
+    icon: { icon: 'ri-shield-keyhole-line' },
+    to: 'attendance-audit-logs',
+    action: 'manage',
+    subject: 'AuditLog',
+  },
+  {
     title: 'Location Management',
     icon: { icon: 'ri-map-pin-line' },
     to: 'attendance-locations',

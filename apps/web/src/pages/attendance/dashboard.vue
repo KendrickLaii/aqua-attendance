@@ -2,6 +2,7 @@
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { getAttendanceDayStats, listAttendanceWithTotal } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
+import { getAutoCheckoutStatus, triggerAutoCheckout } from '@/api/attendance/autoCheckout'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -27,6 +28,9 @@ const refreshing = ref(false)
 const loadError = ref('')
 const todayLabel = ref(formatAttendanceDateLabel())
 const todayEventTotal = ref(0)
+const stillCheckedInCount = ref(0)
+const autoCheckoutLoading = ref(false)
+const autoCheckoutResult = ref('')
 
 const recentEventsCaption = computed(() => {
   if (todayEventTotal.value === 0)
@@ -60,10 +64,11 @@ async function loadDashboard(isRefresh = false) {
 
     const range = getTodayRangeIso()
 
-    const [eventsResult, dayStats, products] = await Promise.all([
+    const [eventsResult, dayStats, products, checkoutStatus] = await Promise.all([
       listAttendanceWithTotal({ date_from: range.date_from, date_to: range.date_to, page_size: RECENT_EVENTS_LIMIT }),
       getAttendanceDayStats({ date_from: range.date_from, date_to: range.date_to }),
       listProducts({ is_active: true, page_size: 200 }),
+      getAutoCheckoutStatus().catch(() => ({ still_checked_in_count: 0 })),
     ])
 
     const events = eventsResult.items
@@ -78,6 +83,7 @@ async function loadDashboard(isRefresh = false) {
     todayCheckInsStaff.value = dayStats.check_ins_staff
     todayCheckOutsStudent.value = dayStats.check_outs_student
     todayCheckOutsStaff.value = dayStats.check_outs_staff
+    stillCheckedInCount.value = checkoutStatus.still_checked_in_count
   }
   catch (e) {
     console.error('Failed to load dashboard', e)
@@ -106,6 +112,22 @@ function eventColor(type: string) {
     return 'warning'
 
   return 'info'
+}
+
+async function handleAutoCheckout() {
+  autoCheckoutLoading.value = true
+  autoCheckoutResult.value = ''
+  try {
+    const result = await triggerAutoCheckout()
+    autoCheckoutResult.value = result.message
+    await loadDashboard(true)
+  }
+  catch (e: unknown) {
+    autoCheckoutResult.value = formatApiError(e, 'Auto-checkout failed')
+  }
+  finally {
+    autoCheckoutLoading.value = false
+  }
 }
 </script>
 
@@ -140,6 +162,16 @@ function eventColor(type: string) {
           @click="loadDashboard(true)"
         >
           Refresh
+        </VBtn>
+        <VBtn
+          v-if="authStore.isAdmin"
+          variant="outlined"
+          color="warning"
+          prepend-icon="ri-time-line"
+          :loading="autoCheckoutLoading"
+          @click="handleAutoCheckout"
+        >
+          Auto Checkout
         </VBtn>
         <VBtn
           variant="outlined"
@@ -188,6 +220,18 @@ function eventColor(type: string) {
     </VRow>
 
     <template v-else>
+      <VAlert
+        v-if="autoCheckoutResult"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+        closable
+        @click:close="autoCheckoutResult = ''"
+      >
+        {{ autoCheckoutResult }}
+      </VAlert>
+
       <VRow class="mb-2">
         <VCol
           cols="12"
@@ -222,6 +266,39 @@ function eventColor(type: string) {
               <div class="text-body-1">
                 Staff Checked In
               </div>
+            </VCardText>
+          </VCard>
+        </VCol>
+      </VRow>
+
+      <VRow
+        v-if="stillCheckedInCount > 0"
+        class="mb-2"
+      >
+        <VCol cols="12">
+          <VCard
+            color="warning"
+            variant="tonal"
+          >
+            <VCardText class="d-flex align-center justify-space-between">
+              <div>
+                <div class="text-h6 font-weight-bold">
+                  {{ stillCheckedInCount }}
+                </div>
+                <div class="text-body-2">
+                  Still checked in (pending auto-checkout)
+                </div>
+              </div>
+              <VBtn
+                v-if="authStore.isAdmin"
+                size="small"
+                variant="outlined"
+                color="warning"
+                :loading="autoCheckoutLoading"
+                @click="handleAutoCheckout"
+              >
+                Run Now
+              </VBtn>
             </VCardText>
           </VCard>
         </VCol>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { createManualCorrection, exportAttendanceCSV, listAttendanceWithTotal } from '@/api/attendance/events'
+import { createManualCorrection, exportAttendanceCSV, listAttendanceWithTotal, voidAttendanceEvent } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import type { AttendanceEvent } from '@/api/attendance/events'
@@ -49,6 +49,8 @@ const correcting = ref(false)
 const correctionError = ref('')
 const exporting = ref(false)
 const exportError = ref('')
+const voidingId = ref<string | null>(null)
+const voidError = ref('')
 
 const typeOptions = [
   { title: 'Student', value: 'student' },
@@ -326,6 +328,24 @@ async function handleCorrection() {
     correcting.value = false
   }
 }
+
+async function voidEvent(evt: AttendanceEvent) {
+  if (!confirm(`Void this attendance event for ${evt.product_name || evt.product_id}?\nThis action cannot be undone.`))
+    return
+  voidingId.value = evt.id
+  voidError.value = ''
+  try {
+    await voidAttendanceEvent(evt.id)
+    await loadEvents(true)
+  }
+  catch (e: unknown) {
+    voidError.value = formatApiError(e, 'Could not void event')
+    loadError.value = voidError.value
+  }
+  finally {
+    voidingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -521,19 +541,35 @@ async function handleCorrection() {
               <th>Product</th>
               <th>Type</th>
               <th>Event</th>
+              <th>Source</th>
               <th>Location</th>
-              <th class="col-notes">
-                Notes
-              </th>
+              <th class="col-notes">Notes</th>
+              <th class="col-actions" />
             </tr>
           </thead>
           <tbody>
             <tr
               v-for="evt in events"
               :key="evt.id"
+              :class="{ 'event-voided': !!evt.voided_at }"
             >
-              <td>{{ formatAttendanceDateTime(evt.recorded_at) }}</td>
-              <td>{{ evt.product_name || evt.product_code || evt.product_id }}</td>
+              <td>
+                <span :class="{ 'text-decoration-line-through text-medium-emphasis': evt.voided_at }">
+                  {{ formatAttendanceDateTime(evt.recorded_at) }}
+                </span>
+                <VChip
+                  v-if="evt.voided_at"
+                  color="error"
+                  size="x-small"
+                  label
+                  class="ms-1"
+                >
+                  VOIDED
+                </VChip>
+              </td>
+              <td :class="{ 'text-medium-emphasis': evt.voided_at }">
+                {{ evt.product_name || evt.product_code || evt.product_id }}
+              </td>
               <td>
                 <VChip
                   v-if="evt.product_type"
@@ -554,14 +590,33 @@ async function handleCorrection() {
                   {{ eventTypeLabel(evt.event_type) }}
                 </VChip>
               </td>
-              <td>{{ evt.location || '—' }}</td>
-              <td class="col-notes">
+              <td class="text-caption">
+                {{ evt.source || '—' }}
+              </td>
+              <td :class="{ 'text-medium-emphasis': evt.voided_at }">
+                {{ evt.location || '—' }}
+              </td>
+              <td class="col-notes" :class="{ 'text-medium-emphasis': evt.voided_at }">
                 {{ evt.notes || '—' }}
+              </td>
+              <td class="col-actions">
+                <VBtn
+                  v-if="!evt.voided_at && authStore.isAdmin"
+                  icon
+                  size="x-small"
+                  variant="text"
+                  color="error"
+                  :loading="voidingId === evt.id"
+                  title="Void event"
+                  @click="voidEvent(evt)"
+                >
+                  <VIcon>tabler-ban</VIcon>
+                </VBtn>
               </td>
             </tr>
             <tr v-if="events.length === 0 && !loading && !loadError">
               <td
-                colspan="6"
+                colspan="8"
                 class="text-center text-medium-emphasis py-6"
               >
                 No attendance records found for the selected filters
@@ -653,6 +708,15 @@ async function handleCorrection() {
 .log-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.log-table :deep(.col-actions) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.event-voided {
+  opacity: 0.65;
 }
 
 @media (max-width: 960px) {

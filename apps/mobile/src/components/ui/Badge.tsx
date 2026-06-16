@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { colors, radius, spacing } from '../../theme';
 
-type Tone = 'primary' | 'success' | 'warning' | 'info' | 'neutral';
+type Tone = 'primary' | 'success' | 'warning' | 'info' | 'neutral' | 'error';
 
 interface Props {
   label: string;
@@ -16,6 +16,7 @@ const toneStyles: Record<Tone, { bg: string; text: string }> = {
   warning: { bg: colors.checkOutSoft, text: colors.checkOut },
   info: { bg: colors.infoSoft, text: colors.info },
   neutral: { bg: colors.background, text: colors.textSecondary },
+  error: { bg: colors.errorSoft, text: colors.error },
 };
 
 export default function Badge({ label, tone = 'neutral', style }: Props) {

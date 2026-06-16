@@ -74,13 +74,7 @@ const form = reactive({
     supervisor_id: '',
     employment_notes: '',
   },
-  // Flat guardian fields (bound in template, assembled into student_profile.guardians on save)
-  guardian1_name: '',
-  guardian1_relationship: '',
-  guardian1_phone: '',
-  guardian2_name: '',
-  guardian2_relationship: '',
-  guardian2_phone: '',
+  guardians: [] as { name: string; relationship: string; phone: string }[],
 })
 
 const saving = ref(false)
@@ -357,12 +351,7 @@ function resetForm() {
       academic_notes: '',
       guardians: {},
     },
-    guardian1_name: '',
-    guardian1_relationship: '',
-    guardian1_phone: '',
-    guardian2_name: '',
-    guardian2_relationship: '',
-    guardian2_phone: '',
+    guardians: [{ name: '', relationship: '', phone: '' }] as { name: string; relationship: string; phone: string }[],
     staff_profile: {
       employee_id: '',
       employment_type: '',
@@ -421,12 +410,13 @@ function openEdit(p: Product) {
       academic_notes: sp?.academic_notes ?? '',
       guardians: sp?.guardians ?? {},
     },
-    guardian1_name: (sp?.guardians as any)?.guardian1?.name ?? '',
-    guardian1_relationship: (sp?.guardians as any)?.guardian1?.relationship ?? '',
-    guardian1_phone: (sp?.guardians as any)?.guardian1?.phone ?? '',
-    guardian2_name: (sp?.guardians as any)?.guardian2?.name ?? '',
-    guardian2_relationship: (sp?.guardians as any)?.guardian2?.relationship ?? '',
-    guardian2_phone: (sp?.guardians as any)?.guardian2?.phone ?? '',
+    guardians: sp?.guardians
+      ? Object.values(sp.guardians).map((g: any) => ({
+          name: String(g?.name ?? ''),
+          relationship: String(g?.relationship ?? ''),
+          phone: String(g?.phone ?? ''),
+        })).filter(g => g.name)
+      : [],
     staff_profile: {
       employee_id: stp?.employee_id ?? '',
       employment_type: stp?.employment_type ?? '',
@@ -503,20 +493,15 @@ async function handleSave() {
 
     if (form.product_type === 'student') {
       const guardians: Record<string, unknown> = {}
-      if (form.guardian1_name) {
-        guardians.guardian1 = {
-          name: normalizeString(form.guardian1_name),
-          relationship: normalizeString(form.guardian1_relationship),
-          phone: normalizeString(form.guardian1_phone),
+      form.guardians.forEach((g, idx) => {
+        if (g.name.trim()) {
+          guardians[`guardian_${idx + 1}`] = {
+            name: normalizeString(g.name),
+            relationship: normalizeString(g.relationship),
+            phone: normalizeString(g.phone),
+          }
         }
-      }
-      if (form.guardian2_name) {
-        guardians.guardian2 = {
-          name: normalizeString(form.guardian2_name),
-          relationship: normalizeString(form.guardian2_relationship),
-          phone: normalizeString(form.guardian2_phone),
-        }
-      }
+      })
       payload = {
         ...basePayload,
         student_profile: {
@@ -1252,112 +1237,214 @@ function rowStatusChip(p: Product) {
           </VCol>
         </VRow>
 
-        <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
-          School & guardian
-        </h4>
-        <VRow class="dense-form-row">
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VTextField
-              v-model="form.student_profile.school_name"
-              label="School name"
-              maxlength="255"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VTextField
-              v-model="form.student_profile.grade_class"
-              label="Grade / class"
-              maxlength="100"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-            class="d-flex align-center"
-          >
-            <VSwitch
-              v-model="form.whatsapp_enabled"
-              label="WhatsApp enabled"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VTextField
-              v-model="form.guardian1_name"
-              label="Guardian 1 name"
-              maxlength="255"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VSelect
-              v-model="form.guardian1_relationship"
-              :items="relationshipOptions"
-              label="Guardian 1 relationship"
-              clearable
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VTextField
-              v-model="form.guardian1_phone"
-              label="Guardian 1 phone"
-              maxlength="50"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VTextField
-              v-model="form.guardian2_name"
-              label="Guardian 2 name"
-              maxlength="255"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VSelect
-              v-model="form.guardian2_relationship"
-              :items="relationshipOptions"
-              label="Guardian 2 relationship"
-              clearable
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VTextField
-              v-model="form.guardian2_phone"
-              label="Guardian 2 phone"
-              maxlength="50"
-            />
-          </VCol>
-        </VRow>
+        <template v-if="form.product_type === 'student'">
+          <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+            School & guardian
+          </h4>
+          <VRow class="dense-form-row">
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.student_profile.school_name"
+                label="School name"
+                maxlength="255"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.student_profile.grade_class"
+                label="Grade / class"
+                maxlength="100"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+              class="d-flex align-center"
+            >
+              <VSwitch
+                v-model="form.whatsapp_enabled"
+                label="WhatsApp enabled"
+              />
+            </VCol>
+            <template
+              v-for="(g, idx) in form.guardians"
+              :key="idx"
+            >
+              <VCol cols="12">
+                <div class="d-flex align-center">
+                  <span class="text-caption text-medium-emphasis me-2">Guardian {{ idx + 1 }}</span>
+                  <VBtn
+                    icon
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    :disabled="form.guardians.length <= 1"
+                    @click="form.guardians.splice(idx, 1)"
+                  >
+                    <VIcon>tabler-trash</VIcon>
+                  </VBtn>
+                </div>
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <VTextField
+                  v-model="g.name"
+                  label="Name"
+                  maxlength="255"
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <VSelect
+                  v-model="g.relationship"
+                  :items="relationshipOptions"
+                  label="Relationship"
+                  clearable
+                />
+              </VCol>
+              <VCol
+                cols="12"
+                sm="6"
+                md="4"
+              >
+                <VTextField
+                  v-model="g.phone"
+                  label="Phone"
+                  maxlength="50"
+                />
+              </VCol>
+            </template>
+            <VCol cols="12">
+              <VBtn
+                size="small"
+                variant="text"
+                prepend-icon="tabler-plus"
+                @click="form.guardians.push({ name: '', relationship: '', phone: '' })"
+              >
+                Add guardian
+              </VBtn>
+            </VCol>
+          </VRow>
+        </template>
+
+        <template v-if="form.product_type === 'staff'">
+          <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+            Staff profile
+          </h4>
+          <VRow class="dense-form-row">
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.employee_id"
+                label="Employee ID"
+                maxlength="100"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.department"
+                label="Department"
+                maxlength="100"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.position"
+                label="Position"
+                maxlength="100"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.hire_date"
+                label="Hire date"
+                type="date"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.termination_date"
+                label="Termination date"
+                type="date"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.salary_grade"
+                label="Salary grade"
+                maxlength="50"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.work_schedule"
+                label="Work schedule"
+                maxlength="100"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.supervisor_id"
+                label="Supervisor ID"
+                maxlength="36"
+              />
+            </VCol>
+            <VCol cols="12">
+              <VTextarea
+                v-model="form.staff_profile.employment_notes"
+                label="Employment notes"
+                rows="2"
+                auto-grow
+              />
+            </VCol>
+          </VRow>
+        </template>
 
         <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
           Notes

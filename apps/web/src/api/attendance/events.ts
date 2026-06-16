@@ -122,3 +122,7 @@ export async function exportAttendanceCSV(params?: {
     responseType: 'blob',
   })
 }
+
+export async function voidAttendanceEvent(eventId: string): Promise<AttendanceEvent> {
+  return await $attendanceApi(`/attendance/${eventId}/void`, { method: 'POST' })
+}
