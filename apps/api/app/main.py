@@ -11,7 +11,9 @@ from app.limiter import limiter
 from app.routers import (
     attendance,
     attendance_summaries,
+    audit_logs,
     auth,
+    auto_checkout,
     locations,
     notifications,
     payroll_records,
@@ -50,6 +52,8 @@ app.include_router(staff_profiles.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(attendance_summaries.router, prefix="/api")
 app.include_router(payroll_records.router, prefix="/api")
+app.include_router(audit_logs.router, prefix="/api")
+app.include_router(auto_checkout.router, prefix="/api")
 
 
 @app.get("/api/health")

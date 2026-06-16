@@ -1,12 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, or_, select
 
 from app.deps import DB, AdminOnly, SuperAdminOnly
 from app.models.user import Role, User
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.services.auth import hash_password
+from app.services import audit_log as audit_svc
 from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -71,7 +72,7 @@ async def list_users(
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(body: UserCreate, actor: AdminOnly, db: DB) -> User:
+async def create_user(body: UserCreate, actor: AdminOnly, db: DB, request: Request) -> User:
     _forbid_admin_managing_superadmin(actor, new_role=_role_value(body.role))
 
     existing = await db.execute(
@@ -93,6 +94,17 @@ async def create_user(body: UserCreate, actor: AdminOnly, db: DB) -> User:
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    await audit_svc.log_audit(
+        db,
+        user_id=actor.id,
+        action="CREATE",
+        table_name="users",
+        record_id=user.id,
+        new_values=body.model_dump(exclude={"password"}),
+        description=f"Created user {user.username} with role {user.role}",
+        request=request,
+    )
     return user
 
 
@@ -107,7 +119,7 @@ async def get_user(user_id: uuid.UUID, actor: AdminOnly, db: DB) -> User:
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db: DB) -> User:
+async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db: DB, request: Request) -> User:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -137,11 +149,22 @@ async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db
         setattr(user, field, value)
     await db.commit()
     await db.refresh(user)
+
+    await audit_svc.log_audit(
+        db,
+        user_id=actor.id,
+        action="UPDATE",
+        table_name="users",
+        record_id=user.id,
+        new_values=update_data,
+        description=f"Updated user {user.username}",
+        request=request,
+    )
     return user
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: uuid.UUID, actor: SuperAdminOnly, db: DB) -> None:
+async def delete_user(user_id: uuid.UUID, actor: SuperAdminOnly, db: DB, request: Request) -> None:
     if user_id == actor.id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -153,3 +176,13 @@ async def delete_user(user_id: uuid.UUID, actor: SuperAdminOnly, db: DB) -> None
         raise HTTPException(status_code=404, detail="User not found")
     await db.delete(user)
     await db.commit()
+
+    await audit_svc.log_audit(
+        db,
+        user_id=actor.id,
+        action="DELETE",
+        table_name="users",
+        record_id=user_id,
+        description=f"Deleted user {user.username}",
+        request=request,
+    )

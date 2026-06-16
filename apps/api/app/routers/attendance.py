@@ -28,6 +28,7 @@ from app.schemas.attendance import (
     ScanRequest,
 )
 from app.services import attendance as att_svc
+from app.services import audit_log as audit_svc
 from app.services.qr import verify_qr_token
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
@@ -244,7 +245,7 @@ async def list_attendance(
 
 @router.post("/manual", response_model=AttendanceOut, status_code=status.HTTP_201_CREATED)
 async def create_manual_correction(
-    body: ManualCorrectionRequest, admin: AdminOnly, db: DB
+    body: ManualCorrectionRequest, admin: AdminOnly, db: DB, request: Request
 ) -> AttendanceOut:
     result = await db.execute(select(Product).where(Product.id == body.product_id))
     product = result.scalar_one_or_none()
@@ -263,6 +264,17 @@ async def create_manual_correction(
         recorded_by_user_id=admin.id,
     )
     event = await _reload_with_product(db, event.id)
+
+    await audit_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="MANUAL_CORRECTION",
+        table_name="attendance_events",
+        record_id=event.id,
+        new_values={"event_type": body.event_type.value, "product_id": str(body.product_id)},
+        description=f"Manual correction for {product.code}: {body.event_type.value}",
+        request=request,
+    )
     return _event_to_out(event)
 
 
@@ -338,7 +350,7 @@ async def export_csv(
 
 @router.post("/{event_id}/void", response_model=AttendanceOut)
 async def void_attendance_event(
-    event_id: uuid.UUID, admin: AdminOnly, db: DB
+    event_id: uuid.UUID, admin: AdminOnly, db: DB, request: Request
 ) -> AttendanceOut:
     """Void (soft-delete) an attendance event. Sets voided_at timestamp."""
     result = await db.execute(
@@ -358,4 +370,15 @@ async def void_attendance_event(
     event.voided_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(event)
+
+    await audit_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="UPDATE",
+        table_name="attendance_events",
+        record_id=event.id,
+        new_values={"voided_at": event.voided_at.isoformat()},
+        description=f"Voided attendance event {event_id}",
+        request=request,
+    )
     return _event_to_out(event)

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
@@ -10,6 +10,7 @@ from app.models.product import Product
 from app.models.staff_profile import StaffProfile
 from app.models.student_profile import StudentProfile
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
+from app.services import audit_log as audit_svc
 from app.services import product as product_svc
 from app.utils.search import ilike_contains
 
@@ -90,7 +91,9 @@ async def list_products(
 
 
 @router.post("", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
-async def create_product(body: ProductCreate, _admin: AdminOnly, db: DB) -> ProductOut:
+async def create_product(
+    body: ProductCreate, admin: AdminOnly, db: DB, request: Request
+) -> ProductOut:
     existing = await db.execute(select(Product).where(Product.code == body.code))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Product code already exists")
@@ -116,6 +119,18 @@ async def create_product(body: ProductCreate, _admin: AdminOnly, db: DB) -> Prod
         db.add(StaffProfile(id=product.id, **body.staff_profile.model_dump()))
 
     await db.commit()
+
+    # Audit log — fire-and-forget; separate DB call so it doesn't affect main tx
+    await audit_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="CREATE",
+        table_name="products",
+        record_id=product.id,
+        new_values=product_data,
+        description=f"Created {product.product_type} product {product.code}",
+        request=request,
+    )
 
     loaded = await product_svc.load_product_with_locations(db, product.id)
     assert loaded is not None

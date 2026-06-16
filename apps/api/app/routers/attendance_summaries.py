@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 from app.deps import AdminOnly, DB
 from app.models.attendance_summary import AttendanceSummary
 from app.schemas.attendance_summary import AttendanceSummaryCreate, AttendanceSummaryOut
+from app.services import audit_log as audit_log_svc
+from app.services.summary_generator import generate_monthly_summaries
 
 router = APIRouter(prefix="/attendance-summaries", tags=["attendance-summaries"])
 
@@ -67,3 +69,31 @@ async def get_attendance_summary(
     if not summary:
         raise HTTPException(status_code=404, detail="Attendance summary not found")
     return AttendanceSummaryOut.model_validate(summary)
+
+
+@router.post("/generate", status_code=status.HTTP_200_OK)
+async def generate_summaries(
+    admin: AdminOnly,
+    db: DB,
+    year: int,
+    month: int,
+) -> dict:
+    """Manually generate attendance summaries for a month.
+
+    Admin selects year/month → system calculates daily summaries
+    for every product from attendance_events and inserts/updates rows.
+    """
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=422, detail="month must be 1-12")
+
+    result = await generate_monthly_summaries(db, year=year, month=month)
+
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="DATA_EXPORT",
+        table_name="attendance_summaries",
+        description=f"Generated summaries for {year}-{month:02d}: {result['created']} created, {result['updated']} updated",
+    )
+
+    return result
