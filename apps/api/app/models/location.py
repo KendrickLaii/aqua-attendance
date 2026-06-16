@@ -45,3 +45,4 @@ class Location(Base):
         foreign_keys="Product.last_event_location_id",
         back_populates="last_event_location_ref",
     )
+    attendance_summaries = relationship("AttendanceSummary", back_populates="location", cascade="all, delete-orphan")

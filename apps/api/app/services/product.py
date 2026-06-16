@@ -79,6 +79,8 @@ async def load_product_with_locations(
         .options(
             selectinload(Product.registered_location),
             selectinload(Product.scan_locations),
+            selectinload(Product.student_profile),
+            selectinload(Product.staff_profile),
         )
         .where(Product.id == product_id)
     )

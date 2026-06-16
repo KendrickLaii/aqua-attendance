@@ -67,6 +67,7 @@ class AttendanceOut(BaseModel):
     event_type: str
     source: EventSourceOut
     recorded_at: datetime
+    created_at: datetime
     attendance_status: str | None = None
     qr_jti: str | None = None
     recorded_by_user_id: uuid.UUID | None = None
@@ -74,6 +75,7 @@ class AttendanceOut(BaseModel):
     location_id: uuid.UUID | None = None
     location: str | None = None
     notes: str | None = None
+    voided_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

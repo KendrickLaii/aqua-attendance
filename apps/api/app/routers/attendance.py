@@ -43,6 +43,7 @@ def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
         event_type=event.event_type,
         source=event.source,
         recorded_at=event.recorded_at,
+        created_at=event.created_at,
         attendance_status=event.product.attendance_status if event.product else None,
         qr_jti=event.qr_jti,
         recorded_by_user_id=event.recorded_by_user_id,
@@ -50,6 +51,7 @@ def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
         location_id=event.location_id,
         location=event.location,
         notes=event.notes,
+        voided_at=event.voided_at,
     )
 
 
@@ -295,12 +297,15 @@ async def export_csv(
         "product_name",
         "product_type",
         "event_type",
+        "source",
         "recorded_at",
+        "created_at",
         "recorded_by_user_id",
         "device_id",
         "location_id",
         "location",
         "notes",
+        "voided_at",
     ])
     for e in events:
         writer.writerow([
@@ -310,12 +315,15 @@ async def export_csv(
             e.product.full_name if e.product else "",
             e.product.product_type if e.product else "",
             e.event_type,
+            e.source,
             e.recorded_at.isoformat(),
+            e.created_at.isoformat(),
             str(e.recorded_by_user_id) if e.recorded_by_user_id else "",
             e.client_device_id or "",
             str(e.location_id) if e.location_id else "",
             e.location or "",
             e.notes or "",
+            e.voided_at.isoformat() if e.voided_at else "",
         ])
     buf.seek(0)
     headers = {"Content-Disposition": "attachment; filename=attendance_export.csv"}

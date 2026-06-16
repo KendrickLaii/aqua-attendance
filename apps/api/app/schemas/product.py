@@ -4,9 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.product import EmploymentType
-
-_VALID_EMPLOYMENT_TYPES = {e.value for e in EmploymentType}
+from app.schemas.staff_profile import StaffProfileOut
+from app.schemas.student_profile import StudentProfileOut
 
 
 class ProductLocationRef(BaseModel):
@@ -23,7 +22,6 @@ class ProductCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     english_name: str | None = Field(default=None, max_length=255)
     product_type: Literal["staff", "student"]
-    employment_type: str | None = Field(default=None, max_length=20)
     status: str = Field(default="active", max_length=20)
     registered_location_id: uuid.UUID
     scan_location_ids: list[uuid.UUID] = Field(min_length=1)
@@ -34,25 +32,11 @@ class ProductCreate(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     emergency_contact_name: str | None = Field(default=None, max_length=255)
     emergency_contact_phone: str | None = Field(default=None, max_length=50)
-    school_name: str | None = Field(default=None, max_length=255)
-    grade_class: str | None = Field(default=None, max_length=100)
-    guardian1_name: str | None = Field(default=None, max_length=255)
-    guardian1_relationship: str | None = Field(default=None, max_length=100)
-    guardian1_phone: str | None = Field(default=None, max_length=50)
-    guardian2_name: str | None = Field(default=None, max_length=255)
-    guardian2_relationship: str | None = Field(default=None, max_length=100)
-    guardian2_phone: str | None = Field(default=None, max_length=50)
+    photo_url: str | None = Field(default=None, max_length=500)
+    enrollment_date: date | None = None
+    exit_date: date | None = None
     whatsapp_enabled: bool = False
     remarks: str | None = None
-
-    @field_validator("employment_type")
-    @classmethod
-    def validate_employment_type(cls, value: str | None) -> str | None:
-        if value is None or value == "":
-            return None
-        if value not in _VALID_EMPLOYMENT_TYPES:
-            raise ValueError("employment_type must be part_time or full_time")
-        return value
 
     @field_validator("scan_location_ids")
     @classmethod
@@ -68,7 +52,6 @@ class ProductUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=255)
     english_name: str | None = Field(default=None, max_length=255)
     product_type: Literal["staff", "student"] | None = None
-    employment_type: str | None = Field(default=None, max_length=20)
     is_active: bool | None = None
     status: str | None = Field(default=None, max_length=20)
     registered_location_id: uuid.UUID | None = None
@@ -80,25 +63,11 @@ class ProductUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     emergency_contact_name: str | None = Field(default=None, max_length=255)
     emergency_contact_phone: str | None = Field(default=None, max_length=50)
-    school_name: str | None = Field(default=None, max_length=255)
-    grade_class: str | None = Field(default=None, max_length=100)
-    guardian1_name: str | None = Field(default=None, max_length=255)
-    guardian1_relationship: str | None = Field(default=None, max_length=100)
-    guardian1_phone: str | None = Field(default=None, max_length=50)
-    guardian2_name: str | None = Field(default=None, max_length=255)
-    guardian2_relationship: str | None = Field(default=None, max_length=100)
-    guardian2_phone: str | None = Field(default=None, max_length=50)
+    photo_url: str | None = Field(default=None, max_length=500)
+    enrollment_date: date | None = None
+    exit_date: date | None = None
     whatsapp_enabled: bool | None = None
     remarks: str | None = None
-
-    @field_validator("employment_type")
-    @classmethod
-    def validate_employment_type(cls, value: str | None) -> str | None:
-        if value is None or value == "":
-            return None
-        if value not in _VALID_EMPLOYMENT_TYPES:
-            raise ValueError("employment_type must be part_time or full_time")
-        return value
 
     @field_validator("scan_location_ids")
     @classmethod
@@ -117,7 +86,6 @@ class ProductOut(BaseModel):
     full_name: str
     english_name: str | None = None
     product_type: str
-    employment_type: str | None = None
     is_active: bool
     status: str
     attendance_status: str = "checked_out"
@@ -136,18 +104,15 @@ class ProductOut(BaseModel):
     email: str | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
-    school_name: str | None = None
-    grade_class: str | None = None
-    guardian1_name: str | None = None
-    guardian1_relationship: str | None = None
-    guardian1_phone: str | None = None
-    guardian2_name: str | None = None
-    guardian2_relationship: str | None = None
-    guardian2_phone: str | None = None
+    photo_url: str | None = None
+    enrollment_date: date | None = None
+    exit_date: date | None = None
     whatsapp_enabled: bool
     remarks: str | None = None
     created_at: datetime
     updated_at: datetime
+    student_profile: StudentProfileOut | None = None
+    staff_profile: StaffProfileOut | None = None
 
     model_config = {"from_attributes": True}
 
@@ -159,4 +124,8 @@ class ProductOut(BaseModel):
         data.scan_locations = [ProductLocationRef.model_validate(loc) for loc in scan_locs]
         if product.registered_location is not None:
             data.registered_location = ProductLocationRef.model_validate(product.registered_location)
+        if product.student_profile is not None:
+            data.student_profile = StudentProfileOut.model_validate(product.student_profile)
+        if product.staff_profile is not None:
+            data.staff_profile = StaffProfileOut.model_validate(product.staff_profile)
         return data

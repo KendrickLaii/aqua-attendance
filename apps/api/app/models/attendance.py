@@ -58,6 +58,7 @@ class AttendanceEvent(Base):
     location_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     product = relationship("Product", foreign_keys=[product_id], back_populates="attendance_events")
     recorded_by = relationship("User", foreign_keys=[recorded_by_user_id])

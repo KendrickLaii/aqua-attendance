@@ -102,3 +102,8 @@ class Product(Base):
     # Polymorphic relationships to profile tables
     student_profile = relationship("StudentProfile", back_populates="product", cascade="all, delete-orphan")
     staff_profile = relationship("StaffProfile", back_populates="product", cascade="all, delete-orphan")
+    
+    # Additional relationships
+    notifications = relationship("Notification", back_populates="product", cascade="all, delete-orphan")
+    attendance_summaries = relationship("AttendanceSummary", back_populates="product", cascade="all, delete-orphan")
+    payroll_records = relationship("PayrollRecord", back_populates="product", cascade="all, delete-orphan")

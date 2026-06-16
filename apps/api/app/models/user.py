@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, String, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -34,3 +34,6 @@ class User(Base):
     @property
     def role_enum(self) -> Role:
         return Role(self.role)
+    
+    # Relationships
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
