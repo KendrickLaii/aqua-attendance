@@ -74,15 +74,6 @@ class Product(Base):
     emergency_contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    school_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    grade_class: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    guardian1_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    guardian1_relationship: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    guardian1_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    guardian2_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    guardian2_relationship: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    guardian2_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-
     whatsapp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -107,3 +98,7 @@ class Product(Base):
         foreign_keys=[last_event_location_id],
         back_populates="last_event_products",
     )
+    
+    # Polymorphic relationships to profile tables
+    student_profile = relationship("StudentProfile", back_populates="product", cascade="all, delete-orphan")
+    staff_profile = relationship("StaffProfile", back_populates="product", cascade="all, delete-orphan")
