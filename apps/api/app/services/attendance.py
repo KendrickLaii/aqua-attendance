@@ -131,6 +131,7 @@ async def record_scan(
     event = AttendanceEvent(
         product_id=product.id,
         event_type=resolved_event_type,
+        source="scan",  # 掃碼預設來源
         recorded_at=now,
         qr_jti=jti,
         recorded_by_user_id=recorded_by_user_id,
@@ -326,6 +327,7 @@ async def manual_correction(
     event = AttendanceEvent(
         product_id=product.id,
         event_type=event_type,
+        source="manual",  # 手動修正來源
         recorded_at=when,
         location_id=location_id,
         location=loc,

@@ -4,12 +4,18 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.attendance import EventType
+from app.models.attendance import EventType, EventSource
 
 
 class ScanEventType(str, enum.Enum):
     check_in = "check_in"
     check_out = "check_out"
+
+
+class EventSourceOut(str, enum.Enum):
+    scan = "scan"
+    manual = "manual"
+    auto_checkout = "auto_checkout"
 
 
 class ScanRequest(BaseModel):
@@ -59,6 +65,7 @@ class AttendanceOut(BaseModel):
     product_name: str | None = None
     product_type: str | None = None
     event_type: str
+    source: EventSourceOut
     recorded_at: datetime
     attendance_status: str | None = None
     qr_jti: str | None = None
@@ -73,7 +80,7 @@ class AttendanceOut(BaseModel):
 
 class ManualCorrectionRequest(BaseModel):
     product_id: uuid.UUID
-    event_type: EventType = EventType.manual_correction
+    event_type: EventType  # 現在必須明確指定 check_in 或 check_out
     recorded_at: datetime | None = None
     location_id: uuid.UUID | None = None
     location: str | None = Field(default=None, max_length=255)

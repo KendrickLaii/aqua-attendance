@@ -41,6 +41,7 @@ def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
         product_name=event.product.full_name if event.product else None,
         product_type=event.product.product_type if event.product else None,
         event_type=event.event_type,
+        source=event.source,
         recorded_at=event.recorded_at,
         attendance_status=event.product.attendance_status if event.product else None,
         qr_jti=event.qr_jti,

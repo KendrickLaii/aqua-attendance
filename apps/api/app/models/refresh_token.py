@@ -14,6 +14,7 @@ class RefreshToken(Base):
 
     jti: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)  # IPv6 max length
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -27,7 +27,12 @@ from app.database import Base
 class EventType(str, enum.Enum):
     check_in = "check_in"
     check_out = "check_out"
-    manual_correction = "manual_correction"
+
+
+class EventSource(str, enum.Enum):
+    scan = "scan"
+    manual = "manual"
+    auto_checkout = "auto_checkout"
 
 
 class AttendanceEvent(Base):
@@ -40,15 +45,17 @@ class AttendanceEvent(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("products.id"), nullable=False, index=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="scan")
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     qr_jti: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
-    recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
+    recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     client_device_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    location_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("locations.id"), nullable=True, index=True)
+    location_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
