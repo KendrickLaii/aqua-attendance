@@ -37,7 +37,7 @@ Check-in / check-out for a cram school (juku). **Staff and students are not logi
 | `apps/mobile/` | Expo app — QR scanner + history (see mobile README for entry-point note) |
 | `docker-compose.yml` | Dev: PostgreSQL + API |
 | `deploy/` | Production: Caddy + web + api + db (see `docs/PROJECT-HANDBOOK.md`) |
-| `docs/` | Deploy guide, CI/CD explainer |
+| `docs/` | Unified handbook, deploy guide, ops manual, CI/CD explainer |
 
 ## Daily development (recommended)
 
@@ -154,7 +154,7 @@ Change all seed passwords before any shared or production use.
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token TTL |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `CORS_ORIGINS` | localhost dev URLs | Comma-separated allowed origins |
-| `ENV` | `development` | `development` enables SQL echo |
+| `ENV` | `development` | `production` enforces key length validation; `development` enables SQL echo |
 | `LOGIN_RATE_LIMIT` | `5/minute` | Per-IP login attempts |
 | `SCAN_RATE_LIMIT` | `30/minute` | Per-IP QR scan attempts |
 
@@ -174,84 +174,24 @@ Change all seed passwords before any shared or production use.
 
 See [deploy/.env.example](deploy/.env.example) and [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md).
 
-## Security design
+## Security design (summary)
 
-### QR token flow
+- **QR tokens** are signed JWTs with `QR_SECRET` (not `SECRET_KEY`), no expiry, versioned via `qr_token_version`. Scanning toggles `check_in` / `check_out`.
+- **Debounce**: duplicate scans within `SCAN_DEBOUNCE_SECONDS` return the existing event.
+- **Roles**: `admin` or `superadmin`. All product/attendance endpoints require admin; only `DELETE /api/users/:id` requires superadmin.
 
-1. Admin calls `GET /api/qr/token/{product_id}` → signed JWT
-2. Payload: `{ sub: product_id, ver: qr_token_version, jti, iat, type: "qr" }`
-3. Signed with `QR_SECRET` (not `SECRET_KEY`)
-4. **No expiry** — same QR on badge/lock screen; each scan toggles check-in/out
-5. Scanner posts token to `POST /api/attendance/scan`
-6. Server checks signature and `ver` matches product; stale version → "rotated"
+Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 
-**Rotate:** `POST /api/qr/token/{product_id}/refresh` bumps `qr_token_version` and invalidates old QRs.
+## API endpoints (overview)
 
-### Check-in / check-out toggle
-
-- `attendance_status`: `checked_out` → scan → `check_in`; `checked_in` → scan → `check_out`
-- If last event was on a **previous UTC day**, next scan always starts with `check_in` (overnight gap handling)
-- Admins: `POST /api/attendance/manual` for corrections
-
-### Debounce
-
-Same product scanned twice within `SCAN_DEBOUNCE_SECONDS` (default 3) returns the **existing** event (kiosk double-tap), not a duplicate row.
-
-### API authorization (current behavior)
-
-Roles on **users**: `admin`, `superadmin`.  
-`AdminOnly` = admin or superadmin. `SuperAdminOnly` = superadmin only.
-
-| Endpoint | Auth required |
-|----------|----------------|
-| `POST /api/auth/register` | None (always **403** — use User Management) |
-| `POST /api/auth/login`, `/refresh` | None |
-| `GET /api/auth/me` | Bearer |
-| `GET/PATCH /api/users` | Admin |
-| `POST /api/users` | Admin (create user — web User Management) |
-| `DELETE /api/users/:id` | Superadmin |
-| `DELETE /api/users/:id` | Superadmin |
-| `GET/POST/PATCH/DELETE /api/products` | Admin |
-| `GET/POST /api/qr/token/...` | Admin |
-| `POST /api/attendance/scan` | Admin |
-| `GET /api/attendance` | Admin |
-| `POST /api/attendance/manual` | Admin |
-| `GET /api/attendance/export/csv` | Admin |
-
-> See [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §5 for remaining web/mobile hardening.
-
-### Audit fields (`attendance_events`)
-
-- `recorded_by_user_id` — logged-in user who performed the scan or manual entry
-- `client_device_id` — kiosk/mobile identifier from scan request
-- `qr_jti` — QR token id at scan time
-- `recorded_at` — server timestamp (UTC)
-
-## API endpoints
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/auth/register` | — | Disabled (403) — use `POST /api/users` |
-| POST | `/api/auth/login` | — | Login → JWT pair |
-| POST | `/api/auth/refresh` | — | Refresh tokens |
-| GET | `/api/auth/me` | Bearer | Current user |
-| GET | `/api/users` | Admin | List users |
-| POST | `/api/users` | Admin | Create user |
-| GET | `/api/users/:id` | Admin | Get user |
-| PATCH | `/api/users/:id` | Admin | Update user |
-| DELETE | `/api/users/:id` | Superadmin | Delete user |
-| GET | `/api/products` | Admin | List products (filters: type, `employment_type`, active, search, `attendance_status`, pagination) |
-| POST | `/api/products` | Admin | Create product |
-| GET | `/api/products/:id` | Admin | Get product |
-| PATCH | `/api/products/:id` | Admin | Update product |
-| DELETE | `/api/products/:id` | Admin | Delete product |
-| GET | `/api/qr/token/:product_id` | Admin | Current QR JWT |
-| POST | `/api/qr/token/:product_id/refresh` | Admin | Rotate QR |
-| POST | `/api/attendance/scan` | Admin | Process QR scan |
-| GET | `/api/attendance` | Admin | List events (filters: product, dates, type) |
-| POST | `/api/attendance/manual` | Admin | Manual correction |
-| GET | `/api/attendance/export/csv` | Admin | CSV export |
-| GET | `/api/health` | — | Health check |
+| Group | Routes | Auth |
+|-------|--------|------|
+| Auth | `/api/auth/login`, `/refresh`, `/me` | None / Bearer |
+| Users | `/api/users` (CRUD) | Admin; `DELETE` = Superadmin |
+| Products | `/api/products` (CRUD) | Admin |
+| QR | `/api/qr/token/:product_id` (get, refresh) | Admin |
+| Attendance | `/api/attendance/scan`, `/manual`, `/export/csv` | Admin |
+| Health | `/api/health` | None |
 
 Full OpenAPI: http://localhost:8000/docs
 
@@ -294,10 +234,11 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 
 | Doc | Purpose |
 |-----|---------|
-| [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — deploy, CI/CD, ops, mobile, code review, release notes |
-| [apps/api/README.md](apps/api/README.md) | API-only setup and tests |
-| [apps/web/README.md](apps/web/README.md) | Web-only quick start |
-| [apps/mobile/README.md](apps/mobile/README.md) | Mobile scanner app setup |
+| [docs/README.md](docs/README.md) | **Docs entry point** — find the right doc by role |
+| [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — deploy, CI/CD, ops, known gaps, mobile release |
+| [apps/api/README.md](apps/api/README.md) | API setup and tests |
+| [apps/web/README.md](apps/web/README.md) | Web quick start |
+| [apps/mobile/README.md](apps/mobile/README.md) | Mobile scanner setup |
 
 ## Roadmap (not in v1)
 

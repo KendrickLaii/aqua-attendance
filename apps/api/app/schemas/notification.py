@@ -27,7 +27,7 @@ class NotificationCreate(BaseModel):
     notification_type: str = Field(default=NotificationType.attendance_alert.value)
     priority: str = Field(default=NotificationPriority.medium.value)
     action_url: str | None = Field(default=None, max_length=500)
-    extra_data: str | None = None
+    extra_data: dict | None = None
     expires_at: datetime | None = None
 
 

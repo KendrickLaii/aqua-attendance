@@ -1,6 +1,6 @@
 # AQUA Attendance — API
 
-FastAPI 後端：登入使用者、Product（教職員/學生）、簽名 QR token、出勤事件、場地管理。
+FastAPI 後端：登入使用者、Product（教職員/學生）、Profile（staff_profiles / student_profiles）、簽名 QR token、出勤事件、場地管理、通知、薪資、稽核。
 
 ## 日常開發
 
@@ -12,7 +12,7 @@ FastAPI 後端：登入使用者、Product（教職員/學生）、簽名 QR tok
 | 啟動 API | `python -m uvicorn app.main:app --reload`（從 `apps/api`）| 每次開發 |
 | 啟動 API（手機連線）| `python -m uvicorn app.main:app --reload --host 0.0.0.0` | Expo Go 使用 LAN IP 時 |
 | 跑 migration | `python -m alembic upgrade head` | 拉取新 migration 後 |
-| 種子資料 | `python seed.py` | 選用 — 產生範例 users/products |
+| 種子資料 | `python seed.py` | 選用 — 產生範例 users / products + profiles |
 
 API 預設連線到 `localhost:5432`（`config.py` / `.env.example`）。DBeaver 使用相同 host/port/credentials — 只需 DB container 運行即可。
 
@@ -45,7 +45,11 @@ python seed.py
 產生：
 
 - Users：`admin` / `admin123`、`superadmin` / `super123`
-- Products：`STAFF-001`、`STAFF-002`、`STU-001`、`STU-002`
+- Products + Profiles：
+  - `STAFF-001`（full_time / Math）
+  - `STAFF-002`（part_time / English）
+  - `STU-001`（Tokyo High / 3-A）
+  - `STU-002`（Osaka Middle / 2-B）
 
 ## 目錄結構
 
@@ -55,10 +59,13 @@ app/
   config.py         # 從 .env 載入設定
   database.py       # Async SQLAlchemy engine
   deps.py           # get_db、CurrentUser、AdminOnly、SuperAdminOnly
-  models/           # User、Product、AttendanceEvent、Location、RefreshToken
+  models/           # User、Product、StaffProfile、StudentProfile、AttendanceEvent、
+                    # Location、RefreshToken、Notification、AttendanceSummary、
+                    # PayrollRecord、AuditLog
   schemas/          # Pydantic request/response models
-  routers/          # auth、users、products、locations、qr、attendance
-  services/         # auth、qr、attendance 業務邏輯
+  routers/          # auth、users、products、locations、qr、attendance、
+                    # student-profiles、staff-profiles
+  services/         # auth、qr、attendance、product 業務邏輯
   utils/            # 搜尋輔助（safe ILIKE）
 alembic/            # Migrations（使用 DATABASE_URL_SYNC）
 tests/              # pytest（SQLite in-memory）

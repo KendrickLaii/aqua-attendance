@@ -7,6 +7,8 @@ from sqlalchemy.orm import selectinload
 from app.deps import DB, AdminOnly
 from app.models.attendance import AttendanceEvent
 from app.models.product import Product
+from app.models.staff_profile import StaffProfile
+from app.models.student_profile import StudentProfile
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
 from app.services import product as product_svc
 from app.utils.search import ilike_contains
@@ -99,10 +101,20 @@ async def create_product(body: ProductCreate, _admin: AdminOnly, db: DB) -> Prod
         scan_location_ids=body.scan_location_ids,
     )
 
-    product_data = body.model_dump(exclude={"scan_location_ids"})
+    product_data = body.model_dump(
+        exclude={"scan_location_ids", "student_profile", "staff_profile"}
+    )
     product = Product(**product_data)
     product.scan_locations = scan_locs
     db.add(product)
+    await db.flush()
+
+    # Create corresponding profile in the same transaction
+    if product.product_type == "student" and body.student_profile:
+        db.add(StudentProfile(id=product.id, **body.student_profile.model_dump()))
+    elif product.product_type == "staff" and body.staff_profile:
+        db.add(StaffProfile(id=product.id, **body.staff_profile.model_dump()))
+
     await db.commit()
 
     loaded = await product_svc.load_product_with_locations(db, product.id)

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class StaffProfileCreate(BaseModel):
     employee_id: str | None = Field(default=None, max_length=100)
+    employment_type: str | None = Field(default=None, max_length=20)
     department: str | None = Field(default=None, max_length=100)
     position: str | None = Field(default=None, max_length=100)
     hire_date: date | None = None
@@ -18,6 +19,7 @@ class StaffProfileCreate(BaseModel):
 
 class StaffProfileUpdate(BaseModel):
     employee_id: str | None = Field(default=None, max_length=100)
+    employment_type: str | None = Field(default=None, max_length=20)
     department: str | None = Field(default=None, max_length=100)
     position: str | None = Field(default=None, max_length=100)
     hire_date: date | None = None
@@ -31,6 +33,7 @@ class StaffProfileUpdate(BaseModel):
 class StaffProfileOut(BaseModel):
     id: uuid.UUID
     employee_id: str | None = None
+    employment_type: str | None = None
     department: str | None = None
     position: str | None = None
     hire_date: date | None = None

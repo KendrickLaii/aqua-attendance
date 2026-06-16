@@ -8,6 +8,8 @@ from sqlalchemy import select
 from app.database import async_session_factory
 from app.models.location import Location
 from app.models.product import Product
+from app.models.staff_profile import StaffProfile
+from app.models.student_profile import StudentProfile
 from app.models.user import User
 from app.services.auth import hash_password
 
@@ -26,39 +28,37 @@ SEED_PRODUCTS = [
         "code": "STAFF-001",
         "full_name": "Tanaka Sensei",
         "product_type": "staff",
-        "employment_type": "full_time",
         "status": "active",
         "allowed_codes": ["HK-CWB", "HK-MK"],
         "home_code": "HK-CWB",
+        "staff_profile": {"employment_type": "full_time", "department": "Math"},
     },
     {
         "code": "STAFF-002",
         "full_name": "Yamamoto Sensei",
         "product_type": "staff",
-        "employment_type": "part_time",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
+        "staff_profile": {"employment_type": "part_time", "department": "English"},
     },
     {
         "code": "STU-001",
         "full_name": "Suzuki Taro",
         "product_type": "student",
         "status": "active",
-        "school_name": "Tokyo High",
-        "grade_class": "3-A",
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
+        "student_profile": {"school_name": "Tokyo High", "grade_class": "3-A"},
     },
     {
         "code": "STU-002",
         "full_name": "Yamada Hanako",
         "product_type": "student",
         "status": "active",
-        "school_name": "Osaka Middle",
-        "grade_class": "2-B",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
+        "student_profile": {"school_name": "Osaka Middle", "grade_class": "2-B"},
     },
 ]
 
@@ -108,6 +108,7 @@ async def main() -> None:
         for p in SEED_PRODUCTS:
             allowed_codes = p.pop("allowed_codes")
             home_code = p.pop("home_code")
+            profile_data = p.pop("staff_profile", None) or p.pop("student_profile", None)
             registered_location = location_by_code[home_code]
             scan_locations = [location_by_code[code] for code in allowed_codes]
 
@@ -124,6 +125,14 @@ async def main() -> None:
             product = Product(**p, registered_location_id=registered_location.id)
             product.scan_locations = scan_locations
             db.add(product)
+            await db.flush()
+
+            # Create corresponding profile
+            if p["product_type"] == "staff" and profile_data:
+                db.add(StaffProfile(id=product.id, **profile_data))
+            elif p["product_type"] == "student" and profile_data:
+                db.add(StudentProfile(id=product.id, **profile_data))
+
             print(f"  created {p['code']} - {p['full_name']} ({p['product_type']})")
 
         await db.commit()

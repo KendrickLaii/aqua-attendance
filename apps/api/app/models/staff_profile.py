@@ -20,6 +20,7 @@ class StaffProfile(Base):
     
     # Employment information
     employee_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
+    employment_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     position: Mapped[str | None] = mapped_column(String(100), nullable=True)
     
@@ -38,5 +39,7 @@ class StaffProfile(Base):
     employment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     # Relationships
-    product: Mapped["Product"] = relationship("Product", back_populates="staff_profile")
+    product: Mapped["Product"] = relationship(
+        "Product", back_populates="staff_profile", foreign_keys=[id]
+    )
     supervisor: Mapped["Product"] = relationship("Product", foreign_keys=[supervisor_id])

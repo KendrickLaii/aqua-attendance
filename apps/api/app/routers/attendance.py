@@ -1,6 +1,6 @@
 import csv
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -334,3 +334,28 @@ async def export_csv(
         media_type="text/csv",
         headers=headers,
     )
+
+
+@router.post("/{event_id}/void", response_model=AttendanceOut)
+async def void_attendance_event(
+    event_id: uuid.UUID, admin: AdminOnly, db: DB
+) -> AttendanceOut:
+    """Void (soft-delete) an attendance event. Sets voided_at timestamp."""
+    result = await db.execute(
+        select(AttendanceEvent)
+        .options(selectinload(AttendanceEvent.product))
+        .where(AttendanceEvent.id == event_id)
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Attendance event not found")
+    if event.voided_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Event is already voided",
+        )
+
+    event.voided_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(event)
+    return _event_to_out(event)

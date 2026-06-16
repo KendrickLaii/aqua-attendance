@@ -86,48 +86,55 @@ async def test_list_products_invalid_attendance_status(client: AsyncClient, admi
 
 
 @pytest.mark.asyncio
-async def test_product_employment_type(
+async def test_staff_profile_employment_type(
     client: AsyncClient, admin_token: str, sample_location: dict
 ) -> None:
     headers = {"Authorization": f"Bearer {admin_token}"}
     code = f"EMP-{uuid.uuid4().hex[:6]}"
 
+    # 1. Create staff product (employment_type moved to staff_profiles)
     create = await client.post(
         "/api/products",
         json={
             "code": code,
             "full_name": "Part-time Tutor",
             "product_type": "staff",
-            "employment_type": "part_time",
             "registered_location_id": sample_location["id"],
             "scan_location_ids": [sample_location["id"]],
         },
         headers=headers,
     )
     assert create.status_code == 201
-    assert create.json()["employment_type"] == "part_time"
+    product_id = create.json()["id"]
 
-    listed = await client.get(
-        "/api/products",
-        params={"employment_type": "part_time"},
-        headers=headers,
-    )
-    assert listed.status_code == 200
-    assert any(p["code"] == code for p in listed.json())
-
-    invalid = await client.post(
-        "/api/products",
+    # 2. Create staff_profile with employment_type
+    profile = await client.post(
+        f"/api/staff-profiles/{product_id}",
         json={
-            "code": f"BAD-{uuid.uuid4().hex[:6]}",
-            "full_name": "Bad",
-            "product_type": "staff",
-            "employment_type": "contract",
-            "registered_location_id": sample_location["id"],
-            "scan_location_ids": [sample_location["id"]],
+            "employment_type": "part_time",
+            "department": "Math",
         },
         headers=headers,
     )
-    assert invalid.status_code == 422
+    assert profile.status_code == 201
+    assert profile.json()["employment_type"] == "part_time"
+
+    # 3. Verify staff_profile has employment_type
+    get_profile = await client.get(
+        f"/api/staff-profiles/{product_id}",
+        headers=headers,
+    )
+    assert get_profile.status_code == 200
+    assert get_profile.json()["employment_type"] == "part_time"
+
+    # 4. Update employment_type
+    updated = await client.patch(
+        f"/api/staff-profiles/{product_id}",
+        json={"employment_type": "full_time"},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["employment_type"] == "full_time"
 
 
 @pytest.mark.asyncio
@@ -163,7 +170,6 @@ async def test_product_registered_and_scan_locations(
             "code": code,
             "full_name": "Multi-branch staff",
             "product_type": "staff",
-            "employment_type": "full_time",
             "registered_location_id": sample_location["id"],
             "scan_location_ids": [sample_location["id"], sample_location_b["id"]],
         },

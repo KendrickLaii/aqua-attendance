@@ -45,7 +45,6 @@ class Product(Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     english_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     product_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    employment_type: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ProductStatus.active.value)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -100,8 +99,19 @@ class Product(Base):
     )
     
     # Polymorphic relationships to profile tables
-    student_profile = relationship("StudentProfile", back_populates="product", cascade="all, delete-orphan")
-    staff_profile = relationship("StaffProfile", back_populates="product", cascade="all, delete-orphan")
+    student_profile = relationship(
+        "StudentProfile",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    staff_profile = relationship(
+        "StaffProfile",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        uselist=False,
+        foreign_keys="StaffProfile.id",
+    )
     
     # Additional relationships
     notifications = relationship("Notification", back_populates="product", cascade="all, delete-orphan")

@@ -8,7 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.limiter import limiter
-from app.routers import attendance, auth, locations, products, qr, staff_profiles, student_profiles, users
+from app.routers import (
+    attendance,
+    attendance_summaries,
+    auth,
+    locations,
+    notifications,
+    payroll_records,
+    products,
+    qr,
+    staff_profiles,
+    student_profiles,
+    users,
+)
 
 app = FastAPI(
     title="AQUA Attendance API",
@@ -35,6 +47,9 @@ app.include_router(qr.router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
 app.include_router(student_profiles.router, prefix="/api")
 app.include_router(staff_profiles.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
+app.include_router(attendance_summaries.router, prefix="/api")
+app.include_router(payroll_records.router, prefix="/api")
 
 
 @app.get("/api/health")

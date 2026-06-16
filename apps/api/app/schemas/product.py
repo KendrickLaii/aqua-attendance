@@ -4,8 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.staff_profile import StaffProfileOut
-from app.schemas.student_profile import StudentProfileOut
+from app.schemas.staff_profile import StaffProfileCreate, StaffProfileOut
+from app.schemas.student_profile import StudentProfileCreate, StudentProfileOut
 
 
 class ProductLocationRef(BaseModel):
@@ -37,6 +37,8 @@ class ProductCreate(BaseModel):
     exit_date: date | None = None
     whatsapp_enabled: bool = False
     remarks: str | None = None
+    student_profile: StudentProfileCreate | None = None
+    staff_profile: StaffProfileCreate | None = None
 
     @field_validator("scan_location_ids")
     @classmethod
