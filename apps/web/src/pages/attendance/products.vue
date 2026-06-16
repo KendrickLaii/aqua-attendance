@@ -35,8 +35,7 @@ const form = reactive({
   code: '',
   full_name: '',
   english_name: '',
-  product_type: 'student' as string,
-  employment_type: '' as '' | 'part_time' | 'full_time',
+  product_type: 'student' as 'student' | 'staff',
   is_active: true,
   status: 'active',
   gender: '',
@@ -46,18 +45,42 @@ const form = reactive({
   email: '',
   emergency_contact_name: '',
   emergency_contact_phone: '',
-  school_name: '',
-  grade_class: '',
+  photo_url: '',
+  enrollment_date: '',
+  exit_date: '',
+  whatsapp_enabled: true,
+  remarks: '',
+  registered_location_id: '' as string,
+  scan_location_ids: [] as string[],
+  // Nested profiles (sent in create/update payload)
+  student_profile: {
+    school_name: '',
+    grade_class: '',
+    student_id: '',
+    enrollment_date: '',
+    graduation_date: '',
+    academic_notes: '',
+    guardians: {} as Record<string, unknown>,
+  },
+  staff_profile: {
+    employee_id: '',
+    employment_type: '' as '' | 'part_time' | 'full_time',
+    department: '',
+    position: '',
+    hire_date: '',
+    termination_date: '',
+    salary_grade: '',
+    work_schedule: '',
+    supervisor_id: '',
+    employment_notes: '',
+  },
+  // Flat guardian fields (bound in template, assembled into student_profile.guardians on save)
   guardian1_name: '',
   guardian1_relationship: '',
   guardian1_phone: '',
   guardian2_name: '',
   guardian2_relationship: '',
   guardian2_phone: '',
-  whatsapp_enabled: true,
-  remarks: '',
-  registered_location_id: '' as string,
-  scan_location_ids: [] as string[],
 })
 
 const saving = ref(false)
@@ -217,14 +240,19 @@ async function loadProducts(isRefresh = false, resetPage = false) {
       attendance_status: filterAttendance.value === 'checked_in' || filterAttendance.value === 'checked_out'
         ? filterAttendance.value
         : undefined,
-      employment_type: filterEmployment.value === 'part_time' || filterEmployment.value === 'full_time'
-        ? filterEmployment.value
-        : undefined,
       page: page.value,
       page_size: PRODUCT_PAGE_SIZE,
     })
 
-    products.value = result.items
+    let items = result.items
+    // Frontend-only employment filter (no longer supported by backend query)
+    if (filterEmployment.value) {
+      items = items.filter(
+        p => p.staff_profile?.employment_type === filterEmployment.value,
+      )
+    }
+
+    products.value = items
     totalCount.value = result.total
   }
   catch (e) {
@@ -262,8 +290,26 @@ watch(filterEmployment, () => {
 })
 
 watch(() => form.product_type, type => {
-  if (type !== 'staff')
-    form.employment_type = ''
+  if (type !== 'staff') {
+    form.staff_profile.employment_type = ''
+    form.staff_profile.department = ''
+    form.staff_profile.position = ''
+    form.staff_profile.hire_date = ''
+    form.staff_profile.termination_date = ''
+    form.staff_profile.salary_grade = ''
+    form.staff_profile.work_schedule = ''
+    form.staff_profile.supervisor_id = ''
+    form.staff_profile.employment_notes = ''
+  }
+  if (type !== 'student') {
+    form.student_profile.school_name = ''
+    form.student_profile.grade_class = ''
+    form.student_profile.student_id = ''
+    form.student_profile.enrollment_date = ''
+    form.student_profile.graduation_date = ''
+    form.student_profile.academic_notes = ''
+    form.student_profile.guardians = {}
+  }
 })
 
 function goToPrevPage() {
@@ -280,15 +326,12 @@ function goToNextPage() {
   loadProducts(true)
 }
 
-function openCreate() {
-  saveError.value = null
-  editingProduct.value = null
+function resetForm() {
   Object.assign(form, {
     code: '',
     full_name: '',
     english_name: '',
     product_type: 'student',
-    employment_type: '',
     is_active: true,
     status: 'active',
     gender: '',
@@ -298,19 +341,47 @@ function openCreate() {
     email: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
-    school_name: '',
-    grade_class: '',
+    photo_url: '',
+    enrollment_date: '',
+    exit_date: '',
+    whatsapp_enabled: true,
+    remarks: '',
+    registered_location_id: locations.value[0]?.id ?? '',
+    scan_location_ids: locations.value[0] ? [locations.value[0].id] : [],
+    student_profile: {
+      school_name: '',
+      grade_class: '',
+      student_id: '',
+      enrollment_date: '',
+      graduation_date: '',
+      academic_notes: '',
+      guardians: {},
+    },
     guardian1_name: '',
     guardian1_relationship: '',
     guardian1_phone: '',
     guardian2_name: '',
     guardian2_relationship: '',
     guardian2_phone: '',
-    whatsapp_enabled: true,
-    remarks: '',
-    registered_location_id: locations.value[0]?.id ?? '',
-    scan_location_ids: locations.value[0] ? [locations.value[0].id] : [],
+    staff_profile: {
+      employee_id: '',
+      employment_type: '',
+      department: '',
+      position: '',
+      hire_date: '',
+      termination_date: '',
+      salary_grade: '',
+      work_schedule: '',
+      supervisor_id: '',
+      employment_notes: '',
+    },
   })
+}
+
+function openCreate() {
+  saveError.value = null
+  editingProduct.value = null
+  resetForm()
   dialogOpen.value = true
   nextTick(() => productFormRef.value?.resetValidation())
 }
@@ -318,12 +389,13 @@ function openCreate() {
 function openEdit(p: Product) {
   saveError.value = null
   editingProduct.value = p
+  const sp = p.student_profile
+  const stp = p.staff_profile
   Object.assign(form, {
     code: p.code,
     full_name: p.full_name,
     english_name: p.english_name ?? '',
     product_type: p.product_type,
-    employment_type: p.employment_type ?? '',
     is_active: p.is_active,
     status: p.status ?? 'active',
     gender: p.gender ?? '',
@@ -333,18 +405,40 @@ function openEdit(p: Product) {
     email: p.email ?? '',
     emergency_contact_name: p.emergency_contact_name ?? '',
     emergency_contact_phone: p.emergency_contact_phone ?? '',
-    school_name: p.school_name ?? '',
-    grade_class: p.grade_class ?? '',
-    guardian1_name: p.guardian1_name ?? '',
-    guardian1_relationship: p.guardian1_relationship ?? '',
-    guardian1_phone: p.guardian1_phone ?? '',
-    guardian2_name: p.guardian2_name ?? '',
-    guardian2_relationship: p.guardian2_relationship ?? '',
-    guardian2_phone: p.guardian2_phone ?? '',
+    photo_url: p.photo_url ?? '',
+    enrollment_date: p.enrollment_date ?? '',
+    exit_date: p.exit_date ?? '',
     whatsapp_enabled: p.whatsapp_enabled,
     remarks: p.remarks ?? '',
     registered_location_id: p.registered_location_id,
     scan_location_ids: [...p.scan_location_ids],
+    student_profile: {
+      school_name: sp?.school_name ?? '',
+      grade_class: sp?.grade_class ?? '',
+      student_id: sp?.student_id ?? '',
+      enrollment_date: sp?.enrollment_date ?? '',
+      graduation_date: sp?.graduation_date ?? '',
+      academic_notes: sp?.academic_notes ?? '',
+      guardians: sp?.guardians ?? {},
+    },
+    guardian1_name: (sp?.guardians as any)?.guardian1?.name ?? '',
+    guardian1_relationship: (sp?.guardians as any)?.guardian1?.relationship ?? '',
+    guardian1_phone: (sp?.guardians as any)?.guardian1?.phone ?? '',
+    guardian2_name: (sp?.guardians as any)?.guardian2?.name ?? '',
+    guardian2_relationship: (sp?.guardians as any)?.guardian2?.relationship ?? '',
+    guardian2_phone: (sp?.guardians as any)?.guardian2?.phone ?? '',
+    staff_profile: {
+      employee_id: stp?.employee_id ?? '',
+      employment_type: stp?.employment_type ?? '',
+      department: stp?.department ?? '',
+      position: stp?.position ?? '',
+      hire_date: stp?.hire_date ?? '',
+      termination_date: stp?.termination_date ?? '',
+      salary_grade: stp?.salary_grade ?? '',
+      work_schedule: stp?.work_schedule ?? '',
+      supervisor_id: stp?.supervisor_id ?? '',
+      employment_notes: stp?.employment_notes ?? '',
+    },
   })
   dialogOpen.value = true
   nextTick(() => productFormRef.value?.resetValidation())
@@ -359,7 +453,7 @@ function normalizeString(value: string): string | null {
 async function handleSave() {
   saveError.value = null
 
-  if (form.product_type === 'staff' && !form.employment_type) {
+  if (form.product_type === 'staff' && !form.staff_profile.employment_type) {
     saveError.value = 'Employment type is required for staff'
 
     return
@@ -383,14 +477,11 @@ async function handleSave() {
 
   saving.value = true
   try {
-    const payload = {
+    const basePayload = {
       code: form.code.trim(),
       full_name: form.full_name.trim(),
       english_name: normalizeString(form.english_name),
       product_type: form.product_type,
-      employment_type: form.product_type === 'staff'
-        ? (form.employment_type as 'part_time' | 'full_time')
-        : null,
       status: form.status,
       gender: normalizeString(form.gender),
       date_of_birth: normalizeString(form.date_of_birth),
@@ -399,25 +490,69 @@ async function handleSave() {
       email: normalizeString(form.email),
       emergency_contact_name: normalizeString(form.emergency_contact_name),
       emergency_contact_phone: normalizeString(form.emergency_contact_phone),
-      school_name: normalizeString(form.school_name),
-      grade_class: normalizeString(form.grade_class),
-      guardian1_name: normalizeString(form.guardian1_name),
-      guardian1_relationship: normalizeString(form.guardian1_relationship),
-      guardian1_phone: normalizeString(form.guardian1_phone),
-      guardian2_name: normalizeString(form.guardian2_name),
-      guardian2_relationship: normalizeString(form.guardian2_relationship),
-      guardian2_phone: normalizeString(form.guardian2_phone),
+      photo_url: normalizeString(form.photo_url),
+      enrollment_date: normalizeString(form.enrollment_date),
+      exit_date: normalizeString(form.exit_date),
       whatsapp_enabled: form.whatsapp_enabled,
       remarks: normalizeString(form.remarks),
       registered_location_id: form.registered_location_id,
       scan_location_ids: [...form.scan_location_ids],
     }
 
+    let payload: Record<string, unknown>
+
+    if (form.product_type === 'student') {
+      const guardians: Record<string, unknown> = {}
+      if (form.guardian1_name) {
+        guardians.guardian1 = {
+          name: normalizeString(form.guardian1_name),
+          relationship: normalizeString(form.guardian1_relationship),
+          phone: normalizeString(form.guardian1_phone),
+        }
+      }
+      if (form.guardian2_name) {
+        guardians.guardian2 = {
+          name: normalizeString(form.guardian2_name),
+          relationship: normalizeString(form.guardian2_relationship),
+          phone: normalizeString(form.guardian2_phone),
+        }
+      }
+      payload = {
+        ...basePayload,
+        student_profile: {
+          school_name: normalizeString(form.student_profile.school_name),
+          grade_class: normalizeString(form.student_profile.grade_class),
+          student_id: normalizeString(form.student_profile.student_id),
+          enrollment_date: normalizeString(form.student_profile.enrollment_date),
+          graduation_date: normalizeString(form.student_profile.graduation_date),
+          academic_notes: normalizeString(form.student_profile.academic_notes),
+          guardians: Object.keys(guardians).length > 0 ? guardians : null,
+        },
+      }
+    }
+    else {
+      payload = {
+        ...basePayload,
+        staff_profile: {
+          employee_id: normalizeString(form.staff_profile.employee_id),
+          employment_type: normalizeString(form.staff_profile.employment_type),
+          department: normalizeString(form.staff_profile.department),
+          position: normalizeString(form.staff_profile.position),
+          hire_date: normalizeString(form.staff_profile.hire_date),
+          termination_date: normalizeString(form.staff_profile.termination_date),
+          salary_grade: normalizeString(form.staff_profile.salary_grade),
+          work_schedule: normalizeString(form.staff_profile.work_schedule),
+          supervisor_id: normalizeString(form.staff_profile.supervisor_id),
+          employment_notes: normalizeString(form.staff_profile.employment_notes),
+        },
+      }
+    }
+
     if (editingProduct.value)
       await updateProduct(editingProduct.value.id, { ...payload, is_active: form.is_active })
 
     else
-      await createProduct(payload)
+      await createProduct(payload as Parameters<typeof createProduct>[0])
 
     dialogOpen.value = false
     await loadProducts(true)
@@ -729,7 +864,7 @@ function rowStatusChip(p: Product) {
                 {{ scanLocationsLabel(p) }}
               </td>
               <td>
-                <span v-if="p.product_type === 'staff'">{{ employmentTypeLabel(p.employment_type) }}</span>
+                <span v-if="p.product_type === 'staff'">{{ employmentTypeLabel(p.staff_profile?.employment_type) }}</span>
                 <span
                   v-else
                   class="text-medium-emphasis"
@@ -757,7 +892,7 @@ function rowStatusChip(p: Product) {
                 {{ p.phone || '-' }}
               </td>
               <td class="col-school">
-                {{ p.school_name ? `${p.school_name} / ${p.grade_class || '-'}` : '-' }}
+                {{ p.student_profile?.school_name ? `${p.student_profile.school_name} / ${p.student_profile.grade_class || '-'}` : '-' }}
               </td>
               <td class="col-actions">
                 <div class="d-flex flex-nowrap align-center">
@@ -914,7 +1049,7 @@ function rowStatusChip(p: Product) {
             md="4"
           >
             <VSelect
-              v-model="form.employment_type"
+              v-model="form.staff_profile.employment_type"
               :items="employmentTypeOptions"
               item-title="title"
               item-value="value"
@@ -1053,6 +1188,45 @@ function rowStatusChip(p: Product) {
         </VRow>
 
         <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
+          Additional info
+        </h4>
+        <VRow class="dense-form-row">
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="form.photo_url"
+              label="Photo URL"
+              maxlength="500"
+              :rules="[maxCharsRule(500, 'Photo URL')]"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="3"
+          >
+            <VTextField
+              v-model="form.enrollment_date"
+              label="Enrollment date"
+              type="date"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="3"
+          >
+            <VTextField
+              v-model="form.exit_date"
+              label="Exit date"
+              type="date"
+            />
+          </VCol>
+        </VRow>
+
+        <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
           Emergency contact
         </h4>
         <VRow class="dense-form-row">
@@ -1088,7 +1262,7 @@ function rowStatusChip(p: Product) {
             md="4"
           >
             <VTextField
-              v-model="form.school_name"
+              v-model="form.student_profile.school_name"
               label="School name"
               maxlength="255"
             />
@@ -1099,7 +1273,7 @@ function rowStatusChip(p: Product) {
             md="4"
           >
             <VTextField
-              v-model="form.grade_class"
+              v-model="form.student_profile.grade_class"
               label="Grade / class"
               maxlength="100"
             />

@@ -7,7 +7,9 @@ export interface AttendanceEvent {
   product_name: string | null
   product_type: string | null
   event_type: 'check_in' | 'check_out' | 'manual_correction'
+  source: string
   recorded_at: string
+  created_at: string
   attendance_status: 'checked_in' | 'checked_out' | null
   qr_jti: string | null
   recorded_by_user_id: string | null
@@ -15,6 +17,7 @@ export interface AttendanceEvent {
   location_id: string | null
   location: string | null
   notes: string | null
+  voided_at: string | null
 }
 
 export interface QRPayload {

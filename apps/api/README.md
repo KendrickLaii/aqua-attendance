@@ -64,8 +64,9 @@ app/
                     # PayrollRecord、AuditLog
   schemas/          # Pydantic request/response models
   routers/          # auth、users、products、locations、qr、attendance、
-                    # student-profiles、staff-profiles
-  services/         # auth、qr、attendance、product 業務邏輯
+                    # student-profiles、staff-profiles、notifications、
+                    # attendance-summaries、payroll-records、audit-logs、auto-checkout
+  services/         # auth、qr、attendance、product、overtime、auto_checkout 業務邏輯
   utils/            # 搜尋輔助（safe ILIKE）
 alembic/            # Migrations（使用 DATABASE_URL_SYNC）
 tests/              # pytest（SQLite in-memory）
@@ -107,6 +108,14 @@ docker compose up -d    # db + api（container 啟動時自動跑 migration）
 
 API image 由 `Dockerfile` 建置，`.github/workflows/docker-publish.yml` 推送到 GHCR。
 伺服器部署請見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md)。
+
+## 相關文件
+
+- [docs/DATABASE_CHANGES.md](../../docs/DATABASE_CHANGES.md) — 資料庫設計 SSOT（ER 圖、欄位搬遷、OT 計算）
+- [docs/BACKEND_REVIEW.md](../../docs/BACKEND_REVIEW.md) — 後端審查與修復計畫（架構評價、已知缺口）
+- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 部署、CI/CD、運維
+
+---
 
 生產 / UAT 部署前：
 

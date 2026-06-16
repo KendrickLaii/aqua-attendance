@@ -28,6 +28,8 @@
 | [../apps/mobile/README.md](../apps/mobile/README.md) | 開發 | Expo 啟動、QR Scanner 設定、實體裝置 LAN IP 設定、entry-point 限制 | Mobile 變更時 |
 | [../REVIEW-PROMPT.md](../REVIEW-PROMPT.md) | 流程 | 合併前檢查清單與 Code Review 提示 | 流程調整時 |
 | [../deploy/README.md](../deploy/README.md) | 部署 | 生產主機目錄結構、輔助腳本說明（`first-boot.sh`、`update.sh`、`reset-db.sh`） | 部署腳本變更時 |
+| [BACKEND_REVIEW.md](BACKEND_REVIEW.md) | 審查 | FastAPI 後端審查與修復計畫 — 架構評價、已修問題、待補缺口 | 後端重大變更時 |
+| [DATABASE_CHANGES.md](DATABASE_CHANGES.md) | 設計 | 資料庫設計 Single Source of Truth — ER 圖、欄位搬遷、OT 計算 | Schema 變更時 |
 
 ---
 

@@ -8,13 +8,43 @@ export interface ProductLocationRef {
   name_en: string
 }
 
+export interface GuardianInfo {
+  name?: string | null
+  relationship?: string | null
+  phone?: string | null
+}
+
+export interface StudentProfileOut {
+  id: string
+  school_name: string | null
+  grade_class: string | null
+  student_id: string | null
+  guardians: Record<string, unknown> | null
+  enrollment_date: string | null
+  graduation_date: string | null
+  academic_notes: string | null
+}
+
+export interface StaffProfileOut {
+  id: string
+  employee_id: string | null
+  employment_type: string | null
+  department: string | null
+  position: string | null
+  hire_date: string | null
+  termination_date: string | null
+  salary_grade: string | null
+  work_schedule: string | null
+  supervisor_id: string | null
+  employment_notes: string | null
+}
+
 export interface Product {
   id: string
   code: string
   full_name: string
   english_name: string | null
-  product_type: string
-  employment_type: 'part_time' | 'full_time' | null
+  product_type: 'student' | 'staff'
   is_active: boolean
   status: string
   attendance_status: 'checked_in' | 'checked_out'
@@ -32,23 +62,42 @@ export interface Product {
   email: string | null
   emergency_contact_name: string | null
   emergency_contact_phone: string | null
-  school_name: string | null
-  grade_class: string | null
-  guardian1_name: string | null
-  guardian1_relationship: string | null
-  guardian1_phone: string | null
-  guardian2_name: string | null
-  guardian2_relationship: string | null
-  guardian2_phone: string | null
+  photo_url: string | null
+  enrollment_date: string | null
+  exit_date: string | null
   whatsapp_enabled: boolean
   remarks: string | null
   created_at: string
   updated_at: string
+  student_profile: StudentProfileOut | null
+  staff_profile: StaffProfileOut | null
+}
+
+export interface StudentProfileInput {
+  school_name?: string | null
+  grade_class?: string | null
+  student_id?: string | null
+  guardians?: Record<string, unknown> | null
+  enrollment_date?: string | null
+  graduation_date?: string | null
+  academic_notes?: string | null
+}
+
+export interface StaffProfileInput {
+  employee_id?: string | null
+  employment_type?: string | null
+  department?: string | null
+  position?: string | null
+  hire_date?: string | null
+  termination_date?: string | null
+  salary_grade?: string | null
+  work_schedule?: string | null
+  supervisor_id?: string | null
+  employment_notes?: string | null
 }
 
 export async function listProducts(params?: {
   product_type?: string
-  employment_type?: 'part_time' | 'full_time'
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
@@ -62,7 +111,6 @@ export async function listProducts(params?: {
 
 export async function listProductsWithTotal(params?: {
   product_type?: string
-  employment_type?: 'part_time' | 'full_time' | null
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
@@ -80,8 +128,7 @@ export async function createProduct(payload: {
   code: string
   full_name: string
   english_name?: string | null
-  product_type: string
-  employment_type?: 'part_time' | 'full_time' | null
+  product_type: 'student' | 'staff'
   status?: string
   registered_location_id: string
   scan_location_ids: string[]
@@ -92,16 +139,13 @@ export async function createProduct(payload: {
   email?: string | null
   emergency_contact_name?: string | null
   emergency_contact_phone?: string | null
-  school_name?: string | null
-  grade_class?: string | null
-  guardian1_name?: string | null
-  guardian1_relationship?: string | null
-  guardian1_phone?: string | null
-  guardian2_name?: string | null
-  guardian2_relationship?: string | null
-  guardian2_phone?: string | null
+  photo_url?: string | null
+  enrollment_date?: string | null
+  exit_date?: string | null
   whatsapp_enabled?: boolean
   remarks?: string | null
+  student_profile?: StudentProfileInput | null
+  staff_profile?: StaffProfileInput | null
 }): Promise<Product> {
   return await $attendanceApi('/products', { method: 'POST', body: payload })
 }
@@ -110,8 +154,7 @@ export async function updateProduct(productId: string, payload: {
   code?: string
   full_name?: string
   english_name?: string | null
-  product_type?: string
-  employment_type?: 'part_time' | 'full_time' | null
+  product_type?: 'student' | 'staff'
   is_active?: boolean
   status?: string
   registered_location_id?: string
@@ -123,16 +166,13 @@ export async function updateProduct(productId: string, payload: {
   email?: string | null
   emergency_contact_name?: string | null
   emergency_contact_phone?: string | null
-  school_name?: string | null
-  grade_class?: string | null
-  guardian1_name?: string | null
-  guardian1_relationship?: string | null
-  guardian1_phone?: string | null
-  guardian2_name?: string | null
-  guardian2_relationship?: string | null
-  guardian2_phone?: string | null
+  photo_url?: string | null
+  enrollment_date?: string | null
+  exit_date?: string | null
   whatsapp_enabled?: boolean
   remarks?: string | null
+  student_profile?: StudentProfileInput | null
+  staff_profile?: StaffProfileInput | null
 }): Promise<Product> {
   return await $attendanceApi(`/products/${productId}`, { method: 'PATCH', body: payload })
 }

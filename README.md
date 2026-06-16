@@ -25,8 +25,9 @@ Check-in / check-out for a cram school (juku). **Staff and students are not logi
 | Concept | Description |
 |---------|-------------|
 | **User** (`users` table) | Someone who logs in: `admin` or `superadmin` only |
-| **Product** (`products` table) | Person or entity that checks in: `product_type` = `staff` or `student` |
-| **Attendance event** | A `check_in`, `check_out`, or `manual_correction` row for a product |
+| **Product** (`products` table) | Person or entity that checks in: `product_type` = `staff`, `student`, `device`, or `goods` |
+| **Profile** (`student_profiles` / `staff_profiles`) | Type-specific data: student (school, guardians) / staff (employment, pay) |
+| **Attendance event** | A `check_in`, `check_out`, `manual_correction`, or `auto_checkout` row for a product |
 
 ## Repository layout
 
@@ -189,8 +190,14 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 | Auth | `/api/auth/login`, `/refresh`, `/me` | None / Bearer |
 | Users | `/api/users` (CRUD) | Admin; `DELETE` = Superadmin |
 | Products | `/api/products` (CRUD) | Admin |
+| Profiles | `/api/student-profiles/:id`, `/staff-profiles/:id` | Admin |
 | QR | `/api/qr/token/:product_id` (get, refresh) | Admin |
-| Attendance | `/api/attendance/scan`, `/manual`, `/export/csv` | Admin |
+| Attendance | `/api/attendance/scan`, `/manual`, `/export/csv`, `/void` | Admin |
+| Summaries | `/api/attendance-summaries` (generate, query) | Admin |
+| Payroll | `/api/payroll-records` (CRUD, confirm) | Admin |
+| Notifications | `/api/notifications` (CRUD, mark read) | Admin |
+| Audit | `/api/audit-logs` (query) | Superadmin |
+| Auto-checkout | `/api/auto-checkout/run` | Admin |
 | Health | `/api/health` | None |
 
 Full OpenAPI: http://localhost:8000/docs
@@ -234,7 +241,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 
 | Doc | Purpose |
 |-----|---------|
-| [docs/README.md](docs/README.md) | **Docs entry point** — find the right doc by role |
+| [docs/INDEX.md](docs/INDEX.md) | **Docs entry point** — find the right doc by role |
 | [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — deploy, CI/CD, ops, known gaps, mobile release |
 | [apps/api/README.md](apps/api/README.md) | API setup and tests |
 | [apps/web/README.md](apps/web/README.md) | Web quick start |
