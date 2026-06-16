@@ -27,6 +27,14 @@ class EmploymentType(str, enum.Enum):
     full_time = "full_time"
 
 
+class ProductStatus(str, enum.Enum):
+    active = "active"
+    inactive = "inactive"
+    graduated = "graduated"
+    terminated = "terminated"
+    suspended = "suspended"
+
+
 class Product(Base):
     """A managed entity (staff member, student, etc.) that can check in/out."""
 
@@ -39,7 +47,10 @@ class Product(Base):
     product_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     employment_type: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=ProductStatus.active.value)
+    photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    enrollment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    exit_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     attendance_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=AttendanceStatus.checked_out.value

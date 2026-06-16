@@ -16,7 +16,7 @@ class Location(Base):
     name_en: Mapped[str] = mapped_column(String(255), nullable=False)
     location_type: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     region: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    business_hours: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    business_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     icon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     main_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     detail_photos: Mapped[list | None] = mapped_column(JSON, nullable=True)
