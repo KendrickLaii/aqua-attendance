@@ -1,6 +1,8 @@
 """Seed script: creates default admin + sample products.  Run with:
     python seed.py
+    python seed.py --users-only
 """
+import argparse
 import asyncio
 
 from sqlalchemy import select
