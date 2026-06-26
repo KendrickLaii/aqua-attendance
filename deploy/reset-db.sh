@@ -37,7 +37,7 @@ echo "    Waiting for API to be ready..."
 sleep 10
 
 echo "==> Step 5: Seeding default data"
-$COMPOSE exec -T api python seed.py
+$COMPOSE exec -T api python seed.py $USERS_ONLY
 
 echo "==> Step 6: Starting all services"
 $COMPOSE up -d
@@ -50,10 +50,4 @@ echo ""
 echo "  Default login accounts:"
 echo "    admin      / admin123  (admin)"
 echo "    superadmin / super123  (superadmin)"
-echo ""
-echo "  Sample products:"
-echo "    STAFF-001  Tanaka Sensei   (staff)"
-echo "    STAFF-002  Yamamoto Sensei (staff)"
-echo "    STU-001    Suzuki Taro     (student)"
-echo "    STU-002    Yamada Hanako   (student)"
 echo "============================================"

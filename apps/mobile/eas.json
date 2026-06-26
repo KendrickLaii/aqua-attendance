@@ -9,10 +9,27 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://13.115.90.135/api"
+        "EXPO_PUBLIC_API_URL": "http://43.207.225.116/api"
       }
     },
     "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://43.207.225.116/api"
+      }
+    },
+    "preview-uat": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://13.115.90.135/api"
+      }
+    },
+    "production-uat": {
       "android": {
         "buildType": "apk"
       },
