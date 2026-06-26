@@ -131,8 +131,10 @@ export function formatAttendanceDateTime(iso: string | null | undefined): string
   if (!iso)
     return '—'
   const d = new Date(iso)
+  const date = d.toLocaleDateString('en-GB')
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 
-  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  return `${date} ${time}`
 }
 
 export function formatAttendanceTime(iso: string | null | undefined): string {

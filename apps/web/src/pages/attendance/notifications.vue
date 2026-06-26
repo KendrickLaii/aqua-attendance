@@ -6,7 +6,8 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
-const NOTIF_PAGE_SIZE = 50
+const pageSize = ref(40)
+const pageSizeOptions = [10, 20, 40, 60, 100]
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
@@ -21,9 +22,7 @@ const loadError = ref('')
 const filterRead = ref('')
 const page = ref(1)
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / NOTIF_PAGE_SIZE)))
-const hasNextPage = computed(() => page.value < totalPages.value)
-const hasPrevPage = computed(() => page.value > 1)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 
 const readOptions = [
   { title: 'All', value: '' },
@@ -80,7 +79,7 @@ async function loadNotifications(isRefresh = false, resetPage = false) {
     const result = await listNotificationsWithTotal({
       is_read: isReadParam,
       page: page.value,
-      page_size: NOTIF_PAGE_SIZE,
+      page_size: pageSize.value,
     })
 
     notifications.value = result.items
@@ -137,17 +136,8 @@ async function markAllAsRead() {
   }
 }
 
-function goToPrevPage() {
-  if (page.value <= 1)
-    return
-  page.value -= 1
-  loadNotifications(true)
-}
-
-function goToNextPage() {
-  if (!hasNextPage.value)
-    return
-  page.value += 1
+function onPageSizeChange() {
+  page.value = 1
   loadNotifications(true)
 }
 </script>
@@ -290,26 +280,27 @@ function goToNextPage() {
     </div>
 
     <div class="d-flex align-center justify-space-between mt-3">
-      <span class="text-caption text-medium-emphasis">{{ totalCount }} total</span>
       <div class="d-flex align-center gap-2">
-        <VBtn
-          size="small"
-          variant="text"
-          :disabled="!hasPrevPage"
-          @click="goToPrevPage"
-        >
-          <VIcon>tabler-chevron-left</VIcon>
-        </VBtn>
-        <span class="text-caption">{{ page }} / {{ totalPages }}</span>
-        <VBtn
-          size="small"
-          variant="text"
-          :disabled="!hasNextPage"
-          @click="goToNextPage"
-        >
-          <VIcon>tabler-chevron-right</VIcon>
-        </VBtn>
+        <span class="text-caption text-medium-emphasis">{{ totalCount }} total</span>
+        <VSelect
+          v-model="pageSize"
+          :items="pageSizeOptions"
+          density="compact"
+          variant="plain"
+          hide-details
+          style="max-width: 70px;"
+          @update:model-value="onPageSizeChange"
+        />
+        <span class="text-caption text-medium-emphasis">per page</span>
       </div>
+      <VPagination
+        v-model="page"
+        :length="totalPages"
+        :total-visible="5"
+        density="compact"
+        size="small"
+        @update:model-value="loadNotifications(true)"
+      />
     </div>
   </VContainer>
 </template>

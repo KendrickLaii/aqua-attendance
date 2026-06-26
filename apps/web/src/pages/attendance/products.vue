@@ -17,7 +17,8 @@ import { useToast } from '@/composables/useToast'
 
 definePage({ meta: {} })
 
-const PRODUCT_PAGE_SIZE = 50
+const pageSize = ref(40)
+const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
@@ -157,9 +158,7 @@ const productFormRef = ref<VForm>()
 const codeRules = [requiredValidator, maxCharsRule(100, 'Code')] as const
 const fullNameRules = [requiredValidator, maxCharsRule(255, 'Full name')] as const
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / PRODUCT_PAGE_SIZE)))
-const hasNextPage = computed(() => page.value < totalPages.value)
-const hasPrevPage = computed(() => page.value > 1)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
@@ -181,10 +180,10 @@ const listCaption = computed(() => {
   if (loading.value || totalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * PRODUCT_PAGE_SIZE + 1
+  const from = (page.value - 1) * pageSize.value + 1
   const to = from + products.value.length - 1
 
-  if (totalCount.value <= PRODUCT_PAGE_SIZE)
+  if (totalCount.value <= pageSize.value)
     return `${totalCount.value} product${totalCount.value === 1 ? '' : 's'}`
 
   return `${from}–${to} of ${totalCount.value}`
@@ -238,7 +237,7 @@ async function loadProducts(isRefresh = false, resetPage = false) {
         ? filterAttendance.value
         : undefined,
       page: page.value,
-      page_size: PRODUCT_PAGE_SIZE,
+      page_size: pageSize.value,
     })
 
     let items = result.items
@@ -318,17 +317,8 @@ watch(() => form.status, (val) => {
   form.is_active = val !== 'inactive'
 })
 
-function goToPrevPage() {
-  if (page.value <= 1)
-    return
-  page.value -= 1
-  loadProducts(true)
-}
-
-function goToNextPage() {
-  if (!hasNextPage.value)
-    return
-  page.value += 1
+function onPageSizeChange() {
+  page.value = 1
   loadProducts(true)
 }
 
@@ -862,18 +852,40 @@ function rowStatusChip(p: Product) {
         <VTable class="products-table">
           <thead>
             <tr>
-              <th>Code</th>
-              <th>Full Name</th>
-              <th>Type</th>
-              <th>Registered location</th>
-              <th>Scan locations</th>
-              <th>Employment</th>
-              <th>Status</th>
-              <th>Last check-in / out</th>
-              <th class="col-phone">
+              <th width="100">
+                Code
+              </th>
+              <th width="130">
+                Full Name
+              </th>
+              <th width="80">
+                Type
+              </th>
+              <th width="120">
+                Registered location
+              </th>
+              <th width="120">
+                Scan locations
+              </th>
+              <th width="100">
+                Employment
+              </th>
+              <th width="90">
+                Status
+              </th>
+              <th width="180">
+                Last check-in / out
+              </th>
+              <th
+                class="col-phone"
+                width="110"
+              >
                 Phone
               </th>
-              <th class="col-school">
+              <th
+                class="col-school"
+                width="130"
+              >
                 School / Class
               </th>
               <th class="col-actions">
@@ -921,7 +933,7 @@ function rowStatusChip(p: Product) {
                   {{ rowStatusChip(p).label }}
                 </VChip>
               </td>
-              <td style="min-width: 220px">
+              <td>
                 <div
                   class="text-caption"
                   :class="p.last_event_at && p.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
@@ -995,30 +1007,32 @@ function rowStatusChip(p: Product) {
         </VTable>
       </div>
       <div
-        v-if="!loading && products.length > 0 && totalPages > 1"
+        v-if="!loading && products.length > 0"
         class="d-flex flex-wrap align-center justify-space-between gap-2 pa-4 pt-0"
       >
-        <span class="text-caption text-medium-emphasis">
-          Page {{ page }} of {{ totalPages }}
-        </span>
-        <div class="d-flex gap-2">
-          <VBtn
-            variant="tonal"
-            size="small"
-            :disabled="!hasPrevPage || refreshing"
-            @click="goToPrevPage"
-          >
-            Previous
-          </VBtn>
-          <VBtn
-            variant="tonal"
-            size="small"
-            :disabled="!hasNextPage || refreshing"
-            @click="goToNextPage"
-          >
-            Next
-          </VBtn>
+        <div class="d-flex align-center gap-2">
+          <span class="text-caption text-medium-emphasis">
+            Page {{ page }} of {{ totalPages }}
+          </span>
+          <VSelect
+            v-model="pageSize"
+            :items="pageSizeOptions"
+            density="compact"
+            variant="plain"
+            hide-details
+            style="max-width: 70px;"
+            @update:model-value="onPageSizeChange"
+          />
+          <span class="text-caption text-medium-emphasis">per page</span>
         </div>
+        <VPagination
+          v-model="page"
+          :length="totalPages"
+          :total-visible="5"
+          density="compact"
+          size="small"
+          @update:model-value="loadProducts(true)"
+        />
       </div>
       <div class="text-caption text-medium-emphasis px-4 pb-3 d-md-none">
         Swipe sideways to see more columns. Phone and school are hidden on small screens.
@@ -1558,10 +1572,24 @@ function rowStatusChip(p: Product) {
   -webkit-overflow-scrolling: touch;
 }
 
-.products-table :deep(.col-actions) {
-  width: 1%;
-  white-space: nowrap;
+.products-table :deep(thead th),
+.products-table :deep(tbody td) {
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.products-table :deep(.col-actions) {
+  position: sticky;
+  right: 0;
+  background: rgb(var(--v-theme-surface));
+  white-space: nowrap;
+  width: 1%;
+  z-index: 2;
+  border-left: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.products-table :deep(thead th.col-actions) {
+  z-index: 3;
 }
 
 @media (max-width: 960px) {

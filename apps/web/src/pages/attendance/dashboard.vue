@@ -2,6 +2,7 @@
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { getAttendanceDayStats, listAttendanceWithTotal } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
+import type { Product } from '@/api/attendance/products'
 import { getAutoCheckoutStatus, triggerAutoCheckout } from '@/api/attendance/autoCheckout'
 import type { AttendanceEvent } from '@/api/attendance/events'
 import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso } from '@/utils/attendanceDisplay'
@@ -31,6 +32,25 @@ const todayEventTotal = ref(0)
 const stillCheckedInCount = ref(0)
 const autoCheckoutLoading = ref(false)
 const autoCheckoutResult = ref('')
+
+const autoCheckoutDialog = ref(false)
+const autoCheckoutCandidates = ref<Product[]>([])
+const autoCheckoutSelectedIds = ref<string[]>([])
+const autoCheckoutCandidatesLoading = ref(false)
+const autoCheckoutDialogError = ref('')
+
+const allCandidatesSelected = computed(() =>
+  autoCheckoutCandidates.value.length > 0
+  && autoCheckoutSelectedIds.value.length === autoCheckoutCandidates.value.length)
+
+const autoCheckoutSaveLabel = computed(() =>
+  `Check out ${autoCheckoutSelectedIds.value.length} selected`)
+
+function toggleSelectAllCandidates() {
+  autoCheckoutSelectedIds.value = allCandidatesSelected.value
+    ? []
+    : autoCheckoutCandidates.value.map(p => p.id)
+}
 
 const recentEventsCaption = computed(() => {
   if (todayEventTotal.value === 0)
@@ -114,16 +134,40 @@ function eventColor(type: string) {
   return 'info'
 }
 
-async function handleAutoCheckout() {
+async function openAutoCheckoutDialog() {
+  autoCheckoutDialog.value = true
+  autoCheckoutDialogError.value = ''
+  autoCheckoutCandidatesLoading.value = true
+  autoCheckoutCandidates.value = []
+  autoCheckoutSelectedIds.value = []
+  try {
+    const products = await listProducts({ is_active: true, attendance_status: 'checked_in', page_size: 200 })
+
+    autoCheckoutCandidates.value = products
+    autoCheckoutSelectedIds.value = products.map(p => p.id)
+  }
+  catch (e: unknown) {
+    autoCheckoutDialogError.value = formatApiError(e, 'Failed to load checked-in products')
+  }
+  finally {
+    autoCheckoutCandidatesLoading.value = false
+  }
+}
+
+async function confirmAutoCheckout() {
+  if (autoCheckoutSelectedIds.value.length === 0)
+    return
+
   autoCheckoutLoading.value = true
   autoCheckoutResult.value = ''
   try {
-    const result = await triggerAutoCheckout()
+    const result = await triggerAutoCheckout({ productIds: [...autoCheckoutSelectedIds.value] })
     autoCheckoutResult.value = result.message
+    autoCheckoutDialog.value = false
     await loadDashboard(true)
   }
   catch (e: unknown) {
-    autoCheckoutResult.value = formatApiError(e, 'Auto-checkout failed')
+    autoCheckoutDialogError.value = formatApiError(e, 'Auto-checkout failed')
   }
   finally {
     autoCheckoutLoading.value = false
@@ -169,7 +213,7 @@ async function handleAutoCheckout() {
           color="warning"
           prepend-icon="ri-time-line"
           :loading="autoCheckoutLoading"
-          @click="handleAutoCheckout"
+          @click="openAutoCheckoutDialog"
         >
           Auto Checkout
         </VBtn>
@@ -295,9 +339,9 @@ async function handleAutoCheckout() {
                 variant="outlined"
                 color="warning"
                 :loading="autoCheckoutLoading"
-                @click="handleAutoCheckout"
+                @click="openAutoCheckoutDialog"
               >
-                Run Now
+                Review &amp; Run
               </VBtn>
             </VCardText>
           </VCard>
@@ -428,5 +472,93 @@ async function handleAutoCheckout() {
         </VTable>
       </VCard>
     </template>
+
+    <AttendanceFormDialog
+      v-model="autoCheckoutDialog"
+      title="Auto Checkout"
+      icon="ri-time-line"
+      :max-width="560"
+      :saving="autoCheckoutLoading"
+      :error="autoCheckoutDialogError"
+      :save-label="autoCheckoutSaveLabel"
+      :form-defaults="false"
+      @save="confirmAutoCheckout"
+      @cancel="autoCheckoutDialog = false"
+      @clear-error="autoCheckoutDialogError = ''"
+    >
+      <p class="text-body-2 text-medium-emphasis mb-4">
+        Select who to check out now. Unselected products stay checked in so you
+        can investigate why they never scanned out.
+      </p>
+
+      <div
+        v-if="autoCheckoutCandidatesLoading"
+        class="text-center py-6"
+      >
+        <VProgressCircular
+          indeterminate
+          color="primary"
+        />
+      </div>
+
+      <div
+        v-else-if="autoCheckoutCandidates.length === 0"
+        class="text-center text-medium-emphasis py-6"
+      >
+        No products are still checked in.
+      </div>
+
+      <template v-else>
+        <div class="d-flex align-center justify-space-between mb-2">
+          <VBtn
+            variant="text"
+            size="small"
+            @click="toggleSelectAllCandidates"
+          >
+            {{ allCandidatesSelected ? 'Deselect all' : 'Select all' }}
+          </VBtn>
+          <span class="text-caption text-medium-emphasis">
+            {{ autoCheckoutSelectedIds.length }} / {{ autoCheckoutCandidates.length }} selected
+          </span>
+        </div>
+
+        <VList
+          density="compact"
+          max-height="320"
+          class="border rounded"
+        >
+          <VListItem
+            v-for="product in autoCheckoutCandidates"
+            :key="product.id"
+          >
+            <template #prepend>
+              <VCheckbox
+                v-model="autoCheckoutSelectedIds"
+                :value="product.id"
+                hide-details
+                density="compact"
+              />
+            </template>
+            <VListItemTitle>
+              {{ product.full_name }}
+              <VChip
+                :color="product.product_type === 'staff' ? 'info' : 'success'"
+                size="x-small"
+                label
+                class="ms-1"
+              >
+                {{ product.product_type }}
+              </VChip>
+            </VListItemTitle>
+            <VListItemSubtitle>
+              {{ product.code }}
+              <span v-if="product.last_event_at">
+                · last event {{ formatAttendanceTime(product.last_event_at) }}
+              </span>
+            </VListItemSubtitle>
+          </VListItem>
+        </VList>
+      </template>
+    </AttendanceFormDialog>
   </VContainer>
 </template>

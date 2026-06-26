@@ -22,12 +22,17 @@ from app.models.product import AttendanceStatus, Product
 async def auto_checkout_for_date(
     db: AsyncSession,
     target_date: date | None = None,
+    product_ids: list[uuid.UUID] | None = None,
 ) -> list[AttendanceEvent]:
-    """Create auto-checkout events for all products still checked-in at 23:59.
+    """Create auto-checkout events for products still checked-in at 23:59.
 
     Args:
         db: database session
         target_date: the date to process (defaults to today)
+        product_ids: when provided, only these products are checked out.
+            Unselected products stay checked in so admins can investigate
+            why they never scanned out. When ``None`` all still-checked-in
+            products are processed (scheduled job behaviour).
 
     Returns:
         list of created auto-checkout events
@@ -36,12 +41,18 @@ async def auto_checkout_for_date(
         target_date = datetime.now(timezone.utc).date()
 
     # Find all products with attendance_status = checked_in
-    result = await db.execute(
+    query = (
         select(Product)
         .options(selectinload(Product.registered_location))
         .where(Product.attendance_status == AttendanceStatus.checked_in.value)
         .where(Product.is_active.is_(True))
     )
+    if product_ids is not None:
+        if not product_ids:
+            return []
+        query = query.where(Product.id.in_(product_ids))
+
+    result = await db.execute(query)
     products = result.scalars().all()
 
     # Auto-checkout time = 23:59 of target date

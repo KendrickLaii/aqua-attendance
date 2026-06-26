@@ -14,7 +14,8 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
 
-const USER_PAGE_SIZE = 50
+const pageSize = ref(40)
+const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
@@ -56,9 +57,7 @@ const fullNameRules = [requiredValidator, maxCharsRule(255, 'Full name')] as con
 const createPasswordRules = [requiredValidator, attendanceCreatePasswordValidator] as const
 const editPasswordRules = [attendanceCreatePasswordValidator] as const
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / USER_PAGE_SIZE)))
-const hasNextPage = computed(() => page.value < totalPages.value)
-const hasPrevPage = computed(() => page.value > 1)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 const activeCount = computed(() => users.value.filter(u => u.is_active).length)
 
 const pageSubtitle = computed(() => {
@@ -77,10 +76,10 @@ const listCaption = computed(() => {
   if (loading.value || totalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * USER_PAGE_SIZE + 1
+  const from = (page.value - 1) * pageSize.value + 1
   const to = from + users.value.length - 1
 
-  if (totalCount.value <= USER_PAGE_SIZE)
+  if (totalCount.value <= pageSize.value)
     return `${totalCount.value} user${totalCount.value === 1 ? '' : 's'}`
 
   return `${from}–${to} of ${totalCount.value}`
@@ -128,7 +127,7 @@ async function loadUsers(isRefresh = false, resetPage = false) {
     const result = await listUsersWithTotal({
       search: searchQuery.value.trim() || undefined,
       page: page.value,
-      page_size: USER_PAGE_SIZE,
+      page_size: pageSize.value,
     })
 
     users.value = result.items
@@ -150,17 +149,8 @@ watch(searchQuery, () => {
   debouncedLoadUsers()
 })
 
-function goToPrevPage() {
-  if (page.value <= 1)
-    return
-  page.value -= 1
-  loadUsers(true)
-}
-
-function goToNextPage() {
-  if (!hasNextPage.value)
-    return
-  page.value += 1
+function onPageSizeChange() {
+  page.value = 1
   loadUsers(true)
 }
 
@@ -494,30 +484,32 @@ function canDeleteUser(u: AttendanceUser) {
         </VTable>
       </div>
       <div
-        v-if="!loading && users.length > 0 && totalPages > 1"
+        v-if="!loading && users.length > 0"
         class="d-flex flex-wrap align-center justify-space-between gap-2 pa-4 pt-0"
       >
-        <span class="text-caption text-medium-emphasis">
-          Page {{ page }} of {{ totalPages }}
-        </span>
-        <div class="d-flex gap-2">
-          <VBtn
-            variant="tonal"
-            size="small"
-            :disabled="!hasPrevPage || refreshing"
-            @click="goToPrevPage"
-          >
-            Previous
-          </VBtn>
-          <VBtn
-            variant="tonal"
-            size="small"
-            :disabled="!hasNextPage || refreshing"
-            @click="goToNextPage"
-          >
-            Next
-          </VBtn>
+        <div class="d-flex align-center gap-2">
+          <span class="text-caption text-medium-emphasis">
+            Page {{ page }} of {{ totalPages }}
+          </span>
+          <VSelect
+            v-model="pageSize"
+            :items="pageSizeOptions"
+            density="compact"
+            variant="plain"
+            hide-details
+            style="max-width: 70px;"
+            @update:model-value="onPageSizeChange"
+          />
+          <span class="text-caption text-medium-emphasis">per page</span>
         </div>
+        <VPagination
+          v-model="page"
+          :length="totalPages"
+          :total-visible="5"
+          density="compact"
+          size="small"
+          @update:model-value="loadUsers(true)"
+        />
       </div>
     </VCard>
 

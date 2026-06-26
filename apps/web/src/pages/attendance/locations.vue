@@ -24,7 +24,8 @@ import {
 
 definePage({ meta: {} })
 
-const LOCATION_PAGE_SIZE = 24
+const pageSize = ref(24)
+const pageSizeOptions = [12, 24, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
 const authStore = useAttendanceAuthStore()
@@ -77,9 +78,7 @@ const regionOptions = computed(() =>
   [...new Set(locations.value.map(l => l.region).filter((r): r is string => !!r))].sort(),
 )
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / LOCATION_PAGE_SIZE)))
-const hasNextPage = computed(() => page.value < totalPages.value)
-const hasPrevPage = computed(() => page.value > 1)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 const activeCount = computed(() => locations.value.filter(l => l.is_active).length)
 
 const pageSubtitle = computed(() => {
@@ -98,10 +97,10 @@ const listCaption = computed(() => {
   if (loading.value || totalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * LOCATION_PAGE_SIZE + 1
+  const from = (page.value - 1) * pageSize.value + 1
   const to = from + locations.value.length - 1
 
-  if (totalCount.value <= LOCATION_PAGE_SIZE)
+  if (totalCount.value <= pageSize.value)
     return `${totalCount.value} location${totalCount.value === 1 ? '' : 's'}`
 
   return `${from}–${to} of ${totalCount.value}`
@@ -139,7 +138,7 @@ async function loadLocations(isRefresh = false, resetPage = false) {
       is_active: showInactive.value ? undefined : true,
       search: search.value.trim() || undefined,
       page: page.value,
-      page_size: LOCATION_PAGE_SIZE,
+      page_size: pageSize.value,
     })
 
     locations.value = result.items
@@ -165,17 +164,8 @@ watch(showInactive, () => {
   loadLocations(true, true)
 })
 
-function goToPrevPage() {
-  if (page.value <= 1)
-    return
-  page.value -= 1
-  loadLocations(true)
-}
-
-function goToNextPage() {
-  if (!hasNextPage.value)
-    return
-  page.value += 1
+function onPageSizeChange() {
+  page.value = 1
   loadLocations(true)
 }
 
@@ -513,30 +503,32 @@ function displayName(l: LocationItem) {
     </VRow>
 
     <div
-      v-if="!loading && !loadError && locations.length > 0 && totalPages > 1"
+      v-if="!loading && !loadError && locations.length > 0"
       class="d-flex flex-wrap align-center justify-space-between gap-2 mb-6"
     >
-      <span class="text-caption text-medium-emphasis">
-        Page {{ page }} of {{ totalPages }}
-      </span>
-      <div class="d-flex gap-2">
-        <VBtn
-          variant="tonal"
-          size="small"
-          :disabled="!hasPrevPage || refreshing"
-          @click="goToPrevPage"
-        >
-          Previous
-        </VBtn>
-        <VBtn
-          variant="tonal"
-          size="small"
-          :disabled="!hasNextPage || refreshing"
-          @click="goToNextPage"
-        >
-          Next
-        </VBtn>
+      <div class="d-flex align-center gap-2">
+        <span class="text-caption text-medium-emphasis">
+          Page {{ page }} of {{ totalPages }}
+        </span>
+        <VSelect
+          v-model="pageSize"
+          :items="pageSizeOptions"
+          density="compact"
+          variant="plain"
+          hide-details
+          style="max-width: 70px;"
+          @update:model-value="onPageSizeChange"
+        />
+        <span class="text-caption text-medium-emphasis">per page</span>
       </div>
+      <VPagination
+        v-model="page"
+        :length="totalPages"
+        :total-visible="5"
+        density="compact"
+        size="small"
+        @update:model-value="loadLocations(true)"
+      />
     </div>
 
     <AttendanceFormDialog

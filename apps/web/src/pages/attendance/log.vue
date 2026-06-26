@@ -10,8 +10,9 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
-const EVENTS_PAGE_SIZE = 100
 const PRODUCT_PAGE_SIZE = 200
+const pageSize = ref(40)
+const pageSizeOptions = [10, 20, 40, 60, 100]
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
@@ -77,9 +78,7 @@ type DatePreset = typeof datePresets[number]['value'] | 'custom'
 
 const activeDatePreset = ref<DatePreset>('today')
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / EVENTS_PAGE_SIZE)))
-const hasNextPage = computed(() => page.value < totalPages.value)
-const hasPrevPage = computed(() => page.value > 1)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
@@ -101,10 +100,10 @@ const listCaption = computed(() => {
   if (loading.value || totalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * EVENTS_PAGE_SIZE + 1
+  const from = (page.value - 1) * pageSize.value + 1
   const to = from + events.value.length - 1
 
-  if (totalCount.value <= EVENTS_PAGE_SIZE)
+  if (totalCount.value <= pageSize.value)
     return `${totalCount.value} record${totalCount.value === 1 ? '' : 's'}`
 
   return `${from}–${to} of ${totalCount.value}`
@@ -167,7 +166,7 @@ async function loadEvents(isRefresh = false, resetPage = false) {
       date_to: range.date_to,
       event_type: filters.event_type || undefined,
       page: page.value,
-      page_size: EVENTS_PAGE_SIZE,
+      page_size: pageSize.value,
     })
 
     events.value = result.items
@@ -227,17 +226,8 @@ function onManualDateChange() {
     activeDatePreset.value = 'custom'
 }
 
-function goToPrevPage() {
-  if (page.value <= 1)
-    return
-  page.value -= 1
-  loadEvents(true)
-}
-
-function goToNextPage() {
-  if (!hasNextPage.value)
-    return
-  page.value += 1
+function onPageSizeChange() {
+  page.value = 1
   loadEvents(true)
 }
 
@@ -550,13 +540,27 @@ async function confirmVoid() {
         <VTable class="log-table">
           <thead>
             <tr>
-              <th>Date / Time</th>
-              <th>Product</th>
-              <th>Type</th>
-              <th>Event</th>
-              <th>Source</th>
-              <th>Location</th>
-              <th class="col-notes">Notes</th>
+              <th width="140">
+                Date / Time
+              </th>
+              <th width="160">
+                Product
+              </th>
+              <th width="80">
+                Type
+              </th>
+              <th width="100">
+                Event
+              </th>
+              <th width="100">
+                Source
+              </th>
+              <th>
+                Location
+              </th>
+              <th class="col-notes">
+                Notes
+              </th>
               <th class="col-actions" />
             </tr>
           </thead>
@@ -642,27 +646,30 @@ async function confirmVoid() {
         v-if="!loading && events.length > 0"
         class="d-flex flex-wrap align-center justify-space-between gap-2 pa-4 pt-0"
       >
-        <span class="text-caption text-medium-emphasis">
-          Page {{ page }} of {{ totalPages }}
-        </span>
-        <div class="d-flex gap-2">
-          <VBtn
-            variant="tonal"
-            size="small"
-            :disabled="!hasPrevPage || refreshing"
-            @click="goToPrevPage"
-          >
-            Previous
-          </VBtn>
-          <VBtn
-            variant="tonal"
-            size="small"
-            :disabled="!hasNextPage || refreshing"
-            @click="goToNextPage"
-          >
-            Next
-          </VBtn>
+        <div class="d-flex align-center gap-2">
+          <span class="text-caption text-medium-emphasis">
+            Page {{ page }} of {{ totalPages }}
+          </span>
+          <VSelect
+            v-model="pageSize"
+            :items="pageSizeOptions"
+            density="compact"
+            variant="plain"
+            hide-details
+            class="page-size-select"
+            style="max-width: 70px;"
+            @update:model-value="onPageSizeChange"
+          />
+          <span class="text-caption text-medium-emphasis">per page</span>
         </div>
+        <VPagination
+          v-model="page"
+          :length="totalPages"
+          :total-visible="5"
+          density="compact"
+          size="small"
+          @update:model-value="loadEvents(true)"
+        />
       </div>
       <div class="text-caption text-medium-emphasis px-4 pb-3 d-md-none">
         Swipe sideways to see all columns. Notes are hidden on small screens.
@@ -752,6 +759,12 @@ async function confirmVoid() {
 .log-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.log-table :deep(thead th),
+.log-table :deep(tbody td) {
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .log-table :deep(.col-actions) {

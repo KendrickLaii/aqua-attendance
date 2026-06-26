@@ -1,1 +1,14 @@
 // Write your overrides
+
+// Align compact plain VSelect with inline text in pagination controls
+.v-select.v-input--density-compact .v-field--variant-plain {
+  padding-top: 0;
+  padding-bottom: 0;
+  min-height: auto;
+}
+
+.v-select.v-input--density-compact .v-field--variant-plain .v-field__input {
+  padding-top: 0;
+  padding-bottom: 0;
+  min-height: auto;
+}

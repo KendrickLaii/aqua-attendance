@@ -6,7 +6,8 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
-const SUMMARY_PAGE_SIZE = 50
+const pageSize = ref(40)
+const pageSizeOptions = [10, 20, 40, 60, 100]
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
@@ -24,9 +25,7 @@ const generateSuccess = ref('')
 const yearMonth = ref('')
 const page = ref(1)
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / SUMMARY_PAGE_SIZE)))
-const hasNextPage = computed(() => page.value < totalPages.value)
-const hasPrevPage = computed(() => page.value > 1)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
@@ -44,10 +43,10 @@ const listCaption = computed(() => {
   if (loading.value || totalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * SUMMARY_PAGE_SIZE + 1
+  const from = (page.value - 1) * pageSize.value + 1
   const to = from + summaries.value.length - 1
 
-  if (totalCount.value <= SUMMARY_PAGE_SIZE)
+  if (totalCount.value <= pageSize.value)
     return `${totalCount.value} summary${totalCount.value === 1 ? '' : 's'}`
 
   return `${from}–${to} of ${totalCount.value}`
@@ -81,7 +80,7 @@ async function loadSummaries(isRefresh = false, resetPage = false) {
   try {
     const result = await listSummariesWithTotal({
       page: page.value,
-      page_size: SUMMARY_PAGE_SIZE,
+      page_size: pageSize.value,
     })
 
     summaries.value = result.items
@@ -123,17 +122,8 @@ async function handleGenerate() {
   }
 }
 
-function goToPrevPage() {
-  if (page.value <= 1)
-    return
-  page.value -= 1
-  loadSummaries(true)
-}
-
-function goToNextPage() {
-  if (!hasNextPage.value)
-    return
-  page.value += 1
+function onPageSizeChange() {
+  page.value = 1
   loadSummaries(true)
 }
 
@@ -329,26 +319,27 @@ function minutesToHours(m: number) {
     </div>
 
     <div class="d-flex align-center justify-space-between mt-3">
-      <span class="text-caption text-medium-emphasis">{{ listCaption }}</span>
       <div class="d-flex align-center gap-2">
-        <VBtn
-          size="small"
-          variant="text"
-          :disabled="!hasPrevPage"
-          @click="goToPrevPage"
-        >
-          <VIcon>tabler-chevron-left</VIcon>
-        </VBtn>
-        <span class="text-caption">{{ page }} / {{ totalPages }}</span>
-        <VBtn
-          size="small"
-          variant="text"
-          :disabled="!hasNextPage"
-          @click="goToNextPage"
-        >
-          <VIcon>tabler-chevron-right</VIcon>
-        </VBtn>
+        <span class="text-caption text-medium-emphasis">{{ listCaption }}</span>
+        <VSelect
+          v-model="pageSize"
+          :items="pageSizeOptions"
+          density="compact"
+          variant="plain"
+          hide-details
+          style="max-width: 70px;"
+          @update:model-value="onPageSizeChange"
+        />
+        <span class="text-caption text-medium-emphasis">per page</span>
       </div>
+      <VPagination
+        v-model="page"
+        :length="totalPages"
+        :total-visible="5"
+        density="compact"
+        size="small"
+        @update:model-value="loadSummaries(true)"
+      />
     </div>
   </VContainer>
 </template>
