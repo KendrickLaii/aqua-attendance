@@ -23,7 +23,8 @@ def upgrade() -> None:
     op.alter_column('notifications', 'extra_data',
                existing_type=sa.TEXT(),
                type_=sa.JSON(),
-               existing_nullable=True)
+               existing_nullable=True,
+               postgresql_using='extra_data::json')
     # ### end Alembic commands ###
 
 
