@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -49,6 +50,11 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={[styles.hero, { paddingTop: insets.top + spacing.xxl }]}>
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.heroTitle}>AQUA Attendance</Text>
         <Text style={styles.heroSubtitle}>{t('login.subtitle')}</Text>
       </View>
@@ -99,6 +105,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.screenPadding,
     paddingBottom: spacing.xxxl + 8,
     alignItems: 'flex-start',
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: spacing.lg,
+    borderRadius: 16,
   },
   heroTitle: {
     ...typography.hero,
