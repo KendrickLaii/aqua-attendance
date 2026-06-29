@@ -621,11 +621,11 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **問題**：`refreshAttendanceTokens()` 無互斥，並發 401 各自 refresh，互相作廢 token。
 - **修法**：以 module-level `attendanceRefreshing` promise 包住 `refreshAttendanceTokens()`。
 
-#### #4 Rate limit 使用記憶體儲存（待處理）
+#### #4 Rate limit 使用記憶體儲存（已修 2026-06）
 
-- **位置**：`apps/api/app/limiter.py:6`
+- **位置**：`apps/api/app/limiter.py`
 - **問題**：`Limiter(get_remote_address)` 預設 in-memory，多副本（load balancer）時各副本獨立計數，限流失效。
-- **建議**：多副本部署改用 Redis storage backend；單副本可接受，但需文件化此限制。
+- **修法**：新增 `settings.REDIS_URL`；設定後 `Limiter` 改用 Redis storage backend（`storage_uri`），多副本共享計數。未設定時 fallback in-memory（保留單機本地開發）。`docker-compose.yml` 與 `deploy/docker-compose.prod.yml` 已加入 `redis` service（prod 啟用 AOF 持久化），api 預設 `REDIS_URL=redis://redis:6379/0`。`requirements.txt` 加入 `redis==5.2.1`。
 
 #### #5 掃描競態保護（已修 2026-06，但有細節注意）
 
@@ -742,7 +742,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 **第一階段 — 立即修（High）**
 1. `recorded_at` 複合索引 ✅ Done
 2. Web/Mobile refresh single-flight ✅ Done
-3. 多副本前換 Redis rate limit storage
+3. 多副本前換 Redis rate limit storage ✅ Done
 
 **第二階段 — 上線前應補（Medium）**
 4. Compose / Dockerfile healthcheck + 非 root

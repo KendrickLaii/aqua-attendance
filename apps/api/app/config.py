@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT: str = "5/minute"
     SCAN_RATE_LIMIT: str = "30/minute"
 
+    # Storage backend for rate limiting. When unset the limiter falls back to
+    # in-memory storage, which only counts correctly within a single process.
+    # Set this (e.g. "redis://redis:6379/0") so limits are shared across
+    # multiple API replicas behind a load balancer.
+    REDIS_URL: str | None = None
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
