@@ -13,7 +13,7 @@ class _JSONEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
         if isinstance(obj, uuid.UUID):
             return str(obj)
-        if isinstance(obj, datetime):
+        if isinstance(obj, (datetime, date)):
             return obj.isoformat()
         return super().default(obj)
 
