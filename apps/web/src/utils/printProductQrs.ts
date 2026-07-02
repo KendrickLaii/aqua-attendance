@@ -4,7 +4,7 @@ import { formatApiError } from '@/utils/formatApiDetail'
 import { toQrDataUrl } from '@/utils/qrCodeDataUrl'
 
 export const PRODUCT_QR_CARD_IMAGE_SIZE = 152
-export const PRODUCT_QR_PRINT_IMAGE_SIZE = 240
+export const PRODUCT_QR_PRINT_IMAGE_SIZE = 152
 
 export interface ProductQrPrintItem {
   product: Product
@@ -82,7 +82,7 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
 
   const cards = items.map(({ product, qrDataUrl }) => `
     <section class="print-card">
-      <img src="${qrDataUrl}" alt="QR for ${escapeHtml(product.full_name)}" width="240" height="240" />
+      <img src="${qrDataUrl}" alt="QR for ${escapeHtml(product.full_name)}" width="${PRODUCT_QR_PRINT_IMAGE_SIZE}" height="${PRODUCT_QR_PRINT_IMAGE_SIZE}" />
       <h2>${escapeHtml(product.full_name)}</h2>
       <p class="code">${escapeHtml(product.code)}</p>
       <p class="meta">${escapeHtml(typeLabel(product.product_type))}</p>
@@ -109,7 +109,7 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 16px;
     }
     .print-card {
@@ -147,7 +147,7 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
       body { padding: 0; }
       h1 { display: none; }
       .grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
       }
     }
