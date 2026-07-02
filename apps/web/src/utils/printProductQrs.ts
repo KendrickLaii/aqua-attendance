@@ -4,7 +4,7 @@ import { formatApiError } from '@/utils/formatApiDetail'
 import { toQrDataUrl } from '@/utils/qrCodeDataUrl'
 
 export const PRODUCT_QR_CARD_IMAGE_SIZE = 152
-export const PRODUCT_QR_PRINT_IMAGE_SIZE = 152
+export const PRODUCT_QR_PRINT_IMAGE_SIZE = 120
 
 export interface ProductQrPrintItem {
   product: Product
@@ -82,7 +82,7 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
 
   const cards = items.map(({ product, qrDataUrl }) => `
     <section class="print-card">
-      <img src="${qrDataUrl}" alt="QR for ${escapeHtml(product.full_name)}" width="${PRODUCT_QR_PRINT_IMAGE_SIZE}" height="${PRODUCT_QR_PRINT_IMAGE_SIZE}" />
+      <img src="${qrDataUrl}" alt="QR for ${escapeHtml(product.full_name)}" width="${PRODUCT_QR_PRINT_IMAGE_SIZE}" height="${PRODUCT_QR_PRINT_IMAGE_SIZE}" style="width:2.3cm;height:2.3cm" />
       <h2>${escapeHtml(product.full_name)}</h2>
       <p class="code">${escapeHtml(product.code)}</p>
       <p class="meta">${escapeHtml(typeLabel(product.product_type))}</p>
@@ -109,20 +109,22 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(4, 1fr);
+      justify-items: center;
+      gap: 24px;
     }
     .print-card {
       border: 1px solid #ccc;
       border-radius: 8px;
-      padding: 12px;
+      padding: 6px;
+      width: 3.5cm;
       text-align: center;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     .print-card img {
       display: block;
-      margin: 0 auto 10px;
+      margin: 0 auto 6px;
       border: 3px solid #333;
       border-radius: 4px;
     }
@@ -132,12 +134,12 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
       line-height: 1.3;
     }
     .print-card .code {
-      font-size: 12px;
+      font-size: 10px;
       margin: 0 0 4px;
       color: #444;
     }
     .print-card .meta {
-      font-size: 11px;
+      font-size: 9px;
       margin: 0;
       color: #666;
       text-transform: uppercase;
@@ -147,8 +149,9 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
       body { padding: 0; }
       h1 { display: none; }
       .grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
+        grid-template-columns: repeat(4, 1fr);
+        justify-items: center;
+        gap: 20px;
       }
     }
   </style>
