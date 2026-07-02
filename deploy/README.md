@@ -58,7 +58,7 @@ cd deploy/
 
 | 檔案 | 用途 |
 |------|------|
-| `docker-compose.prod.yml` | 生產服務（Caddy、web、API、PostgreSQL） |
+| `docker-compose.prod.yml` | 生產服務（Caddy、web、API、PostgreSQL、Redis） |
 | `Caddyfile` | 反向代理 + HTTPS（自動 TLS） |
 | `.env` | 密鑰與設定（不在 git 中） |
 | `first-boot.sh` | 安裝 Docker、拉取 image、啟動服務 |
