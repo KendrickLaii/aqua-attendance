@@ -83,12 +83,14 @@ deps.py    → 依賴注入（DB、CurrentUser、角色守衛）
 
 ### 4.2 新表缺少 router / service
 
-已建立 model + schema，但尚無端點：
+> **歷史紀錄（2026-06-16）** — 以下項目 **均已實作**。現況見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)。
 
-- ❌ `/api/notifications`
-- ❌ `/api/attendance-summaries`
-- ❌ `/api/payroll-records`
-- ❌ `/api/audit-logs`
+曾建立 model + schema，當時尚無端點（現已就緒）：
+
+- [x] `/api/notifications`
+- [x] `/api/attendance-summaries`（含 `GET /overview`、`POST /generate`）
+- [x] `/api/payroll-records`（含 `POST /generate`）
+- [x] `/api/audit-logs`
 
 audit_logs 目前**沒有任何寫入點** — 稽核需求尚未真正啟用。
 
@@ -160,6 +162,8 @@ model 定義為 `Text` 但語意是 JSON。建議改為 `JSON`/`JSONB` 以利查
 - [x] OT 計算服務（`services/overtime.py` — 15 分鐘槽、lunch 扣除、business_hours close 判定）
 - [x] auto_checkout 排程（`services/auto_checkout.py` + `/api/auto-checkout/run` 端點）
 - [x] 月度彙總計算填入 attendance_summaries（`POST /api/attendance-summaries/generate?year=&month=` 手動觸發）
+- [x] 彙總月度 overview 聚合（`GET /api/attendance-summaries/overview`）
+- [x] 薪資從彙總生成（`POST /api/payroll-records/generate?year=&month=`，`payroll_generator.py`）
 
 ---
 
@@ -187,4 +191,4 @@ model 定義為 `Text` 但語意是 JSON。建議改為 `JSON`/`JSONB` 以利查
 - ✅ `employment_type` 正確遷移至 `staff_profiles`
 - ✅ 新建資料表（notifications、attendance_summaries、payroll_records、audit_logs）模型 + schema 就緒
 
-接下來的優先工作：**月度彙總 cron job + 結構化 logging**。主要功能已全部就緒。
+接下來的優先工作：**月度彙總 cron job + 結構化 logging**。Summaries / Payroll 手動流程與 Web UI 見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)。

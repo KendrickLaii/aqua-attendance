@@ -193,8 +193,8 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 | Profiles | `/api/student-profiles/:id`, `/staff-profiles/:id` | Admin |
 | QR | `/api/qr/token/:product_id` (get, refresh) | Admin |
 | Attendance | `/api/attendance/scan`, `/manual`, `/export/csv`, `/void` | Admin |
-| Summaries | `/api/attendance-summaries` (generate, query) | Admin |
-| Payroll | `/api/payroll-records` (CRUD, confirm) | Admin |
+| Summaries | `/api/attendance-summaries` (list, overview, `POST /generate`) | Admin |
+| Payroll | `/api/payroll-records` (CRUD, `POST /generate`, confirm) | Admin |
 | Notifications | `/api/notifications` (CRUD, mark read) | Admin |
 | Audit | `/api/audit-logs` (query) | Superadmin |
 | Auto-checkout | `/api/auto-checkout/run` | Admin |
@@ -212,6 +212,10 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/products` | Admin | Product CRUD |
 | `/attendance/qr-codes` | Logged in | Browse/fetch/rotate QRs |
 | `/attendance/log` | Logged in | Event log, manual correction, CSV export |
+| `/attendance/summaries` | Admin | Monthly attendance summaries (overview → detail, Generate) |
+| `/attendance/payroll` | Admin | Payroll records, approve, generate from summaries |
+| `/attendance/notifications` | Admin | Notification center |
+| `/attendance/audit-logs` | Superadmin | Audit log query |
 | `/attendance/users` | Admin (CASL) | User CRUD |
 
 Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos (not used in production nav).
@@ -242,6 +246,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 | Doc | Purpose |
 |-----|---------|
 | [docs/INDEX.md](docs/INDEX.md) | **Docs entry point** — find the right doc by role |
+| [docs/ATTENDANCE_SUMMARIES.md](docs/ATTENDANCE_SUMMARIES.md) | **Summaries & payroll** — monthly flow, API, UI, seed, FAQ |
 | [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — deploy, CI/CD, ops, known gaps, mobile release |
 | [apps/api/README.md](apps/api/README.md) | API setup and tests |
 | [apps/web/README.md](apps/web/README.md) | Web quick start |

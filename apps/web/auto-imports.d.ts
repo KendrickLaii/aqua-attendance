@@ -88,7 +88,9 @@ declare global {
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
+  const formatPayrollGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
+  const formatSummaryGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']
   const formatValue: typeof import('./src/utils/review-format')['formatValue']
   const getActivePinia: typeof import('pinia')['getActivePinia']
   const getAttendanceRole: typeof import('./src/utils/attendanceSession')['getAttendanceRole']
@@ -519,7 +521,9 @@ declare module 'vue' {
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
+    readonly formatPayrollGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']>
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
+    readonly formatSummaryGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']>
     readonly formatValue: UnwrapRef<typeof import('./src/utils/review-format')['formatValue']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getAttendanceRole: UnwrapRef<typeof import('./src/utils/attendanceSession')['getAttendanceRole']>

@@ -1,55 +1,139 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { listSummariesWithTotal, generateSummaries } from '@/api/attendance/summaries'
-import type { AttendanceSummary } from '@/api/attendance/summaries'
+import { generateSummaries, listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
+import type { AttendanceSummary, SummaryOverviewItem } from '@/api/attendance/summaries'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatSummaryGenerateMessage } from '@/utils/formatGenerateResult'
 
 definePage({ meta: {} })
 
-const pageSize = ref(40)
-const pageSizeOptions = [10, 20, 40, 60, 100]
+type DetailStatus = 'all' | 'complete' | 'incomplete' | 'weekend'
+
+const DETAIL_PAGE_SIZE = 100
+const overviewPageSize = ref(200)
+const overviewPageSizeOptions = [40, 100, 200]
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
 
+const overviewItems = ref<SummaryOverviewItem[]>([])
+const overviewTotalCount = ref(0)
+const overviewPage = ref(1)
 const summaries = ref<AttendanceSummary[]>([])
-const totalCount = ref(0)
+const detailTotalCount = ref(0)
+
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 
 const generating = ref(false)
 const generateError = ref('')
-const generateSuccess = ref('')
+const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
 
 const yearMonth = ref('')
-const page = ref(1)
+const filterProductType = ref('staff')
+const searchQuery = ref('')
+const selectedProduct = ref<SummaryOverviewItem | null>(null)
+const detailStatus = ref<DetailStatus>('all')
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
+let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined
+
+const typeOptions = [
+  { title: 'All types', value: '' },
+  { title: 'Staff', value: 'staff' },
+  { title: 'Student', value: 'student' },
+]
+
+const statusOptions: { title: string; value: DetailStatus }[] = [
+  { title: 'All', value: 'all' },
+  { title: 'Complete', value: 'complete' },
+  { title: 'Incomplete', value: 'incomplete' },
+  { title: 'Weekend', value: 'weekend' },
+]
+
+const monthDateRange = computed(() => {
+  const ym = yearMonth.value
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
+    return null
+
+  const [year, month] = ym.split('-').map(Number)
+  const end = new Date(year, month, 0)
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  return {
+    date_from: `${year}-${pad(month)}-01`,
+    date_to: `${year}-${pad(month)}-${pad(end.getDate())}`,
+  }
+})
+
+const monthLabel = computed(() => {
+  const ym = yearMonth.value
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
+    return 'Select a month'
+
+  const [year, month] = ym.split('-').map(Number)
+
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
+})
+
+const isDetailView = computed(() => !!selectedProduct.value)
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
     return 'Loading…'
 
-  const total = totalCount.value
-  let label = `${total} summary${total === 1 ? '' : 's'}`
-  if (totalPages.value > 1)
-    label += ` · page ${page.value} of ${totalPages.value}`
+  if (isDetailView.value && selectedProduct.value)
+    return `${selectedProduct.value.product_name || selectedProduct.value.product_code} · ${monthLabel.value}`
 
-  return label
+  const selectedTypeLabel = typeOptions.find(o => o.value === filterProductType.value)?.title ?? 'All types'
+
+  return `${monthLabel.value} · ${selectedTypeLabel} · ${overviewTotalCount.value} product${overviewTotalCount.value === 1 ? '' : 's'}`
 })
 
-const listCaption = computed(() => {
-  if (loading.value || totalCount.value === 0)
+const overviewTotalPages = computed(() => Math.max(1, Math.ceil(overviewTotalCount.value / overviewPageSize.value)))
+
+const overviewCaption = computed(() => {
+  if (loading.value || overviewTotalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * pageSize.value + 1
-  const to = from + summaries.value.length - 1
+  const from = (overviewPage.value - 1) * overviewPageSize.value + 1
+  const to = from + overviewItems.value.length - 1
 
-  if (totalCount.value <= pageSize.value)
-    return `${totalCount.value} summary${totalCount.value === 1 ? '' : 's'}`
+  if (overviewTotalCount.value <= overviewPageSize.value)
+    return `${overviewTotalCount.value} product${overviewTotalCount.value === 1 ? '' : 's'}`
 
-  return `${from}–${to} of ${totalCount.value}`
+  return `${from}–${to} of ${overviewTotalCount.value}`
+})
+
+const visibleSummaries = computed(() => {
+  if (detailStatus.value !== 'weekend')
+    return summaries.value
+
+  return summaries.value.filter(s => s.is_weekend)
+})
+
+const detailTotals = computed(() => {
+  const regular = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.regular_hours), 0)
+  const overtime = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.overtime_hours), 0)
+  const breakMinutes = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.total_break_minutes), 0)
+
+  return { regular, overtime, breakMinutes, days: visibleSummaries.value.length }
+})
+
+const statCards = computed(() => {
+  const people = overviewItems.value.length
+  const days = overviewItems.value.reduce((sum, item) => sum + item.days_present, 0)
+  const complete = overviewItems.value.reduce((sum, item) => sum + item.days_complete, 0)
+  const regular = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_regular_hours), 0)
+  const overtime = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_overtime_hours), 0)
+  const completionRate = days > 0 ? `${Math.round((complete / days) * 100)}%` : '-'
+
+  return [
+    { label: 'People', value: String(people), hint: 'with summaries' },
+    { label: 'Records', value: String(days), hint: 'daily rows' },
+    { label: 'Complete rate', value: completionRate, hint: `${complete}/${days} complete` },
+    { label: 'Total hours', value: formatHours(regular + overtime), hint: `${formatHours(regular)} regular + ${formatHours(overtime)} OT` },
+  ]
 })
 
 onMounted(async () => {
@@ -65,13 +149,75 @@ onMounted(async () => {
     return
   }
   const now = new Date()
+
   yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  await loadSummaries()
+  await loadData()
 })
 
-async function loadSummaries(isRefresh = false, resetPage = false) {
-  if (resetPage)
-    page.value = 1
+watch([yearMonth, filterProductType], () => {
+  selectedProduct.value = null
+  detailStatus.value = 'all'
+  overviewPage.value = 1
+  loadData()
+})
+
+watch(detailStatus, () => {
+  if (selectedProduct.value)
+    loadDetail()
+})
+
+watch(searchQuery, () => {
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    overviewPage.value = 1
+    loadOverview(true)
+  }, 300)
+})
+
+async function loadData(isRefresh = false) {
+  await loadOverview(isRefresh)
+  if (selectedProduct.value)
+    await loadDetail(isRefresh)
+}
+
+async function loadOverview(isRefresh = false) {
+  const range = monthDateRange.value
+  if (!range)
+    return
+
+  if (isRefresh)
+    refreshing.value = true
+  else
+    loading.value = true
+  loadError.value = ''
+  try {
+    const result = await listSummaryOverview({
+      date_from: range.date_from,
+      date_to: range.date_to,
+      product_type: filterProductType.value || undefined,
+      search: (searchQuery.value || '').trim() || undefined,
+      page: overviewPage.value,
+      page_size: overviewPageSize.value,
+    })
+
+    overviewItems.value = result.items
+    overviewTotalCount.value = result.total
+  }
+  catch (e) {
+    console.error('Failed to load summary overview', e)
+    loadError.value = formatApiError(e, 'Failed to load attendance summary overview. Please try again.')
+  }
+  finally {
+    loading.value = false
+    refreshing.value = false
+  }
+}
+
+async function loadDetail(isRefresh = false) {
+  const range = monthDateRange.value
+  if (!range || !selectedProduct.value)
+    return
+
   if (isRefresh)
     refreshing.value = true
   else
@@ -79,16 +225,20 @@ async function loadSummaries(isRefresh = false, resetPage = false) {
   loadError.value = ''
   try {
     const result = await listSummariesWithTotal({
-      page: page.value,
-      page_size: pageSize.value,
+      product_id: selectedProduct.value.product_id,
+      date_from: range.date_from,
+      date_to: range.date_to,
+      is_complete: detailStatusQueryValue(),
+      page: 1,
+      page_size: DETAIL_PAGE_SIZE,
     })
 
     summaries.value = result.items
-    totalCount.value = result.total
+    detailTotalCount.value = result.total
   }
   catch (e) {
-    console.error('Failed to load summaries', e)
-    loadError.value = formatApiError(e, 'Failed to load attendance summaries. Please try again.')
+    console.error('Failed to load summary detail', e)
+    loadError.value = formatApiError(e, 'Failed to load attendance summary detail. Please try again.')
   }
   finally {
     loading.value = false
@@ -105,13 +255,18 @@ async function handleGenerate() {
   }
 
   const [year, month] = ym.split('-').map(Number)
+
   generating.value = true
   generateError.value = ''
-  generateSuccess.value = ''
+  generateSuccess.value = null
   try {
     const result = await generateSummaries(year, month)
-    generateSuccess.value = `Generated: ${result.created} created, ${result.updated} updated`
-    await loadSummaries(true)
+
+    await loadData(true)
+
+    const existingDays = overviewItems.value.reduce((sum, item) => sum + item.days_present, 0)
+
+    generateSuccess.value = formatSummaryGenerateMessage(result, year, month, existingDays)
   }
   catch (e) {
     console.error('Failed to generate summaries', e)
@@ -122,9 +277,49 @@ async function handleGenerate() {
   }
 }
 
-function onPageSizeChange() {
-  page.value = 1
-  loadSummaries(true)
+function openDetail(item: SummaryOverviewItem) {
+  selectedProduct.value = item
+  detailStatus.value = 'all'
+  loadDetail()
+}
+
+function backToOverview() {
+  selectedProduct.value = null
+  summaries.value = []
+  detailStatus.value = 'all'
+}
+
+function changeMonth(delta: number) {
+  const ym = yearMonth.value
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
+    return
+
+  const [year, month] = ym.split('-').map(Number)
+  const next = new Date(year, month - 1 + delta, 1)
+
+  yearMonth.value = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
+}
+
+function onOverviewPageSizeChange() {
+  overviewPage.value = 1
+  loadOverview(true)
+}
+
+function detailStatusQueryValue() {
+  if (detailStatus.value === 'complete')
+    return true
+  if (detailStatus.value === 'incomplete')
+    return false
+
+  return undefined
+}
+
+function typeColor(type: string) {
+  return type === 'staff' ? 'info' : 'success'
+}
+
+function typeLabel(type: string) {
+  return typeOptions.find(o => o.value === type)?.title ?? type
 }
 
 function statusLabel(s: AttendanceSummary) {
@@ -150,12 +345,16 @@ function formatHours(h: number) {
 function minutesToHours(m: number) {
   return Number.isFinite(m) ? (m / 60).toFixed(2) : '-'
 }
+
+function safeNumber(value: number) {
+  return Number.isFinite(value) ? value : 0
+}
 </script>
 
 <template>
   <VContainer>
     <VRow
-      class="mb-2"
+      class="mb-3"
       align="center"
     >
       <VCol>
@@ -167,31 +366,59 @@ function minutesToHours(m: number) {
         </p>
       </VCol>
       <VCol
-        cols="auto"
-        class="d-flex flex-wrap gap-2"
+        cols="12"
+        md="auto"
+        class="d-flex flex-wrap align-center gap-2 justify-md-end"
       >
+        <VBtn
+          icon
+          variant="tonal"
+          size="small"
+          @click="changeMonth(-1)"
+        >
+          <VIcon>ri-arrow-left-s-line</VIcon>
+        </VBtn>
         <VTextField
           v-model="yearMonth"
-          label="Year-Month"
+          label="Month"
           type="month"
           density="compact"
           hide-details
-          class="generate-field"
+          class="month-field"
+        />
+        <VBtn
+          icon
+          variant="tonal"
+          size="small"
+          @click="changeMonth(1)"
+        >
+          <VIcon>ri-arrow-right-s-line</VIcon>
+        </VBtn>
+        <VSelect
+          v-model="filterProductType"
+          :items="typeOptions"
+          label="Type"
+          density="compact"
+          hide-details
+          class="type-field"
         />
         <VBtn
           color="primary"
           :loading="generating"
+          prepend-icon="ri-magic-line"
+          title="Build or refresh daily rows from attendance events for this month"
           @click="handleGenerate"
         >
           Generate
         </VBtn>
         <VBtn
-          icon
-          variant="text"
+          variant="tonal"
+          color="primary"
+          prepend-icon="ri-refresh-line"
           :loading="refreshing"
-          @click="loadSummaries(true)"
+          @click="loadData(true)"
         >
-          <VIcon>tabler-refresh</VIcon>
+          Refresh
         </VBtn>
       </VCol>
     </VRow>
@@ -211,9 +438,36 @@ function minutesToHours(m: number) {
       variant="tonal"
       density="compact"
       class="mb-3"
+      closable
+      :title="generateSuccess.title"
+      :text="generateSuccess.detail"
+      @click:close="generateSuccess = null"
+    />
+
+    <VRow
+      class="mb-3"
+      dense
     >
-      {{ generateSuccess }}
-    </VAlert>
+      <VCol
+        v-for="card in statCards"
+        :key="card.label"
+        cols="12"
+        sm="6"
+        md="3"
+      >
+        <VCard class="pa-3">
+          <div class="text-caption text-medium-emphasis">
+            {{ card.label }}
+          </div>
+          <div class="text-h6 font-weight-bold">
+            {{ card.value }}
+          </div>
+          <div class="text-caption text-medium-emphasis">
+            {{ card.hint }}
+          </div>
+        </VCard>
+      </VCol>
+    </VRow>
 
     <VProgressLinear
       v-if="loading && !refreshing"
@@ -232,121 +486,320 @@ function minutesToHours(m: number) {
       {{ loadError }}
     </VAlert>
 
-    <div class="summaries-table-scroll">
-      <VTable
-        class="summaries-table"
-        density="compact"
-        hover
-      >
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Product</th>
-            <th>First In</th>
-            <th>Last Out</th>
-            <th class="text-end">Regular</th>
-            <th class="text-end">OT</th>
-            <th class="text-end">Break</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="s in summaries"
-            :key="s.id"
-          >
-            <td>{{ s.summary_date }}</td>
-            <td>
-              <div class="font-weight-medium">
-                {{ s.product_name || '—' }}
-              </div>
-              <div
-                v-if="s.product_code"
-                class="text-caption text-medium-emphasis"
-              >
-                {{ s.product_code }}
-              </div>
-            </td>
-            <td>
-              <span
-                v-if="s.first_check_in"
-                class="text-caption"
-              >{{ s.first_check_in.slice(0, 16).replace('T', ' ') }}</span>
-              <span
-                v-else
-                class="text-medium-emphasis"
-              >—</span>
-            </td>
-            <td>
-              <span
-                v-if="s.last_check_out"
-                class="text-caption"
-              >{{ s.last_check_out.slice(0, 16).replace('T', ' ') }}</span>
-              <span
-                v-else
-                class="text-medium-emphasis"
-              >—</span>
-            </td>
-            <td class="text-end">
-              {{ formatHours(s.regular_hours) }}
-            </td>
-            <td class="text-end">
-              {{ formatHours(s.overtime_hours) }}
-            </td>
-            <td class="text-end">
-              {{ minutesToHours(s.total_break_minutes) }}
-            </td>
-            <td>
-              <VChip
-                :color="statusColor(s)"
-                size="small"
-                label
-              >
-                {{ statusLabel(s) }}
-              </VChip>
-            </td>
-          </tr>
-          <tr v-if="summaries.length === 0 && !loading">
-            <td
-              colspan="8"
-              class="text-center text-medium-emphasis py-6"
-            >
-              No summaries found. Pick a month and click Generate.
-            </td>
-          </tr>
-        </tbody>
-      </VTable>
-    </div>
-
-    <div class="d-flex align-center justify-space-between mt-3">
-      <div class="d-flex align-center gap-2">
-        <span class="text-caption text-medium-emphasis">{{ listCaption }}</span>
-        <VSelect
-          v-model="pageSize"
-          :items="pageSizeOptions"
+    <VCard v-if="!isDetailView">
+      <VCardTitle class="d-flex flex-wrap align-center justify-space-between gap-2">
+        <span>Monthly overview</span>
+        <div class="d-flex flex-wrap align-center gap-2">
+          <VTextField
+            v-model="searchQuery"
+            placeholder="Search name / code"
+            prepend-inner-icon="ri-search-line"
+            density="compact"
+            hide-details
+            clearable
+            class="search-field"
+          />
+          <span class="text-caption text-medium-emphasis">
+            {{ overviewCaption || monthLabel }}
+          </span>
+        </div>
+      </VCardTitle>
+      <div class="summaries-table-scroll">
+        <VTable
+          class="summaries-table"
           density="compact"
-          variant="plain"
-          hide-details
-          style="max-width: 70px;"
-          @update:model-value="onPageSizeChange"
-        />
-        <span class="text-caption text-medium-emphasis">per page</span>
+          hover
+        >
+          <thead>
+            <tr>
+              <th>
+                Product
+              </th>
+              <th>
+                Type
+              </th>
+              <th class="text-end">
+                Days
+              </th>
+              <th class="text-end">
+                Complete
+              </th>
+              <th class="text-end">
+                Incomplete
+              </th>
+              <th class="text-end">
+                Regular
+              </th>
+              <th class="text-end">
+                OT
+              </th>
+              <th class="col-actions" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="item in overviewItems"
+              :key="item.product_id"
+              class="summary-row"
+              @click="openDetail(item)"
+            >
+              <td>
+                <div class="font-weight-medium">
+                  {{ item.product_name || '—' }}
+                </div>
+                <div class="text-caption text-medium-emphasis">
+                  {{ item.product_code || item.product_id }}
+                </div>
+              </td>
+              <td>
+                <VChip
+                  :color="typeColor(item.product_type)"
+                  size="small"
+                  label
+                >
+                  {{ typeLabel(item.product_type) }}
+                </VChip>
+              </td>
+              <td class="text-end">
+                {{ item.days_present }}
+              </td>
+              <td class="text-end">
+                {{ item.days_complete }}
+              </td>
+              <td class="text-end">
+                {{ item.days_incomplete }}
+              </td>
+              <td class="text-end">
+                {{ formatHours(item.total_regular_hours) }}
+              </td>
+              <td class="text-end">
+                {{ formatHours(item.total_overtime_hours) }}
+              </td>
+              <td class="col-actions">
+                <VBtn
+                  variant="text"
+                  size="small"
+                  @click.stop="openDetail(item)"
+                >
+                  View days
+                </VBtn>
+              </td>
+            </tr>
+            <tr v-if="overviewItems.length === 0 && !loading">
+              <td
+                colspan="8"
+                class="text-center text-medium-emphasis py-6"
+              >
+                No summaries found for {{ monthLabel }}. Click Generate to build them from attendance events.
+              </td>
+            </tr>
+          </tbody>
+        </VTable>
       </div>
-      <VPagination
-        v-model="page"
-        :length="totalPages"
-        :total-visible="5"
-        density="compact"
-        size="small"
-        @update:model-value="loadSummaries(true)"
-      />
-    </div>
+      <div class="d-flex align-center justify-space-between pa-3">
+        <div class="d-flex align-center gap-2">
+          <span class="text-caption text-medium-emphasis">{{ overviewCaption }}</span>
+          <VSelect
+            v-model="overviewPageSize"
+            :items="overviewPageSizeOptions"
+            density="compact"
+            variant="plain"
+            hide-details
+            style="max-width: 80px;"
+            @update:model-value="onOverviewPageSizeChange"
+          />
+          <span class="text-caption text-medium-emphasis">per page</span>
+        </div>
+        <VPagination
+          v-model="overviewPage"
+          :length="overviewTotalPages"
+          :total-visible="5"
+          density="compact"
+          size="small"
+          @update:model-value="loadOverview(true)"
+        />
+      </div>
+    </VCard>
+
+    <VCard v-else>
+      <VCardTitle class="d-flex flex-wrap align-center justify-space-between gap-2">
+        <div class="d-flex flex-wrap align-center gap-2">
+          <VBtn
+            variant="text"
+            prepend-icon="ri-arrow-left-line"
+            @click="backToOverview"
+          >
+            Back to overview
+          </VBtn>
+          <div>
+            <div class="font-weight-medium">
+              {{ selectedProduct?.product_name || selectedProduct?.product_code }}
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              {{ monthLabel }}
+            </div>
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <VChip
+            color="primary"
+            label
+          >
+            {{ detailTotals.days }} days
+          </VChip>
+          <VChip
+            color="success"
+            label
+          >
+            {{ formatHours(detailTotals.regular) }} regular
+          </VChip>
+          <VChip
+            color="info"
+            label
+          >
+            {{ formatHours(detailTotals.overtime) }} OT
+          </VChip>
+        </div>
+      </VCardTitle>
+      <VCardText class="pb-0">
+        <VChipGroup
+          v-model="detailStatus"
+          mandatory
+          selected-class="text-primary"
+        >
+          <VChip
+            v-for="option in statusOptions"
+            :key="option.value"
+            :value="option.value"
+            label
+          >
+            {{ option.title }}
+          </VChip>
+        </VChipGroup>
+      </VCardText>
+      <div class="summaries-table-scroll">
+        <VTable
+          class="summaries-table"
+          density="compact"
+          hover
+        >
+          <thead>
+            <tr>
+              <th>
+                Date
+              </th>
+              <th>
+                First In
+              </th>
+              <th>
+                Last Out
+              </th>
+              <th class="text-end">
+                Regular
+              </th>
+              <th class="text-end">
+                OT
+              </th>
+              <th class="text-end">
+                Break
+              </th>
+              <th>
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="s in visibleSummaries"
+              :key="s.id"
+            >
+              <td>{{ s.summary_date }}</td>
+              <td>
+                <span
+                  v-if="s.first_check_in"
+                  class="text-caption"
+                >{{ s.first_check_in.slice(0, 16).replace('T', ' ') }}</span>
+                <span
+                  v-else
+                  class="text-medium-emphasis"
+                >—</span>
+              </td>
+              <td>
+                <span
+                  v-if="s.last_check_out"
+                  class="text-caption"
+                >{{ s.last_check_out.slice(0, 16).replace('T', ' ') }}</span>
+                <span
+                  v-else
+                  class="text-medium-emphasis"
+                >—</span>
+              </td>
+              <td class="text-end">
+                {{ formatHours(s.regular_hours) }}
+              </td>
+              <td class="text-end">
+                {{ formatHours(s.overtime_hours) }}
+              </td>
+              <td class="text-end">
+                {{ minutesToHours(s.total_break_minutes) }}
+              </td>
+              <td>
+                <VChip
+                  :color="statusColor(s)"
+                  size="small"
+                  label
+                >
+                  {{ statusLabel(s) }}
+                </VChip>
+              </td>
+            </tr>
+            <tr
+              v-if="visibleSummaries.length > 0"
+              class="font-weight-bold"
+            >
+              <td>Total</td>
+              <td />
+              <td />
+              <td class="text-end">
+                {{ formatHours(detailTotals.regular) }}
+              </td>
+              <td class="text-end">
+                {{ formatHours(detailTotals.overtime) }}
+              </td>
+              <td class="text-end">
+                {{ minutesToHours(detailTotals.breakMinutes) }}
+              </td>
+              <td />
+            </tr>
+            <tr v-if="visibleSummaries.length === 0 && !loading">
+              <td
+                colspan="7"
+                class="text-center text-medium-emphasis py-6"
+              >
+                No daily records match this status filter.
+              </td>
+            </tr>
+          </tbody>
+        </VTable>
+      </div>
+      <div class="text-caption text-medium-emphasis pa-3">
+        {{ visibleSummaries.length }} shown · {{ detailTotalCount }} records loaded for this month
+      </div>
+    </VCard>
   </VContainer>
 </template>
 
 <style scoped lang="scss">
-.generate-field {
+.month-field {
   inline-size: 160px;
+}
+
+.type-field {
+  inline-size: 160px;
+}
+
+.search-field {
+  inline-size: 220px;
 }
 
 .summaries-table-scroll {
@@ -354,7 +807,17 @@ function minutesToHours(m: number) {
   -webkit-overflow-scrolling: touch;
 }
 
-.summaries-table :deep(th) {
+.summaries-table :deep(th),
+.summaries-table :deep(td) {
   white-space: nowrap;
+}
+
+.summaries-table :deep(.col-actions) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.summary-row {
+  cursor: pointer;
 }
 </style>

@@ -2,14 +2,20 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB
 from app.models.attendance_summary import AttendanceSummary
-from app.schemas.attendance_summary import AttendanceSummaryCreate, AttendanceSummaryOut
+from app.models.product import Product
+from app.schemas.attendance_summary import (
+    AttendanceSummaryCreate,
+    AttendanceSummaryOut,
+    AttendanceSummaryOverviewOut,
+)
 from app.services import audit_log as audit_log_svc
 from app.services.summary_generator import generate_monthly_summaries
+from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/attendance-summaries", tags=["attendance-summaries"])
 
@@ -29,6 +35,10 @@ async def list_attendance_summaries(
     response: Response,
     product_id: uuid.UUID | None = None,
     summary_date: date | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    product_type: str | None = None,
+    is_complete: bool | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AttendanceSummaryOut]:
@@ -40,6 +50,16 @@ async def list_attendance_summaries(
         clauses.append(AttendanceSummary.product_id == product_id)
     if summary_date:
         clauses.append(AttendanceSummary.summary_date == summary_date)
+    if date_from:
+        clauses.append(AttendanceSummary.summary_date >= date_from)
+    if date_to:
+        clauses.append(AttendanceSummary.summary_date <= date_to)
+    if is_complete is not None:
+        clauses.append(AttendanceSummary.is_complete.is_(is_complete))
+
+    if product_type:
+        q = q.join(AttendanceSummary.product).where(Product.product_type == product_type)
+        count_q = count_q.join(AttendanceSummary.product).where(Product.product_type == product_type)
 
     if clauses:
         q = q.where(*clauses)
@@ -47,13 +67,107 @@ async def list_attendance_summaries(
 
     total = (await db.execute(count_q)).scalar_one()
     q = (
-        q.order_by(AttendanceSummary.summary_date.desc())
+        q.order_by(AttendanceSummary.product_id.asc(), AttendanceSummary.summary_date.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
     return [_summary_to_out(s) for s in result.scalars().all()]
+
+
+@router.get("/overview", response_model=list[AttendanceSummaryOverviewOut])
+async def list_attendance_summary_overview(
+    _admin: AdminOnly,
+    db: DB,
+    response: Response,
+    date_from: date,
+    date_to: date,
+    product_type: str | None = None,
+    search: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+) -> list[AttendanceSummaryOverviewOut]:
+    clauses = [
+        AttendanceSummary.summary_date >= date_from,
+        AttendanceSummary.summary_date <= date_to,
+    ]
+
+    q = (
+        select(
+            Product.id.label("product_id"),
+            Product.full_name.label("product_name"),
+            Product.code.label("product_code"),
+            Product.product_type.label("product_type"),
+            func.count(AttendanceSummary.id).label("days_present"),
+            func.sum(
+                case((AttendanceSummary.is_complete.is_(True), 1), else_=0)
+            ).label("days_complete"),
+            func.sum(
+                case((AttendanceSummary.is_complete.is_(False), 1), else_=0)
+            ).label("days_incomplete"),
+            func.coalesce(func.sum(AttendanceSummary.regular_hours), 0).label(
+                "total_regular_hours"
+            ),
+            func.coalesce(func.sum(AttendanceSummary.overtime_hours), 0).label(
+                "total_overtime_hours"
+            ),
+            func.coalesce(func.sum(AttendanceSummary.total_break_minutes), 0).label(
+                "total_break_minutes"
+            ),
+            func.min(AttendanceSummary.summary_date).label("first_date"),
+            func.max(AttendanceSummary.summary_date).label("last_date"),
+        )
+        .select_from(AttendanceSummary)
+        .join(AttendanceSummary.product)
+    )
+    count_q = (
+        select(func.count(func.distinct(AttendanceSummary.product_id)))
+        .select_from(AttendanceSummary)
+        .join(AttendanceSummary.product)
+    )
+
+    if product_type:
+        clauses.append(Product.product_type == product_type)
+    if search:
+        clauses.append(
+            or_(
+                ilike_contains(Product.code, search),
+                ilike_contains(Product.full_name, search),
+                ilike_contains(Product.english_name, search),
+            )
+        )
+
+    q = (
+        q.where(*clauses)
+        .group_by(Product.id, Product.full_name, Product.code, Product.product_type)
+        .order_by(Product.code.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    count_q = count_q.where(*clauses)
+
+    total = (await db.execute(count_q)).scalar_one()
+    result = await db.execute(q)
+    response.headers["X-Total-Count"] = str(total)
+
+    return [
+        AttendanceSummaryOverviewOut(
+            product_id=row.product_id,
+            product_name=row.product_name,
+            product_code=row.product_code,
+            product_type=row.product_type,
+            days_present=row.days_present,
+            days_complete=row.days_complete or 0,
+            days_incomplete=row.days_incomplete or 0,
+            total_regular_hours=float(row.total_regular_hours or 0),
+            total_overtime_hours=float(row.total_overtime_hours or 0),
+            total_break_minutes=int(row.total_break_minutes or 0),
+            first_date=row.first_date,
+            last_date=row.last_date,
+        )
+        for row in result.all()
+    ]
 
 
 @router.post("", response_model=AttendanceSummaryOut, status_code=status.HTTP_201_CREATED)

@@ -47,3 +47,18 @@ class AttendanceSummaryOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AttendanceSummaryOverviewOut(BaseModel):
+    product_id: uuid.UUID
+    product_name: str | None = None
+    product_code: str | None = None
+    product_type: str
+    days_present: int
+    days_complete: int
+    days_incomplete: int
+    total_regular_hours: float
+    total_overtime_hours: float
+    total_break_minutes: int
+    first_date: date | None = None
+    last_date: date | None = None

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { listPayrollRecordsWithTotal, updatePayrollRecord, deletePayrollRecord } from '@/api/attendance/payroll'
+import { deletePayrollRecord, generatePayroll, listPayrollRecordsWithTotal, updatePayrollRecord } from '@/api/attendance/payroll'
 import type { PayrollRecord } from '@/api/attendance/payroll'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatPayrollGenerateMessage } from '@/utils/formatGenerateResult'
 
 definePage({ meta: {} })
 
@@ -19,6 +20,10 @@ const refreshing = ref(false)
 const loadError = ref('')
 
 const filterStatus = ref('')
+const yearMonth = ref('')
+const generating = ref(false)
+const generateError = ref('')
+const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
 const page = ref(1)
 const deleteDialog = ref(false)
 const deleteTarget = ref<PayrollRecord | null>(null)
@@ -81,6 +86,9 @@ onMounted(async () => {
 
     return
   }
+  const now = new Date()
+
+  yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   await loadRecords()
 })
 
@@ -156,6 +164,34 @@ function onPageSizeChange() {
   loadRecords(true)
 }
 
+async function handleGenerate() {
+  const ym = yearMonth.value
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym)) {
+    generateError.value = 'Select a valid year-month (YYYY-MM)'
+
+    return
+  }
+
+  const [year, month] = ym.split('-').map(Number)
+
+  generating.value = true
+  generateError.value = ''
+  generateSuccess.value = null
+  try {
+    const result = await generatePayroll(year, month)
+
+    generateSuccess.value = formatPayrollGenerateMessage(result, year, month)
+    await loadRecords(true)
+  }
+  catch (e) {
+    console.error('Failed to generate payroll records', e)
+    generateError.value = formatApiError(e, 'Could not generate payroll records')
+  }
+  finally {
+    generating.value = false
+  }
+}
+
 function formatCurrency(n: number) {
   return Number.isFinite(n) ? n.toFixed(2) : '-'
 }
@@ -179,6 +215,21 @@ function formatCurrency(n: number) {
         cols="auto"
         class="d-flex flex-wrap gap-2"
       >
+        <VTextField
+          v-model="yearMonth"
+          label="Year-Month"
+          type="month"
+          density="compact"
+          hide-details
+          class="generate-field"
+        />
+        <VBtn
+          color="primary"
+          :loading="generating"
+          @click="handleGenerate"
+        >
+          Generate
+        </VBtn>
         <VSelect
           v-model="filterStatus"
           :items="statusOptions"
@@ -195,10 +246,31 @@ function formatCurrency(n: number) {
           :loading="refreshing"
           @click="loadRecords(true)"
         >
-          <VIcon>tabler-refresh</VIcon>
+          <VIcon>ri-refresh-line</VIcon>
         </VBtn>
       </VCol>
     </VRow>
+
+    <VAlert
+      v-if="generateError"
+      type="error"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+    >
+      {{ generateError }}
+    </VAlert>
+    <VAlert
+      v-if="generateSuccess"
+      type="success"
+      variant="tonal"
+      density="compact"
+      class="mb-3"
+      closable
+      :title="generateSuccess.title"
+      :text="generateSuccess.detail"
+      @click:close="generateSuccess = null"
+    />
 
     <VProgressLinear
       v-if="loading && !refreshing"
@@ -225,15 +297,33 @@ function formatCurrency(n: number) {
       >
         <thead>
           <tr>
-            <th>Product</th>
-            <th>Period</th>
-            <th>Regular</th>
-            <th>OT</th>
-            <th class="text-end">Base</th>
-            <th class="text-end">OT Pay</th>
-            <th class="text-end">Gross</th>
-            <th class="text-end">Net</th>
-            <th>Status</th>
+            <th>
+              Product
+            </th>
+            <th>
+              Period
+            </th>
+            <th>
+              Regular
+            </th>
+            <th>
+              OT
+            </th>
+            <th class="text-end">
+              Base
+            </th>
+            <th class="text-end">
+              OT Pay
+            </th>
+            <th class="text-end">
+              Gross
+            </th>
+            <th class="text-end">
+              Net
+            </th>
+            <th>
+              Status
+            </th>
             <th class="col-actions" />
           </tr>
         </thead>
@@ -309,7 +399,7 @@ function formatCurrency(n: number) {
                   color="error"
                   @click="openDeleteDialog(r)"
                 >
-                  <VIcon>tabler-trash</VIcon>
+                  <VIcon>ri-delete-bin-line</VIcon>
                 </VBtn>
               </div>
             </td>
@@ -382,6 +472,10 @@ function formatCurrency(n: number) {
 
 <style scoped lang="scss">
 .status-field {
+  inline-size: 160px;
+}
+
+.generate-field {
   inline-size: 160px;
 }
 

@@ -12,7 +12,8 @@ FastAPI 後端：登入使用者、Product（教職員/學生）、Profile（sta
 | 啟動 API | `python -m uvicorn app.main:app --reload`（從 `apps/api`）| 每次開發 |
 | 啟動 API（手機連線）| `python -m uvicorn app.main:app --reload --host 0.0.0.0` | Expo Go 使用 LAN IP 時 |
 | 跑 migration | `python -m alembic upgrade head` | 拉取新 migration 後 |
-| 種子資料 | `python seed.py` | 選用 — 產生範例 users / products + profiles |
+| 種子資料 | `python seed.py` | 選用 — 範例 users / products / profiles；完整 seed 含 **彙總測試資料** |
+| 僅彙總 seed | `python seed.py --summaries` | 選用 — 2026-05 固定 + 2026-06/07 bulk（需已有 products） |
 
 API 預設連線到 `localhost:5432`（`config.py` / `.env.example`）。DBeaver 使用相同 host/port/credentials — 只需 DB container 運行即可。
 
@@ -39,7 +40,9 @@ python -m uvicorn app.main:app --reload
 ## 種子資料
 
 ```bash
-python seed.py
+python seed.py              # users + locations + products + profiles + summaries
+python seed.py --users-only # 僅 users
+python seed.py --summaries  # 僅 attendance_summaries（需已有 products）
 ```
 
 產生：
@@ -50,6 +53,12 @@ python seed.py
   - `STAFF-002`（part_time / English）
   - `STU-001`（Tokyo High / 3-A）
   - `STU-002`（Osaka Middle / 2-B）
+  - 以及 `STAFF-003`–`006`、`STU-003`–`008`（bulk 測試用）
+- **Attendance summaries**（測試用）：
+  - 2026-05：固定少數列
+  - 2026-06、2026-07：大量 bulk 列（**無**對應打卡事件）
+
+彙總與 Generate 行為見 [docs/ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md)。
 
 ## 目錄結構
 
@@ -66,7 +75,8 @@ app/
   routers/          # auth、users、products、locations、qr、attendance、
                     # student-profiles、staff-profiles、notifications、
                     # attendance-summaries、payroll-records、audit-logs、auto-checkout
-  services/         # auth、qr、attendance、product、overtime、auto_checkout 業務邏輯
+  services/         # auth、qr、attendance、product、overtime、auto_checkout、
+                    # summary_generator、payroll_generator
   utils/            # 搜尋輔助（safe ILIKE）
 alembic/            # Migrations（使用 DATABASE_URL_SYNC）
 tests/              # pytest（SQLite in-memory）
@@ -111,6 +121,7 @@ API image 由 `Dockerfile` 建置，`.github/workflows/docker-publish.yml` 推�
 
 ## 相關文件
 
+- [docs/ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) — 彙總 / 薪資月度流程、Generate、seed FAQ
 - [docs/DATABASE_CHANGES.md](../../docs/DATABASE_CHANGES.md) — 資料庫設計 SSOT（ER 圖、欄位搬遷、OT 計算）
 - [docs/BACKEND_REVIEW.md](../../docs/BACKEND_REVIEW.md) — 後端審查與修復計畫（架構評價、已知缺口）
 - [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 部署、CI/CD、運維

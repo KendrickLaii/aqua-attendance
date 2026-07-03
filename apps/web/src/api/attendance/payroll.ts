@@ -86,3 +86,7 @@ export async function updatePayrollRecord(recordId: string, payload: {
 export async function deletePayrollRecord(recordId: string): Promise<void> {
   await $attendanceApi(`/payroll-records/${recordId}`, { method: 'DELETE' })
 }
+
+export async function generatePayroll(year: number, month: number): Promise<{ created: number; updated: number; skipped: number }> {
+  return await $attendanceApi(`/payroll-records/generate?year=${year}&month=${month}`, { method: 'POST' })
+}

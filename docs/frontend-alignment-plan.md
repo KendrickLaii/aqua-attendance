@@ -41,12 +41,12 @@
 
 **完全缺失的 API client（後端已就緒）**
 
-- ❌ `student-profiles` / `staff-profiles`
-- ❌ `notifications`
-- ❌ `attendance-summaries`（含 `/generate`）
-- ❌ `payroll-records`
-- ❌ `audit-logs`
-- ❌ `auto-checkout`
+- ❌ `student-profiles` / `staff-profiles`（若尚未獨立 client）
+- ✅ `notifications`
+- ✅ `attendance-summaries`（含 `/overview`、`/generate`）— 見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)
+- ✅ `payroll-records`（含 `/generate`）
+- ✅ `audit-logs`
+- ✅ `auto-checkout`
 
 ### 2.2 Mobile (`apps/mobile`) — 🟡 輕微
 
@@ -80,10 +80,15 @@
 ### 階段三：新功能頁面（補齊後端能力）🟢
 
 - [x] **Notifications**：通知中心頁 + 未讀數（`GET /notifications`、`PATCH` 標記已讀/未讀）
-- [x] **Attendance Summaries**：月度彙總頁
-  - 選年月 → `POST /attendance-summaries/generate?year=&month=`
-  - 表格顯示每日 regular/OT 工時
-- [x] **Payroll Records**：薪資列表 + 審核按鈕（PATCH status → approved/paid）
+- [x] **Attendance Summaries**：月度彙總頁（**2026-07-03 重構**）
+  - 主從式 UI：月份 + Type（預設 staff）→ 總覽表 → 單人每日明細
+  - 瀏覽：`GET /attendance-summaries/overview` + `GET /attendance-summaries`
+  - 重算：`POST /attendance-summaries/generate?year=&month=`（僅選中月份；upsert）
+  - Generate 人性化提示（`formatGenerateResult.ts`）
+  - 詳見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)
+- [x] **Payroll Records**：薪資列表 + 審核 + **Generate**
+  - `POST /payroll-records/generate?year=&month=` 從彙總聚合工時
+  - PATCH status → approved/paid；已審批記錄跳過重算
 - [x] **Audit Logs**：稽核查詢頁（superadmin only，多維度過濾）
 - [x] **Attendance 作廢**：log 頁每列加「作廢」按鈕 + source 顯示（`POST /attendance/{id}/void`）
 - [x] **Auto-checkout**：dashboard 顯示「仍簽到中」人數 + 手動觸發按鈕
@@ -120,12 +125,13 @@
 |---|---|
 | `src/api/attendance/profiles.ts` | student/staff profile CRUD |
 | `src/api/attendance/notifications.ts` | 通知 ✅ |
-| `src/api/attendance/summaries.ts` | 月度彙總 ✅ |
-| `src/api/attendance/payroll.ts` | 薪資 ✅ |
+| `src/api/attendance/summaries.ts` | 彙總 + overview + generate ✅ |
+| `src/api/attendance/payroll.ts` | 薪資 + generate ✅ |
 | `src/api/attendance/auditLogs.ts` | 稽核 ✅ |
+| `src/utils/formatGenerateResult.ts` | Generate 提示文案 ✅ |
 | `src/pages/attendance/notifications.vue` | 通知中心 ✅ |
-| `src/pages/attendance/summaries.vue` | 彙總報表 ✅ |
-| `src/pages/attendance/payroll.vue` | 薪資管理 ✅ |
+| `src/pages/attendance/summaries.vue` | 彙總報表（主從式）✅ |
+| `src/pages/attendance/payroll.vue` | 薪資管理 + generate ✅ |
 | `src/pages/attendance/audit-logs.vue` | 稽核查詢 ✅ |
 
 ### Mobile — 需修改

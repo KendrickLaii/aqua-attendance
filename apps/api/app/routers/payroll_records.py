@@ -8,6 +8,8 @@ from sqlalchemy.orm import selectinload
 from app.deps import AdminOnly, DB, SuperAdminOnly
 from app.models.payroll_record import PayrollRecord, PayrollStatus
 from app.schemas.payroll_record import PayrollRecordCreate, PayrollRecordOut, PayrollRecordUpdate
+from app.services import audit_log as audit_log_svc
+from app.services.payroll_generator import generate_monthly_payroll
 
 router = APIRouter(prefix="/payroll-records", tags=["payroll-records"])
 
@@ -117,6 +119,36 @@ async def update_payroll_record(
         .where(PayrollRecord.id == record.id)
     )
     return _record_to_out(result.scalar_one())
+
+
+@router.post("/generate", status_code=status.HTTP_200_OK)
+async def generate_payroll_records(
+    admin: AdminOnly,
+    db: DB,
+    year: int,
+    month: int,
+    product_type: str | None = "staff",
+) -> dict:
+    """Manually generate payroll records for a month from attendance summaries.
+
+    Admin selects year/month → system aggregates daily attendance summaries
+    per product and inserts/updates payroll records (hours only, pay amounts
+    are left at zero until rates are configured).
+    """
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=422, detail="month must be 1-12")
+
+    result = await generate_monthly_payroll(db, year=year, month=month, product_type=product_type)
+
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="DATA_EXPORT",
+        table_name="payroll_records",
+        description=f"Generated payroll records for {year}-{month:02d}: {result['created']} created, {result['updated']} updated, {result['skipped']} skipped",
+    )
+
+    return result
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)

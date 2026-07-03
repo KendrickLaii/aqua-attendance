@@ -53,6 +53,10 @@ npm run dev
 | `/attendance/products` | Product CRUD |
 | `/attendance/qr-codes` | QR 取得 / 輪替 / 預覽 |
 | `/attendance/log` | 事件紀錄、手動校正、CSV 匯出 |
+| `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) |
+| `/attendance/payroll` | 薪資記錄、審核、從彙總 Generate |
+| `/attendance/notifications` | 通知中心 |
+| `/attendance/audit-logs` | 稽核查詢（superadmin） |
 | `/attendance/users` | User CRUD（admin） |
 
 導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。
@@ -82,4 +86,5 @@ Docker 生產 image：`prod.Dockerfile`（nginx 服務 `dist/`）。
 ## 更多文件
 
 - 根目錄 [README.md](../../README.md)
+- [docs/ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) — 彙總 / Payroll 月度流程
 - [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 生產部署與運維手冊

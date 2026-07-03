@@ -48,7 +48,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | **Product** (`products`) | 可簽到的實體：`product_type` = `staff`、`student`、`device`、`goods` |
 | **Profile** (`student_profiles` / `staff_profiles`) | 類型專屬資料：學生（學校、監護人）/ 員工（雇用類型、薪資） |
 | **Attendance event** | `check_in`、`check_out`、`manual_correction` 或 `auto_checkout` |
-| **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`） |
+| **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md) |
 | **Payroll record** | 薪資計算結果快照（`payroll_records`） |
 | **Audit log** | 資料異動稽核記錄（`audit_logs`） |
 
@@ -599,6 +599,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節統合 `KNOWN-GAPS.md` 與 `CODE-REVIEW-2026-06.md`，去除重複項目，並標註完成狀態。
 > 嚴重度：🔴 High（上線前或盡快處理）、🟡 Medium（上線前應補）、🟢 Low（可延後）
 >
+> **2026-07-03 更新**：Summaries 頁面主從式重構、`GET /overview`、Payroll `POST /generate`、seed bulk 測試資料 — 見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)。  
 > **2026-06-16 更新**：後端大量修復已完成（StaffProfile 外鍵歧義、`employment_type` 遷移、profile 一對一關係、通知/彙總/薪資/稽核端點、OT 計算、auto_checkout 等），詳見 [BACKEND_REVIEW.md](BACKEND_REVIEW.md)。
 
 ### 5.1 🔴 High — 立即處理

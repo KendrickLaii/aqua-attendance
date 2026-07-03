@@ -25,9 +25,28 @@ export interface AttendanceSummary {
   updated_at: string
 }
 
+export interface SummaryOverviewItem {
+  product_id: string
+  product_name: string | null
+  product_code: string | null
+  product_type: string
+  days_present: number
+  days_complete: number
+  days_incomplete: number
+  total_regular_hours: number
+  total_overtime_hours: number
+  total_break_minutes: number
+  first_date: string | null
+  last_date: string | null
+}
+
 export async function listSummaries(params?: {
   product_id?: string
   summary_date?: string
+  date_from?: string
+  date_to?: string
+  product_type?: string
+  is_complete?: boolean
   page?: number
   page_size?: number
 }): Promise<AttendanceSummary[]> {
@@ -39,12 +58,27 @@ export async function listSummaries(params?: {
 export async function listSummariesWithTotal(params?: {
   product_id?: string
   summary_date?: string
+  date_from?: string
+  date_to?: string
+  product_type?: string
+  is_complete?: boolean
   page?: number
   page_size?: number
 }): Promise<AttendanceListResult<AttendanceSummary>> {
   return await fetchAttendanceListWithTotal<AttendanceSummary>('/attendance-summaries', params)
 }
 
-export async function generateSummaries(year: number, month: number): Promise<{ created: number; updated: number }> {
+export async function listSummaryOverview(params: {
+  date_from: string
+  date_to: string
+  product_type?: string
+  search?: string
+  page?: number
+  page_size?: number
+}): Promise<AttendanceListResult<SummaryOverviewItem>> {
+  return await fetchAttendanceListWithTotal<SummaryOverviewItem>('/attendance-summaries/overview', params)
+}
+
+export async function generateSummaries(year: number, month: number): Promise<{ created: number; updated: number; total_days: number }> {
   return await $attendanceApi(`/attendance-summaries/generate?year=${year}&month=${month}`, { method: 'POST' })
 }
