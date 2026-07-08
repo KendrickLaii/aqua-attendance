@@ -22,6 +22,10 @@ class PayrollRecordCreate(BaseModel):
     total_holiday_hours: float = Field(default=0.0, ge=0)
     total_work_days: int = Field(default=0, ge=0)
     total_leave_days: int = Field(default=0, ge=0)
+    regular_slots: int = Field(default=0, ge=0)
+    ot_slots: int = Field(default=0, ge=0)
+    hourly_rate_snapshot: float | None = Field(default=None, ge=0)
+    ot_multiplier_snapshot: float | None = Field(default=None, ge=0)
     base_salary: float = Field(default=0.0, ge=0)
     overtime_pay: float = Field(default=0.0, ge=0)
     holiday_pay: float = Field(default=0.0, ge=0)
@@ -56,6 +60,10 @@ class PayrollRecordOut(BaseModel):
     total_holiday_hours: float
     total_work_days: int
     total_leave_days: int
+    regular_slots: int = 0
+    ot_slots: int = 0
+    hourly_rate_snapshot: float | None = None
+    ot_multiplier_snapshot: float | None = None
     base_salary: float
     overtime_pay: float
     holiday_pay: float

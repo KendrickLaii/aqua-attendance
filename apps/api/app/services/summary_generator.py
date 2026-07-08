@@ -98,6 +98,9 @@ async def generate_monthly_summaries(
         ot_minutes = int(work_result.ot_hours * 60) if work_result else 0
         regular_hours = float(work_result.standard_hours) if work_result else 0.0
         ot_hours = float(work_result.ot_hours) if work_result else 0.0
+        # Slot-based source of truth (1 slot = 15 min = 0.25h)
+        ot_slots = work_result.ot_slots if work_result else 0
+        regular_slots = max(0, work_result.total_slots - ot_slots) if work_result else 0
 
         # Upsert
         existing_result = await db.execute(
@@ -116,6 +119,8 @@ async def generate_monthly_summaries(
             summary.total_break_minutes = lunch_minutes
             summary.is_complete = is_complete
             summary.is_weekend = event_date.weekday() >= 5
+            summary.regular_slots = regular_slots
+            summary.ot_slots = ot_slots
             summary.regular_hours = regular_hours
             summary.overtime_hours = ot_hours
             summary.location_id = location_id
@@ -133,6 +138,8 @@ async def generate_monthly_summaries(
                 total_break_minutes=lunch_minutes,
                 is_complete=is_complete,
                 is_weekend=event_date.weekday() >= 5,
+                regular_slots=regular_slots,
+                ot_slots=ot_slots,
                 regular_hours=regular_hours,
                 overtime_hours=ot_hours,
             )

@@ -12,8 +12,8 @@
 | 4 | 假期／請假／班級部門／授權裝置 | ✅ **全部不要**（holidays / leave_requests / groups / devices） |
 | 5 | 緊急聯絡人 emergency_contact | ✅ **放 `products` 共用**（學生＋員工都用） |
 | 6 | 通知記錄 notifications | ✅ **要**（自動通知家長＋留存發送記錄） |
-| 7 | 考勤彙總 attendance_summaries | ✅ **要**（月度報表計薪資） |
-| 8 | 員工薪資／OT | ✅ 新增薪資欄位＋OT 計算（見下）＋新建 `payroll_records` |
+| 7 | 考勤彙總 attendance_summaries | ✅ **要**（每日一行，含 slot 與小時） |
+| 8 | 員工薪資／OT | ✅ 新增 `staff_profiles` 薪資率＋`attendance_summaries` slots＋`payroll_records` 快照與計算 |
 | 9 | 未來 device/goods | ✅ 預留 `device_profiles` / `goods_profiles` 子表 |
 
 ## 完整 ER 圖 (Mermaid)
@@ -37,7 +37,7 @@ erDiagram
     products {
         uuid id PK
         string code "唯一編碼"
-        string name "名稱/原full_name"
+        string full_name "名稱"
         string english_name "英文名"
         string product_type "類型 student/staff/device/goods"
         boolean is_active "系統開關 true=啟用"
@@ -64,15 +64,28 @@ erDiagram
         uuid product_id PK "FK 學生ID"
         string school_name "學校名稱"
         string grade_class "年級班級"
+        string student_id "學號"
         json guardians "監護人JSON陣列"
+        date enrollment_date "入學日期"
+        date graduation_date "畢業日期"
+        string academic_notes "學業備註"
     }
     staff_profiles {
         uuid product_id PK "FK 員工ID"
+        string employee_id "員工編號"
         string employment_type "雇用類型 part_time/full_time"
+        string department "部門"
+        string position "職位"
+        date hire_date "到職日期"
+        date termination_date "離職日期"
+        string salary_grade "薪資等級"
         string pay_type "薪資類型 hourly/monthly"
         numeric hourly_rate "時薪"
         numeric monthly_salary "月薪"
         numeric ot_multiplier "加班倍率 預設1.5"
+        string work_schedule "工作班表"
+        uuid supervisor_id FK "直屬主管 product_id"
+        string employment_notes "員工備註"
     }
     device_profiles {
         uuid product_id PK "FK 設備ID 未來"
@@ -94,7 +107,6 @@ erDiagram
         string location_type "地點類型"
         string region "區域"
         json business_hours "營業時間JSON 必須改結構化"
-        string timezone "時區 新增"
         string icon_url "圖示URL"
         string main_photo_url "主圖URL"
         json detail_photos "詳細圖片"
@@ -126,45 +138,88 @@ erDiagram
     }
     notifications {
         uuid id PK
+        uuid user_id FK "使用者ID"
         uuid product_id FK "實體ID"
-        string channel "渠道 whatsapp/email/sms"
-        string status "狀態 queued/sent/failed"
-        json payload "訊息內容"
-        datetime sent_at "發送時間"
+        string title "標題"
+        string message "內容"
+        string notification_type "通知類型"
+        string priority "優先級 low/medium/high/urgent"
+        boolean is_read "已讀"
+        datetime read_at "讀取時間"
+        string action_url "動作連結"
+        json extra_data "額外資料"
+        datetime expires_at "到期時間"
         datetime created_at "建立時間"
     }
     attendance_summaries {
         uuid id PK
         uuid product_id FK "實體ID"
-        string period_type "週期 day/month"
-        date period_start "週期開始日期"
-        int days_present "出勤天數"
+        uuid location_id FK "地點ID"
+        date summary_date "日期"
+        datetime first_check_in "首次簽到"
+        datetime last_check_out "末次簽退"
+        int total_work_minutes "總工作分鐘"
+        int total_overtime_minutes "總加班分鐘"
+        int total_break_minutes "午休分鐘"
+        boolean is_complete "完整上下班"
+        boolean is_holiday "假日"
+        boolean is_weekend "週末"
         int regular_slots "正常工時槽 x0.25h"
         int ot_slots "加班工時槽 x0.25h"
+        numeric regular_hours "正常工時"
+        numeric overtime_hours "加班工時"
+        numeric holiday_hours "假日工時"
+        string attendance_notes "備註"
+        string calculation_method "計算方式"
+        datetime created_at "建立時間"
+        datetime updated_at "更新時間"
     }
     payroll_records {
         uuid id PK "新增"
         uuid product_id FK "員工ID"
-        date period_start "薪資週期開始"
-        date period_end "薪資週期結束"
+        date payroll_period_start "薪資週期開始"
+        date payroll_period_end "薪資週期結束"
+        numeric total_regular_hours "總正常工時"
+        numeric total_overtime_hours "總加班工時"
+        numeric total_holiday_hours "總假日工時"
+        int total_work_days "總工作天數"
+        int total_leave_days "總請假天數"
         int regular_slots "正常工時槽 快照"
         int ot_slots "加班工時槽 快照"
         numeric hourly_rate_snapshot "時薪快照 防歷史污染"
         numeric ot_multiplier_snapshot "加班倍率快照"
-        numeric regular_pay "正常薪資"
-        numeric ot_pay "加班薪資"
+        numeric base_salary "基本薪資"
+        numeric overtime_pay "加班費"
+        numeric holiday_pay "假日薪資"
+        numeric allowance "津貼"
+        numeric deduction "扣除"
+        numeric bonus "獎金"
         numeric gross_pay "應發總薪"
-        string status "狀態 draft/confirmed/paid"
-        uuid confirmed_by_user_id FK "審核人"
-        datetime confirmed_at "審核時間"
+        numeric net_pay "實發總薪"
+        string status "狀態 draft/calculated/approved/paid/cancelled"
+        datetime calculation_date "計算時間"
+        datetime approval_date "審核時間"
+        datetime payment_date "發放時間"
+        string payroll_notes "薪資備註"
+        string calculation_method "計算方式"
+        uuid approved_by_user_id FK "審核人"
         datetime created_at "建立時間"
+        datetime updated_at "更新時間"
     }
     audit_logs {
         uuid id PK
+        uuid user_id FK "操作人"
+        string action "動作 CREATE/UPDATE/DELETE/..."
         string table_name "被操作的資料表"
         uuid record_id "記錄ID"
-        string action "動作 create/update/delete"
-        uuid actor_user_id FK "操作人"
+        json old_values "修改前"
+        json new_values "修改後"
+        string description "說明"
+        string ip_address "IP"
+        string user_agent "User Agent"
+        string session_id "Session ID"
+        string request_id "Request ID"
+        boolean batch_operation "批次操作"
         datetime created_at "操作時間"
     }
 
@@ -278,7 +333,7 @@ ot_hours      = ot_slots * 0.25
 | 現有 products 欄位 | 去向 |
 |---|---|
 | id, code, product_type | products（核心） |
-| full_name → name | products（改名） |
+| full_name | products |
 | english_name | products |
 | is_active | products（系統層快速開關） |
 | status | products（業務狀態：active / inactive / graduated / terminated / suspended） |
@@ -290,8 +345,8 @@ ot_hours      = ot_slots * 0.25
 | emergency_contact_name, emergency_contact_phone | products（共用—決定5） |
 | remarks | products |
 | whatsapp_enabled | products 通知偏好欄位 |
-| employment_type, pay_type, hourly_rate, monthly_salary, ot_multiplier | staff_profiles |
-| school_name, grade_class | student_profiles |
+| employment_type, pay_type, hourly_rate, monthly_salary, ot_multiplier, employee_id, department, position, hire_date, termination_date, salary_grade, work_schedule, supervisor_id, employment_notes | staff_profiles |
+| school_name, grade_class, student_id, enrollment_date, graduation_date, academic_notes | student_profiles |
 | guardian1/2_*（6個欄位） | student_profiles.guardians JSON |
 
 **新增（現有 products 沒有）：** `photo_url`、`enrollment_date`、`exit_date`（→ products）。
@@ -317,7 +372,7 @@ ot_hours      = ot_slots * 0.25
 |---|---|---|
 | A1 | `products` 瘦身為通用核心 | ✅ 完成 |
 | A2 | 新建 `student_profiles`（含 guardians JSON） | ✅ 完成 |
-| A3 | 新建 `staff_profiles`（含薪資欄位） | ✅ 完成 |
+| A3 | 新建 `staff_profiles`（含 employment_type 與薪資率欄位） | ✅ 完成 |
 
 ### ✅ 欄位新增 - 已完成
 
@@ -334,8 +389,8 @@ ot_hours      = ot_slots * 0.25
 | # | 資料表 | 說明 | 狀態 |
 |---|---|---|---|
 | N6 | `notifications` | 通知發送記錄（**已確認**） | ✅ 完成 |
-| N7 | `attendance_summaries` | 預先彙總考勤（**已確認**） | ✅ 完成 |
-| N8 | `payroll_records` | 薪資計算記錄（**已確認**） | ✅ 完成 |
+| N7 | `attendance_summaries` | 預先彙總考勤（每日一行，含 slots） | ✅ 完成 |
+| N8 | `payroll_records` | 薪資計算記錄（含 slots + rate 快照） | ✅ 完成 |
 | 19 | `audit_logs` | 資料異動稽核（**已實作**） | ✅ 完成 |
 
 ### 🔄 未來擴充 - 預留設計
@@ -379,10 +434,16 @@ ot_hours      = ot_slots * 0.25
    - attendance_events 新增 voided_at
 
 4. **新建資料表（4項）：** ✅ 全部完成
-   - notifications（完整通知系統）
-   - attendance_summaries（出勤彙總）
-   - payroll_records（薪資計算）
+   - notifications（站內通知系統）
+   - attendance_summaries（每日出勤彙總，slot 為計薪來源）
+   - payroll_records（薪資計算記錄，凍結 slots 與 rate 快照）
    - audit_logs（稽核追蹤）
+
+5. **Slot-based 薪資（2026-07-08）：** ✅ 完成
+   - `attendance_summaries` 新增 `regular_slots` / `ot_slots`
+   - `staff_profiles` 新增 `pay_type` / `hourly_rate` / `monthly_salary` / `ot_multiplier`
+   - `payroll_records` 新增 `regular_slots` / `ot_slots` / `hourly_rate_snapshot` / `ot_multiplier_snapshot`
+   - `payroll_generator` 從 summaries 聚合 slots 並按薪資率計算金額
 
 ### 🚀 系統現在具備
 
@@ -396,7 +457,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -406,6 +467,8 @@ ot_hours      = ot_slots * 0.25
 5. ✅ 新建三個核心資料表
 6. ✅ attendance_events voided_at
 7. ✅ audit_logs 稽核系統
+8. ✅ employment_type 補值（025）
+9. ✅ slot-based 薪資欄位（026）
 
 ---
 

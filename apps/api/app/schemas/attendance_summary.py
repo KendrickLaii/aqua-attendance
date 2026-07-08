@@ -16,6 +16,8 @@ class AttendanceSummaryCreate(BaseModel):
     is_complete: bool = False
     is_holiday: bool = False
     is_weekend: bool = False
+    regular_slots: int = Field(default=0, ge=0)
+    ot_slots: int = Field(default=0, ge=0)
     regular_hours: float = Field(default=0.0, ge=0)
     overtime_hours: float = Field(default=0.0, ge=0)
     holiday_hours: float = Field(default=0.0, ge=0)
@@ -38,6 +40,8 @@ class AttendanceSummaryOut(BaseModel):
     is_complete: bool
     is_holiday: bool
     is_weekend: bool
+    regular_slots: int = 0
+    ot_slots: int = 0
     regular_hours: float
     overtime_hours: float
     holiday_hours: float

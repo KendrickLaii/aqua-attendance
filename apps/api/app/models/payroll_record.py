@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -38,7 +38,15 @@ class PayrollRecord(Base):
     total_holiday_hours: Mapped[float] = mapped_column(Numeric(6, 2), default=0)
     total_work_days: Mapped[int] = mapped_column(default=0)
     total_leave_days: Mapped[int] = mapped_column(default=0)
-    
+
+    # Slot snapshot (1 slot = 15 min = 0.25h) — source of truth from summaries
+    regular_slots: Mapped[int] = mapped_column(Integer, default=0)
+    ot_slots: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Pay-rate snapshots (frozen at generation time to prevent historical drift)
+    hourly_rate_snapshot: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    ot_multiplier_snapshot: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
+
     # Compensation calculations
     base_salary: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     overtime_pay: Mapped[float] = mapped_column(Numeric(10, 2), default=0)

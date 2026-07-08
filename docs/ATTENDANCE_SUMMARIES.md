@@ -1,7 +1,7 @@
 # 出勤彙總（Attendance Summaries）
 
-> 最後更新：2026-07-03  
-> 涵蓋 Summaries 頁面重構、後端 overview 聚合、Generate 流程、Payroll 串接與 seed 測試資料。
+> 最後更新：2026-07-08  
+> 涵蓋 Summaries 頁面重構、Payroll 頁面重構、後端 overview 聚合、Generate 流程與 seed 測試資料。
 
 本文件為 **Summaries / Payroll 月度流程** 的單一參考來源（SSOT）。資料庫欄位定義見 [DATABASE_CHANGES.md](DATABASE_CHANGES.md)；前端對齊總覽見 [frontend-alignment-plan.md](frontend-alignment-plan.md)。
 
@@ -85,7 +85,21 @@ payroll_records（每人每月一筆工時快照，金額暫為 0）
 
 實作：`app/services/summary_generator.py`
 
-### 2.4 `POST /api/payroll-records/generate`（新增）
+### 2.4 `GET /api/payroll-records`（新增查詢參數）
+
+薪資記錄列表（分頁）。
+
+| 參數 | 必填 | 說明 |
+|------|------|------|
+| `year` | ✅ | 4 位數年份 |
+| `month` | ✅ | 1–12 |
+| `status` | | `draft` / `calculated` / `approved` / `paid` / `cancelled` |
+| `product_type` | | `staff` / `student` |
+| `page` / `page_size` | | 預設 50，最大 200 |
+
+回應標頭：`X-Total-Count`。依 `payroll_period_start` 落在該年月區間篩選。
+
+### 2.5 `POST /api/payroll-records/generate`（新增）
 
 從當月 `attendance_summaries` 聚合為 `payroll_records`（鍵：`product_id` + `payroll_period_start/end`）。
 
@@ -127,11 +141,49 @@ payroll_records（每人每月一筆工時快照，金額暫為 0）
 | `apps/web/src/pages/attendance/summaries.vue` | 頁面 |
 | `apps/web/src/api/attendance/summaries.ts` | API client |
 | `apps/web/src/utils/formatGenerateResult.ts` | Generate 提示文案 |
-| `apps/web/src/pages/attendance/payroll.vue` | 薪資 Generate（同套提示） |
+| `apps/web/src/pages/attendance/payroll.vue` | 薪資頁面（同套提示） |
 
 ---
 
-## 4. Seed 測試資料
+## 4. Web UI — `/attendance/payroll`（重構後）
+
+### 4.1 版面（主從式）
+
+| 層級 | 內容 |
+|------|------|
+| **工具列** | 月份箭頭、`Type` 篩選（預設 **Staff**）、`Status` 篩選、Generate、Refresh |
+| **統計卡** | 本月記錄數、總常規工時、總 OT 工時、總 Net pay（當前頁加總） |
+| **總覽** | 每個 product 當月一筆薪資；點列進入明細；分頁 |
+| **明細** | 顯示該 product 當月所有 `attendance_summaries`；含日期、上下班、Regular / OT / Break、狀態與 Total 列 |
+
+### 4.2 狀態流程
+
+| 目前狀態 | 可執行動作 |
+|----------|------------|
+| `draft` / `calculated` | Approve → `approved` |
+| `approved` | Pay → `paid` |
+| `paid` | 不可刪除、不可重算（Generate 會 skipped） |
+
+Superadmin 可刪除 `draft` / `calculated` / `approved` 狀態的記錄。
+
+### 4.3 與 Summaries 的關聯
+
+Payroll 明細直接呼叫 `GET /api/attendance-summaries?product_id=&date_from=&date_to=`，
+展示「這筆薪資是由哪些每日彙總計算而來」。這與 Summaries 的單人每日明細使用同一資料源。
+
+### 4.4 相關檔案
+
+| 檔案 | 用途 |
+|------|------|
+| `apps/web/src/pages/attendance/payroll.vue` | 頁面（主從式） |
+| `apps/web/src/api/attendance/payroll.ts` | API client（新增 `year`/`month`/`product_type` 查詢） |
+| `apps/web/src/api/attendance/summaries.ts` | 明細讀取每日彙總 |
+| `apps/api/app/routers/payroll_records.py` | 後端列表篩選與 Generate |
+| `apps/api/app/services/payroll_generator.py` | 從彙總生成/更新 payroll_records |
+
+---
+
+## 5. Seed 測試資料
 
 ```bash
 cd apps/api
@@ -161,6 +213,8 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 - **Generate upsert** 可安全重複執行，不產生重複列
 - **提示文案** 區分「從事件重算」vs「seed 既有資料」
 - **Payroll generate** 保護已審批／已發放記錄
+- **Payroll 頁面** 與 Summaries 對齊：月份切換、Type/Status 篩選、統計卡、主從明細
+- **Payroll 列表** 新增 `year`/`month`/`product_type` 後端篩選，不再混雜所有月份
 - **Type 預設 staff** 符合管理員主要使用情境
 
 ### 5.2 已知限制（非阻斷）
@@ -172,7 +226,7 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 | Seed vs 事件 | 測試環境易出現「列表有資料但 Generate 無事件」 |
 | Weekend 篩選 | 明細層 Weekend chip 為 **前端篩選**已載入列；Complete/Incomplete 走 API `is_complete` |
 | Holiday | 僅在狀態欄顯示，無獨立 chip |
-| 金額 | Payroll generate 只寫工時，金額為 0 |
+| 金額 | Payroll generate 已依 `staff_profiles` 薪資率與 slots 計算 `base_salary` / `overtime_pay` / `gross_pay` / `net_pay`，並在 `payroll_records` 快照凍結 |
 | 自動化 | 尚無 cron 自動月度 Generate（見 BACKEND_REVIEW 待辦） |
 
 ### 5.3 後續可選改善
@@ -181,6 +235,11 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 - Generate 時可選清理「無事件」的幽靈列
 - Seed 可選 `--no-summaries` 避免與真實流程混淆
 - 月度 Generate cron + 結構化 logging
+- **Payroll 薪資率模型（已實作）**
+  - `staff_profiles` 儲存 `pay_type` / `hourly_rate` / `monthly_salary` / `ot_multiplier`
+  - `attendance_summaries` 儲存 `regular_slots` / `ot_slots`（1 slot = 15 min = 0.25h）作為計薪來源
+  - `payroll_generator.py` 聚合 slots，換算小時後以 `rate × hours` 計算 `base_salary` / `overtime_pay` / `gross_pay` / `net_pay`
+  - `payroll_records` 凍結 `regular_slots` / `ot_slots` / `hourly_rate_snapshot` / `ot_multiplier_snapshot`，避免歷史資料被未來調薪污染
 
 ---
 
@@ -197,6 +256,12 @@ A：不會。Type 只影響列表顯示；Generate 處理該月所有有打卡�
 
 **Q：切換月份要再 Generate 嗎？**  
 A：不需要，除非該月打卡有變動且尚未重算。
+
+**Q：Payroll 頁面的明細從哪裡來？**  
+A：點擊 product 的薪資列後，會讀取該 product 在當月的 `attendance_summaries`，展示這筆薪資的計算來源。
+
+**Q：Payroll 列表為什麼只顯示單一月份？**  
+A：重構後列表會根據頂部選中的月份篩選，與 Summaries 的「按月聚焦」模型一致。
 
 ---
 

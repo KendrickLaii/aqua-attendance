@@ -1,5 +1,6 @@
+import calendar
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
@@ -7,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB, SuperAdminOnly
 from app.models.payroll_record import PayrollRecord, PayrollStatus
+from app.models.product import Product
 from app.schemas.payroll_record import PayrollRecordCreate, PayrollRecordOut, PayrollRecordUpdate
 from app.services import audit_log as audit_log_svc
 from app.services.payroll_generator import generate_monthly_payroll
@@ -29,6 +31,9 @@ async def list_payroll_records(
     response: Response,
     product_id: uuid.UUID | None = None,
     status: str | None = None,
+    product_type: str | None = None,
+    year: int | None = None,
+    month: int | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[PayrollRecordOut]:
@@ -40,8 +45,22 @@ async def list_payroll_records(
         clauses.append(PayrollRecord.product_id == product_id)
     if status:
         clauses.append(PayrollRecord.status == status)
+    if year and month:
+        if not (1 <= month <= 12):
+            raise HTTPException(status_code=422, detail="month must be 1-12")
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+        clauses.append(PayrollRecord.payroll_period_start >= first_day)
+        clauses.append(PayrollRecord.payroll_period_start <= last_day)
+
+    needs_product_join = product_type is not None
+    if product_type:
+        clauses.append(Product.product_type == product_type)
 
     if clauses:
+        if needs_product_join:
+            q = q.join(PayrollRecord.product)
+            count_q = count_q.join(PayrollRecord.product)
         q = q.where(*clauses)
         count_q = count_q.where(*clauses)
 

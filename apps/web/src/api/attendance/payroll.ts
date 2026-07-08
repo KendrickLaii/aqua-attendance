@@ -13,6 +13,10 @@ export interface PayrollRecord {
   total_holiday_hours: number
   total_work_days: number
   total_leave_days: number
+  regular_slots: number
+  ot_slots: number
+  hourly_rate_snapshot: number | null
+  ot_multiplier_snapshot: number | null
   base_salary: number
   overtime_pay: number
   holiday_pay: number
@@ -35,6 +39,9 @@ export interface PayrollRecord {
 export async function listPayrollRecords(params?: {
   product_id?: string
   status?: string
+  product_type?: string
+  year?: number
+  month?: number
   page?: number
   page_size?: number
 }): Promise<PayrollRecord[]> {
@@ -46,6 +53,9 @@ export async function listPayrollRecords(params?: {
 export async function listPayrollRecordsWithTotal(params?: {
   product_id?: string
   status?: string
+  product_type?: string
+  year?: number
+  month?: number
   page?: number
   page_size?: number
 }): Promise<AttendanceListResult<PayrollRecord>> {
@@ -61,6 +71,10 @@ export async function createPayrollRecord(payload: {
   total_holiday_hours?: number
   total_work_days?: number
   total_leave_days?: number
+  regular_slots?: number
+  ot_slots?: number
+  hourly_rate_snapshot?: number | null
+  ot_multiplier_snapshot?: number | null
   base_salary?: number
   overtime_pay?: number
   holiday_pay?: number

@@ -16,6 +16,8 @@ export interface AttendanceSummary {
   is_complete: boolean
   is_holiday: boolean
   is_weekend: boolean
+  regular_slots: number
+  ot_slots: number
   regular_hours: number
   overtime_hours: number
   holiday_hours: number

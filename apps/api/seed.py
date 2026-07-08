@@ -336,6 +336,8 @@ async def seed_summaries(db) -> None:
             is_complete=is_complete,
             is_weekend=is_weekend,
             is_holiday=is_holiday,
+            regular_slots=int(round(regular_h * 4)),
+            ot_slots=int(round(ot_h * 4)),
             regular_hours=regular_h,
             overtime_hours=ot_h,
             holiday_hours=0.0,

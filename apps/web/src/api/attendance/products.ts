@@ -34,6 +34,10 @@ export interface StaffProfileOut {
   hire_date: string | null
   termination_date: string | null
   salary_grade: string | null
+  pay_type: string | null
+  hourly_rate: number | null
+  monthly_salary: number | null
+  ot_multiplier: number | null
   work_schedule: string | null
   supervisor_id: string | null
   employment_notes: string | null
@@ -91,6 +95,10 @@ export interface StaffProfileInput {
   hire_date?: string | null
   termination_date?: string | null
   salary_grade?: string | null
+  pay_type?: string | null
+  hourly_rate?: number | null
+  monthly_salary?: number | null
+  ot_multiplier?: number | null
   work_schedule?: string | null
   supervisor_id?: string | null
   employment_notes?: string | null

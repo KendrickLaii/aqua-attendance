@@ -54,7 +54,7 @@ npm run dev
 | `/attendance/qr-codes` | QR 取得 / 輪替 / 預覽 |
 | `/attendance/log` | 事件紀錄、手動校正、CSV 匯出 |
 | `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) |
-| `/attendance/payroll` | 薪資記錄、審核、從彙總 Generate |
+| `/attendance/payroll` | 月度薪資（總覽 → 每日彙總明細、審核、Generate）— 見 [ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) |
 | `/attendance/notifications` | 通知中心 |
 | `/attendance/audit-logs` | 稽核查詢（superadmin） |
 | `/attendance/users` | User CRUD（admin） |

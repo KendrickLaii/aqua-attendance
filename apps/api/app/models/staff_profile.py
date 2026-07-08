@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, ForeignKey, String, Text
+from sqlalchemy import Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -30,6 +30,12 @@ class StaffProfile(Base):
     
     # Compensation (basic info, details in separate payroll system)
     salary_grade: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Pay rates for slot-based payroll (1 slot = 15 min = 0.25h)
+    pay_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # hourly / monthly
+    hourly_rate: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    monthly_salary: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    ot_multiplier: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True, default=1.5)
     
     # Work information
     work_schedule: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -36,7 +36,11 @@ class AttendanceSummary(Base):
     is_holiday: Mapped[bool] = mapped_column(default=False)
     is_weekend: Mapped[bool] = mapped_column(default=False)
     
-    # Payroll calculations
+    # Slot-based payroll source of truth (1 slot = 15 min = 0.25h)
+    regular_slots: Mapped[int] = mapped_column(Integer, default=0)  # Regular 15-min slots
+    ot_slots: Mapped[int] = mapped_column(Integer, default=0)  # Overtime 15-min slots
+
+    # Payroll calculations (derived: slots * 0.25)
     regular_hours: Mapped[float] = mapped_column(Numeric(4, 2), default=0)  # Hours for regular pay
     overtime_hours: Mapped[float] = mapped_column(Numeric(4, 2), default=0)  # Hours for OT pay
     holiday_hours: Mapped[float] = mapped_column(Numeric(4, 2), default=0)  # Holiday hours

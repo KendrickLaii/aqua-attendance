@@ -86,9 +86,12 @@
   - 重算：`POST /attendance-summaries/generate?year=&month=`（僅選中月份；upsert）
   - Generate 人性化提示（`formatGenerateResult.ts`）
   - 詳見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)
-- [x] **Payroll Records**：薪資列表 + 審核 + **Generate**
+- [x] **Payroll Records**：薪資列表 + 審核 + **Generate**（2026-07-08 重構對齊 Summaries）
+  - 主從式 UI：月份 + Type（預設 staff）+ Status → 總覽表 → 單人每日明細（讀 `attendance-summaries`）
+  - `GET /payroll-records` 新增 `year` / `month` / `product_type` 篩選
   - `POST /payroll-records/generate?year=&month=` 從彙總聚合工時
-  - PATCH status → approved/paid；已審批記錄跳過重算
+  - PATCH status → approved/paid；已審批／已發放記錄跳過重算
+  - [ ] **階段三：薪資率模型** — 目前金額欄位均為 0；待新增 product 薪資率/薪資配置後才能真正計算 base、OT、gross、net
 - [x] **Audit Logs**：稽核查詢頁（superadmin only，多維度過濾）
 - [x] **Attendance 作廢**：log 頁每列加「作廢」按鈕 + source 顯示（`POST /attendance/{id}/void`）
 - [x] **Auto-checkout**：dashboard 顯示「仍簽到中」人數 + 手動觸發按鈕

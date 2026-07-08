@@ -74,6 +74,10 @@ const form = reactive({
     hire_date: '',
     termination_date: '',
     salary_grade: '',
+    pay_type: '' as '' | 'hourly' | 'monthly',
+    hourly_rate: '',
+    monthly_salary: '',
+    ot_multiplier: '',
     work_schedule: '',
     supervisor_id: '',
     employment_notes: '',
@@ -127,6 +131,11 @@ const employmentFilterOptions = [
 const employmentTypeOptions = [
   { title: 'Full-time', value: 'full_time' },
   { title: 'Part-time', value: 'part_time' },
+]
+
+const payTypeOptions = [
+  { title: 'Hourly', value: 'hourly' },
+  { title: 'Monthly', value: 'monthly' },
 ]
 
 const locationOptions = computed(() =>
@@ -293,6 +302,10 @@ watch(() => form.product_type, type => {
     form.staff_profile.hire_date = ''
     form.staff_profile.termination_date = ''
     form.staff_profile.salary_grade = ''
+    form.staff_profile.pay_type = ''
+    form.staff_profile.hourly_rate = ''
+    form.staff_profile.monthly_salary = ''
+    form.staff_profile.ot_multiplier = ''
     form.staff_profile.work_schedule = ''
     form.staff_profile.supervisor_id = ''
     form.staff_profile.employment_notes = ''
@@ -362,6 +375,10 @@ function resetForm() {
       hire_date: '',
       termination_date: '',
       salary_grade: '',
+      pay_type: '',
+      hourly_rate: '',
+      monthly_salary: '',
+      ot_multiplier: '',
       work_schedule: '',
       supervisor_id: '',
       employment_notes: '',
@@ -427,6 +444,10 @@ function openEdit(p: Product) {
       hire_date: stp?.hire_date ?? '',
       termination_date: stp?.termination_date ?? '',
       salary_grade: stp?.salary_grade ?? '',
+      pay_type: (stp?.pay_type ?? '') as '' | 'hourly' | 'monthly',
+      hourly_rate: stp?.hourly_rate != null ? String(stp.hourly_rate) : '',
+      monthly_salary: stp?.monthly_salary != null ? String(stp.monthly_salary) : '',
+      ot_multiplier: stp?.ot_multiplier != null ? String(stp.ot_multiplier) : '',
       work_schedule: stp?.work_schedule ?? '',
       supervisor_id: stp?.supervisor_id ?? '',
       employment_notes: stp?.employment_notes ?? '',
@@ -440,6 +461,15 @@ function normalizeString(value: string): string | null {
   const normalized = value.trim()
 
   return normalized.length > 0 ? normalized : null
+}
+
+function normalizeNumber(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed)
+    return null
+  const num = Number(trimmed)
+
+  return Number.isFinite(num) ? num : null
 }
 
 async function handleSave() {
@@ -528,6 +558,10 @@ async function handleSave() {
           hire_date: normalizeString(form.staff_profile.hire_date),
           termination_date: normalizeString(form.staff_profile.termination_date),
           salary_grade: normalizeString(form.staff_profile.salary_grade),
+          pay_type: normalizeString(form.staff_profile.pay_type),
+          hourly_rate: normalizeNumber(form.staff_profile.hourly_rate),
+          monthly_salary: normalizeNumber(form.staff_profile.monthly_salary),
+          ot_multiplier: normalizeNumber(form.staff_profile.ot_multiplier),
           work_schedule: normalizeString(form.staff_profile.work_schedule),
           supervisor_id: normalizeString(form.staff_profile.supervisor_id),
           employment_notes: normalizeString(form.staff_profile.employment_notes),
@@ -552,6 +586,10 @@ async function handleSave() {
           hire_date: normalizeString(form.staff_profile.hire_date),
           termination_date: normalizeString(form.staff_profile.termination_date),
           salary_grade: normalizeString(form.staff_profile.salary_grade),
+          pay_type: normalizeString(form.staff_profile.pay_type),
+          hourly_rate: normalizeNumber(form.staff_profile.hourly_rate),
+          monthly_salary: normalizeNumber(form.staff_profile.monthly_salary),
+          ot_multiplier: normalizeNumber(form.staff_profile.ot_multiplier),
           work_schedule: normalizeString(form.staff_profile.work_schedule),
           supervisor_id: normalizeString(form.staff_profile.supervisor_id),
           employment_notes: normalizeString(form.staff_profile.employment_notes),
@@ -1481,6 +1519,59 @@ function rowStatusChip(p: Product) {
                 v-model="form.staff_profile.salary_grade"
                 label="Salary grade"
                 maxlength="50"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VSelect
+                v-model="form.staff_profile.pay_type"
+                :items="payTypeOptions"
+                item-title="title"
+                item-value="value"
+                label="Pay type"
+                clearable
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.hourly_rate"
+                label="Hourly rate"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.monthly_salary"
+                label="Monthly salary"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VTextField
+                v-model="form.staff_profile.ot_multiplier"
+                label="OT multiplier"
+                type="number"
+                min="0"
+                step="0.01"
               />
             </VCol>
             <VCol
