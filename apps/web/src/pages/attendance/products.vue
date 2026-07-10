@@ -294,6 +294,21 @@ watch(filterEmployment, () => {
   loadProducts(true, true)
 })
 
+watch(() => form.staff_profile.pay_type, payType => {
+  if (payType === 'hourly') {
+    form.staff_profile.monthly_salary = ''
+  }
+  else if (payType === 'monthly') {
+    form.staff_profile.hourly_rate = ''
+  }
+  else {
+    form.staff_profile.hourly_rate = ''
+    form.staff_profile.monthly_salary = ''
+  }
+  if (payType && !form.staff_profile.ot_multiplier)
+    form.staff_profile.ot_multiplier = '1.5'
+})
+
 watch(() => form.product_type, type => {
   if (type !== 'staff') {
     form.staff_profile.employment_type = ''
@@ -319,6 +334,8 @@ watch(() => form.product_type, type => {
     form.student_profile.academic_notes = ''
     form.student_profile.guardians = {}
     form.guardians = [{ name: '', relationship: '', phone: '' }]
+    form.enrollment_date = ''
+    form.exit_date = ''
   }
 })
 
@@ -1120,6 +1137,7 @@ function rowStatusChip(p: Product) {
               item-title="title"
               item-value="value"
               label="Type *"
+              :disabled="!!editingProduct"
             />
           </VCol>
           <VCol
@@ -1133,21 +1151,6 @@ function rowStatusChip(p: Product) {
               item-title="title"
               item-value="value"
               label="Status"
-            />
-          </VCol>
-          <VCol
-            v-if="form.product_type === 'staff'"
-            cols="12"
-            sm="6"
-            md="4"
-          >
-            <VSelect
-              v-model="form.staff_profile.employment_type"
-              :items="employmentTypeOptions"
-              item-title="title"
-              item-value="value"
-              label="Employment *"
-              :rules="[v => !!v || 'Required for staff']"
             />
           </VCol>
           <VCol
@@ -1270,6 +1273,17 @@ function rowStatusChip(p: Product) {
               :rules="[maxCharsRule(50, 'Phone')]"
             />
           </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+            class="d-flex align-center"
+          >
+            <VSwitch
+              v-model="form.whatsapp_enabled"
+              label="WhatsApp enabled"
+            />
+          </VCol>
           <VCol cols="12">
             <VTextField
               v-model="form.address"
@@ -1296,6 +1310,7 @@ function rowStatusChip(p: Product) {
             />
           </VCol>
           <VCol
+            v-if="form.product_type === 'student'"
             cols="12"
             sm="6"
             md="3"
@@ -1307,6 +1322,7 @@ function rowStatusChip(p: Product) {
             />
           </VCol>
           <VCol
+            v-if="form.product_type === 'student'"
             cols="12"
             sm="6"
             md="3"
@@ -1370,17 +1386,6 @@ function rowStatusChip(p: Product) {
                 v-model="form.student_profile.grade_class"
                 label="Grade / class"
                 maxlength="100"
-              />
-            </VCol>
-            <VCol
-              cols="12"
-              sm="6"
-              md="4"
-              class="d-flex align-center"
-            >
-              <VSwitch
-                v-model="form.whatsapp_enabled"
-                label="WhatsApp enabled"
               />
             </VCol>
             <template
@@ -1460,6 +1465,20 @@ function rowStatusChip(p: Product) {
               sm="6"
               md="4"
             >
+              <VSelect
+                v-model="form.staff_profile.employment_type"
+                :items="employmentTypeOptions"
+                item-title="title"
+                item-value="value"
+                label="Employment type *"
+                :rules="[v => !!v || 'Required for staff']"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+              md="4"
+            >
               <VTextField
                 v-model="form.staff_profile.employee_id"
                 label="Employee ID"
@@ -1510,17 +1529,12 @@ function rowStatusChip(p: Product) {
                 type="date"
               />
             </VCol>
-            <VCol
-              cols="12"
-              sm="6"
-              md="4"
-            >
-              <VTextField
-                v-model="form.staff_profile.salary_grade"
-                label="Salary grade"
-                maxlength="50"
-              />
-            </VCol>
+          </VRow>
+
+          <h5 class="text-caption text-medium-emphasis mb-2 mt-4">
+            Compensation
+          </h5>
+          <VRow class="dense-form-row">
             <VCol
               cols="12"
               sm="6"
@@ -1531,11 +1545,13 @@ function rowStatusChip(p: Product) {
                 :items="payTypeOptions"
                 item-title="title"
                 item-value="value"
-                label="Pay type"
+                label="Pay type *"
                 clearable
+                :rules="[v => !!v || 'Required for staff']"
               />
             </VCol>
             <VCol
+              v-if="form.staff_profile.pay_type === 'hourly'"
               cols="12"
               sm="6"
               md="4"
@@ -1549,6 +1565,7 @@ function rowStatusChip(p: Product) {
               />
             </VCol>
             <VCol
+              v-if="form.staff_profile.pay_type === 'monthly'"
               cols="12"
               sm="6"
               md="4"
@@ -1562,6 +1579,7 @@ function rowStatusChip(p: Product) {
               />
             </VCol>
             <VCol
+              v-if="form.staff_profile.pay_type"
               cols="12"
               sm="6"
               md="4"
@@ -1572,36 +1590,8 @@ function rowStatusChip(p: Product) {
                 type="number"
                 min="0"
                 step="0.01"
-              />
-            </VCol>
-            <VCol
-              cols="12"
-              sm="6"
-              md="4"
-            >
-              <VTextField
-                v-model="form.staff_profile.work_schedule"
-                label="Work schedule"
-                maxlength="100"
-              />
-            </VCol>
-            <VCol
-              cols="12"
-              sm="6"
-              md="4"
-            >
-              <VTextField
-                v-model="form.staff_profile.supervisor_id"
-                label="Supervisor ID"
-                maxlength="36"
-              />
-            </VCol>
-            <VCol cols="12">
-              <VTextarea
-                v-model="form.staff_profile.employment_notes"
-                label="Employment notes"
-                rows="2"
-                auto-grow
+                hint="Defaults to 1.5x when left blank"
+                persistent-hint
               />
             </VCol>
           </VRow>
