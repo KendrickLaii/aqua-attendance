@@ -147,17 +147,20 @@ async def generate_payroll_records(
     year: int,
     month: int,
     product_type: str | None = "staff",
+    product_ids: list[uuid.UUID] | None = Query(default=None),
 ) -> dict:
     """Manually generate payroll records for a month from attendance summaries.
 
-    Admin selects year/month → system aggregates daily attendance summaries
-    per product and inserts/updates payroll records (hours only, pay amounts
-    are left at zero until rates are configured).
+    Admin selects year/month (and optionally specific products) → system
+    aggregates daily attendance summaries per product and inserts/updates
+    payroll records, calculating pay from staff pay-rate fields.
     """
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
 
-    result = await generate_monthly_payroll(db, year=year, month=month, product_type=product_type)
+    result = await generate_monthly_payroll(
+        db, year=year, month=month, product_type=product_type, product_ids=product_ids
+    )
 
     await audit_log_svc.log_audit(
         db,

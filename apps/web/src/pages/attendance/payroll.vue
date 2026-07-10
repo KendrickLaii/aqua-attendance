@@ -4,14 +4,12 @@ import { deletePayrollRecord, generatePayroll, listPayrollRecordsWithTotal, upda
 import type { PayrollRecord } from '@/api/attendance/payroll'
 import { listSummariesWithTotal } from '@/api/attendance/summaries'
 import type { AttendanceSummary } from '@/api/attendance/summaries'
+import { listProducts } from '@/api/attendance/products'
+import type { Product } from '@/api/attendance/products'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatPayrollGenerateMessage } from '@/utils/formatGenerateResult'
 
 definePage({ meta: {} })
-
-const DETAIL_PAGE_SIZE = 100
-const pageSize = ref(40)
-const pageSizeOptions = [10, 20, 40, 60, 100]
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
@@ -29,6 +27,8 @@ const generating = ref(false)
 const generateError = ref('')
 const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
 const page = ref(1)
+const pageSize = ref(40)
+const pageSizeOptions = [10, 20, 40, 60, 100]
 const deleteDialog = ref(false)
 const deleteTarget = ref<PayrollRecord | null>(null)
 
@@ -36,15 +36,20 @@ const selectedRecord = ref<PayrollRecord | null>(null)
 const summaries = ref<AttendanceSummary[]>([])
 const detailTotalCount = ref(0)
 
+// Stepper workflow state (configure = Type+Products+Month, result = invoice cards)
+const step = ref('configure')
+const stepType = ref<'staff' | 'student' | null>(null)
+const stepMonth = ref('')
+const stepProducts = ref<Product[]>([])
+const stepProductsLoading = ref(false)
+const stepProductsError = ref('')
+const stepSelectedIds = ref<string[]>([])
+const stepSearch = ref('')
+const generatedRecords = ref<PayrollRecord[]>([])
+const viewMode = ref<'wizard' | 'records'>('wizard')
+
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
-
 const isDetailView = computed(() => !!selectedRecord.value)
-
-const typeOptions = [
-  { title: 'All types', value: '' },
-  { title: 'Staff', value: 'staff' },
-  { title: 'Student', value: 'student' },
-]
 
 const statusOptions = [
   { title: 'All statuses', value: '' },
@@ -103,9 +108,7 @@ const pageSubtitle = computed(() => {
   if (isDetailView.value && selectedRecord.value)
     return `${selectedRecord.value.product_name || selectedRecord.value.product_code} · ${monthLabel.value}`
 
-  const selectedTypeLabel = typeOptions.find(o => o.value === filterProductType.value)?.title ?? 'All types'
-
-  return `${monthLabel.value} · ${selectedTypeLabel} · ${totalCount.value} record${totalCount.value === 1 ? '' : 's'}`
+  return `${monthLabel.value} · ${totalCount.value} record${totalCount.value === 1 ? '' : 's'}`
 })
 
 const listCaption = computed(() => {
@@ -121,20 +124,6 @@ const listCaption = computed(() => {
   return `${from}–${to} of ${totalCount.value}`
 })
 
-const statCards = computed(() => {
-  const count = records.value.length
-  const regular = records.value.reduce((sum, r) => sum + safeNumber(r.total_regular_hours), 0)
-  const overtime = records.value.reduce((sum, r) => sum + safeNumber(r.total_overtime_hours), 0)
-  const net = records.value.reduce((sum, r) => sum + safeNumber(r.net_pay), 0)
-
-  return [
-    { label: 'Records', value: String(count), hint: 'products this page' },
-    { label: 'Regular hours', value: formatHours(regular), hint: 'sum of this page' },
-    { label: 'OT hours', value: formatHours(overtime), hint: 'sum of this page' },
-    { label: 'Net pay', value: formatCurrency(net), hint: 'sum of this page' },
-  ]
-})
-
 const detailTotals = computed(() => {
   const regular = summaries.value.reduce((sum, s) => sum + safeNumber(s.regular_hours), 0)
   const regularSlots = summaries.value.reduce((sum, s) => sum + safeNumber(s.regular_slots), 0)
@@ -144,6 +133,43 @@ const detailTotals = computed(() => {
 
   return { regular, regularSlots, overtime, otSlots, breakMinutes, days: summaries.value.length }
 })
+
+const stepParsedMonth = computed(() => {
+  const ym = stepMonth.value
+  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
+    return null
+
+  const [year, month] = ym.split('-').map(Number)
+
+  return { year, month }
+})
+
+const stepMonthLabel = computed(() => {
+  const parsed = stepParsedMonth.value
+  if (!parsed)
+    return 'Select a month'
+
+  return new Date(parsed.year, parsed.month - 1, 1).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
+})
+
+const stepFilteredProducts = computed(() => {
+  const q = stepSearch.value.trim().toLowerCase()
+  if (!q)
+    return stepProducts.value
+
+  return stepProducts.value.filter(p =>
+    p.full_name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q),
+  )
+})
+
+const stepAllSelected = computed({
+  get: () => stepProducts.value.length > 0 && stepSelectedIds.value.length === stepProducts.value.length,
+  set: (val: boolean) => {
+    stepSelectedIds.value = val ? stepProducts.value.map(p => p.id) : []
+  },
+})
+
+const stepSelectedCount = computed(() => stepSelectedIds.value.length)
 
 onMounted(async () => {
   authStore.restoreSession()
@@ -160,17 +186,19 @@ onMounted(async () => {
   const now = new Date()
 
   yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  stepMonth.value = yearMonth.value
   await loadRecords()
 })
 
-watch([yearMonth, filterProductType], () => {
+watch([yearMonth, filterStatus], () => {
   selectedRecord.value = null
   summaries.value = []
   loadRecords(true, true)
 })
 
-watch(filterStatus, () => {
-  loadRecords(true, true)
+watch(pageSize, () => {
+  page.value = 1
+  loadRecords(true)
 })
 
 async function loadRecords(isRefresh = false, resetPage = false) {
@@ -224,7 +252,7 @@ async function loadDetail(isRefresh = false) {
       date_from: range.date_from,
       date_to: range.date_to,
       page: 1,
-      page_size: DETAIL_PAGE_SIZE,
+      page_size: 100,
     })
 
     summaries.value = result.items
@@ -303,29 +331,116 @@ async function confirmDelete() {
   }
 }
 
-function onPageSizeChange() {
-  page.value = 1
-  loadRecords(true)
+function resetWizard() {
+  step.value = 'configure'
+  stepType.value = null
+  stepMonth.value = yearMonth.value
+  stepSearch.value = ''
+  stepProducts.value = []
+  stepSelectedIds.value = []
+  stepProductsError.value = ''
+  generateError.value = ''
+  generateSuccess.value = null
+  generatedRecords.value = []
+}
+
+function showWizard() {
+  resetWizard()
+  viewMode.value = 'wizard'
+  selectedRecord.value = null
+  summaries.value = []
+}
+
+function showRecords() {
+  viewMode.value = 'records'
+  loadRecords(true, true)
+}
+
+async function loadStepProducts() {
+  stepProductsLoading.value = true
+  stepProductsError.value = ''
+  try {
+    const items = await listProducts({ product_type: stepType.value, page_size: 200 })
+
+    stepProducts.value = [...items].sort((a, b) => a.full_name.localeCompare(b.full_name))
+    stepSelectedIds.value = stepProducts.value.map(p => p.id)
+  }
+  catch (e) {
+    console.error('Failed to load products for payroll generation', e)
+    stepProductsError.value = formatApiError(e, 'Failed to load products')
+  }
+  finally {
+    stepProductsLoading.value = false
+  }
+}
+
+watch(step, newStep => {
+  if (newStep === 'configure' && stepType.value)
+    loadStepProducts()
+})
+
+watch(stepType, newType => {
+  stepProducts.value = []
+  stepSelectedIds.value = []
+  stepSearch.value = ''
+  if (step.value === 'configure' && newType)
+    loadStepProducts()
+})
+
+function toggleStepProduct(id: string) {
+  const idx = stepSelectedIds.value.indexOf(id)
+  if (idx === -1)
+    stepSelectedIds.value.push(id)
+  else
+    stepSelectedIds.value.splice(idx, 1)
 }
 
 async function handleGenerate() {
-  const parsed = parsedYearMonth.value
+  const parsed = stepParsedMonth.value
   if (!parsed) {
-    generateError.value = 'Select a valid year-month (YYYY-MM)'
+    generateError.value = 'Select a valid month'
+
+    return
+  }
+  if (!stepType.value) {
+    generateError.value = 'Select a payroll type'
+
+    return
+  }
+  if (stepSelectedCount.value === 0) {
+    generateError.value = 'Select at least one product'
 
     return
   }
 
   const { year, month } = parsed
+  const idsToSend = stepAllSelected.value ? undefined : stepSelectedIds.value
+  const type = stepType.value
 
   generating.value = true
   generateError.value = ''
   generateSuccess.value = null
+  generatedRecords.value = []
   try {
-    const result = await generatePayroll(year, month)
+    await generatePayroll(year, month, type, idsToSend)
 
-    generateSuccess.value = formatPayrollGenerateMessage(result, year, month)
-    await loadRecords(true)
+    generateSuccess.value = formatPayrollGenerateMessage({ created: stepSelectedCount.value, updated: 0, skipped: 0 }, year, month)
+    filterProductType.value = type
+    yearMonth.value = stepMonth.value
+
+    const result = await listPayrollRecordsWithTotal({
+      product_type: type,
+      year,
+      month,
+      page: 1,
+      page_size: 200,
+    })
+
+    generatedRecords.value = result.items.filter(r =>
+      idsToSend ? idsToSend.includes(r.product_id) : true,
+    )
+    viewMode.value = 'wizard'
+    step.value = 'result'
   }
   catch (e) {
     console.error('Failed to generate payroll records', e)
@@ -364,145 +479,63 @@ function safeNumber(value: number) {
   return Number.isFinite(value) ? value : 0
 }
 
-function formatCurrency(n: number) {
+function formatCurrency(n: number | null | undefined) {
+  if (n === null || n === undefined)
+    return '-'
+
   return Number.isFinite(n) ? n.toFixed(2) : '-'
 }
 </script>
 
 <template>
   <VContainer>
+    <!-- Header -->
     <VRow
-      class="mb-2"
+      class="mb-4"
       align="center"
     >
       <VCol>
         <h1 class="text-h5 font-weight-bold">
-          Payroll Records
+          Payroll
         </h1>
-        <p class="text-subtitle-2 text-medium-emphasis">
+        <p class="text-subtitle-2 text-medium-emphasis mb-0">
           {{ pageSubtitle }}
         </p>
       </VCol>
       <VCol
         cols="12"
         md="auto"
-        class="d-flex flex-wrap align-center gap-2 justify-md-end"
+        class="d-flex gap-2"
       >
         <VBtn
-          icon
-          variant="tonal"
-          size="small"
-          @click="changeMonth(-1)"
-        >
-          <VIcon>ri-arrow-left-s-line</VIcon>
-        </VBtn>
-        <VTextField
-          v-model="yearMonth"
-          label="Month"
-          type="month"
-          density="compact"
-          hide-details
-          class="month-field"
-        />
-        <VBtn
-          icon
-          variant="tonal"
-          size="small"
-          @click="changeMonth(1)"
-        >
-          <VIcon>ri-arrow-right-s-line</VIcon>
-        </VBtn>
-        <VSelect
-          v-model="filterProductType"
-          :items="typeOptions"
-          label="Type"
-          density="compact"
-          hide-details
-          class="type-field"
-        />
-        <VSelect
-          v-model="filterStatus"
-          :items="statusOptions"
-          item-title="title"
-          item-value="value"
-          label="Status"
-          density="compact"
-          hide-details
-          class="status-field"
-        />
-        <VBtn
+          :variant="viewMode === 'wizard' ? 'flat' : 'tonal'"
           color="primary"
-          :loading="generating"
           prepend-icon="ri-magic-line"
-          title="Build or refresh payroll records from attendance summaries for this month"
-          @click="handleGenerate"
+          @click="showWizard"
         >
           Generate
         </VBtn>
         <VBtn
-          variant="tonal"
+          :variant="viewMode === 'records' ? 'flat' : 'tonal'"
           color="primary"
-          prepend-icon="ri-refresh-line"
-          :loading="refreshing"
-          @click="refresh"
+          prepend-icon="ri-file-list-line"
+          @click="showRecords"
         >
-          Refresh
+          Records
         </VBtn>
       </VCol>
     </VRow>
 
-    <VAlert
-      v-if="generateError"
-      type="error"
-      variant="tonal"
-      density="compact"
-      class="mb-3"
-    >
-      {{ generateError }}
-    </VAlert>
     <VAlert
       v-if="generateSuccess"
       type="success"
       variant="tonal"
       density="compact"
-      class="mb-3"
+      class="mb-4"
       closable
       :title="generateSuccess.title"
       :text="generateSuccess.detail"
       @click:close="generateSuccess = null"
-    />
-
-    <VRow
-      v-if="!isDetailView"
-      class="mb-3"
-      dense
-    >
-      <VCol
-        v-for="card in statCards"
-        :key="card.label"
-        cols="12"
-        sm="6"
-        md="3"
-      >
-        <VCard class="pa-3">
-          <div class="text-caption text-medium-emphasis">
-            {{ card.label }}
-          </div>
-          <div class="text-h6 font-weight-bold">
-            {{ card.value }}
-          </div>
-          <div class="text-caption text-medium-emphasis">
-            {{ card.hint }}
-          </div>
-        </VCard>
-      </VCol>
-    </VRow>
-
-    <VProgressLinear
-      v-if="loading && !refreshing"
-      indeterminate
-      color="primary"
-      class="mb-2"
     />
 
     <VAlert
@@ -510,179 +543,638 @@ function formatCurrency(n: number) {
       type="error"
       variant="tonal"
       density="compact"
-      class="mb-3"
+      class="mb-4"
     >
       {{ loadError }}
     </VAlert>
 
-    <VCard v-if="!isDetailView">
-      <VCardTitle class="d-flex flex-wrap align-center justify-space-between gap-2">
-        <span>Monthly payroll</span>
-        <span class="text-caption text-medium-emphasis">
-          {{ listCaption || monthLabel }}
-        </span>
-      </VCardTitle>
-      <div class="payroll-table-scroll">
-        <VTable
-          class="payroll-table"
-          density="compact"
-          hover
-        >
-          <thead>
-            <tr>
-              <th>
-                Product
-              </th>
-              <th class="text-end">
-                Regular
-              </th>
-              <th class="text-end">
-                Reg slots
-              </th>
-              <th class="text-end">
-                OT
-              </th>
-              <th class="text-end">
-                OT slots
-              </th>
-              <th class="text-end">
-                Base
-              </th>
-              <th class="text-end">
-                OT Pay
-              </th>
-              <th class="text-end">
-                Gross
-              </th>
-              <th class="text-end">
-                Net
-              </th>
-              <th>
-                Status
-              </th>
-              <th class="col-actions" />
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="r in records"
-              :key="r.id"
-              class="payroll-row"
-              @click="openDetail(r)"
-            >
-              <td>
-                <div class="font-weight-medium">
-                  {{ r.product_name || '—' }}
-                </div>
-                <div
-                  v-if="r.product_code"
-                  class="text-caption text-medium-emphasis"
-                >
-                  {{ r.product_code }}
-                </div>
-              </td>
-              <td class="text-end">
-                {{ formatHours(r.total_regular_hours) }}
-              </td>
-              <td class="text-end text-medium-emphasis">
-                {{ r.regular_slots }}
-              </td>
-              <td class="text-end">
-                {{ formatHours(r.total_overtime_hours) }}
-              </td>
-              <td class="text-end text-medium-emphasis">
-                {{ r.ot_slots }}
-              </td>
-              <td class="text-end">
-                {{ formatCurrency(r.base_salary) }}
-              </td>
-              <td class="text-end">
-                {{ formatCurrency(r.overtime_pay) }}
-              </td>
-              <td class="text-end">
-                {{ formatCurrency(r.gross_pay) }}
-              </td>
-              <td class="text-end">
-                {{ formatCurrency(r.net_pay) }}
-              </td>
-              <td>
-                <VChip
-                  :color="statusColorMap[r.status] ?? 'grey'"
-                  size="small"
-                  label
-                >
-                  {{ r.status }}
-                </VChip>
-              </td>
-              <td class="col-actions">
-                <div class="d-flex flex-nowrap align-center">
-                  <VBtn
-                    v-if="r.status === 'draft' || r.status === 'calculated'"
-                    size="small"
-                    variant="text"
-                    color="success"
-                    @click.stop="updateStatus(r, 'approved')"
-                  >
-                    Approve
-                  </VBtn>
-                  <VBtn
-                    v-if="r.status === 'approved'"
-                    size="small"
-                    variant="text"
-                    color="primary"
-                    @click.stop="updateStatus(r, 'paid')"
-                  >
-                    Pay
-                  </VBtn>
-                  <VBtn
-                    v-if="authStore.isSuperAdmin"
-                    icon
-                    size="small"
-                    variant="text"
-                    color="error"
-                    @click.stop="openDeleteDialog(r)"
-                  >
-                    <VIcon>ri-delete-bin-line</VIcon>
-                  </VBtn>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="records.length === 0 && !loading">
-              <td
-                colspan="11"
-                class="text-center text-medium-emphasis py-6"
-              >
-                No payroll records found for {{ monthLabel }}. Click Generate to build them from attendance summaries.
-              </td>
-            </tr>
-          </tbody>
-        </VTable>
-      </div>
-      <div class="d-flex align-center justify-space-between pa-3">
-        <div class="d-flex align-center gap-2">
-          <span class="text-caption text-medium-emphasis">{{ listCaption }}</span>
-          <VSelect
-            v-model="pageSize"
-            :items="pageSizeOptions"
-            density="compact"
-            variant="plain"
-            hide-details
-            style="max-width: 80px;"
-            @update:model-value="onPageSizeChange"
+    <!-- Wizard mode -->
+    <template v-if="viewMode === 'wizard' && !isDetailView">
+      <VStepper
+        v-model="step"
+        class="payroll-stepper"
+      >
+        <VStepperHeader>
+          <VStepperItem
+            title="Configure"
+            value="configure"
+            editable
           />
-          <span class="text-caption text-medium-emphasis">per page</span>
-        </div>
-        <VPagination
-          v-model="page"
-          :length="totalPages"
-          :total-visible="5"
-          density="compact"
-          size="small"
-          @update:model-value="loadRecords(true)"
-        />
-      </div>
-    </VCard>
+          <VDivider />
+          <VStepperItem
+            title="Result"
+            value="result"
+            editable
+          />
+        </VStepperHeader>
 
+        <VStepperWindow>
+          <!-- Step 1: Configure (Type + Products + Month) -->
+          <VStepperWindowItem value="configure">
+            <div class="pa-4">
+              <h2 class="text-h6 mb-4">
+                Configure payroll run
+              </h2>
+
+              <VAlert
+                v-if="generateError"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="mb-4"
+              >
+                {{ generateError }}
+              </VAlert>
+
+              <!-- Type -->
+              <h3 class="text-subtitle-2 font-weight-medium mb-2">
+                1. Payroll type
+              </h3>
+              <VRow dense>
+                <VCol
+                  cols="12"
+                  sm="6"
+                >
+                  <VCard
+                    :variant="stepType === 'staff' ? 'flat' : 'outlined'"
+                    :color="stepType === 'staff' ? 'primary' : undefined"
+                    class="pa-6 text-center cursor-pointer type-card"
+                    :class="{ 'text-white': stepType === 'staff' }"
+                    @click="stepType = 'staff'"
+                  >
+                    <VIcon size="40">
+                      ri-user-line
+                    </VIcon>
+                    <div
+                      class="text-h6 mt-3"
+                      :class="stepType === 'staff' ? 'text-white' : ''"
+                    >
+                      Staff
+                    </div>
+                    <div
+                      class="text-body-2"
+                      :class="stepType === 'staff' ? 'text-white' : 'text-medium-emphasis'"
+                    >
+                      Generate salary from attendance
+                    </div>
+                  </VCard>
+                </VCol>
+                <VCol
+                  cols="12"
+                  sm="6"
+                >
+                  <VCard
+                    :variant="stepType === 'student' ? 'flat' : 'outlined'"
+                    :color="stepType === 'student' ? 'primary' : undefined"
+                    class="pa-6 text-center cursor-pointer type-card"
+                    :class="{ 'text-white': stepType === 'student' }"
+                    @click="stepType = 'student'"
+                  >
+                    <VIcon size="40">
+                      ri-graduation-cap-line
+                    </VIcon>
+                    <div
+                      class="text-h6 mt-3"
+                      :class="stepType === 'student' ? 'text-white' : ''"
+                    >
+                      Student
+                    </div>
+                    <div
+                      class="text-body-2"
+                      :class="stepType === 'student' ? 'text-white' : 'text-medium-emphasis'"
+                    >
+                      Generate allowance or records
+                    </div>
+                  </VCard>
+                </VCol>
+              </VRow>
+
+              <!-- Products -->
+              <template v-if="stepType">
+                <h3 class="text-subtitle-2 font-weight-medium mb-2 mt-6">
+                  2. {{ stepType === 'staff' ? 'Staff' : 'Student' }} products
+                </h3>
+                <div class="d-flex align-center gap-3 mb-3">
+                  <VTextField
+                    v-model="stepSearch"
+                    label="Search by name or code"
+                    density="compact"
+                    prepend-inner-icon="ri-search-line"
+                    clearable
+                    hide-details
+                    style="max-inline-size: 280px;"
+                  />
+                  <VCheckbox
+                    v-model="stepAllSelected"
+                    label="Select all"
+                    density="compact"
+                    hide-details
+                  />
+                  <VSpacer />
+                  <span class="text-caption text-medium-emphasis">
+                    {{ stepProducts.length }} loaded · {{ stepSelectedCount }} selected
+                  </span>
+                </div>
+
+                <VProgressLinear
+                  v-if="stepProductsLoading"
+                  indeterminate
+                  color="primary"
+                  class="mb-2"
+                />
+                <VAlert
+                  v-else-if="stepProductsError"
+                  type="error"
+                  variant="tonal"
+                  density="compact"
+                  class="mb-2"
+                >
+                  {{ stepProductsError }}
+                </VAlert>
+
+                <div class="product-list">
+                  <VListItem
+                    v-for="p in stepFilteredProducts"
+                    :key="p.id"
+                    :title="p.full_name"
+                    :subtitle="p.code"
+                    density="comfortable"
+                    class="product-list-item"
+                    @click="toggleStepProduct(p.id)"
+                  >
+                    <template #prepend>
+                      <VCheckbox
+                        :model-value="stepSelectedIds.includes(p.id)"
+                        density="comfortable"
+                        hide-details
+                        @click.stop="toggleStepProduct(p.id)"
+                      />
+                    </template>
+                  </VListItem>
+                  <div
+                    v-if="!stepProductsLoading && stepFilteredProducts.length === 0"
+                    class="text-center text-medium-emphasis py-8"
+                  >
+                    No {{ stepType }} products found.
+                  </div>
+                </div>
+
+                <!-- Month -->
+                <h3 class="text-subtitle-2 font-weight-medium mb-2 mt-6">
+                  3. Payroll month
+                </h3>
+                <div
+                  class="d-flex align-center gap-4 mb-4 flex-wrap"
+                  :class="{ 'opacity-50': stepSelectedCount === 0 }"
+                >
+                  <VTextField
+                    v-model="stepMonth"
+                    label="Month"
+                    type="month"
+                    density="compact"
+                    :disabled="stepSelectedCount === 0"
+                    style="max-inline-size: 220px;"
+                  />
+                  <VAlert
+                    type="info"
+                    variant="tonal"
+                    density="compact"
+                    class="mb-0"
+                  >
+                    Generating for
+                    <strong>{{ stepSelectedCount }}</strong>
+                    {{ stepType }} product{{ stepSelectedCount === 1 ? '' : 's' }}
+                    · <strong>{{ stepMonthLabel }}</strong>
+                  </VAlert>
+                </div>
+
+                <div class="d-flex justify-end mt-6">
+                  <VBtn
+                    color="primary"
+                    :loading="generating"
+                    :disabled="stepSelectedCount === 0"
+                    prepend-icon="ri-magic-line"
+                    @click="handleGenerate"
+                  >
+                    Generate payroll
+                  </VBtn>
+                </div>
+              </template>
+            </div>
+          </VStepperWindowItem>
+
+          <!-- Step 2: Invoice-style results -->
+          <VStepperWindowItem value="result">
+            <div class="pa-4">
+              <div class="d-flex align-center justify-space-between mb-4">
+                <div>
+                  <h2 class="text-h6 mb-0">
+                    Payroll result
+                  </h2>
+                  <p class="text-body-2 text-medium-emphasis mb-0">
+                    {{ stepMonthLabel }} · {{ generatedRecords.length }} record{{ generatedRecords.length === 1 ? '' : 's' }}
+                  </p>
+                </div>
+                <VBtn
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="ri-add-line"
+                  @click="resetWizard"
+                >
+                  New run
+                </VBtn>
+              </div>
+
+              <VProgressLinear
+                v-if="generating"
+                indeterminate
+                color="primary"
+                class="mb-4"
+              />
+
+              <VRow v-if="!generating">
+                <VCol
+                  v-for="record in generatedRecords"
+                  :key="record.id"
+                  cols="12"
+                  md="6"
+                  xl="4"
+                >
+                  <VCard class="payroll-invoice">
+                    <VCardItem class="invoice-header">
+                      <template #title>
+                        <div class="d-flex align-center gap-2">
+                          <span class="text-h6 font-weight-bold">
+                            {{ record.product_name || '—' }}
+                          </span>
+                          <VChip
+                            :color="statusColorMap[record.status] ?? 'grey'"
+                            size="small"
+                            label
+                          >
+                            {{ record.status }}
+                          </VChip>
+                        </div>
+                      </template>
+                      <template #subtitle>
+                        <div class="text-medium-emphasis">
+                          {{ record.product_code || record.product_id }}
+                        </div>
+                      </template>
+                    </VCardItem>
+                    <VDivider />
+                    <VCardText class="invoice-body">
+                      <div class="d-flex justify-space-between mb-4">
+                        <div>
+                          <div class="text-caption text-medium-emphasis">
+                            Period
+                          </div>
+                          <div class="font-weight-medium">
+                            {{ record.payroll_period_start }} – {{ record.payroll_period_end }}
+                          </div>
+                        </div>
+                        <div class="text-end">
+                          <div class="text-caption text-medium-emphasis">
+                            Work days
+                          </div>
+                          <div class="font-weight-medium">
+                            {{ record.total_work_days }}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="invoice-grid">
+                        <div class="invoice-cell">
+                          <span class="text-caption text-medium-emphasis">Regular</span>
+                          <span class="font-weight-medium">{{ formatHours(record.total_regular_hours) }} h</span>
+                          <span class="text-caption text-medium-emphasis">{{ record.regular_slots }} slots</span>
+                        </div>
+                        <div class="invoice-cell">
+                          <span class="text-caption text-medium-emphasis">Overtime</span>
+                          <span class="font-weight-medium">{{ formatHours(record.total_overtime_hours) }} h</span>
+                          <span class="text-caption text-medium-emphasis">{{ record.ot_slots }} slots</span>
+                        </div>
+                        <div class="invoice-cell">
+                          <span class="text-caption text-medium-emphasis">Rate</span>
+                          <span class="font-weight-medium">{{ formatCurrency(record.hourly_rate_snapshot) }}/hr</span>
+                          <span class="text-caption text-medium-emphasis">OT ×{{ record.ot_multiplier_snapshot ?? 1.5 }}</span>
+                        </div>
+                      </div>
+
+                      <VDivider class="my-3" />
+
+                      <div class="invoice-line">
+                        <span>Base salary</span>
+                        <span class="font-weight-medium">{{ formatCurrency(record.base_salary) }}</span>
+                      </div>
+                      <div class="invoice-line">
+                        <span>Overtime pay</span>
+                        <span class="font-weight-medium">{{ formatCurrency(record.overtime_pay) }}</span>
+                      </div>
+                      <div class="invoice-line">
+                        <span>Holiday pay</span>
+                        <span class="font-weight-medium">{{ formatCurrency(record.holiday_pay) }}</span>
+                      </div>
+                      <div class="invoice-line total">
+                        <span>Gross pay</span>
+                        <span class="font-weight-bold">{{ formatCurrency(record.gross_pay) }}</span>
+                      </div>
+                      <div class="invoice-line grand">
+                        <span>Net pay</span>
+                        <span class="text-h6 font-weight-bold text-primary">{{ formatCurrency(record.net_pay) }}</span>
+                      </div>
+                    </VCardText>
+                    <VDivider />
+                    <VCardActions class="justify-end">
+                      <VBtn
+                        v-if="record.status === 'draft' || record.status === 'calculated'"
+                        size="small"
+                        variant="text"
+                        color="success"
+                        @click="updateStatus(record, 'approved')"
+                      >
+                        Approve
+                      </VBtn>
+                      <VBtn
+                        v-if="record.status === 'approved'"
+                        size="small"
+                        variant="text"
+                        color="primary"
+                        @click="updateStatus(record, 'paid')"
+                      >
+                        Pay
+                      </VBtn>
+                      <VBtn
+                        size="small"
+                        variant="text"
+                        @click="openDetail(record)"
+                      >
+                        Details
+                      </VBtn>
+                      <VBtn
+                        v-if="authStore.isSuperAdmin"
+                        icon
+                        size="small"
+                        variant="text"
+                        color="error"
+                        @click.stop="openDeleteDialog(record)"
+                      >
+                        <VIcon>ri-delete-bin-line</VIcon>
+                      </VBtn>
+                    </VCardActions>
+                  </VCard>
+                </VCol>
+              </VRow>
+
+              <div
+                v-if="!generating && generatedRecords.length === 0"
+                class="text-center text-medium-emphasis py-8"
+              >
+                No payroll records generated. Go back and try again.
+              </div>
+            </div>
+          </VStepperWindowItem>
+        </VStepperWindow>
+      </VStepper>
+    </template>
+
+    <!-- Records mode -->
+    <template v-else-if="viewMode === 'records' && !isDetailView">
+      <VRow
+        class="mb-3"
+        dense
+      >
+        <VCol
+          cols="12"
+          sm="6"
+          md="3"
+        >
+          <VTextField
+            v-model="yearMonth"
+            label="Month"
+            type="month"
+            density="compact"
+            hide-details
+          />
+        </VCol>
+        <VCol
+          cols="12"
+          sm="6"
+          md="3"
+        >
+          <VSelect
+            v-model="filterStatus"
+            :items="statusOptions"
+            item-title="title"
+            item-value="value"
+            label="Status"
+            density="compact"
+            hide-details
+          />
+        </VCol>
+        <VCol
+          cols="12"
+          sm="6"
+          md="3"
+        >
+          <VSelect
+            v-model="filterProductType"
+            :items="[{ title: 'Staff', value: 'staff' }, { title: 'Student', value: 'student' }]"
+            item-title="title"
+            item-value="value"
+            label="Type"
+            density="compact"
+            hide-details
+          />
+        </VCol>
+        <VCol
+          cols="12"
+          sm="6"
+          md="3"
+          class="d-flex align-center"
+        >
+          <VBtn
+            variant="tonal"
+            color="primary"
+            prepend-icon="ri-refresh-line"
+            :loading="refreshing"
+            @click="refresh"
+          >
+            Refresh
+          </VBtn>
+        </VCol>
+      </VRow>
+
+      <VProgressLinear
+        v-if="loading && !refreshing"
+        indeterminate
+        color="primary"
+        class="mb-2"
+      />
+
+      <VCard>
+        <VCardTitle class="d-flex flex-wrap align-center justify-space-between gap-2">
+          <span>Monthly payroll records</span>
+          <span class="text-caption text-medium-emphasis">{{ listCaption || monthLabel }}</span>
+        </VCardTitle>
+        <div class="payroll-table-scroll">
+          <VTable
+            class="payroll-table"
+            density="compact"
+            hover
+          >
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th class="text-end">
+                  Regular
+                </th>
+                <th class="text-end">
+                  Reg slots
+                </th>
+                <th class="text-end">
+                  OT
+                </th>
+                <th class="text-end">
+                  OT slots
+                </th>
+                <th class="text-end">
+                  Base
+                </th>
+                <th class="text-end">
+                  OT Pay
+                </th>
+                <th class="text-end">
+                  Gross
+                </th>
+                <th class="text-end">
+                  Net
+                </th>
+                <th>Status</th>
+                <th class="col-actions" />
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="r in records"
+                :key="r.id"
+                class="payroll-row"
+                @click="openDetail(r)"
+              >
+                <td>
+                  <div class="font-weight-medium">
+                    {{ r.product_name || '—' }}
+                  </div>
+                  <div
+                    v-if="r.product_code"
+                    class="text-caption text-medium-emphasis"
+                  >
+                    {{ r.product_code }}
+                  </div>
+                </td>
+                <td class="text-end">
+                  {{ formatHours(r.total_regular_hours) }}
+                </td>
+                <td class="text-end text-medium-emphasis">
+                  {{ r.regular_slots }}
+                </td>
+                <td class="text-end">
+                  {{ formatHours(r.total_overtime_hours) }}
+                </td>
+                <td class="text-end text-medium-emphasis">
+                  {{ r.ot_slots }}
+                </td>
+                <td class="text-end">
+                  {{ formatCurrency(r.base_salary) }}
+                </td>
+                <td class="text-end">
+                  {{ formatCurrency(r.overtime_pay) }}
+                </td>
+                <td class="text-end">
+                  {{ formatCurrency(r.gross_pay) }}
+                </td>
+                <td class="text-end">
+                  {{ formatCurrency(r.net_pay) }}
+                </td>
+                <td>
+                  <VChip
+                    :color="statusColorMap[r.status] ?? 'grey'"
+                    size="small"
+                    label
+                  >
+                    {{ r.status }}
+                  </VChip>
+                </td>
+                <td class="col-actions">
+                  <div class="d-flex flex-nowrap align-center">
+                    <VBtn
+                      v-if="r.status === 'draft' || r.status === 'calculated'"
+                      size="small"
+                      variant="text"
+                      color="success"
+                      @click.stop="updateStatus(r, 'approved')"
+                    >
+                      Approve
+                    </VBtn>
+                    <VBtn
+                      v-if="r.status === 'approved'"
+                      size="small"
+                      variant="text"
+                      color="primary"
+                      @click.stop="updateStatus(r, 'paid')"
+                    >
+                      Pay
+                    </VBtn>
+                    <VBtn
+                      v-if="authStore.isSuperAdmin"
+                      icon
+                      size="small"
+                      variant="text"
+                      color="error"
+                      @click.stop="openDeleteDialog(r)"
+                    >
+                      <VIcon>ri-delete-bin-line</VIcon>
+                    </VBtn>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="records.length === 0 && !loading">
+                <td
+                  colspan="11"
+                  class="text-center text-medium-emphasis py-6"
+                >
+                  No payroll records found for {{ monthLabel }}.
+                </td>
+              </tr>
+            </tbody>
+          </VTable>
+        </div>
+        <div class="d-flex align-center justify-space-between pa-3">
+          <div class="d-flex align-center gap-2">
+            <span class="text-caption text-medium-emphasis">{{ listCaption }}</span>
+            <VSelect
+              v-model="pageSize"
+              :items="pageSizeOptions"
+              density="compact"
+              variant="plain"
+              hide-details
+              style="max-width: 80px;"
+            />
+            <span class="text-caption text-medium-emphasis">per page</span>
+          </div>
+          <VPagination
+            v-model="page"
+            :length="totalPages"
+            :total-visible="5"
+            density="compact"
+            size="small"
+            @update:model-value="loadRecords(true)"
+          />
+        </div>
+      </VCard>
+    </template>
+
+    <!-- Detail view -->
     <VCard v-else-if="selectedRecord">
       <VCardTitle class="d-flex flex-wrap align-center justify-space-between gap-2">
         <div class="d-flex flex-wrap align-center gap-2">
@@ -691,7 +1183,7 @@ function formatCurrency(n: number) {
             prepend-icon="ri-arrow-left-line"
             @click="backToOverview"
           >
-            Back to overview
+            Back
           </VBtn>
           <div>
             <div class="font-weight-medium">
@@ -740,15 +1232,9 @@ function formatCurrency(n: number) {
         >
           <thead>
             <tr>
-              <th>
-                Date
-              </th>
-              <th>
-                First In
-              </th>
-              <th>
-                Last Out
-              </th>
+              <th>Date</th>
+              <th>First In</th>
+              <th>Last Out</th>
               <th class="text-end">
                 Regular
               </th>
@@ -764,9 +1250,7 @@ function formatCurrency(n: number) {
               <th class="text-end">
                 Break
               </th>
-              <th>
-                Status
-              </th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -860,6 +1344,7 @@ function formatCurrency(n: number) {
       </div>
     </VCard>
 
+    <!-- Delete dialog -->
     <VDialog
       v-model="deleteDialog"
       max-width="400"
@@ -892,16 +1377,68 @@ function formatCurrency(n: number) {
 </template>
 
 <style scoped lang="scss">
-.month-field {
-  inline-size: 160px;
+.payroll-stepper {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
 }
 
-.type-field {
-  inline-size: 160px;
+.type-card {
+  transition: transform 0.15s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
 }
 
-.status-field {
-  inline-size: 160px;
+.product-list {
+  max-block-size: 340px;
+  overflow-y: auto;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 4px;
+}
+
+.product-list-item {
+  cursor: pointer;
+}
+
+.payroll-invoice {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.invoice-header {
+  padding-block: 16px;
+}
+
+.invoice-body {
+  padding-block: 16px;
+}
+
+.invoice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.invoice-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.invoice-line {
+  display: flex;
+  justify-content: space-between;
+  padding-block: 4px;
+}
+
+.invoice-line.total {
+  border-top: 1px dashed rgba(var(--v-border-color), var(--v-border-opacity));
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.invoice-line.grand {
+  margin-top: 4px;
 }
 
 .payroll-table-scroll {

@@ -62,8 +62,12 @@ async def generate_monthly_payroll(
     year: int,
     month: int,
     product_type: str | None = None,
+    product_ids: list | None = None,
 ) -> dict:
     """Generate payroll records for every product with attendance summaries.
+
+    If `product_ids` is provided, only those products are processed
+    (still filtered by `product_type` when given).
 
     Returns:
         dict with counts: {"created": int, "updated": int, "skipped": int}
@@ -75,6 +79,8 @@ async def generate_monthly_payroll(
         AttendanceSummary.summary_date >= first_day,
         AttendanceSummary.summary_date <= last_day,
     )
+    if product_ids:
+        q = q.where(AttendanceSummary.product_id.in_(product_ids))
     if product_type:
         q = q.join(AttendanceSummary.product).where(Product.product_type == product_type)
 
