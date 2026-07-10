@@ -495,4 +495,4 @@ ot_hours      = ot_slots * 0.25
 | `payroll_records` | 薪資計算結果快照 | 工資單 |
 | `audit_logs` | 哪位管理員改了哪筆資料 | 監視器錄影 |
 
-**Generate 與瀏覽分離：** 列表與 overview 直接讀 `attendance_summaries`；`POST .../generate` 僅從 `attendance_events` 重算**選中月份**並 upsert。Seed 可直寫彙總而無打卡事件 — 詳見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)。
+**Generate 與瀏覽分離：** 列表與 overview 直接讀 `attendance_summaries`；`POST .../generate` 僅從 `attendance_events` 重算**選中月份**並 upsert。Seed 可直寫彙總而無打卡事件 — 詳見 [attendance-summaries.md](attendance-summaries.md)。

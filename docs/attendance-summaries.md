@@ -3,7 +3,7 @@
 > 最後更新：2026-07-08  
 > 涵蓋 Summaries 頁面重構、Payroll 頁面重構、後端 overview 聚合、Generate 流程與 seed 測試資料。
 
-本文件為 **Summaries / Payroll 月度流程** 的單一參考來源（SSOT）。資料庫欄位定義見 [DATABASE_CHANGES.md](DATABASE_CHANGES.md)；前端對齊總覽見 [frontend-alignment-plan.md](frontend-alignment-plan.md)。
+本文件為 **Summaries / Payroll 月度流程** 的單一參考來源（SSOT）。資料庫欄位定義見 [database-changes.md](database-changes.md)；前端對齊總覽見 [project-handbook.md](project-handbook.md)。
 
 ---
 
@@ -267,8 +267,8 @@ A：重構後列表會根據頂部選中的月份篩選，與 Summaries 的「�
 
 ## 7. 相關文件
 
-- [DATABASE_CHANGES.md](DATABASE_CHANGES.md) — ER、`attendance_summaries` 欄位
-- [BACKEND_REVIEW.md](BACKEND_REVIEW.md) — 後端修復與待辦
-- [frontend-alignment-plan.md](frontend-alignment-plan.md) — 前端對齊狀態
+- [database-changes.md](database-changes.md) — ER、`attendance_summaries` 欄位
+- [known-gaps.md](known-gaps.md) — 已知問題追蹤
+- [project-handbook.md](project-handbook.md) — 前端對齊狀態
 - [../apps/api/README.md](../apps/api/README.md) — seed 與 API 啟動
 - [../apps/web/README.md](../apps/web/README.md) — Web 路由

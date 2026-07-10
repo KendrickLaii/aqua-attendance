@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-06-16。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-07-10。
 
 ---
 
@@ -15,6 +15,7 @@
 7. [Mobile 開發與發布](#7-mobile-開發與發布)
 8. [發布記錄](#8-發布記錄)
 9. [附錄](#9-附錄)
+10. [資料庫 ER 圖](#10-資料庫-er-圖)
 
 ---
 
@@ -48,7 +49,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | **Product** (`products`) | 可簽到的實體：`product_type` = `staff`、`student`、`device`、`goods` |
 | **Profile** (`student_profiles` / `staff_profiles`) | 類型專屬資料：學生（學校、監護人）/ 員工（雇用類型、薪資） |
 | **Attendance event** | `check_in`、`check_out`、`manual_correction` 或 `auto_checkout` |
-| **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md) |
+| **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 [attendance-summaries.md](attendance-summaries.md) |
 | **Payroll record** | 薪資計算結果快照（`payroll_records`） |
 | **Audit log** | 資料異動稽核記錄（`audit_logs`） |
 
@@ -100,6 +101,17 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | `GET /api/attendance` | Admin |
 | `POST /api/attendance/manual` | Admin |
 | `GET /api/attendance/export/csv` | Admin |
+| `GET /api/attendance/stats` | Admin |
+| `GET /api/attendance-summaries` | Admin |
+| `GET /api/attendance-summaries/overview` | Admin |
+| `POST /api/attendance-summaries/generate` | Admin |
+| `GET/POST/PATCH /api/payroll-records` | Admin |
+| `POST /api/payroll-records/generate` | Admin |
+| `GET/PATCH /api/notifications` | Admin |
+| `GET /api/audit-logs` | Superadmin |
+| `POST /api/auto-checkout/run` | Admin |
+| `GET/POST/PATCH /api/staff-profiles` | Admin |
+| `GET/POST/PATCH /api/student-profiles` | Admin |
 | `GET /api/health` | 無 |
 
 ### 1.7 環境變數
@@ -119,6 +131,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | `ENV` | `development` | `production` 會啟用密鑰驗證 |
 | `LOGIN_RATE_LIMIT` | `5/minute` | 登入限流 |
 | `SCAN_RATE_LIMIT` | `30/minute` | 掃描限流 |
+| `REDIS_URL` | `redis://redis:6379/0` | Rate limit 共用儲存（多副本） |
 
 **Web** (`apps/web/.env`)：`VITE_ATTENDANCE_API_URL` = `http://localhost:8000/api`（生產 image 在 build 時烘焙）
 
@@ -596,184 +609,50 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## 5. 已知缺口與代碼審查
 
-> 本節統合 `KNOWN-GAPS.md` 與 `CODE-REVIEW-2026-06.md`，去除重複項目，並標註完成狀態。
-> 嚴重度：🔴 High（上線前或盡快處理）、🟡 Medium（上線前應補）、🟢 Low（可延後）
+> 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
+> 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-07-03 更新**：Summaries 頁面主從式重構、`GET /overview`、Payroll `POST /generate`、seed bulk 測試資料 — 見 [ATTENDANCE_SUMMARIES.md](ATTENDANCE_SUMMARIES.md)。  
-> **2026-06-16 更新**：後端大量修復已完成（StaffProfile 外鍵歧義、`employment_type` 遷移、profile 一對一關係、通知/彙總/薪資/稽核端點、OT 計算、auto_checkout 等），詳見 [BACKEND_REVIEW.md](BACKEND_REVIEW.md)。
+> **2026-07-10 更新**：Summaries / Payroll 重構完成（主從式 UI、overview 聚合、Generate upsert、薪資率計算、seed bulk 測試資料）— 見 [attendance-summaries.md](attendance-summaries.md)。多項 Medium/Low 問題已修復。  
+> **2026-06-16 更新**：後端大量修復已完成（StaffProfile 外鍵歧義、`employment_type` 遷移、profile 一對一關係、通知/彙總/薪資/稽核端點、OT 計算、auto_checkout 等），詳見 [known-gaps.md](known-gaps.md)。
 
-### 5.1 🔴 High — 立即處理
+### 5.1 優先行動計劃
 
-#### #1 `recorded_at` 無索引（已修 2026-06）
-
-- **位置**：`apps/api/app/models/attendance.py`
-- **問題**：列表/匯出按 `recorded_at` 排序 + 日期過濾，但欄位無索引。資料量大後會全表掃描。
-- **修法**：Migration `013` 新增 `ix_attendance_events_recorded_at` 與複合 `ix_attendance_events_product_recorded`；model `__table_args__` 同步。
-
-#### #2 Mobile refresh 競態（已修 2026-06）
-
-- **位置**：`apps/mobile/src/services/api.ts`
-- **問題**：多個並發 401 各自呼叫 `/auth/refresh`；rotation 為 consume-once，僅一個成功，其餘被登出。
-- **修法**：新增 `refreshAccessToken()` single-flight（module-level `refreshing` promise）。並發 401 共享同一次 refresh。
-
-#### #3 Web refresh 競態（已修 2026-06）
-
-- **位置**：`apps/web/src/utils/attendanceApi.ts`
-- **問題**：`refreshAttendanceTokens()` 無互斥，並發 401 各自 refresh，互相作廢 token。
-- **修法**：以 module-level `attendanceRefreshing` promise 包住 `refreshAttendanceTokens()`。
-
-#### #4 Rate limit 使用記憶體儲存（已修 2026-06）
-
-- **位置**：`apps/api/app/limiter.py`
-- **問題**：`Limiter(get_remote_address)` 預設 in-memory，多副本（load balancer）時各副本獨立計數，限流失效。
-- **修法**：新增 `settings.REDIS_URL`；設定後 `Limiter` 改用 Redis storage backend（`storage_uri`），多副本共享計數。未設定時 fallback in-memory（保留單機本地開發）。`docker-compose.yml` 與 `deploy/docker-compose.prod.yml` 已加入 `redis` service（prod 啟用 AOF 持久化），api 預設 `REDIS_URL=redis://redis:6379/0`。`requirements.txt` 加入 `redis==5.2.1`。
-
-#### #5 掃描競態保護（已修 2026-06，但有細節注意）
-
-- **位置**：`apps/api/app/services/attendance.py`
-- **問題**：`_resolve_product_for_scan` 已使用 PostgreSQL `with_for_update()` 行鎖。但 `record_scan` 內部的 debounce `find_recent_event` → `INSERT` 之間仍有微小 race window。
-- **建議**：確認呼叫鏈確保行鎖覆蓋整個 debounce + INSERT 流程。
-
----
-
-### 5.2 🟡 Medium — 上線前應補
-
-#### #6 Compose 無 API/Web healthcheck
-
-- **位置**：`deploy/docker-compose.prod.yml`
-- **問題**：僅 `db` 有 healthcheck；`/api/health` 已存在但未使用。
-- **建議**：為 api/web 加 healthcheck，Caddy `depends_on` 改 `condition: service_healthy`。
-
-#### #7 API Dockerfile 以 root 執行、無 HEALTHCHECK
-
-- **位置**：`apps/api/Dockerfile`
-- **問題**：無 `USER`、無 `HEALTHCHECK`。
-- **建議**：加非 root user 與 `HEALTHCHECK` curl `/api/health`。
-
-#### #8 Refresh token 存非 HttpOnly cookie
-
-- **位置**：`apps/web/src/utils/attendanceSession.ts`
-- **問題**：Web 用 `useCookie('refreshToken')`（JS 可讀），大型模板依賴樹增加 XSS 面。Mobile 用 SecureStore 已 OK。
-- **建議**：改後端設 HttpOnly + Secure + SameSite cookie。
-
-#### #9 CSV 匯出非真串流
-
-- **位置**：`apps/api/app/services/attendance.py`
-- **問題**：先把最多 50k 行全載入記憶體再 `StreamingResponse`，記憶體峰值高。
-- **建議**：改逐頁 yield 寫入，真正串流。
-
-#### #10 無日誌 / 監控 / 追蹤
-
-- **問題**：無 `logging`/`structlog` 設定、無 Sentry、無 request ID。
-- **建議**：加結構化 logging + request ID middleware；接 Sentry（可選）。
-
-#### #11 QR token 無過期
-
-- **位置**：`apps/api/app/services/qr.py`
-- **問題**：設計上無 `exp`，靠 `qr_token_version` 手動輪替。洩漏後在輪替前一直有效。
-- **建議**：接受設計，但文件化遺失/外洩處理流程，或加長效 `exp`（如 1 年）作雙保險。
-
-#### #12 登入撤銷該用戶所有 refresh token
-
-- **位置**：`apps/api/app/routers/auth.py:47`
-- **問題**：`login` 呼叫 `revoke_all_refresh_tokens_for_user` → 單一 session，手機登入會踢掉 Web。
-- **建議**：確認是否符合需求；若要多裝置，改為僅清過期 token。
-
-#### #13 API 錯誤格式不一致（⚠️ 全新發現）
-
-- **位置**：`apps/api/app/main.py`、`apps/mobile/src/services/api.ts`
-- **問題**：FastAPI 預設回 `detail`，但 `slowapi` 的 `RateLimitExceeded` 回 `error`。Web 與 Mobile 各自做 fallback 解析。
-- **建議**：在自訂 exception handler 中統一回傳 `detail`。
-
-#### #14 測試覆蓋缺口
-
-- **問題**：~53 項測試，RBAC 僅部分；無 refresh 競態測試；Web/Mobile 零測試。
-- **建議**：補完整 RBAC 矩陣 + 並發 refresh 測試；Web 加 Vitest 關鍵路徑。
-
----
-
-### 5.3 🟢 Low — 可延後
-
-#### #15 CASL admin 與 superadmin 權限相同
-
-- **位置**：`apps/web/src/utils/attendanceCasl.ts`
-- **問題**：兩者都回 `manage all`，前端無區分（後端已正確強制）。
-- **建議**：前端區分 superadmin-only 功能（如刪除用戶）。
-
-#### #16 硬刷新 CASL ability 短暫遺失
-
-- **位置**：`apps/web/src/composables/useAttendanceCaslSync.ts`
-- **問題**：靠 `watch(immediate)` 修復，但時序脆弱。
-- **建議**：在 router guard 或 app 啟動時也同步一次。
-
-#### #17 QR 錯誤訊息洩漏例外細節
-
-- **位置**：`apps/api/app/routers/attendance.py`
-- **問題**：`detail=f"Invalid QR: {e}"` 回傳例外內容。
-- **建議**：回傳通用訊息，細節只記 log。
-
-#### #18 無 mobile CI
-
-- **位置**：`.github/workflows/`
-- **問題**：`eas.json` 已存在但無 workflow 觸發 EAS Build。
-- **建議**：加 GitHub Action 跑 `tsc`/lint，或觸發 EAS build。
-
-#### #19 bcrypt 72-byte 截斷
-
-- **位置**：`apps/api/app/services/auth.py`
-- **問題**：passlib bcrypt 對 >72 bytes 靜默截斷。
-- **建議**：在 schema 加密碼長度上限驗證。
-
-#### #20 AQUA 模板死代碼
-
-- **位置**：`apps/web/src/pages/apps/`、`src/views/demos/`
-- **問題**：大量未使用 demo 路由與元件殘留。
-- **建議**：逐步刪除未使用路由，或至少從 `vite.config.ts` Components plugin 移除 `src/views/demos`。
-
-#### #21 Mobile 無離線處理
-
-- **位置**：`apps/mobile/src/services/api.ts`
-- **問題**：所有網路失敗直接顯示 "Cannot reach API"。
-- **建議**：加入離線隊列（AsyncStorage + 背景同步）。列為 deferred，除非有實際斷網需求。
-
----
-
-### 5.4 優先行動計劃
-
-**第一階段 — 立即修（High）**
-1. `recorded_at` 複合索引 ✅ Done
-2. Web/Mobile refresh single-flight ✅ Done
-3. 多副本前換 Redis rate limit storage ✅ Done
+**第一階段 — 立即修（High）** ✅ 全部完成
+1. `recorded_at` 複合索引 ✅
+2. Web/Mobile refresh single-flight ✅
+3. 多副本前換 Redis rate limit storage ✅
 
 **第二階段 — 上線前應補（Medium）**
-4. Compose / Dockerfile healthcheck + 非 root
-5. 結構化 logging + request ID
-6. 統一 API 錯誤格式 ⚠️ 新發現
-7. CSV 真串流
-8. 補 RBAC 矩陣 + refresh 競態測試
+4. Compose / Dockerfile healthcheck + 非 root ⬜
+5. 結構化 logging + request ID ⬜
+6. 統一 API 錯誤格式 ✅ Done（2026-07）
+7. CSV 真串流 ⬜
+8. 補 RBAC 矩陣 + refresh 競態測試 ⬜
 
 **第三階段 — 可延後（Low）**
-9. Refresh token 改 HttpOnly cookie
-10. 前端區分 admin/superadmin
-11. QR 錯誤訊息、密碼長度、mobile CI
+9. Refresh token 改 HttpOnly cookie ⬜
+10. 前端區分 admin/superadmin ⬜
+11. QR 錯誤訊息、密碼長度、mobile CI ⬜
 
-**可暫時不做**
-- 移除 AQUA 模板死代碼（tree-shaking 已處理打包體積）
-- Mobile 離線佇列（設計取捨）
+**設計取捨（已知且接受）**
+- QR token 無過期（靠 `qr_token_version` 手動輪替）
+- 登入撤銷所有 refresh token（單一 session）
+- Mobile 無離線處理
+- AQUA 模板死代碼（tree-shaking 已處理打包體積）
 
----
+> 完整清單（含檔案路徑、修法建議、Summaries/Payroll 限制）→ **[known-gaps.md](known-gaps.md)**
 
-### 5.5 各領域評分
+### 5.2 各領域評分
 
 | 領域 | 分數 | 說明 |
 |------|------|------|
-| Backend Security | **8/10** | JWT rotation、RBAC、QR 金鑰分離扎實；扣分在 rate limit 記憶體儲存、QR 無過期 |
-| Frontend Architecture | **6.5/10** | Pinia + CASL 整合合理；扣分在非 HttpOnly token、CASL 時序脆弱、模板死代碼 |
-| Mobile UX/Reliability | **6/10** | Token refresh + 401 retry 完整；扣分在無離線、無 CI |
-| Documentation | **7.5/10** | README/DEPLOY/backup 齊全；扣分在缺 logging/監控文件 |
+| Backend Security | **8.5/10** | JWT rotation、RBAC、QR 金鑰分離扎實；rate limit 已改用 Redis（多副本安全）；扣分在 QR 無過期 |
+| Frontend Architecture | **7/10** | Pinia + CASL 整合合理；Summaries/Payroll 主從式 UI 完善；扣分在非 HttpOnly token、CASL 時序脆弱、模板死代碼 |
+| Mobile UX/Reliability | **6.5/10** | Token refresh + 401 retry 完整；History filters 已實作；扣分在無離線、無 CI、Phase 3/4 待辦 |
+| Documentation | **8/10** | README/DEPLOY/backup 齊全；Summaries/Payroll 文件完整（attendance-summaries.md）；扣分在缺 logging/監控文件 |
 | Test Coverage | **6/10** | 後端 ~53 測試涵蓋核心；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 零測試 |
 
-> **最關鍵三件事**：`recorded_at` 索引 ✅、Web/Mobile refresh 單飛 ✅、多副本 rate limit 儲存。
+> **最關鍵三件事**：`recorded_at` 索引 ✅、Web/Mobile refresh 單飛 ✅、多副本 rate limit 儲存 ✅。
 
 ---
 
@@ -848,7 +727,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（應為 013 或更新）
+# 最新可用版本（目前最新為 026）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -864,7 +743,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：`013_attendance_recorded_at_indexes` 在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。最新 migration 為 `026_add_slots_and_pay_rates.py`（新增 slots 與薪資率欄位）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 
 ### 6.5 備份與還原
 
@@ -1004,7 +883,7 @@ docker compose -f docker-compose.prod.yml down
 
 | ID | 任務 | 優先級 | 狀態 |
 |----|------|--------|------|
-| M3.1 | History：date filter + pagination | P2 | 待排 |
+| M3.1 | History：date filter + pagination | P2 | ✅ Done |
 | M3.2 | History：pull-to-refresh error toast | P3 | ✅ Done |
 | M3.3 | My QR tab：改為「說明」 | P3 | ✅ Done |
 | M3.4 | Login：失敗時顯示 API connection hint | P3 | ✅ Done |
@@ -1026,7 +905,29 @@ docker compose -f docker-compose.prod.yml down
 | M4.5 | End-to-end test matrix（devices） | QA | ⬜ |
 | M4.6 | Internal distribution（TestFlight / APK） | Ops | ⬜ |
 
-### 7.2 API ↔ Mobile endpoint 對照表
+### 7.2 Mobile 目錄結構（2026-07 現況）
+
+```text
+apps/mobile/
+├── App.tsx                  # 進入點
+├── app/
+│   └── index.tsx            # Expo Router 入口
+├── src/
+│   ├── screens/             # 畫面（Login, Scanner, History, MyQR）
+│   ├── services/            # API client（auth, attendance, locations, api）
+│   ├── components/          # 共用元件
+│   ├── navigation/          # 導航配置
+│   ├── theme/               # 主題設定
+│   ├── i18n/                # 多語系
+│   └── utils/               # 工具函式
+├── assets/                  # 靜態資源
+├── scripts/                 # 輔助腳本
+├── eas.json                 # EAS Build 配置
+├── app.json                 # Expo 配置
+└── package.json
+```
+
+### 7.3 API ↔ Mobile endpoint 對照表
 
 | 功能 | Method | Path | Auth |
 |------|--------|------|------|
@@ -1039,7 +940,7 @@ docker compose -f docker-compose.prod.yml down
 | History | GET | `/attendance` | Admin |
 | QR token | GET | `/qr/token/{product_id}` | Admin |
 
-### 7.3 Web 與 Mobile 功能對照
+### 7.4 Web 與 Mobile 功能對照
 
 | 功能 | Web（`attendance/`） | Mobile |
 |------|---------------------|--------|
@@ -1052,11 +953,15 @@ docker compose -f docker-compose.prod.yml down
 | Product / user / location CRUD | ✅ | ❌ |
 | CSV export | ✅ | ❌ |
 | Dashboard stats | ✅ | ❌ |
+| Summaries（月度彙總） | ✅ | ❌ |
+| Payroll（薪資管理） | ✅ | ❌ |
+| Notifications | ✅ | ❌ |
+| Audit logs | ✅ | ❌ |
 
-### 7.4 Mobile 發布檢查清單
+### 7.5 Mobile 發布檢查清單
 
 #### 後端準備
-- [ ] `python -m alembic upgrade head` on production DB（migrations through `010`）
+- [ ] `python -m alembic upgrade head` on production DB（migrations through `026`）
 - [ ] `ENV=production` with strong `SECRET_KEY` and `QR_SECRET`
 - [ ] 透過 Web User Management 建立 admin users
 - [ ] Health check：`GET https://<api-host>/api/health` → `{"status":"ok","database":"ok"}`
@@ -1200,6 +1105,75 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 ---
 
+### Release 2026-06 — 後端大量修復 + 多型 Profile
+
+> 詳見 [known-gaps.md](known-gaps.md)。
+
+#### API
+
+| 區域 | 變更 |
+|------|------|
+| Critical | StaffProfile 多重外鍵歧義修復（`foreign_keys` 明確指定） |
+| Critical | profile 關係 `uselist=False`（一對一映射修正） |
+| Migration | `employment_type` 從 `products` 遷移至 `staff_profiles`（`e350a1e954db`） |
+| New | `staff_profiles` / `student_profiles` CRUD 端點 |
+| New | `notifications` CRUD + 標記已讀 |
+| New | `audit_logs` 查詢端點（superadmin） |
+| New | `auto_checkout` 排程端點（`POST /api/auto-checkout/run`） |
+| New | OT 計算服務（`services/overtime.py` — 15 分鐘槽、lunch 扣除） |
+| Enhancement | Rate limit 改用 Redis backend（多副本安全） |
+| Enhancement | `notification.extra_data` 改 JSON 型別 |
+| Enhancement | attendance 作廢端點（`voided_at`） |
+| Enhancement | audit_log 寫入 helper，接線關鍵操作 |
+| Migration | 001–026（含 `attendance_summaries`、`payroll_records`、slots、薪資率） |
+
+#### Web
+
+| 區域 | 變更 |
+|------|------|
+| New | Notifications 頁面 |
+| New | Audit Logs 頁面（superadmin） |
+| Enhancement | Staff/Student profile 編輯整合進 Product 頁面 |
+
+---
+
+### Release 2026-07 — Summaries / Payroll 重構
+
+> 詳見 [attendance-summaries.md](attendance-summaries.md)。
+
+#### API
+
+| 區域 | 變更 |
+|------|------|
+| New | `POST /api/attendance-summaries/generate` — 從 events 計算並 upsert 每日彙總 |
+| New | `GET /api/attendance-summaries/overview` — product × 月份聚合（含工時、天數） |
+| New | `POST /api/payroll-records/generate` — 從 summaries 聚合薪資記錄 |
+| Enhancement | `GET /api/payroll-records` — 新增 `year`/`month`/`product_type`/`status` 篩選 |
+| Enhancement | Payroll generate 依 `staff_profiles` 薪資率計算 `base_salary`/`overtime_pay`/`gross_pay`/`net_pay` |
+| Enhancement | `payroll_records` 凍結 `hourly_rate_snapshot`/`ot_multiplier_snapshot`（防歷史污染） |
+| Enhancement | Generate 寫入 audit log（`DATA_EXPORT`） |
+| Migration | `026_add_slots_and_pay_rates.py` — slots + 薪資率欄位 |
+
+#### Web
+
+| 區域 | 變更 |
+|------|------|
+| New | `/attendance/summaries` — 主從式頁面（總覽 → 每日明細） |
+| New | `/attendance/payroll` — 主從式頁面（月度薪資 → 明細） |
+| Enhancement | Summaries：月份切換、Type 篩選（預設 Staff）、Generate、統計卡 |
+| Enhancement | Payroll：狀態流程（draft → calculated → approved → paid）、Approve/Pay 動作 |
+| Enhancement | Generate 成功提示（區分首次/重算/無事件/seed 既有資料） |
+| Enhancement | Payroll 明細直接讀取 `attendance_summaries`（與 Summaries 同資料源） |
+
+#### Seed 資料
+
+| 資料集 | 月份 | 說明 |
+|--------|------|------|
+| `SEED_SUMMARIES` | 2026-05 | 固定少數列 |
+| `build_bulk_summary_rows` | 2026-06、2026-07 | 大量隨機模式（`calculation_method = "seed"`） |
+
+---
+
 ## 9. 附錄
 
 ### 9.1 Location 照片（v1 — URL only）
@@ -1233,32 +1207,255 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 |------|------|------|
 | Web | ~~Dual cookies~~ | ✅ Done — unified to `accessToken`/`refreshToken`/`userData` |
 | Web | Template bloat | Deferred — AQUA demo tree 仍保留 |
+| Web | ~~Summaries 主從式重構~~ | ✅ Done — overview 聚合 + 每日明細 + Generate |
+| Web | ~~Payroll 主從式重構~~ | ✅ Done — 月度薪資 + 狀態流程 + 明細 |
 | Mobile | ~~History filters~~ | ✅ Done — date range chips + event type filter + pagination |
 | Mobile | My QR tab | Deferred — 目前為「說明」placeholder |
 | Mobile | EAS / store build | `eas.json` 已存在；缺 mobile CI workflow |
+| Mobile | Phase 3 待辦（M3.5 product QR） | 待排 |
 | API | ~~Scan race~~ | ✅ Done — `SELECT FOR UPDATE` on PostgreSQL |
 | API | ~~python-jose~~ | ✅ Done — migrated to `PyJWT` 2.10.1 |
-| API | ~~Rate limiting~~ | ✅ Done — `slowapi` on login/scan |
+| API | ~~Rate limiting~~ | ✅ Done — `slowapi` on login/scan（Redis backend） |
+| API | ~~Summaries/Payroll endpoints~~ | ✅ Done — generate + overview + 薪資率計算 |
 | API | RBAC tests | ~53 測試；無 full permission matrix |
+| API | 結構化 logging | 待實作 |
 | Data | Location photo upload | v1 URL-only；upload + S3/R2 later |
 
-### 9.3 文件評分卡（2026-06）
+### 9.3 文件評分卡（2026-07）
 
 | 項目 | 評分 | 說明 |
 |------|------|------|
 | README 清晰度 | 9/10 | Root README 非常詳細，架構圖、seed data、env var 表齊全 |
 | 部署文件 | 8/10 | DEPLOY.md 覆蓋從 Docker 安裝到域名配置的完整流程 |
 | API Docs | 7/10 | OpenAPI 自動生成 ✅，但缺少版本策略說明 |
-| 操作手冊 | 5/10 | 有 backup/restore 腳本，但無故障排查 runbook |
+| 操作手冊 | 7/10 | backup/restore 腳本 + §6 運維手冊（故障排查 runbook） |
 
 **Docs 待補**：
 
 | 項目 | 對應評分 | 建議 |
 |------|----------|------|
 | API 版本策略 | API Docs 7/10 | 在 DEPLOY/README 說明 API 版本化策略 |
-| 故障排查 runbook | 操作手冊 5/10 | ✅ Done — 本手冊 §6 已涵蓋 |
+| 故障排查 runbook | 操作手冊 7/10 | ✅ Done — 本手冊 §6 已涵蓋 |
 | 可觀測性文件 | 操作手冊 5/10 | logging/監控導入後補日誌查看與告警設定說明 |
 
 ---
 
-> 本手冊統合來源：`README.md`、`docs/INDEX.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/KNOWN-GAPS.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/BACKEND_REVIEW.md`、`docs/DATABASE_CHANGES.md`、`FRONTEND_ALIGNMENT_PLAN.md`。
+> 本手冊統合來源：`README.md`、`docs/INDEX.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/known-gaps.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/known-gaps.md`、`docs/database-changes.md`、`docs/project-handbook.md`、`docs/attendance-summaries.md`、`docs/docs-audit.md`。
+
+---
+
+## 10. 資料庫 ER 圖
+
+> 完整 schema 設計與決策記錄見 [database-changes.md](database-changes.md)。以下為核心資料表關聯圖。
+
+```mermaid
+erDiagram
+    users {
+        uuid id PK
+        string username "使用者名稱"
+        string role "admin / superadmin"
+        boolean is_active
+        datetime last_login_at
+    }
+
+    refresh_tokens {
+        string jti PK
+        uuid user_id FK
+        string ip_address
+        datetime expires_at
+    }
+
+    products {
+        uuid id PK
+        string code "唯一編碼"
+        string full_name "名稱"
+        string english_name "英文名"
+        string product_type "staff / student / device / goods"
+        boolean is_active
+        string status "active / inactive / graduated / terminated / suspended"
+        string attendance_status "checked_in / checked_out"
+        int qr_token_version
+        uuid registered_location_id FK
+        string gender
+        date date_of_birth
+        string phone
+        string address
+        string email
+        string emergency_contact_name
+        string emergency_contact_phone
+        string photo_url
+        date enrollment_date
+        date exit_date
+        string remarks
+        datetime last_event_at
+        datetime created_at
+        datetime updated_at
+    }
+
+    student_profiles {
+        uuid product_id PK_FK
+        string school_name
+        string grade_class
+        string student_id
+        json guardians
+        date enrollment_date
+        date graduation_date
+        string academic_notes
+    }
+
+    staff_profiles {
+        uuid product_id PK_FK
+        string employee_id
+        string employment_type "part_time / full_time"
+        string department
+        string position
+        date hire_date
+        date termination_date
+        string salary_grade
+        string pay_type "hourly / monthly"
+        numeric hourly_rate
+        numeric monthly_salary
+        numeric ot_multiplier "預設 1.5"
+        string work_schedule
+        uuid supervisor_id FK
+        string employment_notes
+    }
+
+    locations {
+        uuid id PK
+        string code
+        string name_zh
+        string name_en
+        string location_type
+        string region
+        json business_hours
+        string icon_url
+        string main_photo_url
+        json detail_photos
+        string address
+        string contact_person
+        string phone
+        string email
+        string notes
+        json details
+        boolean is_active
+        datetime created_at
+        datetime updated_at
+    }
+
+    product_scan_locations {
+        uuid product_id PK_FK
+        uuid location_id PK_FK
+    }
+
+    attendance_events {
+        uuid id PK
+        uuid product_id FK
+        string event_type "check_in / check_out"
+        string source "scan / manual / auto_checkout"
+        datetime recorded_at
+        datetime created_at
+        uuid location_id FK
+        uuid recorded_by_user_id FK
+        string client_device_id
+        datetime voided_at
+    }
+
+    notifications {
+        uuid id PK
+        uuid user_id FK
+        uuid product_id FK
+        string title
+        string message
+        string notification_type
+        string priority "low / medium / high / urgent"
+        boolean is_read
+        datetime read_at
+        string action_url
+        json extra_data
+        datetime expires_at
+        datetime created_at
+    }
+
+    attendance_summaries {
+        uuid id PK
+        uuid product_id FK
+        uuid location_id FK
+        date summary_date
+        datetime first_check_in
+        datetime last_check_out
+        int total_work_minutes
+        int total_overtime_minutes
+        int total_break_minutes
+        boolean is_complete
+        boolean is_holiday
+        boolean is_weekend
+        int regular_slots "x0.25h"
+        int ot_slots "x0.25h"
+        numeric regular_hours
+        numeric overtime_hours
+        numeric holiday_hours
+        string attendance_notes
+        string calculation_method
+        datetime created_at
+        datetime updated_at
+    }
+
+    payroll_records {
+        uuid id PK
+        uuid product_id FK
+        date payroll_period_start
+        date payroll_period_end
+        numeric total_regular_hours
+        numeric total_overtime_hours
+        numeric total_holiday_hours
+        int total_work_days
+        int total_leave_days
+        int regular_slots "快照"
+        int ot_slots "快照"
+        numeric hourly_rate_snapshot
+        numeric ot_multiplier_snapshot
+        numeric base_salary
+        numeric overtime_pay
+        numeric holiday_pay
+        numeric allowance
+        numeric deduction
+        numeric bonus
+        numeric gross_pay
+        numeric net_pay
+        string status "draft / calculated / approved / paid / cancelled"
+        string notes
+        uuid approved_by_user_id FK
+        datetime approved_at
+        datetime created_at
+        datetime updated_at
+    }
+
+    audit_logs {
+        uuid id PK
+        uuid user_id FK
+        string action "CREATE / UPDATE / DELETE / EXPORT"
+        string entity_type
+        string entity_id
+        json changes
+        string ip_address
+        datetime created_at
+    }
+
+    users ||--o{ refresh_tokens : has
+    users ||--o{ attendance_events : "records (recorded_by_user_id)"
+    users ||--o{ audit_logs : performs
+    products ||--o| student_profiles : "has (1:1)"
+    products ||--o| staff_profiles : "has (1:1)"
+    products ||--o{ attendance_events : generates
+    products ||--o{ attendance_summaries : aggregates
+    products ||--o{ payroll_records : receives
+    products ||--o{ product_scan_locations : "allowed at"
+    products ||--o{ notifications : triggers
+    locations ||--o{ product_scan_locations : "hosts scans"
+    locations ||--o{ attendance_events : "where occurred"
+    locations ||--o{ attendance_summaries : "where summarized"
+    staff_profiles ||--o| staff_profiles : "supervisor of"
+```
+
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–026）見 `apps/api/alembic/versions/`。
