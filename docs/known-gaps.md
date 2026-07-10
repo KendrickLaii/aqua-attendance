@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-07-10
+> 最後更新：2026-07-10（已審查：2026-07-10）
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -50,9 +50,10 @@
 
 ### #M4 CSV 匯出非真串流
 
-- **位置**：`apps/api/app/services/attendance.py`
-- **問題**：先把最多 50k 行全載入記憶體再 `StreamingResponse`，記憶體峰值高。
-- **建議**：改逐頁 yield 寫入，真正串流。
+- **位置**：`apps/api/app/services/attendance.py:271-307`
+- **問題**：已改為分頁載入（`CSV_EXPORT_PAGE_SIZE`），但仍將所有事件累積到 `all_events` list 後再一次寫入 `StringIO`，非真正串流。
+- **現況**：已改善（分頁讀取 + 上限 `CSV_EXPORT_MAX_ROWS`），但 `StringIO` 仍會佔用與資料量成正比的記憶體。
+- **建議**：改為逐頁 yield 寫入 generator，真正串流。
 
 ### #M5 無 mobile CI
 
@@ -84,7 +85,7 @@
 
 ### #M9 測試覆蓋缺口
 
-- **問題**：~53 項測試，RBAC 僅部分；無 refresh 競態測試；Web/Mobile 零測試。
+- **問題**：58 項測試（7 個測試檔案），RBAC 僅部分；無 refresh 競態測試；Web/Mobile 零測試。
 - **建議**：補完整 RBAC 矩陣 + 並發 refresh 測試；Web 加 Vitest 關鍵路徑。
 
 ---
@@ -158,16 +159,10 @@
 - **問題**：只存 UUID，未 join user 顯示姓名。
 - **建議**：查詢時 eager load user 關係。
 
-### #L7 缺 voided 流程端點
-
-- **位置**：`apps/api/app/routers/attendance.py`
-- **問題**：已有 `voided_at` 欄位，但無獨立「作廢事件」端點/邏輯。
-- **建議**：補 `POST /api/attendance/{id}/void`。
-
-### #L8 Seed 可選 `--no-summaries`
+### #L7 Seed 可選 `--no-summaries`
 
 - **位置**：`apps/api/seed.py`
-- **問題**：`python seed.py` 預設寫入 summaries，測試環境易與真實流程混淆。
+- **問題**：`python seed.py` 預設寫入 summaries。已有 `--summaries` flag（僅 summaries），但無反向的 `--no-summaries` flag（完整 seed 但跳過 summaries）。
 - **建議**：加 `--no-summaries` flag。
 
 ---
@@ -199,6 +194,7 @@
 | 後端審查 | `notification.extra_data` 改 JSON | 2026-06 |
 | attendance-summaries | Payroll 薪資率模型（slots + 薪資率計算 + 快照凍結） | 2026-07 |
 | 前端對齊計畫 | Batch 1–4 全部（產品多型、Summaries、Payroll、Notifications、Audit、Mobile） | 2026-07 |
+| API | `POST /api/attendance/{event_id}/void` 作廢端點 | 2026-07 |
 
 ---
 
