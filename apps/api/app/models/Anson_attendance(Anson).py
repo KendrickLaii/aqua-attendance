@@ -1,0 +1,71 @@
+"""
+Attendance event model.
+
+Tracks check-in / check-out events for products (staff, students, etc.).
+
+Each scan records check_in or check_out.  The client may pass an explicit
+``event_type``; otherwise the server toggles from the product's
+``attendance_status``.  The same QR token can be re-scanned without rotation.
+Admins may insert manual corrections with event_type = ``manual_correction``.
+
+Replay / double-tap protection is handled in the scan service by a short
+debounce window (same product scanned twice within a few seconds returns
+the original event).  `qr_jti` is recorded for audit but is no longer
+globally unique.
+"""
+
+import enum
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, Uuid
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+class EventType(str, enum.Enum):
+    check_in = "staff_check_in"
+    check_out = "staff_check_out"
+
+
+class EventSource(str, enum.Enum):
+    scan = "scan"
+    manual = "manual"
+    auto_checkout = "auto_checkout"
+
+
+class AttendanceEvent(Base):
+    __tablename__ = "attendance_events"
+
+    # Indexes mirror migration 013 — keep in sync with create_all (tests) and alembic.
+    __table_args__ = (
+        Index("ix_attendance_events_recorded_at", "recorded_at"),
+        Index("ix_attendance_events_product_recorded", "product_id", "recorded_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    staff_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("staff_profile.id", ondelete="RESTRICT"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="scan")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    qr_jti: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    #recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    device_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+    #relationships should only leaves those related to Staff check in/out
+    product = relationship("Product", foreign_keys=[product_id], back_populates="attendance_events")
+    recorded_by = relationship("User", foreign_keys=[recorded_by_user_id])
+    location_ref = relationship("Location", foreign_keys=[location_id], back_populates="attendance_events")

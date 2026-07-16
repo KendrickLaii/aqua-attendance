@@ -33,6 +33,7 @@ class Location(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    #deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     attendance_events = relationship("AttendanceEvent", back_populates="location_ref")
     registered_products = relationship(
