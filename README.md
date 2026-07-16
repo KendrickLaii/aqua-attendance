@@ -122,11 +122,6 @@ After `python seed.py`:
 
 ### Login users
 
-| Username | Password | Role |
-|----------|----------|------|
-| admin | admin123 | admin |
-| superadmin | super123 | superadmin |
-
 ### Sample products (QR issued from web)
 
 | Code | Name | Type |
