@@ -2,6 +2,8 @@ export interface SummaryGenerateResult {
   created: number
   updated: number
   total_days: number
+  orphans_deleted?: number
+  auto_checkouts?: number
 }
 
 export interface PayrollGenerateResult {
@@ -18,6 +20,13 @@ function plural(count: number, singular: string, pluralForm = `${singular}s`): s
   return count === 1 ? singular : pluralForm
 }
 
+function orphanDetail(orphansDeleted: number | undefined): string | undefined {
+  if (!orphansDeleted || orphansDeleted <= 0)
+    return undefined
+
+  return `Removed ${orphansDeleted} orphan ${plural(orphansDeleted, 'summary', 'summaries')} with no usable events.`
+}
+
 export function formatSummaryGenerateMessage(
   result: SummaryGenerateResult,
   year: number,
@@ -26,8 +35,16 @@ export function formatSummaryGenerateMessage(
 ): { title: string; detail?: string } {
   const period = formatPeriod(year, month)
   const { total_days, created, updated } = result
+  const orphanNote = orphanDetail(result.orphans_deleted)
 
   if (total_days === 0) {
+    if (orphanNote) {
+      return {
+        title: `No check-in events for ${period}`,
+        detail: orphanNote,
+      }
+    }
+
     if (existingSummaryDays > 0) {
       const rowLabel = plural(existingSummaryDays, 'daily row')
       return {
@@ -43,24 +60,29 @@ export function formatSummaryGenerateMessage(
   }
 
   const dayLabel = plural(total_days, 'daily summary')
+  const withOrphan = (detail?: string) => {
+    if (!orphanNote)
+      return detail
+    return detail ? `${detail} ${orphanNote}` : orphanNote
+  }
 
   if (created === total_days) {
     return {
       title: `Generated ${total_days} ${dayLabel} for ${period}`,
-      detail: 'Calculated from attendance events.',
+      detail: withOrphan('Calculated from attendance events.'),
     }
   }
 
   if (created === 0) {
     return {
       title: `Refreshed ${total_days} ${dayLabel} for ${period}`,
-      detail: 'Recalculated from attendance events. Existing rows were updated, not duplicated.',
+      detail: withOrphan('Recalculated from attendance events. Existing rows were updated, not duplicated.'),
     }
   }
 
   return {
     title: `Processed ${total_days} ${dayLabel} for ${period}`,
-    detail: `${created} new, ${updated} refreshed from attendance events.`,
+    detail: withOrphan(`${created} new, ${updated} refreshed from attendance events.`),
   }
 }
 

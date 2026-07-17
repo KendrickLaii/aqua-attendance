@@ -25,10 +25,24 @@ async def test_create_location_payload_matches_ui(client: AsyncClient, admin_tok
             "name_zh": None,
             "name_en": "dummy",
             "is_active": True,
-            "business_hours": "Mon 09:00-18:00 · Tue 09:00-18:00 · Wed 09:00-18:00 · Thu 09:00-18:00 · Fri 09:00-18:00",
+            "business_hours": {
+                "monday": {"open": "09:00", "close": "18:00"},
+                "tuesday": {"open": "09:00", "close": "18:00"},
+                "wednesday": {"open": "09:00", "close": "18:00"},
+                "thursday": {"open": "09:00", "close": "18:00"},
+                "friday": {"open": "09:00", "close": "18:00"},
+                "saturday": None,
+                "sunday": None,
+            },
             "details": {
                 "hours_schedule": [
                     {"day": "mon", "isOpen": True, "openTime": "09:00", "closeTime": "18:00"},
+                    {"day": "tue", "isOpen": True, "openTime": "09:00", "closeTime": "18:00"},
+                    {"day": "wed", "isOpen": True, "openTime": "09:00", "closeTime": "18:00"},
+                    {"day": "thu", "isOpen": True, "openTime": "09:00", "closeTime": "18:00"},
+                    {"day": "fri", "isOpen": True, "openTime": "09:00", "closeTime": "18:00"},
+                    {"day": "sat", "isOpen": False, "openTime": "09:00", "closeTime": "18:00"},
+                    {"day": "sun", "isOpen": False, "openTime": "09:00", "closeTime": "18:00"},
                 ],
             },
             "address": None,
@@ -46,7 +60,11 @@ async def test_create_location_payload_matches_ui(client: AsyncClient, admin_tok
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 201, resp.text
-    assert resp.json()["name_zh"] == "dummy"
+    body = resp.json()
+    assert body["name_zh"] == "dummy"
+    assert isinstance(body["business_hours"], dict)
+    assert body["business_hours"]["monday"]["close"] == "18:00"
+    assert body["business_hours"]["saturday"] is None
 
 
 @pytest.mark.asyncio

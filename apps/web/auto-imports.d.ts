@@ -100,6 +100,7 @@ declare global {
   const getTodayRangeIso: typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
+  const hoursScheduleToBusinessHours: typeof import('./src/utils/locationHours')['hoursScheduleToBusinessHours']
   const hoursScheduleToPayload: typeof import('./src/utils/locationHours')['hoursScheduleToPayload']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
   const inject: typeof import('vue')['inject']
@@ -533,6 +534,7 @@ declare module 'vue' {
     readonly getTodayRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
+    readonly hoursScheduleToBusinessHours: UnwrapRef<typeof import('./src/utils/locationHours')['hoursScheduleToBusinessHours']>
     readonly hoursScheduleToPayload: UnwrapRef<typeof import('./src/utils/locationHours')['hoursScheduleToPayload']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>

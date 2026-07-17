@@ -10,8 +10,8 @@ import {
 import { formatApiError } from '@/utils/formatApiDetail'
 import {
   type DaySchedule,
-  buildBusinessHoursString,
   defaultHoursSchedule,
+  hoursScheduleToBusinessHours,
   hoursScheduleToPayload,
   loadHoursSchedule,
 } from '@/utils/locationHours'
@@ -215,7 +215,7 @@ function openEdit(item: LocationItem) {
     name_en: item.name_en,
     location_type: item.location_type || '',
     region: item.region || '',
-    business_hours: item.business_hours || '',
+    business_hours: '',
     icon_url: item.icon_url || '',
     main_photo_url: item.main_photo_url || '',
     address: item.address || '',
@@ -232,7 +232,7 @@ function openEdit(item: LocationItem) {
 
   const rawDetails = item.details as Record<string, unknown> | null
 
-  hoursSchedule.value = loadHoursSchedule(rawDetails)
+  hoursSchedule.value = loadHoursSchedule(rawDetails, item.business_hours)
 
   if (rawDetails) {
     const rest = { ...rawDetails }
@@ -281,7 +281,7 @@ async function handleSave() {
       name_en: englishName,
       location_type: form.location_type.trim() || null,
       region: (form.region as string)?.trim() || null,
-      business_hours: buildBusinessHoursString(hoursSchedule.value) || null,
+      business_hours: hoursScheduleToBusinessHours(hoursSchedule.value),
       icon_url: form.icon_url.trim() || null,
       main_photo_url: form.main_photo_url.trim() || null,
       detail_photos: buildDetailPhotos(detailPhotoRows.value),

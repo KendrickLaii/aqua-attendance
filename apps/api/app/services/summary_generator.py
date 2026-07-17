@@ -4,27 +4,25 @@ Admin selects a month → this service calculates daily summaries for every
 product and inserts / updates `attendance_summaries` rows.
 
 Forgotten check-outs on past days are closed at the day boundary (23:59)
-with an ``auto_checkout`` event — same rule as the Auto Checkout job —
+with an ``auto_checkout`` event — same helper as the Auto Checkout job —
 so Incomplete is reserved for days that are still open (e.g. today).
 """
 
 import calendar
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.attendance import AttendanceEvent, EventSource, EventType
+from app.models.attendance import AttendanceEvent, EventType
 from app.models.attendance_summary import AttendanceSummary
 from app.models.product import Product
+from app.services.attendance import recompute_product_attendance_status
+from app.services.auto_checkout import day_boundary_at, make_day_boundary_checkout_event
 from app.services.overtime import calculate_workday
-
-
-def _day_boundary_checkout(event_date: date, tzinfo) -> datetime:
-    return datetime.combine(event_date, time(23, 59, 0), tzinfo=tzinfo or timezone.utc)
 
 
 async def generate_monthly_summaries(
@@ -36,7 +34,7 @@ async def generate_monthly_summaries(
 
     Returns:
         dict with counts: {"created": int, "updated": int, "total_days": int,
-        "auto_checkouts": int}
+        "auto_checkouts": int, "orphans_deleted": int}
     """
     # Date range
     first_day = date(year, month, 1)
@@ -68,6 +66,8 @@ async def generate_monthly_summaries(
     created_count = 0
     updated_count = 0
     auto_checkout_count = 0
+    products_to_recompute: set[uuid.UUID] = set()
+    kept_keys: set[tuple[uuid.UUID, date]] = set()
 
     for (product_id, event_date), day_events in grouped.items():
         # Separate check_ins and check_outs
@@ -95,21 +95,19 @@ async def generate_monthly_summaries(
 
         # Past days with check-in but no check-out → day-boundary auto checkout
         if last_check_out is None and event_date < today:
-            last_check_out = _day_boundary_checkout(event_date, first_check_in.tzinfo)
+            last_check_out = day_boundary_at(event_date, first_check_in.tzinfo)
             db.add(
-                AttendanceEvent(
+                make_day_boundary_checkout_event(
                     product_id=product_id,
-                    event_type=EventType.check_out.value,
-                    source=EventSource.auto_checkout.value,
-                    recorded_at=last_check_out,
+                    checkout_time=last_check_out,
                     location_id=location_id,
                     location=first_event.location
                     or (location.code if location and location.code else "auto"),
-                    notes="Auto checkout at day boundary (applied during summary generate)",
                 )
             )
             notes = "Closed by day-boundary auto checkout (23:59)"
             auto_checkout_count += 1
+            products_to_recompute.add(product_id)
 
         # Calculate work hours
         if last_check_out:
@@ -179,13 +177,43 @@ async def generate_monthly_summaries(
             db.add(summary)
             created_count += 1
 
+        kept_keys.add((product_id, event_date))
+
+    # Remove month rows that no longer have usable non-voided check-in events
+    existing_summaries = await db.execute(
+        select(AttendanceSummary).where(
+            AttendanceSummary.summary_date >= first_day,
+            AttendanceSummary.summary_date <= last_day,
+        )
+    )
+    orphan_ids = [
+        row.id
+        for row in existing_summaries.scalars().all()
+        if (row.product_id, row.summary_date) not in kept_keys
+    ]
+    orphans_deleted = 0
+    if orphan_ids:
+        await db.execute(
+            delete(AttendanceSummary).where(AttendanceSummary.id.in_(orphan_ids))
+        )
+        orphans_deleted = len(orphan_ids)
+
+    if products_to_recompute:
+        await db.flush()
+        product_result = await db.execute(
+            select(Product).where(Product.id.in_(products_to_recompute))
+        )
+        for product in product_result.scalars().all():
+            await recompute_product_attendance_status(db, product=product)
+
     await db.commit()
 
     return {
         "created": created_count,
         "updated": updated_count,
-        "total_days": len(grouped),
+        "total_days": len(kept_keys),
         "auto_checkouts": auto_checkout_count,
+        "orphans_deleted": orphans_deleted,
         "year": year,
         "month": month,
     }

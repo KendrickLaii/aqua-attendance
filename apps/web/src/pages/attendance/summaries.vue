@@ -127,36 +127,34 @@ const statCards = computed(() => {
   const complete = overviewItems.value.reduce((sum, item) => sum + item.days_complete, 0)
   const regular = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_regular_hours), 0)
   const overtime = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_overtime_hours), 0)
-  const regularSlots = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_regular_slots), 0)
-  const otSlots = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_ot_slots), 0)
   const completionRate = days > 0 ? `${Math.round((complete / days) * 100)}%` : '-'
 
   return [
     {
       label: 'People',
       value: String(people),
-      hint: 'with summaries',
+      hint: 'this page',
       icon: 'ri-group-line',
       color: 'primary',
     },
     {
       label: 'Records',
       value: String(days),
-      hint: 'daily rows',
+      hint: 'this page · daily rows',
       icon: 'ri-calendar-line',
       color: 'secondary',
     },
     {
       label: 'Complete rate',
       value: completionRate,
-      hint: `${complete}/${days} complete`,
+      hint: `${complete}/${days} complete · this page`,
       icon: 'ri-checkbox-circle-line',
       color: 'success',
     },
     {
       label: 'Total hours',
       value: formatHours(regular + overtime),
-      hint: `${formatHours(regular)} regular + ${formatHours(overtime)} OT · ${regularSlots + otSlots} slots`,
+      hint: `${formatHours(regular)} regular + ${formatHours(overtime)} OT · this page`,
       icon: 'ri-time-line',
       color: 'info',
     },

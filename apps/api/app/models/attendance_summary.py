@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +16,13 @@ class AttendanceSummary(Base):
     """Pre-calculated daily attendance summaries for reporting and payroll."""
     
     __tablename__ = "attendance_summaries"
+    __table_args__ = (
+        UniqueConstraint(
+            "product_id",
+            "summary_date",
+            name="uq_attendance_summaries_product_date",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     

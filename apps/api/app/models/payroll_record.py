@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,6 +24,14 @@ class PayrollRecord(Base):
     """Payroll calculation records for individual products."""
     
     __tablename__ = "payroll_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "product_id",
+            "payroll_period_start",
+            "payroll_period_end",
+            name="uq_payroll_records_product_period",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     

@@ -7,6 +7,10 @@ export interface LocationDetailPhoto {
   sort_order?: number
 }
 
+/** Structured hours for OT: keyed by weekday full name, or null if closed. */
+export type BusinessHoursDay = { open: string, close: string } | null
+export type BusinessHours = Record<string, BusinessHoursDay>
+
 export interface LocationItem {
   id: string
   code: string | null
@@ -14,7 +18,8 @@ export interface LocationItem {
   name_en: string
   location_type: string | null
   region: string | null
-  business_hours: string | null
+  /** Structured JSON preferred; legacy free-text string still accepted. */
+  business_hours: BusinessHours | string | null
   icon_url: string | null
   main_photo_url: string | null
   detail_photos: LocationDetailPhoto[] | null
@@ -35,7 +40,7 @@ export interface LocationPayload {
   name_en: string
   location_type?: string | null
   region?: string | null
-  business_hours?: string | null
+  business_hours?: BusinessHours | string | null
   icon_url?: string | null
   main_photo_url?: string | null
   detail_photos?: LocationDetailPhoto[] | null

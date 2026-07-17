@@ -69,6 +69,7 @@ export async function listAttendance(params?: {
   date_from?: string
   date_to?: string
   event_type?: string
+  include_voided?: boolean
   page?: number
   page_size?: number
 }): Promise<AttendanceEvent[]> {
@@ -83,6 +84,7 @@ export async function listAttendanceWithTotal(params?: {
   date_from?: string
   date_to?: string
   event_type?: string
+  include_voided?: boolean
   page?: number
   page_size?: number
 }): Promise<AttendanceListResult> {
@@ -116,6 +118,7 @@ export async function exportAttendanceCSV(params?: {
   product_type?: string
   date_from?: string
   date_to?: string
+  include_voided?: boolean
 }): Promise<Blob> {
   return await $attendanceApi<Blob>('/attendance/export/csv', {
     params,

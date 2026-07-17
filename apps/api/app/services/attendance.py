@@ -70,6 +70,7 @@ async def find_recent_event(
     conditions = [
         AttendanceEvent.product_id == product_id,
         AttendanceEvent.recorded_at >= cutoff,
+        AttendanceEvent.voided_at.is_(None),
         AttendanceEvent.event_type.in_(
             [EventType.check_in.value, EventType.check_out.value]
         ),
@@ -163,10 +164,14 @@ async def list_events(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     event_type: str | None = None,
+    include_voided: bool = False,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[AttendanceEvent], int]:
-    """Return (events, total_count) with optional filters."""
+    """Return (events, total_count) with optional filters.
+
+    Voided events are excluded by default; pass ``include_voided=True`` to show them.
+    """
     q = (
         select(AttendanceEvent)
         .join(Product, AttendanceEvent.product_id == Product.id)
@@ -185,6 +190,8 @@ async def list_events(
         conditions.append(AttendanceEvent.recorded_at <= date_to)
     if event_type:
         conditions.append(AttendanceEvent.event_type == event_type)
+    if not include_voided:
+        conditions.append(AttendanceEvent.voided_at.is_(None))
 
     if conditions:
         q = q.where(and_(*conditions))
@@ -204,12 +211,15 @@ def _event_stats_conditions(
     *,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    include_voided: bool = False,
 ) -> list:
     conditions = []
     if date_from:
         conditions.append(AttendanceEvent.recorded_at >= date_from)
     if date_to:
         conditions.append(AttendanceEvent.recorded_at <= date_to)
+    if not include_voided:
+        conditions.append(AttendanceEvent.voided_at.is_(None))
     return conditions
 
 
@@ -218,9 +228,14 @@ async def event_day_stats(
     *,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    include_voided: bool = False,
 ) -> dict[str, int]:
     """Aggregate today's event counts for dashboard (all rows, not paginated)."""
-    conditions = _event_stats_conditions(date_from=date_from, date_to=date_to)
+    conditions = _event_stats_conditions(
+        date_from=date_from,
+        date_to=date_to,
+        include_voided=include_voided,
+    )
 
     total_q = select(func.count()).select_from(AttendanceEvent)
     if conditions:
@@ -275,6 +290,7 @@ async def list_events_for_export(
     product_type: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    include_voided: bool = False,
 ) -> tuple[list[AttendanceEvent], bool]:
     """Load events for CSV export in pages, capped at ``CSV_EXPORT_MAX_ROWS``."""
     max_rows = settings.CSV_EXPORT_MAX_ROWS
@@ -290,6 +306,7 @@ async def list_events_for_export(
             product_type=product_type,
             date_from=date_from,
             date_to=date_to,
+            include_voided=include_voided,
             page=page,
             page_size=page_size,
         )
@@ -305,6 +322,66 @@ async def list_events_for_export(
         page += 1
 
     return all_events, truncated
+
+
+async def recompute_product_attendance_status(
+    db: AsyncSession,
+    *,
+    product: Product,
+) -> None:
+    """Set product attendance fields from the latest non-voided check-in/out event."""
+    result = await db.execute(
+        select(AttendanceEvent)
+        .where(
+            AttendanceEvent.product_id == product.id,
+            AttendanceEvent.voided_at.is_(None),
+            AttendanceEvent.event_type.in_(
+                [EventType.check_in.value, EventType.check_out.value]
+            ),
+        )
+        .order_by(AttendanceEvent.recorded_at.desc())
+        .limit(1)
+    )
+    latest = result.scalar_one_or_none()
+    if latest is None:
+        product.attendance_status = AttendanceStatus.checked_out.value
+        product.last_event_at = None
+        product.last_event_location_id = None
+        product.last_event_location = None
+        return
+
+    product.attendance_status = (
+        AttendanceStatus.checked_in.value
+        if latest.event_type == EventType.check_in.value
+        else AttendanceStatus.checked_out.value
+    )
+    product.last_event_at = latest.recorded_at
+    product.last_event_location_id = latest.location_id
+    product.last_event_location = latest.location
+
+
+async def void_event(
+    db: AsyncSession,
+    *,
+    event: AttendanceEvent,
+) -> AttendanceEvent:
+    """Soft-void an event and recompute the product's live attendance status."""
+    if event.voided_at is not None:
+        return event
+
+    event.voided_at = _now()
+
+    product = event.product
+    if product is None:
+        result = await db.execute(select(Product).where(Product.id == event.product_id))
+        product = result.scalar_one_or_none()
+
+    if product is not None:
+        await recompute_product_attendance_status(db, product=product)
+
+    await db.commit()
+    await db.refresh(event)
+    return event
 
 
 async def manual_correction(

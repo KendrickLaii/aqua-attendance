@@ -81,6 +81,12 @@ export async function listSummaryOverview(params: {
   return await fetchAttendanceListWithTotal<SummaryOverviewItem>('/attendance-summaries/overview', params)
 }
 
-export async function generateSummaries(year: number, month: number): Promise<{ created: number; updated: number; total_days: number }> {
+export async function generateSummaries(year: number, month: number): Promise<{
+  created: number
+  updated: number
+  total_days: number
+  auto_checkouts?: number
+  orphans_deleted?: number
+}> {
   return await $attendanceApi(`/attendance-summaries/generate?year=${year}&month=${month}`, { method: 'POST' })
 }

@@ -1,4 +1,4 @@
-import type { LocationItem } from '@/api/attendance/locations'
+import type { BusinessHours, LocationItem } from '@/api/attendance/locations'
 
 export const LOCATION_DAYS = [
   { key: 'mon', label: 'Monday', short: 'Mon' },
@@ -9,6 +9,16 @@ export const LOCATION_DAYS = [
   { key: 'sat', label: 'Saturday', short: 'Sat' },
   { key: 'sun', label: 'Sunday', short: 'Sun' },
 ] as const
+
+const DAY_KEY_TO_FULL: Record<string, string> = {
+  mon: 'monday',
+  tue: 'tuesday',
+  wed: 'wednesday',
+  thu: 'thursday',
+  fri: 'friday',
+  sat: 'saturday',
+  sun: 'sunday',
+}
 
 export type HoursPreset = 'weekday' | 'sixday' | 'allday' | 'clear'
 
@@ -74,7 +84,10 @@ export function buildBusinessHoursString(schedule: DaySchedule[]): string {
   return open.map(d => `${d.short} ${d.openTime}–${d.closeTime}`).join(' · ')
 }
 
-export function loadHoursSchedule(rawDetails: Record<string, unknown> | null): DaySchedule[] {
+export function loadHoursSchedule(
+  rawDetails: Record<string, unknown> | null,
+  businessHours?: BusinessHours | string | null,
+): DaySchedule[] {
   const stored = rawDetails?.hours_schedule as HoursScheduleEntry[] | undefined
   if (stored?.length) {
     return LOCATION_DAYS.map((d) => {
@@ -85,6 +98,29 @@ export function loadHoursSchedule(rawDetails: Record<string, unknown> | null): D
         isOpen: saved?.isOpen ?? false,
         openTime: saved?.openTime ?? '09:00',
         closeTime: saved?.closeTime ?? '18:00',
+      }
+    })
+  }
+
+  if (businessHours && typeof businessHours === 'object') {
+    return LOCATION_DAYS.map((d) => {
+      const full = DAY_KEY_TO_FULL[d.key]
+      const dayHours = businessHours[full] ?? businessHours[d.key] ?? null
+
+      if (dayHours && typeof dayHours === 'object' && dayHours.open && dayHours.close) {
+        return {
+          ...d,
+          isOpen: true,
+          openTime: dayHours.open,
+          closeTime: dayHours.close,
+        }
+      }
+
+      return {
+        ...d,
+        isOpen: false,
+        openTime: '09:00',
+        closeTime: '18:00',
       }
     })
   }
@@ -101,6 +137,23 @@ export function hoursScheduleToPayload(schedule: DaySchedule[]): HoursScheduleEn
   }))
 }
 
+/** OT-ready structured hours keyed by full weekday name. */
+export function hoursScheduleToBusinessHours(schedule: DaySchedule[]): BusinessHours | null {
+  if (!schedule.some(d => d.isOpen))
+    return null
+
+  const result: BusinessHours = {}
+  for (const d of schedule) {
+    const full = DAY_KEY_TO_FULL[d.key] ?? d.key
+    if (d.isOpen)
+      result[full] = { open: d.openTime, close: d.closeTime }
+    else
+      result[full] = null
+  }
+
+  return result
+}
+
 function compressDayRange(dayKeys: string[]): string {
   const sorted = [...new Set(dayKeys)].sort(
     (a, b) => DAY_ORDER.indexOf(a as typeof DAY_ORDER[number]) - DAY_ORDER.indexOf(b as typeof DAY_ORDER[number]),
@@ -115,6 +168,36 @@ function compressDayRange(dayKeys: string[]): string {
     return 'Mon–Sat'
 
   return sorted.map(k => LOCATION_DAYS.find(d => d.key === k)?.short ?? k).join(', ')
+}
+
+function formatStructuredBusinessHours(hours: BusinessHours): string {
+  const openEntries = LOCATION_DAYS
+    .map((d) => {
+      const full = DAY_KEY_TO_FULL[d.key]
+      const dayHours = hours[full] ?? hours[d.key] ?? null
+      if (!dayHours || typeof dayHours !== 'object' || !dayHours.open || !dayHours.close)
+        return null
+
+      return { day: d.key, openTime: dayHours.open, closeTime: dayHours.close }
+    })
+    .filter((e): e is { day: string, openTime: string, closeTime: string } => e != null)
+
+  if (!openEntries.length)
+    return ''
+
+  const first = openEntries[0]
+  const sameHours = openEntries.every(s => s.openTime === first.openTime && s.closeTime === first.closeTime)
+
+  if (sameHours)
+    return `${compressDayRange(openEntries.map(s => s.day))} ${first.openTime}–${first.closeTime}`
+
+  const preview = openEntries.slice(0, 2).map((s) => {
+    const short = LOCATION_DAYS.find(d => d.key === s.day)?.short ?? s.day
+
+    return `${short} ${s.openTime}–${s.closeTime}`
+  }).join(' · ')
+
+  return openEntries.length > 2 ? `${preview}…` : preview
 }
 
 /** Short one-line summary for location cards. */
@@ -142,7 +225,10 @@ export function formatCardBusinessHours(l: LocationItem): string {
     return open.length > 2 ? `${preview}…` : preview
   }
 
-  const raw = l.business_hours?.trim()
+  if (l.business_hours && typeof l.business_hours === 'object')
+    return formatStructuredBusinessHours(l.business_hours)
+
+  const raw = typeof l.business_hours === 'string' ? l.business_hours.trim() : ''
   if (!raw)
     return ''
 

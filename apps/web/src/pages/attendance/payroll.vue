@@ -128,28 +128,28 @@ const recordsStatCards = computed(() => {
     {
       label: 'Records',
       value: String(totalCount.value),
-      hint: listCaption.value || 'this month',
+      hint: listCaption.value || 'matching filters',
       icon: 'ri-file-list-3-line',
       color: 'primary',
     },
     {
       label: 'Regular',
       value: formatHours(regular),
-      hint: `${regularSlots} slots`,
+      hint: `${regularSlots} slots · this page`,
       icon: 'ri-time-line',
       color: 'success',
     },
     {
       label: 'Overtime',
       value: formatHours(overtime),
-      hint: `${otSlots} slots`,
+      hint: `${otSlots} slots · this page`,
       icon: 'ri-flashlight-line',
       color: 'info',
     },
     {
       label: 'Net pay',
       value: formatCurrency(net),
-      hint: 'current page total',
+      hint: 'this page total',
       icon: 'ri-wallet-3-line',
       color: 'secondary',
     },
@@ -236,7 +236,7 @@ onMounted(async () => {
     loadStepProducts()
 })
 
-watch([yearMonth, filterStatus], () => {
+watch([yearMonth, filterStatus, filterProductType], () => {
   selectedRecord.value = null
   summaries.value = []
   loadRecords(true, true)
@@ -522,9 +522,9 @@ async function handleGenerate() {
   generateSuccess.value = null
   generatedRecords.value = []
   try {
-    await generatePayroll(year, month, 'staff', idsToSend)
+    const generateResult = await generatePayroll(year, month, 'staff', idsToSend)
 
-    generateSuccess.value = formatPayrollGenerateMessage({ created: stepSelectedCount.value, updated: 0, skipped: 0 }, year, month)
+    generateSuccess.value = formatPayrollGenerateMessage(generateResult, year, month)
     filterProductType.value = 'staff'
     yearMonth.value = stepMonth.value
 

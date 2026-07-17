@@ -33,6 +33,7 @@ const filters = reactive({
   date_from: todayKey,
   date_to: todayKey,
   event_type: '' as string,
+  include_voided: false,
 })
 
 const page = ref(1)
@@ -116,6 +117,8 @@ const productSelectItems = computed(() => [
 
 const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE)
 
+const filtersReady = ref(false)
+
 onMounted(async () => {
   authStore.restoreSession()
   if (!authStore.isLoggedIn) {
@@ -142,7 +145,24 @@ onMounted(async () => {
     console.error('Failed to load locations for manual correction', e)
   }
   await loadEvents()
+  filtersReady.value = true
 })
+
+watch(
+  () => [
+    filters.product_id,
+    filters.product_type,
+    filters.event_type,
+    filters.date_from,
+    filters.date_to,
+    filters.include_voided,
+  ],
+  () => {
+    if (!filtersReady.value)
+      return
+    loadEvents(false, true)
+  },
+)
 
 function filterDateRange() {
   return getDateRangeIso(filters.date_from, filters.date_to)
@@ -165,6 +185,7 @@ async function loadEvents(isRefresh = false, resetPage = false) {
       date_from: range.date_from,
       date_to: range.date_to,
       event_type: filters.event_type || undefined,
+      include_voided: filters.include_voided || undefined,
       page: page.value,
       page_size: pageSize.value,
     })
@@ -180,10 +201,6 @@ async function loadEvents(isRefresh = false, resetPage = false) {
     loading.value = false
     refreshing.value = false
   }
-}
-
-function applyFilters() {
-  loadEvents(false, true)
 }
 
 function applyDatePreset(preset: DatePreset) {
@@ -208,7 +225,6 @@ function applyDatePreset(preset: DatePreset) {
     filters.date_to = ''
   }
 
-  applyFilters()
 }
 
 function onManualDateChange() {
@@ -275,6 +291,7 @@ async function handleExport() {
       product_type: filters.product_type || undefined,
       date_from: range.date_from,
       date_to: range.date_to,
+      include_voided: filters.include_voided || undefined,
     })
 
     const url = URL.createObjectURL(blob)
@@ -466,15 +483,15 @@ async function confirmVoid() {
         >
           {{ preset.title }}
         </VBtn>
+        <VCheckbox
+          v-model="filters.include_voided"
+          label="Show voided"
+          density="compact"
+          hide-details
+          class="ms-sm-2"
+        />
       </div>
       <div class="d-flex flex-wrap gap-2 justify-sm-end">
-        <VBtn
-          color="primary"
-          prepend-icon="ri-search-line"
-          @click="applyFilters"
-        >
-          Filter
-        </VBtn>
         <VBtn
           variant="outlined"
           :loading="exporting"
@@ -561,7 +578,9 @@ async function confirmVoid() {
               <th class="col-notes">
                 Notes
               </th>
-              <th class="col-actions" />
+              <th class="col-actions">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -620,14 +639,14 @@ async function confirmVoid() {
                 <VBtn
                   v-if="!evt.voided_at && authStore.isAdmin"
                   icon
-                  size="x-small"
+                  size="small"
                   variant="text"
                   color="error"
                   :loading="voidingId === evt.id"
                   title="Void event"
                   @click="openVoidDialog(evt)"
                 >
-                  <VIcon>tabler-ban</VIcon>
+                  <VIcon icon="ri-forbid-line" />
                 </VBtn>
               </td>
             </tr>

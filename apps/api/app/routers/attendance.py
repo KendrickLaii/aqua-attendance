@@ -1,6 +1,6 @@
 import csv
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from io import StringIO
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -209,9 +209,15 @@ async def attendance_day_stats(
     db: DB,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    include_voided: bool = False,
 ) -> AttendanceDayStatsOut:
     """Aggregate event counts for a date range (dashboard stats)."""
-    stats = await att_svc.event_day_stats(db, date_from=date_from, date_to=date_to)
+    stats = await att_svc.event_day_stats(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        include_voided=include_voided,
+    )
     return AttendanceDayStatsOut(**stats)
 
 
@@ -225,6 +231,7 @@ async def list_attendance(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     event_type: str | None = None,
+    include_voided: bool = False,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AttendanceOut]:
@@ -236,6 +243,7 @@ async def list_attendance(
         date_from=date_from,
         date_to=date_to,
         event_type=event_type,
+        include_voided=include_voided,
         page=page,
         page_size=page_size,
     )
@@ -286,6 +294,7 @@ async def export_csv(
     product_type: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    include_voided: bool = False,
 ) -> StreamingResponse:
     if date_from is None or date_to is None:
         raise HTTPException(
@@ -299,6 +308,7 @@ async def export_csv(
         product_type=product_type,
         date_from=date_from,
         date_to=date_to,
+        include_voided=include_voided,
     )
     buf = StringIO()
     writer = csv.writer(buf)
@@ -367,9 +377,8 @@ async def void_attendance_event(
             detail="Event is already voided",
         )
 
-    event.voided_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(event)
+    event = await att_svc.void_event(db, event=event)
+    event = await _reload_with_product(db, event.id)
 
     await audit_svc.log_audit(
         db,
@@ -377,7 +386,7 @@ async def void_attendance_event(
         action="UPDATE",
         table_name="attendance_events",
         record_id=event.id,
-        new_values={"voided_at": event.voided_at.isoformat()},
+        new_values={"voided_at": event.voided_at.isoformat() if event.voided_at else None},
         description=f"Voided attendance event {event_id}",
         request=request,
     )
