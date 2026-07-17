@@ -271,51 +271,10 @@ async function loadDetail(isRefresh = false) {
   }
 }
 
-const editAdj1 = ref(0)
-const editAdj2 = ref(0)
-const editAdj1Remark = ref('')
-const editAdj2Remark = ref('')
-const editGross = ref(0)
-const editNet = ref(0)
-
 function openDetail(record: PayrollRecord) {
   selectedRecord.value = record
   summaries.value = []
-  editAdj1.value = record.adjustment_1 ?? 0
-  editAdj2.value = record.adjustment_2 ?? 0
-  editAdj1Remark.value = record.adjustment_1_remark ?? ''
-  editAdj2Remark.value = record.adjustment_2_remark ?? ''
-  editGross.value = record.gross_pay
-  editNet.value = record.net_pay
   loadDetail()
-}
-
-function onAdjChange() {
-  if (!selectedRecord.value)
-    return
-  const r = selectedRecord.value
-  const gross = r.base_salary + r.overtime_pay + r.holiday_pay + (editAdj1.value || 0)
-  const net = gross + (editAdj2.value || 0)
-
-  editGross.value = gross
-  editNet.value = net
-  updatePayrollRecord(r.id, {
-    adjustment_1: editAdj1.value || 0,
-    adjustment_2: editAdj2.value || 0,
-    adjustment_1_remark: editAdj1Remark.value || null,
-    adjustment_2_remark: editAdj2Remark.value || null,
-    gross_pay: gross,
-    net_pay: net,
-  }).then(updated => {
-    r.adjustment_1 = updated.adjustment_1
-    r.adjustment_2 = updated.adjustment_2
-    r.adjustment_1_remark = updated.adjustment_1_remark
-    r.adjustment_2_remark = updated.adjustment_2_remark
-    r.gross_pay = updated.gross_pay
-    r.net_pay = updated.net_pay
-  }).catch(e => {
-    console.error('Failed to update adjustments', e)
-  })
 }
 
 function onCardAdjChange(record: PayrollRecord) {
@@ -1087,9 +1046,10 @@ function formatCurrency(n: number | null | undefined) {
                         <span>Adjustment 1</span>
                         <VTextField
                           v-model.number="record.adjustment_1"
+                          class="invoice-adj-amount"
                           type="number"
                           density="compact"
-                          variant="outlined"
+                          variant="underlined"
                           hide-details
                           style="max-inline-size: 120px;"
                           @update:model-value="onCardAdjChange(record)"
@@ -1098,9 +1058,9 @@ function formatCurrency(n: number | null | undefined) {
                       <VTextField
                         v-model="record.adjustment_1_remark"
                         class="invoice-remark mb-1"
-                        placeholder="Remark"
+                        label="Remark"
                         density="compact"
-                        variant="underlined"
+                        variant="outlined"
                         hide-details
                         @update:model-value="onCardAdjChange(record)"
                       />
@@ -1112,9 +1072,10 @@ function formatCurrency(n: number | null | undefined) {
                         <span>Adjustment 2</span>
                         <VTextField
                           v-model.number="record.adjustment_2"
+                          class="invoice-adj-amount"
                           type="number"
                           density="compact"
-                          variant="outlined"
+                          variant="underlined"
                           hide-details
                           style="max-inline-size: 120px;"
                           @update:model-value="onCardAdjChange(record)"
@@ -1123,9 +1084,9 @@ function formatCurrency(n: number | null | undefined) {
                       <VTextField
                         v-model="record.adjustment_2_remark"
                         class="invoice-remark mb-1"
-                        placeholder="Remark"
+                        label="Remark"
                         density="compact"
-                        variant="underlined"
+                        variant="outlined"
                         hide-details
                         @update:model-value="onCardAdjChange(record)"
                       />
@@ -1577,22 +1538,15 @@ function formatCurrency(n: number | null | undefined) {
             cols="12"
             sm="3"
           >
-            <VTextField
-              v-model.number="editAdj1"
-              label="Adjustment 1"
-              type="number"
-              density="compact"
-              hide-details
-              @update:model-value="onAdjChange"
-            />
-            <VTextField
-              v-model="editAdj1Remark"
-              class="mt-2"
-              label="Remark"
-              density="compact"
-              hide-details
-              @update:model-value="onAdjChange"
-            />
+            <div class="text-caption text-medium-emphasis">
+              Adjustment 1
+            </div>
+            <div class="text-h6 font-weight-bold">
+              {{ formatCurrency(selectedRecord.adjustment_1) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ selectedRecord.adjustment_1_remark || '—' }}
+            </div>
             <div class="text-caption text-medium-emphasis mt-1">
               Base + OT + Holiday + Adj1 = Gross
             </div>
@@ -1601,22 +1555,15 @@ function formatCurrency(n: number | null | undefined) {
             cols="12"
             sm="3"
           >
-            <VTextField
-              v-model.number="editAdj2"
-              label="Adjustment 2"
-              type="number"
-              density="compact"
-              hide-details
-              @update:model-value="onAdjChange"
-            />
-            <VTextField
-              v-model="editAdj2Remark"
-              class="mt-2"
-              label="Remark"
-              density="compact"
-              hide-details
-              @update:model-value="onAdjChange"
-            />
+            <div class="text-caption text-medium-emphasis">
+              Adjustment 2
+            </div>
+            <div class="text-h6 font-weight-bold">
+              {{ formatCurrency(selectedRecord.adjustment_2) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ selectedRecord.adjustment_2_remark || '—' }}
+            </div>
             <div class="text-caption text-medium-emphasis mt-1">
               Gross + Adj2 = Net
             </div>
@@ -1629,7 +1576,7 @@ function formatCurrency(n: number | null | undefined) {
               Gross pay
             </div>
             <div class="text-h6 font-weight-bold">
-              {{ formatCurrency(editGross) }}
+              {{ formatCurrency(selectedRecord.gross_pay) }}
             </div>
           </VCol>
           <VCol
@@ -1640,13 +1587,13 @@ function formatCurrency(n: number | null | undefined) {
               Net pay
             </div>
             <div class="text-h6 font-weight-bold text-primary">
-              {{ formatCurrency(editNet) }}
+              {{ formatCurrency(selectedRecord.net_pay) }}
             </div>
           </VCol>
         </VRow>
       </VCardText>
       <VCardText class="text-caption text-medium-emphasis pb-0">
-        Daily attendance summaries used to calculate this payroll record.
+        Daily attendance summaries used to calculate this payroll record. Edit adjustments on the pay slip card.
       </VCardText>
       <div class="payroll-table-scroll">
         <VTable
@@ -1887,7 +1834,24 @@ function formatCurrency(n: number | null | undefined) {
 }
 
 .invoice-remark {
-  margin-block-start: -2px;
+  margin-block-start: 10px;
+}
+
+.invoice-adj-amount :deep(input) {
+  text-align: end;
+}
+
+/* Hide browser number spinners on adjustment amount fields */
+.invoice-adj-amount :deep(input[type='number']) {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.invoice-adj-amount :deep(input[type='number']::-webkit-outer-spin-button),
+.invoice-adj-amount :deep(input[type='number']::-webkit-inner-spin-button) {
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .invoice-line.total {
