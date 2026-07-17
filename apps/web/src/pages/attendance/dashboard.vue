@@ -3,9 +3,10 @@ import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { getAttendanceDayStats, listAttendanceWithTotal } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
 import type { Product } from '@/api/attendance/products'
+import { type BusinessHours, listLocations } from '@/api/attendance/locations'
 import { getAutoCheckoutStatus, triggerAutoCheckout } from '@/api/attendance/autoCheckout'
 import type { AttendanceEvent } from '@/api/attendance/events'
-import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso } from '@/utils/attendanceDisplay'
+import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso, ATTENDANCE_TIMEZONE } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
@@ -38,13 +39,16 @@ const autoCheckoutCandidates = ref<Product[]>([])
 const autoCheckoutSelectedIds = ref<string[]>([])
 const autoCheckoutCandidatesLoading = ref(false)
 const autoCheckoutDialogError = ref('')
+/** location_id → today's close "HH:MM" (null = closed / unknown) */
+const locationCloseById = ref<Record<string, string | null>>({})
 
+type OnSiteKind = 'on_site_today' | 'past_closing' | 'possible_missed'
 const allCandidatesSelected = computed(() =>
   autoCheckoutCandidates.value.length > 0
   && autoCheckoutSelectedIds.value.length === autoCheckoutCandidates.value.length)
 
 const autoCheckoutSaveLabel = computed(() =>
-  `Check out ${autoCheckoutSelectedIds.value.length} selected`)
+  `Close day for ${autoCheckoutSelectedIds.value.length} selected`)
 
 function toggleSelectAllCandidates() {
   autoCheckoutSelectedIds.value = allCandidatesSelected.value
@@ -129,14 +133,90 @@ const summaryStatCards = computed(() => [
     color: 'secondary',
   },
   {
-    label: 'Pending checkout',
+    label: 'Day-end list',
     value: String(stillCheckedInCount.value),
-    hint: stillCheckedInCount.value > 0 ? 'needs auto-checkout review' : 'all clear',
+    hint: stillCheckedInCount.value > 0 ? 'open check-ins to review' : 'nobody on site',
     icon: 'ri-time-line',
     color: stillCheckedInCount.value > 0 ? 'warning' : 'success',
   },
 ])
 
+function isLastEventToday(lastEventAt: string | null | undefined): boolean {
+  if (!lastEventAt)
+    return false
+
+  const today = getTodayRangeIso().dateKey
+  const eventDay = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ATTENDANCE_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(lastEventAt))
+
+  return eventDay === today
+}
+
+function weekdayKey(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: ATTENDANCE_TIMEZONE,
+    weekday: 'long',
+  }).format(now).toLowerCase()
+}
+
+function parseCloseFromBusinessHours(hours: BusinessHours | string | null | undefined): string | null {
+  if (!hours || typeof hours === 'string')
+    return null
+
+  const day = hours[weekdayKey()]
+  if (!day || typeof day !== 'object')
+    return null
+
+  const close = day.close
+  return typeof close === 'string' && /^\d{1,2}:\d{2}$/.test(close) ? close : null
+}
+
+function currentMinutesInTz(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: ATTENDANCE_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now)
+  const hour = Number(parts.find(p => p.type === 'hour')?.value ?? 0) % 24
+  const minute = Number(parts.find(p => p.type === 'minute')?.value ?? 0)
+
+  return hour * 60 + minute
+}
+
+function closeToMinutes(close: string): number {
+  const [h, m] = close.split(':').map(Number)
+
+  return h * 60 + m
+}
+
+function isPastLocationClose(product: Product, now = new Date()): boolean {
+  const locationId = product.registered_location_id
+  const close = locationCloseById.value[locationId]
+  if (!close)
+    return false
+
+  return currentMinutesInTz(now) >= closeToMinutes(close)
+}
+
+function onSiteKind(product: Product): OnSiteKind {
+  if (!isLastEventToday(product.last_event_at))
+    return 'possible_missed'
+  if (isPastLocationClose(product))
+    return 'past_closing'
+
+  return 'on_site_today'
+}
+
+function shouldDefaultSelect(product: Product): boolean {
+  const kind = onSiteKind(product)
+
+  return kind === 'possible_missed' || kind === 'past_closing'
+}
 async function loadDashboard(isRefresh = false) {
   if (isRefresh)
     refreshing.value = true
@@ -233,11 +313,21 @@ async function openAutoCheckoutDialog() {
   autoCheckoutCandidatesLoading.value = true
   autoCheckoutCandidates.value = []
   autoCheckoutSelectedIds.value = []
+  locationCloseById.value = {}
   try {
-    const products = await listProducts({ is_active: true, attendance_status: 'checked_in', page_size: 200 })
+    const [products, locations] = await Promise.all([
+      listProducts({ is_active: true, attendance_status: 'checked_in', page_size: 200 }),
+      listLocations({ is_active: true, page_size: 200 }),
+    ])
+
+    const closeMap: Record<string, string | null> = {}
+    for (const loc of locations)
+      closeMap[loc.id] = parseCloseFromBusinessHours(loc.business_hours)
+    locationCloseById.value = closeMap
 
     autoCheckoutCandidates.value = products
-    autoCheckoutSelectedIds.value = products.map(p => p.id)
+    // Default-select overnight missed + past-closing; leave in-hours people unchecked.
+    autoCheckoutSelectedIds.value = products.filter(shouldDefaultSelect).map(p => p.id)
   }
   catch (e: unknown) {
     autoCheckoutDialogError.value = formatApiError(e, 'Failed to load checked-in products')
@@ -310,9 +400,10 @@ async function confirmAutoCheckout() {
           color="warning"
           prepend-icon="ri-time-line"
           :loading="autoCheckoutLoading"
+          title="Day-end tool: closes open check-ins at 23:59. Do not use while staff are still working."
           @click="openAutoCheckoutDialog"
         >
-          Auto Checkout
+          Day-end checkout
         </VBtn>
         <VBtn
           variant="outlined"
@@ -393,15 +484,17 @@ async function confirmAutoCheckout() {
         prominent
       >
         <template #prepend>
-          <VIcon icon="ri-alarm-warning-line" />
+          <VIcon icon="ri-map-pin-user-line" />
         </template>
         <div class="d-flex flex-wrap align-center justify-space-between gap-2 w-100">
           <div>
             <div class="font-weight-medium">
-              {{ stillCheckedInCount }} still checked in
+              {{ stillCheckedInCount }} currently on site
             </div>
             <div class="text-body-2">
-              Review and run day-boundary auto-checkout when ready.
+              During location hours this usually means people are still working.
+              After closing (e.g. past 18:00) they may be OT or overdue.
+              Overnight names can be a missed-checkout reminder — only run day-end checkout when you mean to close the day.
             </div>
           </div>
           <VBtn
@@ -412,7 +505,7 @@ async function confirmAutoCheckout() {
             :loading="autoCheckoutLoading"
             @click="openAutoCheckoutDialog"
           >
-            Review &amp; Run
+            Review list
           </VBtn>
         </div>
       </VAlert>
@@ -600,7 +693,7 @@ async function confirmAutoCheckout() {
 
     <AttendanceFormDialog
       v-model="autoCheckoutDialog"
-      title="Auto Checkout"
+      title="Day-end checkout"
       icon="ri-time-line"
       :max-width="560"
       :saving="autoCheckoutLoading"
@@ -611,9 +704,22 @@ async function confirmAutoCheckout() {
       @cancel="autoCheckoutDialog = false"
       @clear-error="autoCheckoutDialogError = ''"
     >
+      <VAlert
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+      >
+        This list is <strong>everyone currently marked on site</strong>.
+        <strong>On site today</strong> = still within location hours — usually leave them.
+        <strong>Past closing</strong> = after that location's close (may be OT or overdue).
+        <strong>Possible missed checkout</strong> = overnight reminder.
+        Closing writes a <strong>23:59</strong> check-out (not the location close time).
+      </VAlert>
+
       <p class="text-body-2 text-medium-emphasis mb-4">
-        Select who to check out now. Unselected products stay checked in so you
-        can investigate why they never scanned out.
+        Unselected people stay on site so you can investigate later.
+        Past-closing and overnight names are selected by default.
       </p>
 
       <div
@@ -636,7 +742,7 @@ async function confirmAutoCheckout() {
           color="success"
           class="mb-2 d-block mx-auto"
         />
-        No products are still checked in.
+        Nobody is currently on site.
       </div>
 
       <template v-else>
@@ -670,16 +776,42 @@ async function confirmAutoCheckout() {
                 density="compact"
               />
             </template>
-            <VListItemTitle>
+            <VListItemTitle class="d-flex flex-wrap align-center gap-1">
               {{ product.full_name }}
               <VChip
                 :color="product.product_type === 'staff' ? 'info' : 'success'"
                 size="x-small"
                 label
-                class="ms-1"
                 :prepend-icon="product.product_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
               >
                 {{ typeLabel(product.product_type) }}
+              </VChip>
+              <VChip
+                v-if="onSiteKind(product) === 'on_site_today'"
+                color="success"
+                size="x-small"
+                label
+                prepend-icon="ri-map-pin-user-line"
+              >
+                On site today
+              </VChip>
+              <VChip
+                v-else-if="onSiteKind(product) === 'past_closing'"
+                color="warning"
+                size="x-small"
+                label
+                prepend-icon="ri-time-line"
+              >
+                Past closing
+              </VChip>
+              <VChip
+                v-else
+                color="error"
+                size="x-small"
+                label
+                prepend-icon="ri-error-warning-line"
+              >
+                Possible missed checkout
               </VChip>
             </VListItemTitle>
             <VListItemSubtitle>

@@ -240,11 +240,13 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 | Overview 無 slots | ✅ 已補 `total_regular_slots` / `total_ot_slots` |
 | 唯一約束 | `(product_id, summary_date)` / payroll `(product_id, period_start, period_end)` |
 | 自動化 | 尚無 cron 自動月度 Generate |
+| Auto checkout | **非完整自動版**：有 23:59 日界 helper、手動 Day-end、Generate 過去日回填；**無** 23:59 cron、**無** 00:00 status 重置（見 [known-gaps.md](known-gaps.md) #M14） |
 
 ### 6.3 後續可選改善
 
 - Seed 可選 `--no-summaries` 避免與真實流程混淆
 - 月度 Generate cron + 結構化 logging
+- Auto checkout 排程（每晚呼叫 `POST /api/auto-checkout/run`）+ 可選 00:00 status 重置
 - Payroll 狀態機已收緊（draft/calculated → approved → paid；paid/cancelled 不可回退）
 
 ### 6.4 本次文件對照修正（相對 2026-07-08 版）
@@ -279,7 +281,10 @@ A：點擊 product 的薪資列後，會讀取該 product 在當月的 `attendan
 A：列表依頂部選中的月份篩選，與 Summaries 的「按月聚焦」模型一致。
 
 **Q：為什麼還有 Incomplete？**  
-A：Incomplete 只表示「當天還缺簽退、且尚未到日界」。過去日期若只有 check_in，**Generate** 會自動補 `auto_checkout`（23:59）並標為 Complete；Dashboard 的 Auto Checkout 也會補事件並重算當月彙總。Seed 測試資料不再大量產生 Incomplete。
+A：Incomplete 只表示「當天還缺簽退、且尚未到日界」。過去日期若只有 check_in，**Generate** 會補 `auto_checkout`（23:59）並標為 Complete；Dashboard **Day-end checkout** 可手動對仍 checked_in 的人補日界簽退。兩者都不是「系統每晚自動跑」——目前**沒有** 23:59 cron（見 known-gaps #M14）。Seed 測試資料不再大量產生 Incomplete。
+
+**Q：Auto checkout / Day-end 算不算做完了？**  
+A：**不算完整自動版。** 已完成：共用日界事件、手動 API、Generate 回填過去日。未完成：排程、00:00 `attendance_status` 重置。關門時間只影響 OT／UI「Past closing」標籤，不會觸發簽退。
 
 ---
 

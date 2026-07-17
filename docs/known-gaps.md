@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-07-10（已審查：2026-07-10）
+> 最後更新：2026-07-17（已審查：2026-07-17）
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -115,6 +115,22 @@
 - **問題**：Holiday 僅在狀態欄顯示文字，無獨立篩選 chip（如同 Weekend chip）。
 - **建議**：新增 Holiday chip 前端篩選。
 
+### #M14 Auto checkout **不是**完整自動版
+
+> ⚠️ 開發者常見誤解：看到 `auto_checkout` 服務、Dashboard「Day-end checkout」、或 Generate 會補 23:59 簽退，就以為「每晚會自動跑完」。**目前沒有排程；上線前不可當成已完成的自動系統。**
+
+| 已實作 | 未實作 |
+|--------|--------|
+| 共用 helper：`make_day_boundary_checkout_event`（23:59、`source=auto_checkout`） | **無** 23:59 cron / scheduler / worker |
+| 手動 `POST /api/auto-checkout/run`（Dashboard Day-end） | **無** 00:00 自動把 `attendance_status` 重設為 `checked_out` |
+| Generate 對**過去日期**缺簽退時補日界 `check_out` | 關門時間（`business_hours.close`）**不會**觸發簽退（只用於 OT / UI 標籤） |
+| `GET /api/auto-checkout/status` + 仍 checked_in 清單 | 隔夜仍 `checked_in` 會一直掛著，直到手動 Day-end 或隔日 Generate 回填 |
+
+- **位置**：`apps/api/app/services/auto_checkout.py`、`routers/auto_checkout.py`、Dashboard Day-end、`summary_generator.py`
+- **設計意圖**（見 [database-changes.md](database-changes.md)）：日界 23:59 兜底，非關門時間；避免忘記簽退造成 OT 虛高。
+- **現況**：邏輯與手動／Generate 路徑已對齊，但**不會自己跑**。Router 註解裡「Normally run by a scheduled job」是目標態，不是現況。
+- **建議**：部署後加排程（例如每天 23:59 呼叫 `POST /api/auto-checkout/run`，或獨立 worker）；可選再補 00:00 status 重置 job。文件與 UI 文案應持續標明「手動／回填」，避免當成完整自動。
+
 ---
 
 ## 5. 🟢 Low — 前端改善
@@ -190,7 +206,8 @@
 | 後端審查 | profile `uselist=False` | 2026-06 |
 | 後端審查 | `employment_type` 遷移至 `staff_profiles` | 2026-06 |
 | 後端審查 | notifications / summaries / payroll / audit_logs 端點 | 2026-06 |
-| 後端審查 | OT 計算 + auto_checkout | 2026-06 |
+| 後端審查 | OT 計算（15 分鐘槽） | 2026-06 |
+| 後端審查 | auto_checkout **helper + 手動 API + Generate 回填**（**非** cron；見 #M14） | 2026-06 / 2026-07 |
 | 後端審查 | `notification.extra_data` 改 JSON | 2026-06 |
 | attendance-summaries | Payroll 薪資率模型（slots + 薪資率計算 + 快照凍結） | 2026-07 |
 | 前端對齊計畫 | Batch 1–4 全部（產品多型、Summaries、Payroll、Notifications、Audit、Mobile） | 2026-07 |

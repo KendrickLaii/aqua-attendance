@@ -109,7 +109,8 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | `POST /api/payroll-records/generate` | Admin |
 | `GET/PATCH /api/notifications` | Admin |
 | `GET /api/audit-logs` | Superadmin |
-| `POST /api/auto-checkout/run` | Admin |
+| `POST /api/auto-checkout/run` | Admin（**手動** Day-end；尚無 23:59 cron） |
+| `GET /api/auto-checkout/status` | Admin |
 | `GET/POST/PATCH /api/staff-profiles` | Admin |
 | `GET/POST/PATCH /api/student-profiles` | Admin |
 | `GET /api/health` | 無 |
@@ -608,8 +609,9 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
+> **2026-07-17 更新**：釐清 **auto checkout 非完整自動版**（有手動 Day-end + Generate 回填，**無** 23:59 cron／無 00:00 status 重置）— 見 [known-gaps.md](known-gaps.md) #M14。  
 > **2026-07-10 更新**：Summaries / Payroll 重構完成（主從式 UI、overview 聚合、Generate upsert、薪資率計算、seed bulk 測試資料）— 見 [attendance-summaries.md](attendance-summaries.md)。多項 Medium/Low 問題已修復。  
-> **2026-06-16 更新**：後端大量修復已完成（StaffProfile 外鍵歧義、`employment_type` 遷移、profile 一對一關係、通知/彙總/薪資/稽核端點、OT 計算、auto_checkout 等），詳見 [known-gaps.md](known-gaps.md)。
+> **2026-06-16 更新**：後端大量修復已完成（StaffProfile 外鍵歧義、`employment_type` 遷移、profile 一對一關係、通知/彙總/薪資/稽核端點、OT 計算、auto_checkout **手動 API／helper** 等），詳見 [known-gaps.md](known-gaps.md)。
 
 ### 5.1 優先行動計劃
 
@@ -624,6 +626,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 6. 統一 API 錯誤格式 ✅ Done（2026-07）
 7. CSV 真串流 ⬜
 8. 補 RBAC 矩陣 + refresh 競態測試 ⬜
+8b. Auto checkout **排程**（現僅手動 Day-end + Generate 回填；見 known-gaps #M14）⬜
 
 **第三階段 — 可延後（Low）**
 9. Refresh token 改 HttpOnly cookie ⬜
@@ -1115,7 +1118,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | New | `staff_profiles` / `student_profiles` CRUD 端點 |
 | New | `notifications` CRUD + 標記已讀 |
 | New | `audit_logs` 查詢端點（superadmin） |
-| New | `auto_checkout` 排程端點（`POST /api/auto-checkout/run`） |
+| New | `auto_checkout` **手動**觸發端點（`POST /api/auto-checkout/run`；**非**已上線排程，見 known-gaps #M14） |
 | New | OT 計算服務（`services/overtime.py` — 15 分鐘槽） |
 | Enhancement | Rate limit 改用 Redis backend（多副本安全） |
 | Enhancement | `notification.extra_data` 改 JSON 型別 |

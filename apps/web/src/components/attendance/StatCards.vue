@@ -16,6 +16,7 @@ defineProps<{
   <VRow
     class="mb-3"
     dense
+    align="stretch"
   >
     <VCol
       v-for="card in cards"
@@ -23,10 +24,11 @@ defineProps<{
       cols="12"
       sm="6"
       md="3"
+      class="d-flex"
     >
-      <VCard class="pa-3">
+      <VCard class="pa-3 w-100 d-flex flex-column">
         <div class="d-flex align-center justify-space-between mb-1">
-          <div class="text-caption text-medium-emphasis">
+          <div class="text-caption text-medium-emphasis text-truncate me-2">
             {{ card.label }}
           </div>
           <VAvatar
@@ -34,6 +36,7 @@ defineProps<{
             variant="tonal"
             size="32"
             rounded
+            class="flex-shrink-0"
           >
             <VIcon
               :icon="card.icon"
@@ -49,7 +52,8 @@ defineProps<{
         </div>
         <div
           v-if="card.hint"
-          class="text-caption text-medium-emphasis"
+          class="text-caption text-medium-emphasis mt-auto pt-1"
+          style="min-height: 2.5em; line-height: 1.25;"
         >
           {{ card.hint }}
         </div>

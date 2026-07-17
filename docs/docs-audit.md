@@ -24,7 +24,7 @@
 | A2 | ~~缺少 payroll-records 端點~~ | ✅ 已修 |
 | A3 | ~~缺少 notifications 端點~~ | ✅ 已修 |
 | A4 | ~~缺少 audit-logs 端點~~ | ✅ 已修 |
-| A5 | ~~缺少 auto-checkout 端點~~ | ✅ 已修 |
+| A5 | ~~缺少 auto-checkout 端點~~ | ✅ 已修（**僅手動 API**；排程仍缺 → known-gaps #M14） |
 | A6 | ~~缺少 staff-profiles / student-profiles 端點~~ | ✅ 已修 |
 
 ### 1.3 §1.7 環境變數（L107–121）
@@ -150,8 +150,9 @@
 8. ~~HANDBOOK §1.7 環境變數加入 REDIS_URL~~ ✅
 9. ~~HANDBOOK §6.4 migration 編號更新~~ ✅
 10. ~~HANDBOOK §8 加入 2026-06 / 2026-07 release notes~~ ✅
-11. known-gaps.md 更新過時項目 ⬜
+11. known-gaps.md 更新過時項目 — 部分完成：2026-07-17 已加 **#M14 auto checkout 非完整自動版**；M10/M11 等仍待對照程式碼更新 ⬜
 
 ### 🟢 可延後
-12. attendance-summaries.md 微調（S1、S2）⬜
+12. attendance-summaries.md 微調（S1、S2）— FAQ／限制已補 auto checkout 現況 ✅（其餘 S1/S2 另審）⬜
 13. ~~INDEX.md 更新文件列表~~ ✅
+14. ~~釐清 auto checkout「設計 vs 實作」~~ ✅（known-gaps #M14、database-changes、handbook、API docstring）

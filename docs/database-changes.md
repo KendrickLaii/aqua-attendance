@@ -254,6 +254,18 @@ erDiagram
 | 雙次 check_in / check_out | **全部允許**，全部記錄，計算只取首次和末次 |
 | 午休 | **不打卡**，固定扣除槽數在**服務層**處理，不存入資料庫 |
 
+> **Auto checkout 實作狀態（2026-07-17）— 非完整自動版**  
+> 設計上的「23:59 兜底」已有**共用邏輯**與**手動／Generate 路徑**，但**沒有排程會在 23:59 自動執行**。詳見 [known-gaps.md](known-gaps.md) **#M14**。  
+>
+> | 能力 | 狀態 |
+> |------|------|
+> | 日界事件形狀（23:59、`source=auto_checkout`） | ✅ `services/auto_checkout.py` |
+> | 手動觸發 `POST /api/auto-checkout/run`（Dashboard Day-end） | ✅ |
+> | Generate 對過去日缺簽退補日界 out | ✅ |
+> | 每晚 23:59 cron / worker | ❌ 未做 |
+> | 每日 00:00 重置 `attendance_status` | ❌ 未做（下表「每日重置」為**設計意圖**，非已上線 job） |
+> | 依關門時間自動簽退 | ❌ 刻意不做（關門只算 OT） |
+
 ### 15分鐘槽四捨五入
 
 ```text
@@ -292,15 +304,15 @@ ot_hours      = ot_slots * 0.25
 |---|---|
 | 當天首次簽到 | 當天最早 `check_in`（四捨五入後） |
 | 當天末次簽退 | 當天最晚 `check_out`（四捨五入後） |
-| 每日重置 | 00:00 重置 `attendance_status` 為 `checked_out`，僅用於 UI 顯示，不控制打卡邏輯 |
-| 忘記簽退 | auto_checkout 在 **23:59** 補 `check_out`（`source=auto_checkout`），標記待複核 |
+| 每日重置 | **設計意圖**：00:00 將 `attendance_status` 重設為 `checked_out`（僅 UI／狀態顯示，不改打卡規則）。**現況：無此 job**；隔夜可能仍顯示 `checked_in` |
+| 忘記簽退 | **設計**：日界 **23:59** 補 `check_out`（`source=auto_checkout`），供管理員複核。**現況**：僅手動 Day-end、或 Generate 回填過去日；**無每晚自動跑** |
 | 雙次 check_in | **允許**（直接記錄，不擋，計算只取首次，重複打卡無害） |
 | 雙次 check_out | **允許**（直接記錄，不擋，計算只取末次，重複打卡無害） |
 | check_out 後再 check_in | **允許**（視為同日新一段工作，末次 check_out 自動更新） |
-| 有 OT 仍未簽退 | 23:59 兜底，不在關門時打斷（員工可能在加班） |
+| 有 OT 仍未簽退 | 設計上 23:59 兜底，不在關門時打斷（員工可能在加班）。**自動兜底尚未排程** |
 | 工時計算 | 始終用當天**首次** check_in + **末次** check_out，所有情況自動涵蓋 |
 
-> ⚠️ 忘記簽退若不處理，OT 會虛高。auto_checkout 兜底＋管理員複核必須實作。
+> ⚠️ 忘記簽退若不處理，OT 會虛高。日界補簽退邏輯與手動／Generate 路徑已有；**排程自動跑 + 管理員複核流程仍須補齊**（見 known-gaps #M14）。
 
 ### 月度彙總計算
 

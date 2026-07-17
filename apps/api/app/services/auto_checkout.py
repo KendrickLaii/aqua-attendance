@@ -6,7 +6,11 @@ Rules (from DATABASE_CHANGES.md):
 - Trigger time = 23:59 (day boundary), NOT closing time
 - All double check_in / check_out are allowed; calculation only uses first & last
 
-Both the Auto Checkout job/dashboard and summary generate use
+**Status (not a complete automated system):**
+- Shared helper + manual ``POST /api/auto-checkout/run`` + Generate backfill for past days: yes
+- Nightly 23:59 cron / worker and 00:00 status reset: **not implemented** (see docs/known-gaps.md #M14)
+
+Both the Dashboard Day-end action and summary generate use
 ``make_day_boundary_checkout_event`` so event shape and status updates stay aligned.
 """
 
@@ -62,7 +66,8 @@ async def auto_checkout_for_date(
         product_ids: when provided, only these products are checked out.
             Unselected products stay checked in so admins can investigate
             why they never scanned out. When ``None`` all still-checked-in
-            products are processed (scheduled job behaviour).
+            products are processed (intended scheduled-job behaviour once
+            a cron exists; today only the manual API uses this path).
 
     Returns:
         list of created auto-checkout events

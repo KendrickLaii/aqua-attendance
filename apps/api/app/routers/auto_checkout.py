@@ -21,10 +21,11 @@ async def trigger_auto_checkout(
     db: DB,
     payload: AutoCheckoutRequest = Body(default_factory=AutoCheckoutRequest),
 ) -> dict:
-    """Manually trigger auto-checkout for a date (defaults to today).
+    """Manually trigger day-boundary auto-checkout for a date (defaults to today).
 
-    Normally run by a scheduled job at 23:59; this endpoint allows
-    admins to force-run it for testing or backfill.
+    There is **no** scheduled 23:59 job yet — production must call this
+    endpoint (or an equivalent worker) on a schedule. Until then, admins
+    use Dashboard Day-end checkout for testing / end-of-day backfill.
 
     When ``product_ids`` is provided, only those still-checked-in products
     are checked out. Unselected products stay checked in so admins can
