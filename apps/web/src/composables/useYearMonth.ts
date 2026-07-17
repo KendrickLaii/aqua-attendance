@@ -1,13 +1,16 @@
 /**
  * Shared YYYY-MM month picker state for Summaries / Payroll.
+ * Month boundaries follow Asia/Hong_Kong (same as attendance day filters).
  */
+import { getTodayRangeIso } from '@/utils/attendanceDisplay'
+
 export function useYearMonth(initial = '') {
   const yearMonth = ref(initial)
 
   function toCurrentMonth() {
-    const now = new Date()
+    const [year, month] = getTodayRangeIso().dateKey.split('-')
 
-    yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    yearMonth.value = `${year}-${month}`
   }
 
   const parsed = computed(() => {

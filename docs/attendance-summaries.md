@@ -233,7 +233,7 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 | 項目 | 說明 |
 |------|------|
 | 統計卡範圍 | Overview Stat 卡改為 **整月 filtered 合計**（`/overview/stats`）；不受分頁影響 |
-| Generate orphan 清理 | Generate 會刪除當月不再有可用 check-in 事件的彙總列 |
+| Generate orphan 清理 | Generate 會刪除當月不再有可用 check-in 事件的彙總列；**保留** `calculation_method=seed` 的 demo 列 |
 | Seed vs 事件 | 測試環境易出現「列表有資料但 Generate 無事件」；無事件時 Generate 也會清掉 orphan 列 |
 | Weekend 篩選 | 明細層 Weekend chip 為 **前端篩選**已載入列；Complete/Incomplete 走 API `is_complete` |
 | Holiday | 僅在狀態欄顯示，無獨立 chip |

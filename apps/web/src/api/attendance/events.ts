@@ -69,6 +69,7 @@ export async function listAttendance(params?: {
   date_from?: string
   date_to?: string
   event_type?: string
+  source?: string
   include_voided?: boolean
   page?: number
   page_size?: number
@@ -84,6 +85,7 @@ export async function listAttendanceWithTotal(params?: {
   date_from?: string
   date_to?: string
   event_type?: string
+  source?: string
   include_voided?: boolean
   page?: number
   page_size?: number

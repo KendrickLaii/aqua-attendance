@@ -4,6 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Body, status
 from pydantic import BaseModel
 
+from app.attendance_tz import attendance_today
 from app.deps import AdminOnly, DB
 from app.services.auto_checkout import auto_checkout_for_date, get_still_checked_in_count
 
@@ -39,7 +40,7 @@ async def trigger_auto_checkout(
     events = await auto_checkout_for_date(
         db, target_date=payload.target_date, product_ids=payload.product_ids
     )
-    target = payload.target_date or date.today()
+    target = payload.target_date or attendance_today()
     summaries = await generate_monthly_summaries(db, year=target.year, month=target.month)
     return {
         "target_date": str(target),

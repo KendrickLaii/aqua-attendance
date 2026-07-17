@@ -28,6 +28,7 @@ declare module 'vue' {
     AttendanceInfoDialog: typeof import('./src/components/attendance/AttendanceInfoDialog.vue')['default']
     AttendancePaginationBar: typeof import('./src/components/attendance/AttendancePaginationBar.vue')['default']
     AttendanceStatCards: typeof import('./src/components/attendance/AttendanceStatCards.vue')['default']
+    AutoCheckoutChip: typeof import('./src/components/attendance/AutoCheckoutChip.vue')['default']
     BasicInfo: typeof import('./src/components/dialogs/tax/client-dialog-tabs/BasicInfo.vue')['default']
     BusinessNatureClassDialog: typeof import('./src/components/dialogs/tax/BusinessNatureClassDialog.vue')['default']
     BuyNow: typeof import('./src/@core/components/BuyNow.vue')['default']

@@ -6,6 +6,9 @@ product and inserts / updates `attendance_summaries` rows.
 Forgotten check-outs on past days are closed at the day boundary (23:59)
 with an ``auto_checkout`` event — same helper as the Auto Checkout job —
 so Incomplete is reserved for days that are still open (e.g. today).
+
+Orphan cleanup deletes month rows with no usable check-in events, except
+rows with ``calculation_method=seed`` (demo data from ``seed.py --summaries``).
 """
 
 import calendar
@@ -17,11 +20,13 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.attendance import AttendanceEvent, EventType
+from app.models.attendance import AttendanceEvent, EventSource, EventType
 from app.models.attendance_summary import AttendanceSummary
 from app.models.product import Product
 from app.services.attendance import recompute_product_attendance_status
-from app.services.auto_checkout import day_boundary_at, make_day_boundary_checkout_event
+from app.attendance_tz import ATTENDANCE_TZ, attendance_date, attendance_today, day_boundary_at
+from app.services.auto_checkout import DAY_BOUNDARY_NOTE, make_day_boundary_checkout_event
+
 from app.services.overtime import calculate_workday
 
 
@@ -39,9 +44,10 @@ async def generate_monthly_summaries(
     # Date range
     first_day = date(year, month, 1)
     last_day = date(year, month, calendar.monthrange(year, month)[1])
-    start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
-    end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=timezone.utc)
-    today = datetime.now(timezone.utc).date()
+    # Bound the month in attendance TZ so day-boundary outs at 23:59 HKT are included.
+    start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=ATTENDANCE_TZ)
+    end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=ATTENDANCE_TZ)
+    today = attendance_today()
 
     # Fetch all non-voided events in range with product & location
     result = await db.execute(
@@ -57,10 +63,10 @@ async def generate_monthly_summaries(
     )
     events = result.scalars().all()
 
-    # Group by (product_id, date)
+    # Group by (product_id, attendance-local date) so HKT day-boundary outs stay on that day
     grouped: dict[tuple[uuid.UUID, date], list[AttendanceEvent]] = defaultdict(list)
     for event in events:
-        event_date = event.recorded_at.date()
+        event_date = attendance_date(event.recorded_at)
         grouped[(event.product_id, event_date)].append(event)
 
     created_count = 0
@@ -78,7 +84,10 @@ async def generate_monthly_summaries(
             continue  # No check-in → cannot calculate workday
 
         first_check_in = min(e.recorded_at for e in check_ins)
-        last_check_out = max(e.recorded_at for e in check_outs) if check_outs else None
+        last_out_event = (
+            max(check_outs, key=lambda e: e.recorded_at) if check_outs else None
+        )
+        last_check_out = last_out_event.recorded_at if last_out_event else None
 
         # Determine location (prefer first event's location, fallback to product's registered)
         first_event = day_events[0]
@@ -95,7 +104,7 @@ async def generate_monthly_summaries(
 
         # Past days with check-in but no check-out → day-boundary auto checkout
         if last_check_out is None and event_date < today:
-            last_check_out = day_boundary_at(event_date, first_check_in.tzinfo)
+            last_check_out = day_boundary_at(event_date)
             db.add(
                 make_day_boundary_checkout_event(
                     product_id=product_id,
@@ -108,6 +117,12 @@ async def generate_monthly_summaries(
             notes = "Closed by day-boundary auto checkout (23:59)"
             auto_checkout_count += 1
             products_to_recompute.add(product_id)
+        elif (
+            last_out_event is not None
+            and last_out_event.source == EventSource.auto_checkout.value
+        ):
+            # Day-end (or prior Generate) already wrote the event — still mark the day
+            notes = (last_out_event.notes or "").strip() or DAY_BOUNDARY_NOTE
 
         # Calculate work hours
         if last_check_out:
@@ -153,8 +168,9 @@ async def generate_monthly_summaries(
             summary.regular_hours = regular_hours
             summary.overtime_hours = ot_hours
             summary.location_id = location_id
-            if notes:
-                summary.attendance_notes = notes
+            summary.attendance_notes = notes
+            # Real events replace seed demo rows for this product/day
+            summary.calculation_method = "standard"
             summary.updated_at = datetime.now(timezone.utc)
             updated_count += 1
         else:
@@ -173,13 +189,14 @@ async def generate_monthly_summaries(
                 regular_hours=regular_hours,
                 overtime_hours=ot_hours,
                 attendance_notes=notes,
+                calculation_method="standard",
             )
             db.add(summary)
             created_count += 1
 
         kept_keys.add((product_id, event_date))
 
-    # Remove month rows that no longer have usable non-voided check-in events
+    # Remove event-less month rows, but keep seed demo data (calculation_method=seed)
     existing_summaries = await db.execute(
         select(AttendanceSummary).where(
             AttendanceSummary.summary_date >= first_day,
@@ -190,6 +207,7 @@ async def generate_monthly_summaries(
         row.id
         for row in existing_summaries.scalars().all()
         if (row.product_id, row.summary_date) not in kept_keys
+        and (row.calculation_method or "").lower() != "seed"
     ]
     orphans_deleted = 0
     if orphan_ids:

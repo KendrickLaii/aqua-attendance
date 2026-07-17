@@ -13,54 +13,41 @@ import Button from '../components/ui/Button';
 import { useI18n } from '../i18n/I18nContext';
 import { listAttendance, type AttendanceEvent } from '../services/attendance';
 import { colors, layout, radius, spacing, typography } from '../theme';
+import {
+  formatAttendanceDateTime,
+  getAttendanceDateKey,
+  getAttendanceDateRangeIso,
+  shiftAttendanceDateKey,
+} from '../utils/attendanceTimezone';
 
 type EventTypeFilter = '' | 'check_in' | 'check_out';
 type DateRangeFilter = 'today' | 'yesterday' | '7d' | '30d';
 
 const PAGE_SIZE = 25;
 
-function toISODate(date: Date): string {
-  return date.toISOString().split('T')[0];
-}
-
+/** Hong Kong calendar day ranges as UTC ISO (aligned with web Log filters). */
 function getDateRange(filter: DateRangeFilter): { from: string; to: string } {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  let from = today;
-  let to = today;
+  const today = getAttendanceDateKey();
+  let fromKey = today;
+  let toKey = today;
 
   switch (filter) {
     case 'today':
-      from = today;
-      to = today;
       break;
-    case 'yesterday': {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 1);
-      from = y;
-      to = y;
+    case 'yesterday':
+      fromKey = shiftAttendanceDateKey(today, -1);
+      toKey = fromKey;
       break;
-    }
-    case '7d': {
-      const d7 = new Date(today);
-      d7.setDate(d7.getDate() - 6);
-      from = d7;
-      to = today;
+    case '7d':
+      fromKey = shiftAttendanceDateKey(today, -6);
       break;
-    }
-    case '30d': {
-      const d30 = new Date(today);
-      d30.setDate(d30.getDate() - 29);
-      from = d30;
-      to = today;
+    case '30d':
+      fromKey = shiftAttendanceDateKey(today, -29);
       break;
-    }
   }
 
-  return {
-    from: `${toISODate(from)}T00:00:00`,
-    to: `${toISODate(to)}T23:59:59`,
-  };
+  const range = getAttendanceDateRangeIso(fromKey, toKey);
+  return { from: range.date_from, to: range.date_to };
 }
 
 interface ChipProps {
@@ -156,7 +143,7 @@ export default function HistoryScreen() {
   }
 
   function renderItem({ item }: { item: AttendanceEvent }) {
-    const d = new Date(item.recorded_at);
+    const { date, time } = formatAttendanceDateTime(item.recorded_at, dateLocale);
     const isIn = item.event_type === 'check_in';
     const isVoided = !!item.voided_at;
     return (
@@ -169,13 +156,11 @@ export default function HistoryScreen() {
               {item.source ? <Badge label={sourceLabel(item.source)} tone="neutral" style={{ marginLeft: spacing.sm }} /> : null}
               {isVoided ? <Badge label="VOIDED" tone="error" style={{ marginLeft: spacing.sm }} /> : null}
             </View>
-            <Text style={styles.time}>
-              {d.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}
-            </Text>
+            <Text style={styles.time}>{time}</Text>
           </View>
           <Text style={[styles.product, isVoided && styles.textVoided]}>{item.product_name || item.product_code || t('common.dash')}</Text>
           {item.location ? <Text style={[styles.location, isVoided && styles.textVoided]}>{item.location}</Text> : null}
-          <Text style={[styles.date, isVoided && styles.textVoided]}>{d.toLocaleDateString(dateLocale)}</Text>
+          <Text style={[styles.date, isVoided && styles.textVoided]}>{date}</Text>
         </View>
       </View>
     );

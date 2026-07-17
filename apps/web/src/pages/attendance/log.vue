@@ -4,7 +4,7 @@ import type { AttendanceDayStats, AttendanceEvent } from '@/api/attendance/event
 import { listProducts } from '@/api/attendance/products'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import type { Product } from '@/api/attendance/products'
-import { formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
+import { eventSourceColor, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
@@ -37,6 +37,7 @@ const filters = reactive({
   date_from: todayKey,
   date_to: todayKey,
   event_type: '' as string,
+  source: '' as string,
   include_voided: false,
 })
 
@@ -69,6 +70,13 @@ const eventTypeOptions = [
   { title: 'Check In', value: 'check_in' },
   { title: 'Check Out', value: 'check_out' },
   { title: 'Manual Correction', value: 'manual_correction' },
+]
+
+const sourceOptions = [
+  { title: 'All sources', value: '' },
+  { title: 'Scan', value: 'scan' },
+  { title: 'Manual', value: 'manual' },
+  { title: 'Auto checkout', value: 'auto_checkout' },
 ]
 
 const datePresets = [
@@ -185,6 +193,7 @@ watch(
     filters.product_id,
     filters.product_type,
     filters.event_type,
+    filters.source,
     filters.date_from,
     filters.date_to,
     filters.include_voided,
@@ -216,6 +225,7 @@ async function loadEvents(isRefresh = false, shouldResetPage = false) {
       date_from: range.date_from,
       date_to: range.date_to,
       event_type: filters.event_type || undefined,
+      source: filters.source || undefined,
       include_voided: filters.include_voided || undefined,
       page: page.value,
       page_size: pageSize.value,
@@ -482,6 +492,18 @@ async function confirmVoid() {
           cols="12"
           sm="2"
         >
+          <VSelect
+            v-model="filters.source"
+            :items="sourceOptions"
+            label="Source"
+            density="compact"
+            hide-details
+          />
+        </VCol>
+        <VCol
+          cols="12"
+          sm="2"
+        >
           <VTextField
             v-model="filters.date_from"
             label="From"
@@ -505,6 +527,17 @@ async function confirmVoid() {
           />
         </VCol>
       </VRow>
+      <!-- <VAlert
+        v-if="activeDatePreset === 'today'"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+      >
+        Day-end checkout is stored at <strong>23:59</strong>. Older runs used UTC, so they may fall on
+        <strong>tomorrow morning</strong> in Hong Kong and will not appear under Today.
+        Use <strong>All time</strong> (or extend To to tomorrow) and Source = <strong>Auto checkout</strong> to find them.
+      </VAlert> -->
       <div class="d-flex flex-wrap align-center gap-2 mb-3">
         <span class="text-caption text-medium-emphasis me-1">Quick range:</span>
         <VBtn
@@ -662,8 +695,16 @@ async function confirmVoid() {
                   {{ eventTypeLabel(evt.event_type) }}
                 </VChip>
               </td>
-              <td class="text-caption">
-                {{ evt.source || '—' }}
+              <td>
+                <VChip
+                  :color="eventSourceColor(evt.source)"
+                  size="small"
+                  label
+                  :prepend-icon="evt.source === 'auto_checkout' ? 'ri-time-line' : undefined"
+                  :title="evt.source === 'auto_checkout' ? (evt.notes || 'Day-boundary auto checkout (23:59)') : undefined"
+                >
+                  {{ eventSourceLabel(evt.source) }}
+                </VChip>
               </td>
               <td :class="{ 'text-medium-emphasis': evt.voided_at }">
                 {{ evt.location || '—' }}

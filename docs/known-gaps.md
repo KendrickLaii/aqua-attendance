@@ -98,11 +98,10 @@
 - **問題**：統計卡加總**當前 overview 分頁**的列，非全月 DB 總計（`page_size` 預設 200 時影響小）。
 - **建議**：Overview 專用統計端點（全月總計，不受分頁影響）。
 
-### #M11 Generate 不刪除幽靈列
+### #M11 Generate orphan 清理（已實作，保留 seed）
 
 - **位置**：`apps/api/app/services/summary_generator.py`
-- **問題**：事件刪除後，舊彙總列可能殘留（無對應 `attendance_events`）。
-- **建議**：Generate 時可選清理「無事件」的幽靈列。
+- **現況**：Generate 會刪除當月無可用 check-in 的彙總列；**不刪** `calculation_method=seed`（`python seed.py --summaries`）。若同日後來有真實事件，會被 upsert 成 `standard` 並可再參與 orphan 清理。
 
 ### #M12 無 cron 自動月度 Generate
 
@@ -114,6 +113,11 @@
 - **位置**：`apps/web/src/pages/attendance/summaries.vue`
 - **問題**：Holiday 僅在狀態欄顯示文字，無獨立篩選 chip（如同 Weekend chip）。
 - **建議**：新增 Holiday chip 前端篩選。
+
+### #M14b Attendance timezone = Asia/Hong_Kong（已對齊）
+
+- **現況（2026-07-17）**：後端共用 `app/attendance_tz.py`（掃描跨日、OT 關門、日界 23:59、Generate 分日）；Web / Mobile 篩選與顯示用同一時區。舊 Day-end 若曾寫 **UTC 23:59**，在 Log「Today」可能落在隔天早上——用 All time + Source=Auto checkout 可查。
+- **勿再假設**：`.date()` on UTC、ISO `slice(0,16)`、或 `date.today()` 等於出勤日。
 
 ### #M14 Auto checkout **不是**完整自動版
 

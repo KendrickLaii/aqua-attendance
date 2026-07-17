@@ -5,6 +5,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.attendance_tz import is_same_attendance_day
 from app.config import settings
 from app.models.attendance import AttendanceEvent, EventType
 from app.models.product import AttendanceStatus, Product
@@ -12,22 +13,6 @@ from app.models.product import AttendanceStatus, Product
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _as_utc(dt: datetime) -> datetime:
-    """Coerce a datetime to UTC, treating naive values as already-UTC.
-
-    SQLite has no native timezone storage so columns declared as
-    ``DateTime(timezone=True)`` may come back naive in tests; we still want
-    correct date comparisons.
-    """
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def _is_same_utc_day(a: datetime, b: datetime) -> bool:
-    return _as_utc(a).date() == _as_utc(b).date()
 
 
 def _normalize_location(location: str | None) -> str | None:
@@ -40,13 +25,14 @@ def _normalize_location(location: str | None) -> str | None:
 def _next_event_type(product: Product, now: datetime) -> str:
     """Decide check_in vs check_out based on the product's current attendance status.
 
-    If the last event was on a previous UTC day, treat the product as
-    checked_out regardless of stored status so the new day starts fresh.
+    If the last event was on a previous Hong Kong calendar day, treat the
+    product as checked_out regardless of stored status so the new day starts
+    fresh (overnight missed checkout → next HKT day scan is check_in).
     """
     if (
         product.attendance_status == AttendanceStatus.checked_in.value
         and product.last_event_at is not None
-        and _is_same_utc_day(product.last_event_at, now)
+        and is_same_attendance_day(product.last_event_at, now)
     ):
         return EventType.check_out.value
     return EventType.check_in.value
@@ -164,6 +150,7 @@ async def list_events(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     event_type: str | None = None,
+    source: str | None = None,
     include_voided: bool = False,
     page: int = 1,
     page_size: int = 50,
@@ -190,6 +177,8 @@ async def list_events(
         conditions.append(AttendanceEvent.recorded_at <= date_to)
     if event_type:
         conditions.append(AttendanceEvent.event_type == event_type)
+    if source:
+        conditions.append(AttendanceEvent.source == source)
     if not include_voided:
         conditions.append(AttendanceEvent.voided_at.is_(None))
 

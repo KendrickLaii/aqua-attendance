@@ -72,6 +72,8 @@ declare global {
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
   const entriesOf: typeof import('./src/utils/review-format')['entriesOf']
+  const eventSourceColor: typeof import('./src/utils/attendanceDisplay')['eventSourceColor']
+  const eventSourceLabel: typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const fetchAttendanceListWithTotal: typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']
   const fetchProductQrPrintItems: typeof import('./src/utils/printProductQrs')['fetchProductQrPrintItems']
@@ -108,8 +110,12 @@ declare global {
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
   const internalEmailValidator: typeof import('./src/@core/utils/validators')['internalEmailValidator']
   const isAttendanceLoggedIn: typeof import('./src/utils/attendanceSession')['isAttendanceLoggedIn']
+  const isAutoCheckoutDayNotes: typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutDayNotes']
+  const isAutoCheckoutSource: typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSource']
+  const isAutoCheckoutSummaryDay: typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSummaryDay']
   const isCheckboxContent: typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']
   const isComplexValue: typeof import('./src/utils/review-format')['isComplexValue']
+  const isDayBoundaryCheckoutTime: typeof import('./src/utils/attendanceDisplay')['isDayBoundaryCheckoutTime']
   const isDefined: typeof import('@vueuse/core')['isDefined']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
   const isEmptyArray: typeof import('./src/@core/utils/helpers')['isEmptyArray']
@@ -509,6 +515,8 @@ declare module 'vue' {
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
     readonly entriesOf: UnwrapRef<typeof import('./src/utils/review-format')['entriesOf']>
+    readonly eventSourceColor: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceColor']>
+    readonly eventSourceLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly fetchAttendanceListWithTotal: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']>
     readonly fetchProductQrPrintItems: UnwrapRef<typeof import('./src/utils/printProductQrs')['fetchProductQrPrintItems']>
@@ -545,8 +553,12 @@ declare module 'vue' {
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
     readonly internalEmailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['internalEmailValidator']>
     readonly isAttendanceLoggedIn: UnwrapRef<typeof import('./src/utils/attendanceSession')['isAttendanceLoggedIn']>
+    readonly isAutoCheckoutDayNotes: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutDayNotes']>
+    readonly isAutoCheckoutSource: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSource']>
+    readonly isAutoCheckoutSummaryDay: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSummaryDay']>
     readonly isCheckboxContent: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']>
     readonly isComplexValue: UnwrapRef<typeof import('./src/utils/review-format')['isComplexValue']>
+    readonly isDayBoundaryCheckoutTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isDayBoundaryCheckoutTime']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
     readonly isEmptyArray: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmptyArray']>

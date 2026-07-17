@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { deletePayrollRecord, generatePayroll, listPayrollRecordsWithTotal, updatePayrollRecord } from '@/api/attendance/payroll'
 import type { PayrollRecord } from '@/api/attendance/payroll'
-import { listSummariesWithTotal } from '@/api/attendance/summaries'
+import { listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
 import type { AttendanceSummary } from '@/api/attendance/summaries'
 import { listProducts } from '@/api/attendance/products'
 import type { Product } from '@/api/attendance/products'
+import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
+import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatPayrollGenerateMessage } from '@/utils/formatGenerateResult'
 
@@ -21,6 +23,7 @@ const {
 const {
   yearMonth: stepMonth,
   parsed: stepParsedMonth,
+  monthDateRange: stepMonthDateRange,
   monthLabel: stepMonthLabel,
   toCurrentMonth: toStepCurrentMonth,
 } = useYearMonth()
@@ -58,6 +61,9 @@ const stepProductsLoading = ref(false)
 const stepProductsError = ref('')
 const stepSelectedIds = ref<string[]>([])
 const stepSearch = ref('')
+/** Default: only staff who have attendance summaries for the payroll month. */
+const stepShowAllStaff = ref(false)
+const stepStaffWithSummariesCount = ref(0)
 const generatedRecords = ref<PayrollRecord[]>([])
 const viewMode = ref<'wizard' | 'records'>('wizard')
 
@@ -150,8 +156,9 @@ const detailTotals = computed(() => {
   const regularSlots = summaries.value.reduce((sum, s) => sum + safeNumber(s.regular_slots), 0)
   const overtime = summaries.value.reduce((sum, s) => sum + safeNumber(s.overtime_hours), 0)
   const otSlots = summaries.value.reduce((sum, s) => sum + safeNumber(s.ot_slots), 0)
+  const autoCheckoutDays = summaries.value.filter(s => isAutoCheckoutSummaryDay(s)).length
 
-  return { regular, regularSlots, overtime, otSlots, days: summaries.value.length }
+  return { regular, regularSlots, overtime, otSlots, days: summaries.value.length, autoCheckoutDays }
 })
 
 
@@ -393,6 +400,8 @@ function resetWizard() {
   stepProducts.value = []
   stepSelectedIds.value = []
   stepProductsError.value = ''
+  stepShowAllStaff.value = false
+  stepStaffWithSummariesCount.value = 0
   generateError.value = ''
   generateSuccess.value = null
   generatedRecords.value = []
@@ -415,10 +424,41 @@ async function loadStepProducts() {
   stepProductsLoading.value = true
   stepProductsError.value = ''
   try {
-    const items = await listProducts({ product_type: 'staff', page_size: 200 })
+    const range = stepMonthDateRange.value
+    if (!range) {
+      stepProducts.value = []
+      stepSelectedIds.value = []
+      stepStaffWithSummariesCount.value = 0
+      stepProductsError.value = 'Select a valid month'
 
-    stepProducts.value = [...items].sort((a, b) => a.full_name.localeCompare(b.full_name))
-    stepSelectedIds.value = stepProducts.value.map(p => p.id)
+      return
+    }
+
+    const [allStaff, overview] = await Promise.all([
+      listProducts({ product_type: 'staff', page_size: 200 }),
+      listSummaryOverview({
+        date_from: range.date_from,
+        date_to: range.date_to,
+        product_type: 'staff',
+        page: 1,
+        page_size: 200,
+      }),
+    ])
+
+    const withSummaryIds = new Set(overview.items.map(item => item.product_id))
+    stepStaffWithSummariesCount.value = withSummaryIds.size
+
+    const sorted = [...allStaff].sort((a, b) => a.full_name.localeCompare(b.full_name))
+    stepProducts.value = stepShowAllStaff.value
+      ? sorted
+      : sorted.filter(p => withSummaryIds.has(p.id))
+
+    // Keep prior selection when possible; otherwise select everyone in the visible list
+    const visibleIds = new Set(stepProducts.value.map(p => p.id))
+    const kept = stepSelectedIds.value.filter(id => visibleIds.has(id))
+    stepSelectedIds.value = kept.length > 0
+      ? kept
+      : stepProducts.value.map(p => p.id)
   }
   catch (e) {
     console.error('Failed to load products for payroll generation', e)
@@ -431,6 +471,11 @@ async function loadStepProducts() {
 
 watch(step, newStep => {
   if (newStep === 'configure')
+    loadStepProducts()
+})
+
+watch([stepMonth, stepShowAllStaff], () => {
+  if (viewMode.value === 'wizard' && step.value === 'configure')
     loadStepProducts()
 })
 
@@ -693,7 +738,10 @@ function formatCurrency(n: number | null | undefined) {
                     Staff products
                   </VCardTitle>
                   <VCardSubtitle>
-                    {{ stepProducts.length }} loaded · {{ stepSelectedCount }} selected
+                    {{ stepProducts.length }} shown · {{ stepSelectedCount }} selected
+                    <template v-if="!stepShowAllStaff">
+                      · {{ stepStaffWithSummariesCount }} with summaries this month
+                    </template>
                   </VCardSubtitle>
                 </VCardItem>
                 <VCardText>
@@ -713,6 +761,13 @@ function formatCurrency(n: number | null | undefined) {
                       density="compact"
                       hide-details
                       color="primary"
+                    />
+                    <VCheckbox
+                      v-model="stepShowAllStaff"
+                      label="Show all staff"
+                      density="compact"
+                      hide-details
+                      color="secondary"
                     />
                   </div>
 
@@ -769,7 +824,13 @@ function formatCurrency(n: number | null | undefined) {
                       v-if="!stepProductsLoading && stepFilteredProducts.length === 0"
                       class="text-center text-medium-emphasis py-8"
                     >
-                      No staff products found.
+                      <template v-if="!stepShowAllStaff && stepSearch.trim() === ''">
+                        No staff with summaries for {{ stepMonthLabel }}.
+                        Generate Summaries first, or enable Show all staff.
+                      </template>
+                      <template v-else>
+                        No staff products found.
+                      </template>
                     </div>
                   </div>
                 </VCardText>
@@ -778,7 +839,6 @@ function formatCurrency(n: number | null | undefined) {
               <VCard
                 variant="outlined"
                 class="mb-4"
-                :disabled="stepSelectedCount === 0"
               >
                 <VCardItem>
                   <template #prepend>
@@ -809,7 +869,6 @@ function formatCurrency(n: number | null | undefined) {
                       type="month"
                       density="compact"
                       prepend-inner-icon="ri-calendar-event-line"
-                      :disabled="stepSelectedCount === 0"
                       hide-details
                       style="max-inline-size: 220px;"
                     />
@@ -840,7 +899,7 @@ function formatCurrency(n: number | null | undefined) {
                     size="14"
                     class="me-1"
                   />
-                  Only selected staff are generated. Approved / paid slips are skipped.
+                  Default list = staff with summaries this month. Only selected staff are generated; approved / paid slips are skipped.
                 </div>
                 <VBtn
                   color="primary"
@@ -1501,6 +1560,15 @@ function formatCurrency(n: number | null | undefined) {
           >
             Net {{ formatCurrency(selectedRecord.net_pay) }}
           </VChip>
+          <VChip
+            v-if="detailTotals.autoCheckoutDays > 0"
+            color="warning"
+            label
+            prepend-icon="ri-time-line"
+            title="Days closed by day-boundary auto checkout (23:59)"
+          >
+            {{ detailTotals.autoCheckoutDays }} auto checkout
+          </VChip>
         </div>
       </VCardTitle>
       <VCardText class="pb-0">
@@ -1616,7 +1684,7 @@ function formatCurrency(n: number | null | undefined) {
                 <span
                   v-if="s.first_check_in"
                   class="text-caption"
-                >{{ s.first_check_in.slice(0, 16).replace('T', ' ') }}</span>
+                >{{ formatAttendanceDateTime(s.first_check_in) }}</span>
                 <span
                   v-else
                   class="text-medium-emphasis"
@@ -1626,7 +1694,7 @@ function formatCurrency(n: number | null | undefined) {
                 <span
                   v-if="s.last_check_out"
                   class="text-caption"
-                >{{ s.last_check_out.slice(0, 16).replace('T', ' ') }}</span>
+                >{{ formatAttendanceDateTime(s.last_check_out) }}</span>
                 <span
                   v-else
                   class="text-medium-emphasis"
@@ -1645,13 +1713,19 @@ function formatCurrency(n: number | null | undefined) {
                 {{ s.ot_slots }}
               </td>
               <td>
-                <VChip
-                  :color="statusColor(s)"
-                  size="small"
-                  label
-                >
-                  {{ statusLabel(s) }}
-                </VChip>
+                <div class="d-flex flex-wrap align-center gap-1">
+                  <VChip
+                    :color="statusColor(s)"
+                    size="small"
+                    label
+                  >
+                    {{ statusLabel(s) }}
+                  </VChip>
+                  <AutoCheckoutChip
+                    :notes="s.attendance_notes"
+                    :last-check-out="s.last_check_out"
+                  />
+                </div>
               </td>
             </tr>
             <tr

@@ -131,8 +131,16 @@ export function formatAttendanceDateTime(iso: string | null | undefined): string
   if (!iso)
     return '—'
   const d = new Date(iso)
-  const date = d.toLocaleDateString('en-GB')
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (Number.isNaN(d.getTime()))
+    return '—'
+
+  const date = d.toLocaleDateString('en-GB', { timeZone: ATTENDANCE_TIMEZONE })
+  const time = d.toLocaleTimeString('en-GB', {
+    timeZone: ATTENDANCE_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
 
   return `${date} ${time}`
 }
@@ -141,7 +149,98 @@ export function formatAttendanceTime(iso: string | null | undefined): string {
   if (!iso)
     return '—'
 
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime()))
+    return '—'
+
+  return d.toLocaleTimeString('en-GB', {
+    timeZone: ATTENDANCE_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+/** Event `source` = auto_checkout (Day-end / Generate day-boundary). */
+export function isAutoCheckoutSource(source: string | null | undefined): boolean {
+  return (source ?? '').toLowerCase() === 'auto_checkout'
+}
+
+/**
+ * Summary `attendance_notes` written by Day-end or Generate, e.g.
+ * "Auto checkout at day boundary (23:59)" /
+ * "Closed by day-boundary auto checkout (23:59)".
+ */
+export function isAutoCheckoutDayNotes(notes: string | null | undefined): boolean {
+  if (!notes?.trim())
+    return false
+
+  return /auto\s*checkout|day[- ]boundary/i.test(notes)
+}
+
+/**
+ * True when last out is the day-boundary 23:59.
+ * Accepts Hong Kong 23:59 (current) and UTC 23:59 (legacy Day-end writes).
+ */
+export function isDayBoundaryCheckoutTime(iso: string | null | undefined): boolean {
+  if (!iso)
+    return false
+
+  // Wall-clock in the ISO string (what Summaries table shows via slice)
+  if (/T23:59/.test(iso))
+    return true
+
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime()))
+    return false
+
+  if (d.getUTCHours() === 23 && d.getUTCMinutes() === 59)
+    return true
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: ATTENDANCE_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d)
+
+  const hour = Number(parts.find(p => p.type === 'hour')?.value)
+  const minute = Number(parts.find(p => p.type === 'minute')?.value)
+  const normalizedHour = hour === 24 ? 0 : hour
+
+  return normalizedHour === 23 && minute === 59
+}
+
+/** Summaries day closed by auto checkout (notes and/or 23:59 last out). */
+export function isAutoCheckoutSummaryDay(s: {
+  attendance_notes?: string | null
+  last_check_out?: string | null
+}): boolean {
+  return isAutoCheckoutDayNotes(s.attendance_notes) || isDayBoundaryCheckoutTime(s.last_check_out)
+}
+
+export function eventSourceLabel(source: string | null | undefined): string {
+  if (!source)
+    return '—'
+  if (isAutoCheckoutSource(source))
+    return 'Auto checkout'
+  if (source === 'scan')
+    return 'Scan'
+  if (source === 'manual')
+    return 'Manual'
+
+  return source.replaceAll('_', ' ')
+}
+
+export function eventSourceColor(source: string | null | undefined): string {
+  if (isAutoCheckoutSource(source))
+    return 'warning'
+  if (source === 'scan')
+    return 'primary'
+  if (source === 'manual')
+    return 'secondary'
+
+  return 'default'
 }
 
 export interface LastAttendanceInfo {

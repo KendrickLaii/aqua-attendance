@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { generateSummaries, getSummaryOverviewStats, listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
 import type { AttendanceSummary, SummaryOverviewItem, SummaryOverviewStats } from '@/api/attendance/summaries'
+import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
+import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatSummaryGenerateMessage } from '@/utils/formatGenerateResult'
 
@@ -83,8 +85,9 @@ const detailTotals = computed(() => {
   const overtime = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.overtime_hours), 0)
   const regularSlots = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.regular_slots), 0)
   const otSlots = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.ot_slots), 0)
+  const autoCheckoutDays = visibleSummaries.value.filter(s => isAutoCheckoutSummaryDay(s)).length
 
-  return { regular, overtime, regularSlots, otSlots, days: visibleSummaries.value.length }
+  return { regular, overtime, regularSlots, otSlots, days: visibleSummaries.value.length, autoCheckoutDays }
 })
 
 const statCards = computed(() => {
@@ -786,6 +789,16 @@ function safeNumber(value: number) {
           >
             {{ formatHours(detailTotals.overtime) }} OT · {{ detailTotals.otSlots }} slots
           </VChip>
+          <VChip
+            v-if="detailTotals.autoCheckoutDays > 0"
+            color="warning"
+            variant="tonal"
+            label
+            prepend-icon="ri-time-line"
+            title="Days closed by day-boundary auto checkout (23:59)"
+          >
+            {{ detailTotals.autoCheckoutDays }} auto checkout
+          </VChip>
         </div>
       </VCardTitle>
       <VCardText class="pb-0">
@@ -916,7 +929,7 @@ function safeNumber(value: number) {
                     size="14"
                     class="text-success"
                   />
-                  <span class="text-caption">{{ s.first_check_in.slice(0, 16).replace('T', ' ') }}</span>
+                  <span class="text-caption">{{ formatAttendanceDateTime(s.first_check_in) }}</span>
                 </span>
                 <span
                   v-else
@@ -934,7 +947,7 @@ function safeNumber(value: number) {
                     size="14"
                     class="text-info"
                   />
-                  <span class="text-caption">{{ s.last_check_out.slice(0, 16).replace('T', ' ') }}</span>
+                  <span class="text-caption">{{ formatAttendanceDateTime(s.last_check_out) }}</span>
                 </span>
                 <span
                   v-else
@@ -992,14 +1005,20 @@ function safeNumber(value: number) {
                 </span>
               </td>
               <td>
-                <VChip
-                  :color="statusColor(s)"
-                  size="small"
-                  label
-                  :prepend-icon="statusIcon(s)"
-                >
-                  {{ statusLabel(s) }}
-                </VChip>
+                <div class="d-flex flex-wrap align-center gap-1">
+                  <VChip
+                    :color="statusColor(s)"
+                    size="small"
+                    label
+                    :prepend-icon="statusIcon(s)"
+                  >
+                    {{ statusLabel(s) }}
+                  </VChip>
+                  <AutoCheckoutChip
+                    :notes="s.attendance_notes"
+                    :last-check-out="s.last_check_out"
+                  />
+                </div>
               </td>
             </tr>
             <tr

@@ -9,6 +9,7 @@ Rules (from DATABASE_CHANGES.md):
 from datetime import date, datetime, time, timedelta
 from typing import NamedTuple
 
+from app.attendance_tz import ATTENDANCE_TZ, attendance_date
 from app.models.location import Location
 
 
@@ -110,9 +111,9 @@ def calculate_workday(
         WorkDayResult with slot-based hours
     """
     if target_date is None:
-        target_date = first_check_in.date()
+        target_date = attendance_date(first_check_in)
 
-    # Round to 15-min slots
+    # Round to 15-min slots (keep original tz; compare via absolute deltas)
     rounded_in = _round_to_15(first_check_in)
     rounded_out = _round_to_15(last_check_out)
 
@@ -123,12 +124,11 @@ def calculate_workday(
     total_slots = total_minutes // _SLOT_MINUTES
     total_hours = total_slots / _SLOTS_PER_HOUR
 
-    # Determine standard hours from location closing time
+    # Determine standard hours from location closing time (HKT wall clock)
     close_time = _location_close_time(location, target_date)
     if close_time:
-        # Standard = from check-in time to location close time.
-        # Match check-in tzinfo so aware/naive subtraction never fails.
-        close_dt = datetime.combine(target_date, close_time, tzinfo=rounded_in.tzinfo)
+        # business_hours.close is local Hong Kong time, not UTC.
+        close_dt = datetime.combine(target_date, close_time, tzinfo=ATTENDANCE_TZ)
         if close_time.hour < 6:  # e.g. 02:00 next day
             close_dt += timedelta(days=1)
 

@@ -7,10 +7,11 @@ import argparse
 import asyncio
 import calendar
 import copy
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time
 
 from sqlalchemy import select
 
+from app.attendance_tz import ATTENDANCE_TZ
 from app.database import async_session_factory
 from app.models.attendance_summary import AttendanceSummary
 from app.models.location import Location
@@ -432,7 +433,8 @@ def build_bulk_summary_rows(product_codes: list[str], product_types: dict[str, s
 
 
 def _dt(summary_date: date, hour: int, minute: int) -> datetime:
-    return datetime.combine(summary_date, time(hour, minute), tzinfo=timezone.utc)
+    """Wall-clock time in Hong Kong (attendance timezone), not UTC."""
+    return datetime.combine(summary_date, time(hour, minute), tzinfo=ATTENDANCE_TZ)
 
 
 async def _upsert_staff_profile(db, product_id, profile_data: dict) -> None:
@@ -574,7 +576,7 @@ async def seed_summaries(db) -> None:
             continue
         if summary.last_check_out is None:
             summary.last_check_out = datetime.combine(
-                summary.summary_date, time(23, 59), tzinfo=timezone.utc
+                summary.summary_date, time(23, 59), tzinfo=ATTENDANCE_TZ
             )
         summary.is_complete = True
         if not summary.attendance_notes:

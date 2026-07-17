@@ -1,11 +1,26 @@
 """Tests for auto-checkout, including selective checkout by product_ids."""
 
 import uuid
+from datetime import date
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
 
+from app.services.auto_checkout import ATTENDANCE_TZ, day_boundary_at
 from tests.conftest import scan_body
+
+
+def test_day_boundary_uses_hong_kong_not_utc() -> None:
+    """Log 'Today' filters in HKT; day-boundary must sit on that local day."""
+    boundary = day_boundary_at(date(2026, 7, 17))
+    assert boundary.tzinfo == ATTENDANCE_TZ
+    assert boundary.hour == 23 and boundary.minute == 59
+    # 23:59 HKT == 15:59 UTC — still on 17 Jul UTC, inside HKT "today" window
+    as_utc = boundary.astimezone(ZoneInfo("UTC"))
+    assert as_utc.day == 17
+    assert as_utc.hour == 15
+    assert as_utc.minute == 59
 
 
 async def _create_product(client: AsyncClient, headers: dict, location_id: str) -> dict:

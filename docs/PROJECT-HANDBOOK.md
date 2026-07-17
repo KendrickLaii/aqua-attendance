@@ -78,7 +78,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 ### 1.4 簽到/簽退切換邏輯
 
 - `attendance_status`：`checked_out` → 掃描 → `check_in`；`checked_in` → 掃描 → `check_out`
-- 若最後一次 event 在**前一日 UTC**，下一次掃描一律從 `check_in` 開始（處理跨夜）
+- 若最後一次 event 在**前一日（Asia/Hong_Kong）**，下一次掃描一律從 `check_in` 開始（處理跨夜）
 - 管理員可透過 `POST /api/attendance/manual` 手動校正
 
 ### 1.5 防重複掃描（Debounce）

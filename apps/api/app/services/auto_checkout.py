@@ -15,22 +15,33 @@ Both the Dashboard Day-end action and summary generate use
 """
 
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.attendance_tz import (
+    ATTENDANCE_TZ,
+    attendance_today,
+    day_boundary_at,
+)
 from app.models.attendance import AttendanceEvent, EventSource, EventType
 from app.models.product import AttendanceStatus, Product
 from app.services.attendance import recompute_product_attendance_status
 
+# Re-export for callers / tests that import from this module.
+__all__ = [
+    "ATTENDANCE_TZ",
+    "DAY_BOUNDARY_NOTE",
+    "attendance_today",
+    "auto_checkout_for_date",
+    "day_boundary_at",
+    "get_still_checked_in_count",
+    "make_day_boundary_checkout_event",
+]
+
 DAY_BOUNDARY_NOTE = "Auto checkout at day boundary (23:59)"
-
-
-def day_boundary_at(target_date: date, tzinfo=None) -> datetime:
-    """Return 23:59:00 on ``target_date`` in the given timezone (UTC default)."""
-    return datetime.combine(target_date, time(23, 59, 0), tzinfo=tzinfo or timezone.utc)
 
 
 def make_day_boundary_checkout_event(
@@ -62,7 +73,7 @@ async def auto_checkout_for_date(
 
     Args:
         db: database session
-        target_date: the date to process (defaults to today)
+        target_date: the date to process (defaults to today in HKT)
         product_ids: when provided, only these products are checked out.
             Unselected products stay checked in so admins can investigate
             why they never scanned out. When ``None`` all still-checked-in
@@ -73,7 +84,7 @@ async def auto_checkout_for_date(
         list of created auto-checkout events
     """
     if target_date is None:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = attendance_today()
 
     query = (
         select(Product)
