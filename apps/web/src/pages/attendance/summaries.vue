@@ -127,13 +127,39 @@ const statCards = computed(() => {
   const complete = overviewItems.value.reduce((sum, item) => sum + item.days_complete, 0)
   const regular = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_regular_hours), 0)
   const overtime = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_overtime_hours), 0)
+  const regularSlots = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_regular_slots), 0)
+  const otSlots = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_ot_slots), 0)
   const completionRate = days > 0 ? `${Math.round((complete / days) * 100)}%` : '-'
 
   return [
-    { label: 'People', value: String(people), hint: 'with summaries' },
-    { label: 'Records', value: String(days), hint: 'daily rows' },
-    { label: 'Complete rate', value: completionRate, hint: `${complete}/${days} complete` },
-    { label: 'Total hours', value: formatHours(regular + overtime), hint: `${formatHours(regular)} regular + ${formatHours(overtime)} OT` },
+    {
+      label: 'People',
+      value: String(people),
+      hint: 'with summaries',
+      icon: 'ri-group-line',
+      color: 'primary',
+    },
+    {
+      label: 'Records',
+      value: String(days),
+      hint: 'daily rows',
+      icon: 'ri-calendar-line',
+      color: 'secondary',
+    },
+    {
+      label: 'Complete rate',
+      value: completionRate,
+      hint: `${complete}/${days} complete`,
+      icon: 'ri-checkbox-circle-line',
+      color: 'success',
+    },
+    {
+      label: 'Total hours',
+      value: formatHours(regular + overtime),
+      hint: `${formatHours(regular)} regular + ${formatHours(overtime)} OT · ${regularSlots + otSlots} slots`,
+      icon: 'ri-time-line',
+      color: 'info',
+    },
   ]
 })
 
@@ -332,6 +358,28 @@ function statusLabel(s: AttendanceSummary) {
   return s.is_complete ? 'Complete' : 'Incomplete'
 }
 
+function statusIcon(s: AttendanceSummary) {
+  if (s.is_holiday)
+    return 'ri-calendar-event-line'
+  if (s.is_weekend)
+    return 'ri-calendar-2-line'
+
+  return s.is_complete ? 'ri-checkbox-circle-line' : 'ri-error-warning-line'
+}
+
+function statusFilterIcon(status: DetailStatus) {
+  switch (status) {
+    case 'complete':
+      return 'ri-checkbox-circle-line'
+    case 'incomplete':
+      return 'ri-error-warning-line'
+    case 'weekend':
+      return 'ri-calendar-2-line'
+    default:
+      return 'ri-list-check'
+  }
+}
+
 function statusColor(s: AttendanceSummary) {
   if (s.is_holiday || s.is_weekend)
     return 'info'
@@ -452,11 +500,27 @@ function safeNumber(value: number) {
         sm="6"
         md="3"
       >
-        <VCard class="pa-3">
-          <div class="text-caption text-medium-emphasis">
-            {{ card.label }}
+        <VCard class="pa-3 stat-card">
+          <div class="d-flex align-center justify-space-between mb-1">
+            <div class="text-caption text-medium-emphasis">
+              {{ card.label }}
+            </div>
+            <VAvatar
+              :color="card.color"
+              variant="tonal"
+              size="32"
+              rounded
+            >
+              <VIcon
+                :icon="card.icon"
+                size="18"
+              />
+            </VAvatar>
           </div>
-          <div class="text-h6 font-weight-bold">
+          <div
+            class="text-h6 font-weight-bold"
+            :class="`text-${card.color}`"
+          >
             {{ card.value }}
           </div>
           <div class="text-caption text-medium-emphasis">
@@ -516,19 +580,88 @@ function safeNumber(value: number) {
                 Type
               </th>
               <th class="text-end">
-                Days
+                <span
+                  class="th-label"
+                  title="Days present"
+                >
+                  <VIcon
+                    icon="ri-calendar-line"
+                    size="14"
+                  />
+                  Days
+                </span>
               </th>
               <th class="text-end">
-                Complete
+                <span
+                  class="th-label"
+                  title="Complete days"
+                >
+                  <VIcon
+                    icon="ri-checkbox-circle-line"
+                    size="14"
+                  />
+                  Complete
+                </span>
               </th>
               <th class="text-end">
-                Incomplete
+                <span
+                  class="th-label"
+                  title="Incomplete days"
+                >
+                  <VIcon
+                    icon="ri-error-warning-line"
+                    size="14"
+                  />
+                  Incomplete
+                </span>
               </th>
               <th class="text-end">
-                Regular
+                <span
+                  class="th-label"
+                  title="Regular hours"
+                >
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                  />
+                  Regular
+                </span>
               </th>
               <th class="text-end">
-                OT
+                <span
+                  class="th-label"
+                  title="Regular 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  Reg slots
+                </span>
+              </th>
+              <th class="text-end">
+                <span
+                  class="th-label"
+                  title="Overtime hours"
+                >
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                  />
+                  OT
+                </span>
+              </th>
+              <th class="text-end">
+                <span
+                  class="th-label"
+                  title="Overtime 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  OT slots
+                </span>
               </th>
               <th class="col-actions" />
             </tr>
@@ -553,29 +686,105 @@ function safeNumber(value: number) {
                   :color="typeColor(item.product_type)"
                   size="small"
                   label
+                  :prepend-icon="item.product_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
                 >
                   {{ typeLabel(item.product_type) }}
                 </VChip>
               </td>
               <td class="text-end">
-                {{ item.days_present }}
+                <span
+                  class="cell-metric"
+                  title="Days present"
+                >
+                  <VIcon
+                    icon="ri-calendar-line"
+                    size="14"
+                    class="text-medium-emphasis"
+                  />
+                  {{ item.days_present }}
+                </span>
               </td>
               <td class="text-end">
-                {{ item.days_complete }}
+                <span
+                  class="cell-metric"
+                  title="Complete days"
+                >
+                  <VIcon
+                    icon="ri-checkbox-circle-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  {{ item.days_complete }}
+                </span>
               </td>
               <td class="text-end">
-                {{ item.days_incomplete }}
+                <span
+                  class="cell-metric"
+                  title="Incomplete days"
+                >
+                  <VIcon
+                    icon="ri-error-warning-line"
+                    size="14"
+                    class="text-warning"
+                  />
+                  {{ item.days_incomplete }}
+                </span>
               </td>
               <td class="text-end">
-                {{ formatHours(item.total_regular_hours) }}
+                <span
+                  class="cell-metric"
+                  title="Regular hours"
+                >
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  {{ formatHours(item.total_regular_hours) }}
+                </span>
               </td>
               <td class="text-end">
-                {{ formatHours(item.total_overtime_hours) }}
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Regular 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  {{ item.total_regular_slots }}
+                </span>
+              </td>
+              <td class="text-end">
+                <span
+                  class="cell-metric"
+                  title="Overtime hours"
+                >
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                    class="text-info"
+                  />
+                  {{ formatHours(item.total_overtime_hours) }}
+                </span>
+              </td>
+              <td class="text-end">
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Overtime 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  {{ item.total_ot_slots }}
+                </span>
               </td>
               <td class="col-actions">
                 <VBtn
                   variant="text"
                   size="small"
+                  prepend-icon="ri-calendar-schedule-line"
                   @click.stop="openDetail(item)"
                 >
                   View days
@@ -584,7 +793,7 @@ function safeNumber(value: number) {
             </tr>
             <tr v-if="overviewItems.length === 0 && !loading">
               <td
-                colspan="8"
+                colspan="10"
                 class="text-center text-medium-emphasis py-6"
               >
                 No summaries found for {{ monthLabel }}. Click Generate to build them from attendance events.
@@ -640,19 +849,25 @@ function safeNumber(value: number) {
         <div class="d-flex flex-wrap gap-2">
           <VChip
             color="primary"
+            variant="tonal"
             label
+            prepend-icon="ri-calendar-line"
           >
             {{ detailTotals.days }} days
           </VChip>
           <VChip
             color="success"
+            variant="tonal"
             label
+            prepend-icon="ri-time-line"
           >
             {{ formatHours(detailTotals.regular) }} regular · {{ detailTotals.regularSlots }} slots
           </VChip>
           <VChip
             color="info"
+            variant="tonal"
             label
+            prepend-icon="ri-flashlight-line"
           >
             {{ formatHours(detailTotals.overtime) }} OT · {{ detailTotals.otSlots }} slots
           </VChip>
@@ -668,6 +883,7 @@ function safeNumber(value: number) {
             v-for="option in statusOptions"
             :key="option.value"
             :value="option.value"
+            :prepend-icon="statusFilterIcon(option.value)"
             label
           >
             {{ option.title }}
@@ -683,25 +899,85 @@ function safeNumber(value: number) {
           <thead>
             <tr>
               <th>
-                Date
+                <span class="th-label">
+                  <VIcon
+                    icon="ri-calendar-event-line"
+                    size="14"
+                  />
+                  Date
+                </span>
               </th>
               <th>
-                First In
+                <span
+                  class="th-label"
+                  title="First check-in"
+                >
+                  <VIcon
+                    icon="ri-login-box-line"
+                    size="14"
+                  />
+                  First In
+                </span>
               </th>
               <th>
-                Last Out
+                <span
+                  class="th-label"
+                  title="Last check-out"
+                >
+                  <VIcon
+                    icon="ri-logout-box-line"
+                    size="14"
+                  />
+                  Last Out
+                </span>
               </th>
               <th class="text-end">
-                Regular
+                <span
+                  class="th-label"
+                  title="Regular hours"
+                >
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                  />
+                  Regular
+                </span>
               </th>
               <th class="text-end">
-                Reg slots
+                <span
+                  class="th-label"
+                  title="Regular 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  Reg slots
+                </span>
               </th>
               <th class="text-end">
-                OT
+                <span
+                  class="th-label"
+                  title="Overtime hours"
+                >
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                  />
+                  OT
+                </span>
               </th>
               <th class="text-end">
-                OT slots
+                <span
+                  class="th-label"
+                  title="Overtime 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  OT slots
+                </span>
               </th>
               <th>
                 Status
@@ -717,8 +993,16 @@ function safeNumber(value: number) {
               <td>
                 <span
                   v-if="s.first_check_in"
-                  class="text-caption"
-                >{{ s.first_check_in.slice(0, 16).replace('T', ' ') }}</span>
+                  class="cell-metric"
+                  title="First check-in"
+                >
+                  <VIcon
+                    icon="ri-login-box-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  <span class="text-caption">{{ s.first_check_in.slice(0, 16).replace('T', ' ') }}</span>
+                </span>
                 <span
                   v-else
                   class="text-medium-emphasis"
@@ -727,30 +1011,77 @@ function safeNumber(value: number) {
               <td>
                 <span
                   v-if="s.last_check_out"
-                  class="text-caption"
-                >{{ s.last_check_out.slice(0, 16).replace('T', ' ') }}</span>
+                  class="cell-metric"
+                  title="Last check-out"
+                >
+                  <VIcon
+                    icon="ri-logout-box-line"
+                    size="14"
+                    class="text-info"
+                  />
+                  <span class="text-caption">{{ s.last_check_out.slice(0, 16).replace('T', ' ') }}</span>
+                </span>
                 <span
                   v-else
                   class="text-medium-emphasis"
                 >—</span>
               </td>
               <td class="text-end">
-                {{ formatHours(s.regular_hours) }}
+                <span
+                  class="cell-metric"
+                  title="Regular hours"
+                >
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  {{ formatHours(s.regular_hours) }}
+                </span>
               </td>
               <td class="text-end">
-                {{ s.regular_slots }}
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Regular 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  {{ s.regular_slots }}
+                </span>
               </td>
               <td class="text-end">
-                {{ formatHours(s.overtime_hours) }}
+                <span
+                  class="cell-metric"
+                  title="Overtime hours"
+                >
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                    class="text-info"
+                  />
+                  {{ formatHours(s.overtime_hours) }}
+                </span>
               </td>
               <td class="text-end">
-                {{ s.ot_slots }}
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Overtime 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  {{ s.ot_slots }}
+                </span>
               </td>
               <td>
                 <VChip
                   :color="statusColor(s)"
                   size="small"
                   label
+                  :prepend-icon="statusIcon(s)"
                 >
                   {{ statusLabel(s) }}
                 </VChip>
@@ -764,16 +1095,42 @@ function safeNumber(value: number) {
               <td />
               <td />
               <td class="text-end">
-                {{ formatHours(detailTotals.regular) }}
+                <span class="cell-metric">
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  {{ formatHours(detailTotals.regular) }}
+                </span>
               </td>
               <td class="text-end">
-                {{ detailTotals.regularSlots }}
+                <span class="cell-metric text-medium-emphasis">
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  {{ detailTotals.regularSlots }}
+                </span>
               </td>
               <td class="text-end">
-                {{ formatHours(detailTotals.overtime) }}
+                <span class="cell-metric">
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                    class="text-info"
+                  />
+                  {{ formatHours(detailTotals.overtime) }}
+                </span>
               </td>
               <td class="text-end">
-                {{ detailTotals.otSlots }}
+                <span class="cell-metric text-medium-emphasis">
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  {{ detailTotals.otSlots }}
+                </span>
               </td>
               <td />
             </tr>
@@ -821,6 +1178,18 @@ function safeNumber(value: number) {
 .summaries-table :deep(.col-actions) {
   width: 1%;
   white-space: nowrap;
+}
+
+.th-label,
+.cell-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-end .th-label,
+.text-end .cell-metric {
+  justify-content: flex-end;
 }
 
 .summary-row {

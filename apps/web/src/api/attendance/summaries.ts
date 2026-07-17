@@ -36,6 +36,8 @@ export interface SummaryOverviewItem {
   days_incomplete: number
   total_regular_hours: number
   total_overtime_hours: number
+  total_regular_slots: number
+  total_ot_slots: number
   first_date: string | null
   last_date: string | null
 }

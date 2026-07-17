@@ -61,5 +61,7 @@ class AttendanceSummaryOverviewOut(BaseModel):
     days_incomplete: int
     total_regular_hours: float
     total_overtime_hours: float
+    total_regular_slots: int = 0
+    total_ot_slots: int = 0
     first_date: date | None = None
     last_date: date | None = None

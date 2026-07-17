@@ -73,7 +73,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 | `search` | | product `code` / `full_name` / `english_name`（ILIKE） |
 | `page` / `page_size` | | 預設 50，最大 200 |
 
-回傳欄位（`AttendanceSummaryOverviewOut`）：`days_present`, `days_complete`, `days_incomplete`, `total_regular_hours`, `total_overtime_hours`, `first_date`, `last_date`。
+回傳欄位（`AttendanceSummaryOverviewOut`）：`days_present`, `days_complete`, `days_incomplete`, `total_regular_hours`, `total_overtime_hours`, `total_regular_slots`, `total_ot_slots`, `first_date`, `last_date`。
 
 ### 2.3 `POST /api/attendance-summaries/generate`
 
@@ -132,7 +132,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 |------|------|
 | **工具列** | 月份箭頭、`Type` 篩選（預設 **Staff**）、Generate、Refresh |
 | **統計卡** | 人數、日次數、完整率、總工時（見 §6 已知限制） |
-| **總覽** | 每人一行月度彙總；搜尋（300ms debounce）；分頁 |
+| **總覽** | 每人一行月度彙總（含 Regular / Reg slots / OT / OT slots）；搜尋（300ms debounce）；分頁 |
 | **明細** | 點列進入；狀態 chips（All / Complete / Incomplete / Weekend）；每日表含 Regular / Reg slots / OT / OT slots / 狀態 + Total 列 |
 
 ### 3.2 Generate 成功提示
@@ -237,7 +237,7 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 | Seed vs 事件 | 測試環境易出現「列表有資料但 Generate 無事件」 |
 | Weekend 篩選 | 明細層 Weekend chip 為 **前端篩選**已載入列；Complete/Incomplete 走 API `is_complete` |
 | Holiday | 僅在狀態欄顯示，無獨立 chip |
-| Overview 無 slots | overview 只回傳小時加總；slots 僅在每日明細可見 |
+| Overview 無 slots | ✅ 已補 `total_regular_slots` / `total_ot_slots` |
 | 自動化 | 尚無 cron 自動月度 Generate |
 
 ### 6.3 後續可選改善
@@ -278,8 +278,8 @@ A：點擊 product 的薪資列後，會讀取該 product 在當月的 `attendan
 **Q：Payroll 列表為什麼只顯示單一月份？**  
 A：列表依頂部選中的月份篩選，與 Summaries 的「按月聚焦」模型一致。
 
-**Q：為什麼沒有 Break？**  
-A：不採用固定午休扣減；工時為打卡區間經 15 分鐘槽四捨五入後的結果。
+**Q：為什麼還有 Incomplete？**  
+A：Incomplete 只表示「當天還缺簽退、且尚未到日界」。過去日期若只有 check_in，**Generate** 會自動補 `auto_checkout`（23:59）並標為 Complete；Dashboard 的 Auto Checkout 也會補事件並重算當月彙總。Seed 測試資料不再大量產生 Incomplete。
 
 ---
 

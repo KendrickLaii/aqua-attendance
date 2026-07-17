@@ -83,7 +83,11 @@ def _location_close_time(
 
 
 def _minutes_between(start: datetime, end: datetime) -> int:
-    """Total minutes between two datetimes."""
+    """Total minutes between two datetimes (same tz awareness required)."""
+    if start.tzinfo is not None and end.tzinfo is None:
+        end = end.replace(tzinfo=start.tzinfo)
+    elif start.tzinfo is None and end.tzinfo is not None:
+        start = start.replace(tzinfo=end.tzinfo)
     delta = end - start
     return int(delta.total_seconds() // 60)
 
@@ -122,8 +126,9 @@ def calculate_workday(
     # Determine standard hours from location closing time
     close_time = _location_close_time(location, target_date)
     if close_time:
-        # Standard = from check-in time to location close time
-        close_dt = datetime.combine(target_date, close_time)
+        # Standard = from check-in time to location close time.
+        # Match check-in tzinfo so aware/naive subtraction never fails.
+        close_dt = datetime.combine(target_date, close_time, tzinfo=rounded_in.tzinfo)
         if close_time.hour < 6:  # e.g. 02:00 next day
             close_dt += timedelta(days=1)
 

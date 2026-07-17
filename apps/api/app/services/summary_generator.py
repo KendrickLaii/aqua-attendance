@@ -2,22 +2,29 @@
 
 Admin selects a month → this service calculates daily summaries for every
 product and inserts / updates `attendance_summaries` rows.
+
+Forgotten check-outs on past days are closed at the day boundary (23:59)
+with an ``auto_checkout`` event — same rule as the Auto Checkout job —
+so Incomplete is reserved for days that are still open (e.g. today).
 """
 
 import calendar
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.attendance import AttendanceEvent
+from app.models.attendance import AttendanceEvent, EventSource, EventType
 from app.models.attendance_summary import AttendanceSummary
-from app.models.location import Location
 from app.models.product import Product
 from app.services.overtime import calculate_workday
+
+
+def _day_boundary_checkout(event_date: date, tzinfo) -> datetime:
+    return datetime.combine(event_date, time(23, 59, 0), tzinfo=tzinfo or timezone.utc)
 
 
 async def generate_monthly_summaries(
@@ -28,13 +35,15 @@ async def generate_monthly_summaries(
     """Generate attendance summaries for every product for the given month.
 
     Returns:
-        dict with counts: {"created": int, "updated": int, "total_days": int}
+        dict with counts: {"created": int, "updated": int, "total_days": int,
+        "auto_checkouts": int}
     """
     # Date range
     first_day = date(year, month, 1)
     last_day = date(year, month, calendar.monthrange(year, month)[1])
     start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
     end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=timezone.utc)
+    today = datetime.now(timezone.utc).date()
 
     # Fetch all non-voided events in range with product & location
     result = await db.execute(
@@ -58,11 +67,12 @@ async def generate_monthly_summaries(
 
     created_count = 0
     updated_count = 0
+    auto_checkout_count = 0
 
     for (product_id, event_date), day_events in grouped.items():
         # Separate check_ins and check_outs
-        check_ins = [e for e in day_events if e.event_type == "check_in"]
-        check_outs = [e for e in day_events if e.event_type == "check_out"]
+        check_ins = [e for e in day_events if e.event_type == EventType.check_in.value]
+        check_outs = [e for e in day_events if e.event_type == EventType.check_out.value]
 
         if not check_ins:
             continue  # No check-in → cannot calculate workday
@@ -75,7 +85,31 @@ async def generate_monthly_summaries(
         location = first_event.location_ref or (
             first_event.product.registered_location if first_event.product else None
         )
-        location_id = location.id if location else None
+        location_id = location.id if location else (
+            first_event.product.registered_location_id if first_event.product else None
+        )
+        if location_id is None:
+            continue  # summaries require a location_id
+
+        notes: str | None = None
+
+        # Past days with check-in but no check-out → day-boundary auto checkout
+        if last_check_out is None and event_date < today:
+            last_check_out = _day_boundary_checkout(event_date, first_check_in.tzinfo)
+            db.add(
+                AttendanceEvent(
+                    product_id=product_id,
+                    event_type=EventType.check_out.value,
+                    source=EventSource.auto_checkout.value,
+                    recorded_at=last_check_out,
+                    location_id=location_id,
+                    location=first_event.location
+                    or (location.code if location and location.code else "auto"),
+                    notes="Auto checkout at day boundary (applied during summary generate)",
+                )
+            )
+            notes = "Closed by day-boundary auto checkout (23:59)"
+            auto_checkout_count += 1
 
         # Calculate work hours
         if last_check_out:
@@ -87,7 +121,7 @@ async def generate_monthly_summaries(
             )
             is_complete = True
         else:
-            # No check-out → incomplete day
+            # Still open (typically today before check-out / auto-checkout)
             work_result = None
             is_complete = False
 
@@ -121,6 +155,8 @@ async def generate_monthly_summaries(
             summary.regular_hours = regular_hours
             summary.overtime_hours = ot_hours
             summary.location_id = location_id
+            if notes:
+                summary.attendance_notes = notes
             summary.updated_at = datetime.now(timezone.utc)
             updated_count += 1
         else:
@@ -138,6 +174,7 @@ async def generate_monthly_summaries(
                 ot_slots=ot_slots,
                 regular_hours=regular_hours,
                 overtime_hours=ot_hours,
+                attendance_notes=notes,
             )
             db.add(summary)
             created_count += 1
@@ -148,6 +185,7 @@ async def generate_monthly_summaries(
         "created": created_count,
         "updated": updated_count,
         "total_days": len(grouped),
+        "auto_checkouts": auto_checkout_count,
         "year": year,
         "month": month,
     }

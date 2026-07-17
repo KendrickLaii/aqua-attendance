@@ -112,6 +112,12 @@ async def list_attendance_summary_overview(
             func.coalesce(func.sum(AttendanceSummary.overtime_hours), 0).label(
                 "total_overtime_hours"
             ),
+            func.coalesce(func.sum(AttendanceSummary.regular_slots), 0).label(
+                "total_regular_slots"
+            ),
+            func.coalesce(func.sum(AttendanceSummary.ot_slots), 0).label(
+                "total_ot_slots"
+            ),
             func.min(AttendanceSummary.summary_date).label("first_date"),
             func.max(AttendanceSummary.summary_date).label("last_date"),
         )
@@ -159,6 +165,8 @@ async def list_attendance_summary_overview(
             days_incomplete=row.days_incomplete or 0,
             total_regular_hours=float(row.total_regular_hours or 0),
             total_overtime_hours=float(row.total_overtime_hours or 0),
+            total_regular_slots=int(row.total_regular_slots or 0),
+            total_ot_slots=int(row.total_ot_slots or 0),
             first_date=row.first_date,
             last_date=row.last_date,
         )

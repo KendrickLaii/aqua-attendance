@@ -107,7 +107,53 @@ const pageSubtitle = computed(() => {
   if (isDetailView.value && selectedRecord.value)
     return `${selectedRecord.value.product_name || selectedRecord.value.product_code} · ${monthLabel.value}`
 
+  if (viewMode.value === 'wizard') {
+    if (step.value === 'result')
+      return `${stepMonthLabel.value} · ${generatedRecords.value.length} generated`
+
+    return `${stepMonthLabel.value} · ${stepSelectedCount.value} of ${stepProducts.value.length} staff selected`
+  }
+
   return `${monthLabel.value} · ${totalCount.value} record${totalCount.value === 1 ? '' : 's'}`
+})
+
+const recordsStatCards = computed(() => {
+  const regular = records.value.reduce((sum, r) => sum + safeNumber(r.total_regular_hours), 0)
+  const overtime = records.value.reduce((sum, r) => sum + safeNumber(r.total_overtime_hours), 0)
+  const net = records.value.reduce((sum, r) => sum + safeNumber(r.net_pay), 0)
+  const regularSlots = records.value.reduce((sum, r) => sum + safeNumber(r.regular_slots), 0)
+  const otSlots = records.value.reduce((sum, r) => sum + safeNumber(r.ot_slots), 0)
+
+  return [
+    {
+      label: 'Records',
+      value: String(totalCount.value),
+      hint: listCaption.value || 'this month',
+      icon: 'ri-file-list-3-line',
+      color: 'primary',
+    },
+    {
+      label: 'Regular',
+      value: formatHours(regular),
+      hint: `${regularSlots} slots`,
+      icon: 'ri-time-line',
+      color: 'success',
+    },
+    {
+      label: 'Overtime',
+      value: formatHours(overtime),
+      hint: `${otSlots} slots`,
+      icon: 'ri-flashlight-line',
+      color: 'info',
+    },
+    {
+      label: 'Net pay',
+      value: formatCurrency(net),
+      hint: 'current page total',
+      icon: 'ri-wallet-3-line',
+      color: 'secondary',
+    },
+  ]
 })
 
 const listCaption = computed(() => {
@@ -521,6 +567,23 @@ function statusColor(s: AttendanceSummary) {
   return s.is_complete ? 'success' : 'warning'
 }
 
+function statusIcon(status: string) {
+  switch (status) {
+    case 'draft':
+      return 'ri-draft-line'
+    case 'calculated':
+      return 'ri-calculator-line'
+    case 'approved':
+      return 'ri-checkbox-circle-line'
+    case 'paid':
+      return 'ri-money-dollar-circle-line'
+    case 'cancelled':
+      return 'ri-close-circle-line'
+    default:
+      return 'ri-file-list-line'
+  }
+}
+
 function formatHours(h: number) {
   return Number.isFinite(h) ? h.toFixed(2) : '-'
 }
@@ -555,7 +618,7 @@ function formatCurrency(n: number | null | undefined) {
       <VCol
         cols="12"
         md="auto"
-        class="d-flex gap-2"
+        class="d-flex flex-wrap gap-2 justify-md-end"
       >
         <VBtn
           :variant="viewMode === 'wizard' ? 'flat' : 'tonal'"
@@ -563,12 +626,12 @@ function formatCurrency(n: number | null | undefined) {
           prepend-icon="ri-magic-line"
           @click="showWizard"
         >
-          Generate
+          New run
         </VBtn>
         <VBtn
           :variant="viewMode === 'records' ? 'flat' : 'tonal'"
           color="primary"
-          prepend-icon="ri-file-list-line"
+          prepend-icon="ri-file-list-3-line"
           @click="showRecords"
         >
           Records
@@ -600,31 +663,60 @@ function formatCurrency(n: number | null | undefined) {
 
     <!-- Wizard mode -->
     <template v-if="viewMode === 'wizard' && !isDetailView">
-      <VStepper
-        v-model="step"
-        class="payroll-stepper"
-      >
-        <VStepperHeader>
-          <VStepperItem
-            title="Configure"
-            value="configure"
-            editable
+      <VCard class="payroll-wizard">
+        <div class="payroll-steps">
+          <button
+            type="button"
+            class="payroll-step"
+            :class="{ 'payroll-step--active': step === 'configure' }"
+            @click="step = 'configure'"
+          >
+            <VIcon
+              icon="ri-settings-3-line"
+              size="20"
+            />
+            <span>Configure</span>
+          </button>
+          <VIcon
+            icon="ri-arrow-right-s-line"
+            size="18"
+            class="payroll-steps-arrow text-medium-emphasis"
           />
-          <VDivider />
-          <VStepperItem
-            title="Result"
-            value="result"
-            editable
-          />
-        </VStepperHeader>
+          <button
+            type="button"
+            class="payroll-step"
+            :class="{ 'payroll-step--active': step === 'result' }"
+            @click="step = 'result'"
+          >
+            <VIcon
+              icon="ri-file-list-3-line"
+              size="20"
+            />
+            <span>Result</span>
+          </button>
+        </div>
+        <VDivider />
 
-        <VStepperWindow>
-          <!-- Step 1: Configure (Type + Products + Month) -->
-          <VStepperWindowItem value="configure">
-            <div class="pa-4">
-              <h2 class="text-h6 mb-4">
-                Configure payroll run
-              </h2>
+        <!-- Step 1: Configure -->
+        <div v-show="step === 'configure'">
+            <div class="pa-4 pa-md-6">
+              <div class="d-flex align-center gap-3 mb-6">
+                <VAvatar
+                  color="primary"
+                  variant="tonal"
+                  rounded
+                >
+                  <VIcon icon="ri-settings-3-line" />
+                </VAvatar>
+                <div>
+                  <h2 class="text-h6 mb-0">
+                    Configure payroll run
+                  </h2>
+                  <p class="text-body-2 text-medium-emphasis mb-0">
+                    Pick staff and month, then generate pay slips from attendance summaries.
+                  </p>
+                </div>
+              </div>
 
               <VAlert
                 v-if="generateError"
@@ -636,107 +728,180 @@ function formatCurrency(n: number | null | undefined) {
                 {{ generateError }}
               </VAlert>
 
-              <!-- Products -->
-              <h3 class="text-subtitle-2 font-weight-medium mb-2">
-                1. Staff products
-              </h3>
-              <div class="d-flex align-center gap-3 mb-3">
-                <VTextField
-                  v-model="stepSearch"
-                  label="Search by name or code"
-                  density="compact"
-                  prepend-inner-icon="ri-search-line"
-                  clearable
-                  hide-details
-                  style="max-inline-size: 280px;"
-                />
-                <VCheckbox
-                  v-model="stepAllSelected"
-                  label="Select all"
-                  density="compact"
-                  hide-details
-                />
-                <VSpacer />
-                <span class="text-caption text-medium-emphasis">
-                  {{ stepProducts.length }} loaded · {{ stepSelectedCount }} selected
-                </span>
-              </div>
-
-              <VProgressLinear
-                v-if="stepProductsLoading"
-                indeterminate
-                color="primary"
-                class="mb-2"
-              />
-              <VAlert
-                v-else-if="stepProductsError"
-                type="error"
-                variant="tonal"
-                density="compact"
-                class="mb-2"
+              <VCard
+                variant="outlined"
+                class="mb-4"
               >
-                {{ stepProductsError }}
-              </VAlert>
-
-              <div class="product-list">
-                <VListItem
-                  v-for="p in stepFilteredProducts"
-                  :key="p.id"
-                  :title="p.full_name"
-                  :subtitle="p.code"
-                  density="comfortable"
-                  class="product-list-item"
-                  @click="toggleStepProduct(p.id)"
-                >
+                <VCardItem>
                   <template #prepend>
-                    <VCheckbox
-                      :model-value="stepSelectedIds.includes(p.id)"
-                      density="comfortable"
-                      hide-details
-                      @click.stop="toggleStepProduct(p.id)"
-                    />
+                    <VAvatar
+                      color="primary"
+                      variant="tonal"
+                      size="36"
+                      rounded
+                    >
+                      <VIcon
+                        icon="ri-group-line"
+                        size="20"
+                      />
+                    </VAvatar>
                   </template>
-                </VListItem>
-                <div
-                  v-if="!stepProductsLoading && stepFilteredProducts.length === 0"
-                  class="text-center text-medium-emphasis py-8"
-                >
-                  No staff products found.
-                </div>
-              </div>
+                  <VCardTitle class="text-subtitle-1">
+                    Staff products
+                  </VCardTitle>
+                  <VCardSubtitle>
+                    {{ stepProducts.length }} loaded · {{ stepSelectedCount }} selected
+                  </VCardSubtitle>
+                </VCardItem>
+                <VCardText>
+                  <div class="d-flex align-center gap-3 mb-3 flex-wrap">
+                    <VTextField
+                      v-model="stepSearch"
+                      label="Search by name or code"
+                      density="compact"
+                      prepend-inner-icon="ri-search-line"
+                      clearable
+                      hide-details
+                      style="max-inline-size: 280px;"
+                    />
+                    <VCheckbox
+                      v-model="stepAllSelected"
+                      label="Select all"
+                      density="compact"
+                      hide-details
+                      color="primary"
+                    />
+                  </div>
 
-              <!-- Month -->
-              <h3 class="text-subtitle-2 font-weight-medium mb-2 mt-6">
-                2. Payroll month
-              </h3>
-              <div
-                class="d-flex align-center gap-4 mb-4 flex-wrap"
-                :class="{ 'opacity-50': stepSelectedCount === 0 }"
+                  <VProgressLinear
+                    v-if="stepProductsLoading"
+                    indeterminate
+                    color="primary"
+                    class="mb-2"
+                  />
+                  <VAlert
+                    v-else-if="stepProductsError"
+                    type="error"
+                    variant="tonal"
+                    density="compact"
+                    class="mb-2"
+                  >
+                    {{ stepProductsError }}
+                  </VAlert>
+
+                  <div class="product-list">
+                    <VListItem
+                      v-for="p in stepFilteredProducts"
+                      :key="p.id"
+                      :title="p.full_name"
+                      :subtitle="p.code"
+                      density="comfortable"
+                      class="product-list-item"
+                      :active="stepSelectedIds.includes(p.id)"
+                      color="primary"
+                      @click="toggleStepProduct(p.id)"
+                    >
+                      <template #prepend>
+                        <VCheckbox
+                          :model-value="stepSelectedIds.includes(p.id)"
+                          density="comfortable"
+                          hide-details
+                          color="primary"
+                          @click.stop="toggleStepProduct(p.id)"
+                        />
+                      </template>
+                      <template #append>
+                        <VChip
+                          size="x-small"
+                          variant="tonal"
+                          color="primary"
+                          prepend-icon="ri-user-line"
+                          label
+                        >
+                          Staff
+                        </VChip>
+                      </template>
+                    </VListItem>
+                    <div
+                      v-if="!stepProductsLoading && stepFilteredProducts.length === 0"
+                      class="text-center text-medium-emphasis py-8"
+                    >
+                      No staff products found.
+                    </div>
+                  </div>
+                </VCardText>
+              </VCard>
+
+              <VCard
+                variant="outlined"
+                class="mb-4"
+                :disabled="stepSelectedCount === 0"
               >
-                <VTextField
-                  v-model="stepMonth"
-                  label="Month"
-                  type="month"
-                  density="compact"
-                  :disabled="stepSelectedCount === 0"
-                  style="max-inline-size: 220px;"
-                />
-                <VAlert
-                  type="info"
-                  variant="tonal"
-                  density="compact"
-                  class="mb-0"
-                >
-                  Generating for
-                  <strong>{{ stepSelectedCount }}</strong>
-                  staff product{{ stepSelectedCount === 1 ? '' : 's' }}
-                  · <strong>{{ stepMonthLabel }}</strong>
-                </VAlert>
-              </div>
+                <VCardItem>
+                  <template #prepend>
+                    <VAvatar
+                      color="info"
+                      variant="tonal"
+                      size="36"
+                      rounded
+                    >
+                      <VIcon
+                        icon="ri-calendar-line"
+                        size="20"
+                      />
+                    </VAvatar>
+                  </template>
+                  <VCardTitle class="text-subtitle-1">
+                    Payroll month
+                  </VCardTitle>
+                  <VCardSubtitle>
+                    Summaries for this month are aggregated into each pay slip
+                  </VCardSubtitle>
+                </VCardItem>
+                <VCardText>
+                  <div class="d-flex align-center gap-3 flex-wrap">
+                    <VTextField
+                      v-model="stepMonth"
+                      label="Month"
+                      type="month"
+                      density="compact"
+                      prepend-inner-icon="ri-calendar-event-line"
+                      :disabled="stepSelectedCount === 0"
+                      hide-details
+                      style="max-inline-size: 220px;"
+                    />
+                    <VChip
+                      color="primary"
+                      variant="tonal"
+                      prepend-icon="ri-group-line"
+                      label
+                    >
+                      {{ stepSelectedCount }} staff
+                    </VChip>
+                    <VChip
+                      color="info"
+                      variant="tonal"
+                      prepend-icon="ri-calendar-line"
+                      label
+                    >
+                      {{ stepMonthLabel }}
+                    </VChip>
+                  </div>
+                </VCardText>
+              </VCard>
 
-              <div class="d-flex justify-end mt-6">
+              <div class="d-flex align-center justify-space-between flex-wrap gap-3 mt-2">
+                <div class="text-caption text-medium-emphasis">
+                  <VIcon
+                    icon="ri-information-line"
+                    size="14"
+                    class="me-1"
+                  />
+                  Only selected staff are generated. Approved / paid slips are skipped.
+                </div>
                 <VBtn
                   color="primary"
+                  size="large"
                   :loading="generating"
                   :disabled="stepSelectedCount === 0"
                   prepend-icon="ri-magic-line"
@@ -746,28 +911,47 @@ function formatCurrency(n: number | null | undefined) {
                 </VBtn>
               </div>
             </div>
-          </VStepperWindowItem>
+        </div>
 
-          <!-- Step 2: Invoice-style results -->
-          <VStepperWindowItem value="result">
-            <div class="pa-4">
-              <div class="d-flex align-center justify-space-between mb-4">
-                <div>
-                  <h2 class="text-h6 mb-0">
-                    Payroll result
-                  </h2>
-                  <p class="text-body-2 text-medium-emphasis mb-0">
-                    {{ stepMonthLabel }} · {{ generatedRecords.length }} record{{ generatedRecords.length === 1 ? '' : 's' }}
-                  </p>
+        <!-- Step 2: Results -->
+        <div v-show="step === 'result'">
+            <div class="pa-4 pa-md-6">
+              <div class="d-flex align-center justify-space-between mb-4 flex-wrap gap-3">
+                <div class="d-flex align-center gap-3">
+                  <VAvatar
+                    color="success"
+                    variant="tonal"
+                    rounded
+                  >
+                    <VIcon icon="ri-file-paper-2-line" />
+                  </VAvatar>
+                  <div>
+                    <h2 class="text-h6 mb-0">
+                      Payroll result
+                    </h2>
+                    <p class="text-body-2 text-medium-emphasis mb-0">
+                      {{ stepMonthLabel }} · {{ generatedRecords.length }} slip{{ generatedRecords.length === 1 ? '' : 's' }}
+                    </p>
+                  </div>
                 </div>
-                <VBtn
-                  variant="tonal"
-                  color="primary"
-                  prepend-icon="ri-add-line"
-                  @click="resetWizard"
-                >
-                  New run
-                </VBtn>
+                <div class="d-flex gap-2">
+                  <VBtn
+                    variant="tonal"
+                    color="primary"
+                    prepend-icon="ri-file-list-3-line"
+                    @click="showRecords"
+                  >
+                    Browse records
+                  </VBtn>
+                  <VBtn
+                    variant="flat"
+                    color="primary"
+                    prepend-icon="ri-add-line"
+                    @click="resetWizard"
+                  >
+                    New run
+                  </VBtn>
+                </div>
               </div>
 
               <VProgressLinear
@@ -787,8 +971,18 @@ function formatCurrency(n: number | null | undefined) {
                 >
                   <VCard class="payroll-invoice">
                     <VCardItem class="invoice-header">
+                      <template #prepend>
+                        <VAvatar
+                          color="primary"
+                          variant="tonal"
+                          size="40"
+                          rounded
+                        >
+                          <VIcon icon="ri-user-line" />
+                        </VAvatar>
+                      </template>
                       <template #title>
-                        <div class="d-flex align-center gap-2">
+                        <div class="d-flex align-center gap-2 flex-wrap">
                           <span class="text-h6 font-weight-bold">
                             {{ record.product_name || '—' }}
                           </span>
@@ -796,6 +990,7 @@ function formatCurrency(n: number | null | undefined) {
                             :color="statusColorMap[record.status] ?? 'grey'"
                             size="small"
                             label
+                            :prepend-icon="statusIcon(record.status)"
                           >
                             {{ record.status }}
                           </VChip>
@@ -811,7 +1006,11 @@ function formatCurrency(n: number | null | undefined) {
                     <VCardText class="invoice-body">
                       <div class="d-flex justify-space-between mb-4">
                         <div>
-                          <div class="text-caption text-medium-emphasis">
+                          <div class="text-caption text-medium-emphasis d-flex align-center gap-1">
+                            <VIcon
+                              icon="ri-calendar-line"
+                              size="14"
+                            />
                             Period
                           </div>
                           <div class="font-weight-medium">
@@ -819,7 +1018,11 @@ function formatCurrency(n: number | null | undefined) {
                           </div>
                         </div>
                         <div class="text-end">
-                          <div class="text-caption text-medium-emphasis">
+                          <div class="text-caption text-medium-emphasis d-flex align-center justify-end gap-1">
+                            <VIcon
+                              icon="ri-calendar-check-line"
+                              size="14"
+                            />
                             Work days
                           </div>
                           <div class="font-weight-medium">
@@ -830,17 +1033,35 @@ function formatCurrency(n: number | null | undefined) {
 
                       <div class="invoice-grid">
                         <div class="invoice-cell">
-                          <span class="text-caption text-medium-emphasis">Regular</span>
+                          <span class="text-caption text-success d-flex align-center gap-1">
+                            <VIcon
+                              icon="ri-time-line"
+                              size="14"
+                            />
+                            Regular
+                          </span>
                           <span class="font-weight-medium">{{ formatHours(record.total_regular_hours) }} h</span>
                           <span class="text-caption text-medium-emphasis">{{ record.regular_slots }} slots</span>
                         </div>
                         <div class="invoice-cell">
-                          <span class="text-caption text-medium-emphasis">Overtime</span>
+                          <span class="text-caption text-info d-flex align-center gap-1">
+                            <VIcon
+                              icon="ri-flashlight-line"
+                              size="14"
+                            />
+                            Overtime
+                          </span>
                           <span class="font-weight-medium">{{ formatHours(record.total_overtime_hours) }} h</span>
                           <span class="text-caption text-medium-emphasis">{{ record.ot_slots }} slots</span>
                         </div>
                         <div class="invoice-cell">
-                          <span class="text-caption text-medium-emphasis">Rate</span>
+                          <span class="text-caption text-medium-emphasis d-flex align-center gap-1">
+                            <VIcon
+                              icon="ri-price-tag-3-line"
+                              size="14"
+                            />
+                            Rate
+                          </span>
                           <span class="font-weight-medium">{{ formatCurrency(record.hourly_rate_snapshot) }}/hr</span>
                           <span class="text-caption text-medium-emphasis">OT ×{{ record.ot_multiplier_snapshot ?? 1.5 }}</span>
                         </div>
@@ -907,7 +1128,14 @@ function formatCurrency(n: number | null | undefined) {
                         @update:model-value="onCardAdjChange(record)"
                       />
                       <div class="invoice-line grand">
-                        <span>Net pay</span>
+                        <span class="d-flex align-center gap-1">
+                          <VIcon
+                            icon="ri-wallet-3-line"
+                            size="18"
+                            class="text-primary"
+                          />
+                          Net pay
+                        </span>
                         <span class="text-h6 font-weight-bold text-primary">{{ formatCurrency(record.net_pay) }}</span>
                       </div>
                     </VCardText>
@@ -916,8 +1144,9 @@ function formatCurrency(n: number | null | undefined) {
                       <VBtn
                         v-if="record.status === 'draft' || record.status === 'calculated'"
                         size="small"
-                        variant="text"
+                        variant="tonal"
                         color="success"
+                        prepend-icon="ri-checkbox-circle-line"
                         @click="updateStatus(record, 'approved')"
                       >
                         Approve
@@ -925,8 +1154,9 @@ function formatCurrency(n: number | null | undefined) {
                       <VBtn
                         v-if="record.status === 'approved'"
                         size="small"
-                        variant="text"
+                        variant="tonal"
                         color="primary"
+                        prepend-icon="ri-money-dollar-circle-line"
                         @click="updateStatus(record, 'paid')"
                       >
                         Pay
@@ -934,6 +1164,7 @@ function formatCurrency(n: number | null | undefined) {
                       <VBtn
                         size="small"
                         variant="text"
+                        prepend-icon="ri-eye-line"
                         @click="openDetail(record)"
                       >
                         Details
@@ -957,16 +1188,61 @@ function formatCurrency(n: number | null | undefined) {
                 v-if="!generating && generatedRecords.length === 0"
                 class="text-center text-medium-emphasis py-8"
               >
-                No payroll records generated. Go back and try again.
+                <VIcon
+                  icon="ri-file-damage-line"
+                  size="40"
+                  class="mb-2"
+                />
+                <div>No payroll records generated. Go back and try again.</div>
               </div>
             </div>
-          </VStepperWindowItem>
-        </VStepperWindow>
-      </VStepper>
+        </div>
+      </VCard>
     </template>
 
     <!-- Records mode -->
     <template v-else-if="viewMode === 'records' && !isDetailView">
+      <VRow
+        class="mb-3"
+        dense
+      >
+        <VCol
+          v-for="card in recordsStatCards"
+          :key="card.label"
+          cols="12"
+          sm="6"
+          md="3"
+        >
+          <VCard class="pa-3">
+            <div class="d-flex align-center justify-space-between mb-1">
+              <div class="text-caption text-medium-emphasis">
+                {{ card.label }}
+              </div>
+              <VAvatar
+                :color="card.color"
+                variant="tonal"
+                size="32"
+                rounded
+              >
+                <VIcon
+                  :icon="card.icon"
+                  size="18"
+                />
+              </VAvatar>
+            </div>
+            <div
+              class="text-h6 font-weight-bold"
+              :class="`text-${card.color}`"
+            >
+              {{ card.value }}
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              {{ card.hint }}
+            </div>
+          </VCard>
+        </VCol>
+      </VRow>
+
       <VRow
         class="mb-3"
         dense
@@ -981,6 +1257,7 @@ function formatCurrency(n: number | null | undefined) {
             label="Month"
             type="month"
             density="compact"
+            prepend-inner-icon="ri-calendar-event-line"
             hide-details
           />
         </VCol>
@@ -996,6 +1273,7 @@ function formatCurrency(n: number | null | undefined) {
             item-value="value"
             label="Status"
             density="compact"
+            prepend-inner-icon="ri-filter-3-line"
             hide-details
           />
         </VCol>
@@ -1011,6 +1289,7 @@ function formatCurrency(n: number | null | undefined) {
             item-value="value"
             label="Type"
             density="compact"
+            prepend-inner-icon="ri-user-line"
             hide-details
           />
         </VCol>
@@ -1041,7 +1320,13 @@ function formatCurrency(n: number | null | undefined) {
 
       <VCard>
         <VCardTitle class="d-flex flex-wrap align-center justify-space-between gap-2">
-          <span>Monthly payroll records</span>
+          <span class="d-flex align-center gap-2">
+            <VIcon
+              icon="ri-file-list-3-line"
+              size="20"
+            />
+            Monthly payroll records
+          </span>
           <span class="text-caption text-medium-emphasis">{{ listCaption || monthLabel }}</span>
         </VCardTitle>
         <div class="payroll-table-scroll">
@@ -1054,16 +1339,40 @@ function formatCurrency(n: number | null | undefined) {
               <tr>
                 <th>Product</th>
                 <th class="text-end">
-                  Regular
+                  <span class="th-label">
+                    <VIcon
+                      icon="ri-time-line"
+                      size="14"
+                    />
+                    Regular
+                  </span>
                 </th>
                 <th class="text-end">
-                  Reg slots
+                  <span class="th-label">
+                    <VIcon
+                      icon="ri-grid-line"
+                      size="14"
+                    />
+                    Reg slots
+                  </span>
                 </th>
                 <th class="text-end">
-                  OT
+                  <span class="th-label">
+                    <VIcon
+                      icon="ri-flashlight-line"
+                      size="14"
+                    />
+                    OT
+                  </span>
                 </th>
                 <th class="text-end">
-                  OT slots
+                  <span class="th-label">
+                    <VIcon
+                      icon="ri-apps-2-line"
+                      size="14"
+                    />
+                    OT slots
+                  </span>
                 </th>
                 <th class="text-end">
                   Base
@@ -1089,27 +1398,66 @@ function formatCurrency(n: number | null | undefined) {
                 @click="openDetail(r)"
               >
                 <td>
-                  <div class="font-weight-medium">
-                    {{ r.product_name || '—' }}
-                  </div>
-                  <div
-                    v-if="r.product_code"
-                    class="text-caption text-medium-emphasis"
-                  >
-                    {{ r.product_code }}
+                  <div class="d-flex align-center gap-2">
+                    <VAvatar
+                      color="primary"
+                      variant="tonal"
+                      size="28"
+                      rounded
+                    >
+                      <VIcon
+                        icon="ri-user-line"
+                        size="16"
+                      />
+                    </VAvatar>
+                    <div>
+                      <div class="font-weight-medium">
+                        {{ r.product_name || '—' }}
+                      </div>
+                      <div
+                        v-if="r.product_code"
+                        class="text-caption text-medium-emphasis"
+                      >
+                        {{ r.product_code }}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td class="text-end">
-                  {{ formatHours(r.total_regular_hours) }}
+                  <span class="cell-metric text-success">
+                    <VIcon
+                      icon="ri-time-line"
+                      size="14"
+                    />
+                    {{ formatHours(r.total_regular_hours) }}
+                  </span>
                 </td>
                 <td class="text-end text-medium-emphasis">
-                  {{ r.regular_slots }}
+                  <span class="cell-metric">
+                    <VIcon
+                      icon="ri-grid-line"
+                      size="14"
+                    />
+                    {{ r.regular_slots }}
+                  </span>
                 </td>
                 <td class="text-end">
-                  {{ formatHours(r.total_overtime_hours) }}
+                  <span class="cell-metric text-info">
+                    <VIcon
+                      icon="ri-flashlight-line"
+                      size="14"
+                    />
+                    {{ formatHours(r.total_overtime_hours) }}
+                  </span>
                 </td>
                 <td class="text-end text-medium-emphasis">
-                  {{ r.ot_slots }}
+                  <span class="cell-metric">
+                    <VIcon
+                      icon="ri-apps-2-line"
+                      size="14"
+                    />
+                    {{ r.ot_slots }}
+                  </span>
                 </td>
                 <td class="text-end">
                   {{ formatCurrency(r.base_salary) }}
@@ -1120,7 +1468,7 @@ function formatCurrency(n: number | null | undefined) {
                 <td class="text-end">
                   {{ formatCurrency(r.gross_pay) }}
                 </td>
-                <td class="text-end">
+                <td class="text-end font-weight-medium text-primary">
                   {{ formatCurrency(r.net_pay) }}
                 </td>
                 <td>
@@ -1128,6 +1476,7 @@ function formatCurrency(n: number | null | undefined) {
                     :color="statusColorMap[r.status] ?? 'grey'"
                     size="small"
                     label
+                    :prepend-icon="statusIcon(r.status)"
                   >
                     {{ r.status }}
                   </VChip>
@@ -1137,8 +1486,9 @@ function formatCurrency(n: number | null | undefined) {
                     <VBtn
                       v-if="r.status === 'draft' || r.status === 'calculated'"
                       size="small"
-                      variant="text"
+                      variant="tonal"
                       color="success"
+                      prepend-icon="ri-checkbox-circle-line"
                       @click.stop="updateStatus(r, 'approved')"
                     >
                       Approve
@@ -1146,8 +1496,9 @@ function formatCurrency(n: number | null | undefined) {
                     <VBtn
                       v-if="r.status === 'approved'"
                       size="small"
-                      variant="text"
+                      variant="tonal"
                       color="primary"
+                      prepend-icon="ri-money-dollar-circle-line"
                       @click.stop="updateStatus(r, 'paid')"
                     >
                       Pay
@@ -1170,7 +1521,7 @@ function formatCurrency(n: number | null | undefined) {
                   colspan="11"
                   class="text-center text-medium-emphasis py-6"
                 >
-                  No payroll records found for {{ monthLabel }}.
+                  No payroll records found for {{ monthLabel }}. Switch to New run to generate.
                 </td>
               </tr>
             </tbody>
@@ -1469,9 +1820,43 @@ function formatCurrency(n: number | null | undefined) {
 </template>
 
 <style scoped lang="scss">
-.payroll-stepper {
+.payroll-wizard {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.payroll-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.payroll-steps-arrow {
+  flex-shrink: 0;
+}
+
+.payroll-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  padding: 8px 12px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: rgba(var(--v-theme-on-surface), 0.04);
+  }
+}
+
+.payroll-step--active {
+  background: rgba(var(--v-theme-primary), 0.08);
+  color: rgb(var(--v-theme-primary));
 }
 
 .type-card {
@@ -1555,5 +1940,17 @@ function formatCurrency(n: number | null | undefined) {
 
 .payroll-row {
   cursor: pointer;
+}
+
+.th-label,
+.cell-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-end .th-label,
+.text-end .cell-metric {
+  justify-content: flex-end;
 }
 </style>

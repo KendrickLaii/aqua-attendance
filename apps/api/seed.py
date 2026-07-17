@@ -311,30 +311,30 @@ SEED_PRODUCTS = [
 
 # (product_code, summary_date, check_in, check_out, regular_h, ot_h, is_complete, is_weekend, is_holiday)
 SEED_SUMMARIES: list[tuple] = [
-    # May 2026 — staff with mixed complete / OT days
+    # May 2026 — staff with mixed complete / OT days (all complete; day-boundary closes forgotten outs)
     ("STAFF-001", date(2026, 5, 6), (9, 0), (18, 30), 8.00, 0.50, True, False, False),
     ("STAFF-001", date(2026, 5, 7), (8, 45), (17, 15), 7.50, 0.00, True, False, False),
     ("STAFF-001", date(2026, 5, 8), (9, 15), (19, 0), 8.00, 1.25, True, False, False),
-    ("STAFF-001", date(2026, 5, 10), (9, 0), None, 0.00, 0.00, False, True, False),
+    ("STAFF-001", date(2026, 5, 10), (9, 0), (23, 59), 8.00, 0.00, True, True, False),
     ("STAFF-001", date(2026, 5, 12), (9, 0), (18, 0), 8.00, 0.00, True, False, False),
     ("STAFF-001", date(2026, 5, 15), (9, 0), (18, 45), 8.00, 0.75, True, False, False),
     ("STAFF-001", date(2026, 5, 20), (9, 0), (18, 0), 8.00, 0.00, True, False, False),
     ("STAFF-002", date(2026, 5, 6), (14, 0), (18, 0), 3.50, 0.00, True, False, False),
     ("STAFF-002", date(2026, 5, 13), (13, 30), (17, 30), 3.50, 0.00, True, False, False),
-    ("STAFF-002", date(2026, 5, 20), (14, 0), None, 0.00, 0.00, False, False, False),
+    ("STAFF-002", date(2026, 5, 20), (14, 0), (23, 59), 3.50, 0.00, True, False, False),
     ("STAFF-002", date(2026, 5, 22), (14, 0), (19, 30), 4.00, 1.00, True, False, False),
     ("STAFF-002", date(2026, 5, 27), (14, 0), (18, 0), 3.50, 0.00, True, False, False),
     # May 2026 — students
     ("STU-001", date(2026, 5, 5), (15, 30), (18, 30), 2.50, 0.00, True, False, False),
     ("STU-001", date(2026, 5, 12), (15, 30), (18, 0), 2.00, 0.00, True, False, False),
     ("STU-001", date(2026, 5, 19), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
-    ("STU-001", date(2026, 5, 26), (15, 30), None, 0.00, 0.00, False, False, False),
+    ("STU-001", date(2026, 5, 26), (15, 30), (23, 59), 2.00, 0.00, True, False, False),
     ("STU-002", date(2026, 5, 7), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
     ("STU-002", date(2026, 5, 14), (15, 30), (18, 0), 2.00, 0.00, True, False, False),
     ("STU-002", date(2026, 5, 18), (16, 0), (19, 0), 2.50, 0.00, True, False, False),
     ("STU-002", date(2026, 5, 20), (15, 30), (18, 0), 2.00, 0.00, True, False, False),
     ("STU-002", date(2026, 5, 22), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
-    ("STU-002", date(2026, 5, 27), (15, 30), None, 0.00, 0.00, False, False, False),
+    ("STU-002", date(2026, 5, 27), (15, 30), (23, 59), 2.00, 0.00, True, False, False),
     ("STU-002", date(2026, 5, 29), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
 ]
 
@@ -372,27 +372,38 @@ def _build_day_row(product_code: str, product_type: str, summary_date: date) -> 
     roll = _roll(product_code, product_type, summary_date)
     weekend = summary_date.weekday() >= 5
     is_part_time_staff = product_type == "staff" and product_code in {"STAFF-002", "STAFF-005", "STAFF-006"}
-    is_complete = roll > 6
+    # Seed rows are always complete: forgotten outs are closed at 23:59 (auto-checkout rule).
+    is_complete = True
+    closed_by_boundary = roll <= 6
 
     if product_type == "staff":
         if is_part_time_staff:
             check_in = (13 + roll % 2, 30 if roll % 2 else 0)
             regular = round(3.0 + (roll % 5) * 0.25, 2)
             ot = round((roll % 4) * 0.25, 2) if roll % 7 == 0 else 0.0
-            out_h = check_in[0] + int(regular) + (1 if check_in[1] else 0)
-            check_out = (out_h, check_in[1]) if is_complete else None
+            if closed_by_boundary:
+                check_out = (23, 59)
+            else:
+                out_h = check_in[0] + int(regular) + (1 if check_in[1] else 0)
+                check_out = (out_h, check_in[1])
         else:
             check_in = (8 + roll % 2, 45 if roll % 3 == 0 else 0)
             regular = round(7.5 + (roll % 4) * 0.25, 2)
             ot = round((roll % 5) * 0.25, 2) if roll % 5 < 2 else 0.0
-            out_h = 17 + int(ot) + (roll % 3)
-            check_out = (out_h, 30 if roll % 2 else 0) if is_complete else None
+            if closed_by_boundary:
+                check_out = (23, 59)
+            else:
+                out_h = 17 + int(ot) + (roll % 3)
+                check_out = (out_h, 30 if roll % 2 else 0)
     else:
         check_in = (15 + roll % 2, 30 if roll % 2 else 0)
         regular = round(1.5 + (roll % 6) * 0.25, 2)
         ot = 0.0
-        out_h = check_in[0] + int(regular) + 1
-        check_out = (out_h, check_in[1]) if is_complete else None
+        if closed_by_boundary:
+            check_out = (23, 59)
+        else:
+            out_h = check_in[0] + int(regular) + 1
+            check_out = (out_h, check_in[1])
 
     return (
         product_code,
@@ -552,6 +563,25 @@ async def seed_summaries(db) -> None:
     print(f"  {created} created, {updated} updated, {skipped} skipped ({len(all_rows)} rows configured)")
     if backfilled:
         print(f"  {backfilled} existing rows backfilled slots from hours")
+
+    # Close legacy incomplete seed rows (pre auto-checkout alignment)
+    incomplete_result = await db.execute(
+        select(AttendanceSummary).where(AttendanceSummary.is_complete.is_(False))
+    )
+    closed = 0
+    for summary in incomplete_result.scalars().all():
+        if summary.first_check_in is None:
+            continue
+        if summary.last_check_out is None:
+            summary.last_check_out = datetime.combine(
+                summary.summary_date, time(23, 59), tzinfo=timezone.utc
+            )
+        summary.is_complete = True
+        if not summary.attendance_notes:
+            summary.attendance_notes = "Closed by day-boundary auto checkout (23:59)"
+        closed += 1
+    if closed:
+        print(f"  {closed} incomplete rows closed at day boundary (23:59)")
 
 
 async def main(*, users_only: bool = False, summaries_only: bool = False) -> None:

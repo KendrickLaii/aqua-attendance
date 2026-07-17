@@ -29,14 +29,26 @@ async def trigger_auto_checkout(
     When ``product_ids`` is provided, only those still-checked-in products
     are checked out. Unselected products stay checked in so admins can
     investigate why they never scanned out.
+
+    After creating events, regenerates that month's attendance summaries
+    so Incomplete days become Complete.
     """
+    from app.services.summary_generator import generate_monthly_summaries
+
     events = await auto_checkout_for_date(
         db, target_date=payload.target_date, product_ids=payload.product_ids
     )
+    target = payload.target_date or date.today()
+    summaries = await generate_monthly_summaries(db, year=target.year, month=target.month)
     return {
-        "target_date": str(payload.target_date or "today"),
+        "target_date": str(target),
         "created_events": len(events),
-        "message": f"Auto-checkout created {len(events)} events",
+        "summaries_created": summaries["created"],
+        "summaries_updated": summaries["updated"],
+        "message": (
+            f"Auto-checkout created {len(events)} events; "
+            f"summaries {summaries['created']} created / {summaries['updated']} updated"
+        ),
     }
 
 
