@@ -232,7 +232,7 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 
 | 項目 | 說明 |
 |------|------|
-| 統計卡範圍 | 目前加總 **當前 overview 分頁** 的列，非全月 DB 總計（文案標示 this page；`page_size` 預設 200 時影響小） |
+| 統計卡範圍 | Overview Stat 卡改為 **整月 filtered 合計**（`/overview/stats`）；不受分頁影響 |
 | Generate orphan 清理 | Generate 會刪除當月不再有可用 check-in 事件的彙總列 |
 | Seed vs 事件 | 測試環境易出現「列表有資料但 Generate 無事件」；無事件時 Generate 也會清掉 orphan 列 |
 | Weekend 篩選 | 明細層 Weekend chip 為 **前端篩選**已載入列；Complete/Incomplete 走 API `is_complete` |
@@ -243,9 +243,9 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 
 ### 6.3 後續可選改善
 
-- Overview 專用統計端點（全月總計，不受分頁影響）；可選加總 slots
 - Seed 可選 `--no-summaries` 避免與真實流程混淆
 - 月度 Generate cron + 結構化 logging
+- Payroll 狀態機已收緊（draft/calculated → approved → paid；paid/cancelled 不可回退）
 
 ### 6.4 本次文件對照修正（相對 2026-07-08 版）
 

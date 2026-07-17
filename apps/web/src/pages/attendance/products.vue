@@ -10,7 +10,6 @@ import { listLocations } from '@/api/attendance/locations'
 import type { LocationItem } from '@/api/attendance/locations'
 import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
 import AppToastStack from '@/components/AppToastStack.vue'
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useToast } from '@/composables/useToast'
@@ -21,7 +20,7 @@ const pageSize = ref(40)
 const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
-const authStore = useAttendanceAuthStore()
+const { authStore, ensureAccess } = useAttendanceAdminGate()
 const { show: showToast } = useToast()
 const router = useRouter()
 
@@ -203,17 +202,8 @@ const showEmptyCreateCta = computed(() =>
 )
 
 onMounted(async () => {
-  authStore.restoreSession()
-  if (!authStore.isLoggedIn) {
-    router.replace({ name: 'attendance-login' })
-
+  if (!(await ensureAccess()))
     return
-  }
-  if (!authStore.isAdmin) {
-    router.replace({ name: 'attendance-dashboard' })
-
-    return
-  }
   await loadLocations()
   await loadProducts()
 })

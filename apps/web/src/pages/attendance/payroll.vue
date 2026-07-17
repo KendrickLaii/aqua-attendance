@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { deletePayrollRecord, generatePayroll, listPayrollRecordsWithTotal, updatePayrollRecord } from '@/api/attendance/payroll'
 import type { PayrollRecord } from '@/api/attendance/payroll'
 import { listSummariesWithTotal } from '@/api/attendance/summaries'
@@ -11,24 +10,40 @@ import { formatPayrollGenerateMessage } from '@/utils/formatGenerateResult'
 
 definePage({ meta: {} })
 
-const authStore = useAttendanceAuthStore()
-const router = useRouter()
+const { authStore, ensureAccess } = useAttendanceAdminGate()
+const {
+  yearMonth,
+  parsed: parsedYearMonth,
+  monthDateRange,
+  monthLabel,
+  toCurrentMonth,
+} = useYearMonth()
+const {
+  yearMonth: stepMonth,
+  parsed: stepParsedMonth,
+  monthLabel: stepMonthLabel,
+  toCurrentMonth: toStepCurrentMonth,
+} = useYearMonth()
+const {
+  page,
+  pageSize,
+  pageSizeOptions,
+  totalCount,
+  totalPages,
+  listCaption: pagedListCaption,
+  resetPage,
+} = usePagedList({ pageSize: 40 })
 
 const records = ref<PayrollRecord[]>([])
-const totalCount = ref(0)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 
 const filterStatus = ref('')
 const filterProductType = ref('staff')
-const yearMonth = ref('')
 const generating = ref(false)
 const generateError = ref('')
 const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
-const page = ref(1)
-const pageSize = ref(40)
-const pageSizeOptions = [10, 20, 40, 60, 100]
 const deleteDialog = ref(false)
 const deleteTarget = ref<PayrollRecord | null>(null)
 
@@ -38,7 +53,6 @@ const detailTotalCount = ref(0)
 
 // Stepper workflow state (configure = Products+Month, result = invoice cards)
 const step = ref('configure')
-const stepMonth = ref('')
 const stepProducts = ref<Product[]>([])
 const stepProductsLoading = ref(false)
 const stepProductsError = ref('')
@@ -47,7 +61,6 @@ const stepSearch = ref('')
 const generatedRecords = ref<PayrollRecord[]>([])
 const viewMode = ref<'wizard' | 'records'>('wizard')
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
 const isDetailView = computed(() => !!selectedRecord.value)
 
 const statusOptions = [
@@ -67,38 +80,6 @@ const statusColorMap: Record<string, string> = {
   cancelled: 'error',
 }
 
-const parsedYearMonth = computed(() => {
-  const ym = yearMonth.value
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
-    return null
-
-  const [year, month] = ym.split('-').map(Number)
-
-  return { year, month }
-})
-
-const monthDateRange = computed(() => {
-  const parsed = parsedYearMonth.value
-  if (!parsed)
-    return null
-
-  const { year, month } = parsed
-  const end = new Date(year, month, 0)
-  const pad = (n: number) => String(n).padStart(2, '0')
-
-  return {
-    date_from: `${year}-${pad(month)}-01`,
-    date_to: `${year}-${pad(month)}-${pad(end.getDate())}`,
-  }
-})
-
-const monthLabel = computed(() => {
-  const parsed = parsedYearMonth.value
-  if (!parsed)
-    return 'Select a month'
-
-  return new Date(parsed.year, parsed.month - 1, 1).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
-})
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
@@ -118,39 +99,39 @@ const pageSubtitle = computed(() => {
 })
 
 const recordsStatCards = computed(() => {
-  const regular = records.value.reduce((sum, r) => sum + safeNumber(r.total_regular_hours), 0)
-  const overtime = records.value.reduce((sum, r) => sum + safeNumber(r.total_overtime_hours), 0)
+  const gross = records.value.reduce((sum, r) => sum + safeNumber(r.gross_pay), 0)
   const net = records.value.reduce((sum, r) => sum + safeNumber(r.net_pay), 0)
-  const regularSlots = records.value.reduce((sum, r) => sum + safeNumber(r.regular_slots), 0)
-  const otSlots = records.value.reduce((sum, r) => sum + safeNumber(r.ot_slots), 0)
+  const approved = records.value.filter(r => r.status === 'approved').length
+  const paid = records.value.filter(r => r.status === 'paid').length
+  const pending = records.value.filter(r => r.status === 'draft' || r.status === 'calculated').length
 
   return [
     {
-      label: 'Records',
+      label: 'Payroll slips',
       value: String(totalCount.value),
       hint: listCaption.value || 'matching filters',
       icon: 'ri-file-list-3-line',
       color: 'primary',
     },
     {
-      label: 'Regular',
-      value: formatHours(regular),
-      hint: `${regularSlots} slots · this page`,
-      icon: 'ri-time-line',
-      color: 'success',
-    },
-    {
-      label: 'Overtime',
-      value: formatHours(overtime),
-      hint: `${otSlots} slots · this page`,
-      icon: 'ri-flashlight-line',
+      label: 'Gross pay',
+      value: formatCurrency(gross),
+      hint: 'this page',
+      icon: 'ri-money-dollar-circle-line',
       color: 'info',
     },
     {
       label: 'Net pay',
       value: formatCurrency(net),
-      hint: 'this page total',
+      hint: 'this page',
       icon: 'ri-wallet-3-line',
+      color: 'success',
+    },
+    {
+      label: 'Paid',
+      value: String(paid),
+      hint: `${approved} approved · ${pending} pending · this page`,
+      icon: 'ri-checkbox-circle-line',
       color: 'secondary',
     },
   ]
@@ -160,14 +141,9 @@ const listCaption = computed(() => {
   if (loading.value || totalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * pageSize.value + 1
-  const to = from + records.value.length - 1
-
-  if (totalCount.value <= pageSize.value)
-    return `${totalCount.value} record${totalCount.value === 1 ? '' : 's'}`
-
-  return `${from}–${to} of ${totalCount.value}`
+  return pagedListCaption(records.value.length)
 })
+
 
 const detailTotals = computed(() => {
   const regular = summaries.value.reduce((sum, s) => sum + safeNumber(s.regular_hours), 0)
@@ -178,23 +154,7 @@ const detailTotals = computed(() => {
   return { regular, regularSlots, overtime, otSlots, days: summaries.value.length }
 })
 
-const stepParsedMonth = computed(() => {
-  const ym = stepMonth.value
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
-    return null
 
-  const [year, month] = ym.split('-').map(Number)
-
-  return { year, month }
-})
-
-const stepMonthLabel = computed(() => {
-  const parsed = stepParsedMonth.value
-  if (!parsed)
-    return 'Select a month'
-
-  return new Date(parsed.year, parsed.month - 1, 1).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
-})
 
 const stepFilteredProducts = computed(() => {
   const q = stepSearch.value.trim().toLowerCase()
@@ -216,21 +176,11 @@ const stepAllSelected = computed({
 const stepSelectedCount = computed(() => stepSelectedIds.value.length)
 
 onMounted(async () => {
-  authStore.restoreSession()
-  if (!authStore.isLoggedIn) {
-    router.replace({ name: 'attendance-login' })
-
+  if (!(await ensureAccess()))
     return
-  }
-  if (!authStore.isAdmin) {
-    router.replace({ name: 'attendance-dashboard' })
 
-    return
-  }
-  const now = new Date()
-
-  yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  stepMonth.value = yearMonth.value
+  toCurrentMonth()
+  toStepCurrentMonth()
   await loadRecords()
   if (viewMode.value === 'wizard')
     loadStepProducts()
@@ -243,17 +193,17 @@ watch([yearMonth, filterStatus, filterProductType], () => {
 })
 
 watch(pageSize, () => {
-  page.value = 1
+  resetPage()
   loadRecords(true)
 })
 
-async function loadRecords(isRefresh = false, resetPage = false) {
+async function loadRecords(isRefresh = false, shouldResetPage = false) {
   const parsed = parsedYearMonth.value
   if (!parsed)
     return
 
-  if (resetPage)
-    page.value = 1
+  if (shouldResetPage)
+    resetPage()
   if (isRefresh)
     refreshing.value = true
   else
@@ -400,15 +350,6 @@ function refresh() {
     loadRecords(true)
 }
 
-function changeMonth(delta: number) {
-  const parsed = parsedYearMonth.value
-  if (!parsed)
-    return
-
-  const next = new Date(parsed.year, parsed.month - 1 + delta, 1)
-
-  yearMonth.value = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
-}
 
 async function updateStatus(record: PayrollRecord, newStatus: string) {
   try {
@@ -593,10 +534,12 @@ function safeNumber(value: number) {
 }
 
 function formatCurrency(n: number | null | undefined) {
-  if (n === null || n === undefined)
-    return '-'
+  const value = Number.isFinite(n) ? Number(n) : 0
 
-  return Number.isFinite(n) ? n.toFixed(2) : '-'
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 }
 </script>
 
@@ -1202,46 +1145,7 @@ function formatCurrency(n: number | null | undefined) {
 
     <!-- Records mode -->
     <template v-else-if="viewMode === 'records' && !isDetailView">
-      <VRow
-        class="mb-3"
-        dense
-      >
-        <VCol
-          v-for="card in recordsStatCards"
-          :key="card.label"
-          cols="12"
-          sm="6"
-          md="3"
-        >
-          <VCard class="pa-3">
-            <div class="d-flex align-center justify-space-between mb-1">
-              <div class="text-caption text-medium-emphasis">
-                {{ card.label }}
-              </div>
-              <VAvatar
-                :color="card.color"
-                variant="tonal"
-                size="32"
-                rounded
-              >
-                <VIcon
-                  :icon="card.icon"
-                  size="18"
-                />
-              </VAvatar>
-            </div>
-            <div
-              class="text-h6 font-weight-bold"
-              :class="`text-${card.color}`"
-            >
-              {{ card.value }}
-            </div>
-            <div class="text-caption text-medium-emphasis">
-              {{ card.hint }}
-            </div>
-          </VCard>
-        </VCol>
-      </VRow>
+      <StatCards :cards="recordsStatCards" />
 
       <VRow
         class="mb-3"

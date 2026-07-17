@@ -81,6 +81,26 @@ export async function listSummaryOverview(params: {
   return await fetchAttendanceListWithTotal<SummaryOverviewItem>('/attendance-summaries/overview', params)
 }
 
+export interface SummaryOverviewStats {
+  people: number
+  days_present: number
+  days_complete: number
+  days_incomplete: number
+  total_regular_hours: number
+  total_overtime_hours: number
+  total_regular_slots: number
+  total_ot_slots: number
+}
+
+export async function getSummaryOverviewStats(params: {
+  date_from: string
+  date_to: string
+  product_type?: string
+  search?: string
+}): Promise<SummaryOverviewStats> {
+  return await $attendanceApi<SummaryOverviewStats>('/attendance-summaries/overview/stats', { params })
+}
+
 export async function generateSummaries(year: number, month: number): Promise<{
   created: number
   updated: number

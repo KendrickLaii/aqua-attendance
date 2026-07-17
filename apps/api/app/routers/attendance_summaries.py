@@ -12,6 +12,7 @@ from app.schemas.attendance_summary import (
     AttendanceSummaryCreate,
     AttendanceSummaryOut,
     AttendanceSummaryOverviewOut,
+    AttendanceSummaryOverviewStatsOut,
 )
 from app.services import audit_log as audit_log_svc
 from app.services.summary_generator import generate_monthly_summaries
@@ -172,6 +173,73 @@ async def list_attendance_summary_overview(
         )
         for row in result.all()
     ]
+
+
+@router.get("/overview/stats", response_model=AttendanceSummaryOverviewStatsOut)
+async def attendance_summary_overview_stats(
+    _admin: AdminOnly,
+    db: DB,
+    date_from: date,
+    date_to: date,
+    product_type: str | None = None,
+    search: str | None = None,
+) -> AttendanceSummaryOverviewStatsOut:
+    """Month-wide overview totals matching overview filters (not paginated)."""
+    clauses = [
+        AttendanceSummary.summary_date >= date_from,
+        AttendanceSummary.summary_date <= date_to,
+    ]
+    if product_type:
+        clauses.append(Product.product_type == product_type)
+    if search:
+        clauses.append(
+            or_(
+                ilike_contains(Product.code, search),
+                ilike_contains(Product.full_name, search),
+                ilike_contains(Product.english_name, search),
+            )
+        )
+
+    q = (
+        select(
+            func.count(func.distinct(AttendanceSummary.product_id)).label("people"),
+            func.count(AttendanceSummary.id).label("days_present"),
+            func.coalesce(
+                func.sum(case((AttendanceSummary.is_complete.is_(True), 1), else_=0)),
+                0,
+            ).label("days_complete"),
+            func.coalesce(
+                func.sum(case((AttendanceSummary.is_complete.is_(False), 1), else_=0)),
+                0,
+            ).label("days_incomplete"),
+            func.coalesce(func.sum(AttendanceSummary.regular_hours), 0).label(
+                "total_regular_hours"
+            ),
+            func.coalesce(func.sum(AttendanceSummary.overtime_hours), 0).label(
+                "total_overtime_hours"
+            ),
+            func.coalesce(func.sum(AttendanceSummary.regular_slots), 0).label(
+                "total_regular_slots"
+            ),
+            func.coalesce(func.sum(AttendanceSummary.ot_slots), 0).label(
+                "total_ot_slots"
+            ),
+        )
+        .select_from(AttendanceSummary)
+        .join(AttendanceSummary.product)
+        .where(*clauses)
+    )
+    row = (await db.execute(q)).one()
+    return AttendanceSummaryOverviewStatsOut(
+        people=int(row.people or 0),
+        days_present=int(row.days_present or 0),
+        days_complete=int(row.days_complete or 0),
+        days_incomplete=int(row.days_incomplete or 0),
+        total_regular_hours=float(row.total_regular_hours or 0),
+        total_overtime_hours=float(row.total_overtime_hours or 0),
+        total_regular_slots=int(row.total_regular_slots or 0),
+        total_ot_slots=int(row.total_ot_slots or 0),
+    )
 
 
 @router.post("", response_model=AttendanceSummaryOut, status_code=status.HTTP_201_CREATED)

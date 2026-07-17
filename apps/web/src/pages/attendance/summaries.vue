@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { generateSummaries, listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
-import type { AttendanceSummary, SummaryOverviewItem } from '@/api/attendance/summaries'
+import { generateSummaries, getSummaryOverviewStats, listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
+import type { AttendanceSummary, SummaryOverviewItem, SummaryOverviewStats } from '@/api/attendance/summaries'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatSummaryGenerateMessage } from '@/utils/formatGenerateResult'
 
@@ -10,15 +9,21 @@ definePage({ meta: {} })
 type DetailStatus = 'all' | 'complete' | 'incomplete' | 'weekend'
 
 const DETAIL_PAGE_SIZE = 100
-const overviewPageSize = ref(200)
-const overviewPageSizeOptions = [40, 100, 200]
+const {
+  page: overviewPage,
+  pageSize: overviewPageSize,
+  pageSizeOptions: overviewPageSizeOptions,
+  totalCount: overviewTotalCount,
+  totalPages: overviewTotalPages,
+  listCaption: overviewListCaption,
+  resetPage: resetOverviewPage,
+} = usePagedList({ pageSize: 200, pageSizeOptions: [40, 100, 200] })
 
-const authStore = useAttendanceAuthStore()
-const router = useRouter()
+const { ensureAccess } = useAttendanceAdminGate()
+const { yearMonth, monthDateRange, monthLabel, changeMonth, toCurrentMonth } = useYearMonth()
 
 const overviewItems = ref<SummaryOverviewItem[]>([])
-const overviewTotalCount = ref(0)
-const overviewPage = ref(1)
+const overviewStats = ref<SummaryOverviewStats | null>(null)
 const summaries = ref<AttendanceSummary[]>([])
 const detailTotalCount = ref(0)
 
@@ -30,7 +35,6 @@ const generating = ref(false)
 const generateError = ref('')
 const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
 
-const yearMonth = ref('')
 const filterProductType = ref('staff')
 const searchQuery = ref('')
 const selectedProduct = ref<SummaryOverviewItem | null>(null)
@@ -51,31 +55,6 @@ const statusOptions: { title: string; value: DetailStatus }[] = [
   { title: 'Weekend', value: 'weekend' },
 ]
 
-const monthDateRange = computed(() => {
-  const ym = yearMonth.value
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
-    return null
-
-  const [year, month] = ym.split('-').map(Number)
-  const end = new Date(year, month, 0)
-  const pad = (n: number) => String(n).padStart(2, '0')
-
-  return {
-    date_from: `${year}-${pad(month)}-01`,
-    date_to: `${year}-${pad(month)}-${pad(end.getDate())}`,
-  }
-})
-
-const monthLabel = computed(() => {
-  const ym = yearMonth.value
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
-    return 'Select a month'
-
-  const [year, month] = ym.split('-').map(Number)
-
-  return new Date(year, month - 1, 1).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
-})
-
 const isDetailView = computed(() => !!selectedProduct.value)
 
 const pageSubtitle = computed(() => {
@@ -90,20 +69,7 @@ const pageSubtitle = computed(() => {
   return `${monthLabel.value} · ${selectedTypeLabel} · ${overviewTotalCount.value} product${overviewTotalCount.value === 1 ? '' : 's'}`
 })
 
-const overviewTotalPages = computed(() => Math.max(1, Math.ceil(overviewTotalCount.value / overviewPageSize.value)))
-
-const overviewCaption = computed(() => {
-  if (loading.value || overviewTotalCount.value === 0)
-    return ''
-
-  const from = (overviewPage.value - 1) * overviewPageSize.value + 1
-  const to = from + overviewItems.value.length - 1
-
-  if (overviewTotalCount.value <= overviewPageSize.value)
-    return `${overviewTotalCount.value} product${overviewTotalCount.value === 1 ? '' : 's'}`
-
-  return `${from}–${to} of ${overviewTotalCount.value}`
-})
+const overviewCaption = computed(() => overviewListCaption(overviewItems.value.length, 'product'))
 
 const visibleSummaries = computed(() => {
   if (detailStatus.value !== 'weekend')
@@ -122,39 +88,40 @@ const detailTotals = computed(() => {
 })
 
 const statCards = computed(() => {
-  const people = overviewItems.value.length
-  const days = overviewItems.value.reduce((sum, item) => sum + item.days_present, 0)
-  const complete = overviewItems.value.reduce((sum, item) => sum + item.days_complete, 0)
-  const regular = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_regular_hours), 0)
-  const overtime = overviewItems.value.reduce((sum, item) => sum + safeNumber(item.total_overtime_hours), 0)
+  const stats = overviewStats.value
+  const people = stats?.people ?? 0
+  const days = stats?.days_present ?? 0
+  const complete = stats?.days_complete ?? 0
+  const regular = safeNumber(stats?.total_regular_hours ?? 0)
+  const overtime = safeNumber(stats?.total_overtime_hours ?? 0)
   const completionRate = days > 0 ? `${Math.round((complete / days) * 100)}%` : '-'
 
   return [
     {
       label: 'People',
       value: String(people),
-      hint: 'this page',
+      hint: 'filtered month total',
       icon: 'ri-group-line',
       color: 'primary',
     },
     {
       label: 'Records',
       value: String(days),
-      hint: 'this page · daily rows',
+      hint: 'filtered month · daily rows',
       icon: 'ri-calendar-line',
       color: 'secondary',
     },
     {
       label: 'Complete rate',
       value: completionRate,
-      hint: `${complete}/${days} complete · this page`,
+      hint: `${complete}/${days} complete · month`,
       icon: 'ri-checkbox-circle-line',
       color: 'success',
     },
     {
       label: 'Total hours',
       value: formatHours(regular + overtime),
-      hint: `${formatHours(regular)} regular + ${formatHours(overtime)} OT · this page`,
+      hint: `${formatHours(regular)} regular + ${formatHours(overtime)} OT · month`,
       icon: 'ri-time-line',
       color: 'info',
     },
@@ -162,27 +129,17 @@ const statCards = computed(() => {
 })
 
 onMounted(async () => {
-  authStore.restoreSession()
-  if (!authStore.isLoggedIn) {
-    router.replace({ name: 'attendance-login' })
-
+  if (!(await ensureAccess()))
     return
-  }
-  if (!authStore.isAdmin) {
-    router.replace({ name: 'attendance-dashboard' })
 
-    return
-  }
-  const now = new Date()
-
-  yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  toCurrentMonth()
   await loadData()
 })
 
 watch([yearMonth, filterProductType], () => {
   selectedProduct.value = null
   detailStatus.value = 'all'
-  overviewPage.value = 1
+  resetOverviewPage()
   loadData()
 })
 
@@ -194,7 +151,7 @@ watch(detailStatus, () => {
 watch(searchQuery, () => {
   clearTimeout(searchDebounceTimer)
   searchDebounceTimer = setTimeout(() => {
-    overviewPage.value = 1
+    resetOverviewPage()
     loadOverview(true)
   }, 300)
 })
@@ -216,17 +173,24 @@ async function loadOverview(isRefresh = false) {
     loading.value = true
   loadError.value = ''
   try {
-    const result = await listSummaryOverview({
+    const overviewParams = {
       date_from: range.date_from,
       date_to: range.date_to,
       product_type: filterProductType.value || undefined,
       search: (searchQuery.value || '').trim() || undefined,
-      page: overviewPage.value,
-      page_size: overviewPageSize.value,
-    })
+    }
+    const [result, stats] = await Promise.all([
+      listSummaryOverview({
+        ...overviewParams,
+        page: overviewPage.value,
+        page_size: overviewPageSize.value,
+      }),
+      getSummaryOverviewStats(overviewParams),
+    ])
 
     overviewItems.value = result.items
     overviewTotalCount.value = result.total
+    overviewStats.value = stats
   }
   catch (e) {
     console.error('Failed to load summary overview', e)
@@ -314,19 +278,8 @@ function backToOverview() {
   detailStatus.value = 'all'
 }
 
-function changeMonth(delta: number) {
-  const ym = yearMonth.value
-  if (!ym || !/^\d{4}-\d{2}$/.test(ym))
-    return
-
-  const [year, month] = ym.split('-').map(Number)
-  const next = new Date(year, month - 1 + delta, 1)
-
-  yearMonth.value = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
-}
-
 function onOverviewPageSizeChange() {
-  overviewPage.value = 1
+  resetOverviewPage()
   loadOverview(true)
 }
 
@@ -487,46 +440,10 @@ function safeNumber(value: number) {
       @click:close="generateSuccess = null"
     />
 
-    <VRow
-      class="mb-3"
-      dense
-    >
-      <VCol
-        v-for="card in statCards"
-        :key="card.label"
-        cols="12"
-        sm="6"
-        md="3"
-      >
-        <VCard class="pa-3 stat-card">
-          <div class="d-flex align-center justify-space-between mb-1">
-            <div class="text-caption text-medium-emphasis">
-              {{ card.label }}
-            </div>
-            <VAvatar
-              :color="card.color"
-              variant="tonal"
-              size="32"
-              rounded
-            >
-              <VIcon
-                :icon="card.icon"
-                size="18"
-              />
-            </VAvatar>
-          </div>
-          <div
-            class="text-h6 font-weight-bold"
-            :class="`text-${card.color}`"
-          >
-            {{ card.value }}
-          </div>
-          <div class="text-caption text-medium-emphasis">
-            {{ card.hint }}
-          </div>
-        </VCard>
-      </VCol>
-    </VRow>
+    <StatCards
+      v-if="!isDetailView"
+      :cards="statCards"
+    />
 
     <VProgressLinear
       v-if="loading && !refreshing"

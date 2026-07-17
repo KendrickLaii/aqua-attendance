@@ -240,6 +240,7 @@ declare global {
   const useAsyncQueue: typeof import('@vueuse/core')['useAsyncQueue']
   const useAsyncState: typeof import('@vueuse/core')['useAsyncState']
   const useAttachments: typeof import('./src/composables/useAttachments')['useAttachments']
+  const useAttendanceAdminGate: typeof import('./src/composables/useAttendanceAdminGate')['useAttendanceAdminGate']
   const useAttendanceCaslSync: typeof import('./src/composables/useAttendanceCaslSync')['useAttendanceCaslSync']
   const useAttrs: typeof import('vue')['useAttrs']
   const useAverage: typeof import('@vueuse/math')['useAverage']
@@ -331,6 +332,7 @@ declare global {
   const useOffsetPagination: typeof import('@vueuse/core')['useOffsetPagination']
   const useOnline: typeof import('@vueuse/core')['useOnline']
   const usePageLeave: typeof import('@vueuse/core')['usePageLeave']
+  const usePagedList: typeof import('./src/composables/usePagedList')['usePagedList']
   const useParallax: typeof import('@vueuse/core')['useParallax']
   const useParentElement: typeof import('@vueuse/core')['useParentElement']
   const usePerformanceObserver: typeof import('@vueuse/core')['usePerformanceObserver']
@@ -410,6 +412,7 @@ declare global {
   const useWindowScroll: typeof import('@vueuse/core')['useWindowScroll']
   const useWindowSize: typeof import('@vueuse/core')['useWindowSize']
   const useWorkingSection: typeof import('./src/composables/useWorkingSection')['useWorkingSection']
+  const useYearMonth: typeof import('./src/composables/useYearMonth')['useYearMonth']
   const usernameAttendanceValidator: typeof import('./src/@core/utils/validators')['usernameAttendanceValidator']
   const vuetifyComponents: typeof import('./src/@core/utils/vuetify')['vuetifyComponents']
   const watch: typeof import('vue')['watch']
@@ -673,6 +676,7 @@ declare module 'vue' {
     readonly useAsyncQueue: UnwrapRef<typeof import('@vueuse/core')['useAsyncQueue']>
     readonly useAsyncState: UnwrapRef<typeof import('@vueuse/core')['useAsyncState']>
     readonly useAttachments: UnwrapRef<typeof import('./src/composables/useAttachments')['useAttachments']>
+    readonly useAttendanceAdminGate: UnwrapRef<typeof import('./src/composables/useAttendanceAdminGate')['useAttendanceAdminGate']>
     readonly useAttendanceCaslSync: UnwrapRef<typeof import('./src/composables/useAttendanceCaslSync')['useAttendanceCaslSync']>
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
     readonly useAverage: UnwrapRef<typeof import('@vueuse/math')['useAverage']>
@@ -764,6 +768,7 @@ declare module 'vue' {
     readonly useOffsetPagination: UnwrapRef<typeof import('@vueuse/core')['useOffsetPagination']>
     readonly useOnline: UnwrapRef<typeof import('@vueuse/core')['useOnline']>
     readonly usePageLeave: UnwrapRef<typeof import('@vueuse/core')['usePageLeave']>
+    readonly usePagedList: UnwrapRef<typeof import('./src/composables/usePagedList')['usePagedList']>
     readonly useParallax: UnwrapRef<typeof import('@vueuse/core')['useParallax']>
     readonly useParentElement: UnwrapRef<typeof import('@vueuse/core')['useParentElement']>
     readonly usePerformanceObserver: UnwrapRef<typeof import('@vueuse/core')['usePerformanceObserver']>
@@ -843,6 +848,7 @@ declare module 'vue' {
     readonly useWindowScroll: UnwrapRef<typeof import('@vueuse/core')['useWindowScroll']>
     readonly useWindowSize: UnwrapRef<typeof import('@vueuse/core')['useWindowSize']>
     readonly useWorkingSection: UnwrapRef<typeof import('./src/composables/useWorkingSection')['useWorkingSection']>
+    readonly useYearMonth: UnwrapRef<typeof import('./src/composables/useYearMonth')['useYearMonth']>
     readonly usernameAttendanceValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['usernameAttendanceValidator']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>

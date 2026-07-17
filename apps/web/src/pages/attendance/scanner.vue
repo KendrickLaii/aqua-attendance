@@ -1,6 +1,5 @@
 <script setup lang="ts">
 
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 
 import { scanQR } from '@/api/attendance/events'
 
@@ -19,7 +18,7 @@ definePage({ meta: {} })
 
 
 
-const authStore = useAttendanceAuthStore()
+const { authStore, ensureAccess } = useAttendanceAdminGate()
 
 const router = useRouter()
 
@@ -112,28 +111,8 @@ async function loadLocations() {
 
 
 onMounted(async () => {
-
-  authStore.restoreSession()
-
-  if (!authStore.isLoggedIn) {
-
-    router.replace({ name: 'attendance-login' })
-
-
-
+  if (!(await ensureAccess()))
     return
-
-  }
-
-  if (!authStore.isAdmin) {
-
-    router.replace({ name: 'attendance-dashboard' })
-
-
-
-    return
-
-  }
 
   if (typeof sessionStorage === 'undefined' || !sessionStorage.getItem(SCAN_ENTRY_SESSION_KEY)) {
 

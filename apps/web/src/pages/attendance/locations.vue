@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import {
   type LocationItem,
   createLocation,
@@ -28,7 +27,7 @@ const pageSize = ref(24)
 const pageSizeOptions = [12, 24, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
-const authStore = useAttendanceAuthStore()
+const { authStore, ensureAccess } = useAttendanceAdminGate()
 const router = useRouter()
 
 const locations = ref<LocationItem[]>([])
@@ -109,17 +108,8 @@ const listCaption = computed(() => {
 const showEmptyCreateCta = computed(() => !search.value.trim() && !showInactive.value)
 
 onMounted(async () => {
-  authStore.restoreSession()
-  if (!authStore.isLoggedIn) {
-    router.replace({ name: 'attendance-login' })
-
+  if (!(await ensureAccess()))
     return
-  }
-  if (!authStore.isAdmin) {
-    router.replace({ name: 'attendance-dashboard' })
-
-    return
-  }
   await loadLocations()
 })
 

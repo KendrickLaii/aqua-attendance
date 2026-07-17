@@ -65,3 +65,16 @@ class AttendanceSummaryOverviewOut(BaseModel):
     total_ot_slots: int = 0
     first_date: date | None = None
     last_date: date | None = None
+
+
+class AttendanceSummaryOverviewStatsOut(BaseModel):
+    """Month-wide overview totals (not limited to the current page)."""
+
+    people: int
+    days_present: int
+    days_complete: int
+    days_incomplete: int
+    total_regular_hours: float
+    total_overtime_hours: float
+    total_regular_slots: int = 0
+    total_ot_slots: int = 0

@@ -9,7 +9,6 @@ import {
 } from '@core/utils/validators'
 import { createUser, deleteUser, listUsersWithTotal, updateUser } from '@/api/attendance/users'
 import type { AttendanceUser } from '@/api/attendance/auth'
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
@@ -18,7 +17,7 @@ const pageSize = ref(40)
 const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
-const authStore = useAttendanceAuthStore()
+const { authStore, ensureAccess } = useAttendanceAdminGate()
 const router = useRouter()
 
 const users = ref<AttendanceUser[]>([])
@@ -99,17 +98,8 @@ const roleSelectItems = computed(() => {
 })
 
 onMounted(async () => {
-  authStore.restoreSession()
-  if (!authStore.isLoggedIn) {
-    router.replace({ name: 'attendance-login' })
-
+  if (!(await ensureAccess()))
     return
-  }
-  if (!authStore.isAdmin) {
-    router.replace({ name: 'attendance-dashboard' })
-
-    return
-  }
   await loadUsers()
 })
 

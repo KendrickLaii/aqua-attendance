@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
-import { createManualCorrection, exportAttendanceCSV, listAttendanceWithTotal, voidAttendanceEvent } from '@/api/attendance/events'
+import { createManualCorrection, exportAttendanceCSV, getAttendanceDayStats, listAttendanceWithTotal, voidAttendanceEvent } from '@/api/attendance/events'
+import type { AttendanceDayStats, AttendanceEvent } from '@/api/attendance/events'
 import { listProducts } from '@/api/attendance/products'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
-import type { AttendanceEvent } from '@/api/attendance/events'
 import type { Product } from '@/api/attendance/products'
 import { formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -11,16 +10,21 @@ import { formatApiError } from '@/utils/formatApiDetail'
 definePage({ meta: {} })
 
 const PRODUCT_PAGE_SIZE = 200
-const pageSize = ref(40)
-const pageSizeOptions = [10, 20, 40, 60, 100]
-
-const authStore = useAttendanceAuthStore()
-const router = useRouter()
+const { authStore, ensureAccess } = useAttendanceAdminGate()
+const {
+  page,
+  pageSize,
+  pageSizeOptions,
+  totalCount,
+  totalPages,
+  listCaption: pagedListCaption,
+  resetPage,
+} = usePagedList({ pageSize: 40 })
 
 const todayKey = getTodayRangeIso().dateKey
 
 const events = ref<AttendanceEvent[]>([])
-const totalCount = ref(0)
+const dayStats = ref<AttendanceDayStats | null>(null)
 const products = ref<Product[]>([])
 const locations = ref<LocationItem[]>([])
 const loading = ref(true)
@@ -36,7 +40,6 @@ const filters = reactive({
   include_voided: false,
 })
 
-const page = ref(1)
 
 const correctionDialog = ref(false)
 
@@ -79,8 +82,6 @@ type DatePreset = typeof datePresets[number]['value'] | 'custom'
 
 const activeDatePreset = ref<DatePreset>('today')
 
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)))
-
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
     return 'Loading…'
@@ -101,13 +102,53 @@ const listCaption = computed(() => {
   if (loading.value || totalCount.value === 0)
     return ''
 
-  const from = (page.value - 1) * pageSize.value + 1
-  const to = from + events.value.length - 1
+  return pagedListCaption(events.value.length)
+})
 
-  if (totalCount.value <= pageSize.value)
-    return `${totalCount.value} record${totalCount.value === 1 ? '' : 's'}`
+const dayStatCards = computed(() => {
+  const s = dayStats.value
+  if (!s) {
+    return [
+      { label: 'Events', value: '—', hint: 'selected range', icon: 'ri-file-list-3-line', color: 'primary' },
+      { label: 'Check in', value: '—', hint: 'staff + student', icon: 'ri-login-circle-line', color: 'success' },
+      { label: 'Check out', value: '—', hint: 'staff + student', icon: 'ri-logout-circle-line', color: 'warning' },
+      { label: 'Staff / Student in', value: '—', hint: 'check-ins by type', icon: 'ri-group-line', color: 'info' },
+    ]
+  }
 
-  return `${from}–${to} of ${totalCount.value}`
+  const checkIns = s.check_ins_staff + s.check_ins_student
+  const checkOuts = s.check_outs_staff + s.check_outs_student
+
+  return [
+    {
+      label: 'Events',
+      value: String(s.total),
+      hint: 'selected range total',
+      icon: 'ri-file-list-3-line',
+      color: 'primary',
+    },
+    {
+      label: 'Check in',
+      value: String(checkIns),
+      hint: `${s.check_ins_staff} staff · ${s.check_ins_student} student`,
+      icon: 'ri-login-circle-line',
+      color: 'success',
+    },
+    {
+      label: 'Check out',
+      value: String(checkOuts),
+      hint: `${s.check_outs_staff} staff · ${s.check_outs_student} student`,
+      icon: 'ri-logout-circle-line',
+      color: 'warning',
+    },
+    {
+      label: 'Staff / Student in',
+      value: `${s.check_ins_staff} / ${s.check_ins_student}`,
+      hint: 'check-ins by type',
+      icon: 'ri-group-line',
+      color: 'info',
+    },
+  ]
 })
 
 const productSelectItems = computed(() => [
@@ -120,17 +161,8 @@ const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE
 const filtersReady = ref(false)
 
 onMounted(async () => {
-  authStore.restoreSession()
-  if (!authStore.isLoggedIn) {
-    router.replace({ name: 'attendance-login' })
-
+  if (!(await ensureAccess()))
     return
-  }
-  if (!authStore.isAdmin) {
-    router.replace({ name: 'attendance-dashboard' })
-
-    return
-  }
 
   try {
     products.value = await listProducts({ page_size: PRODUCT_PAGE_SIZE })
@@ -168,9 +200,9 @@ function filterDateRange() {
   return getDateRangeIso(filters.date_from, filters.date_to)
 }
 
-async function loadEvents(isRefresh = false, resetPage = false) {
-  if (resetPage)
-    page.value = 1
+async function loadEvents(isRefresh = false, shouldResetPage = false) {
+  if (shouldResetPage)
+    resetPage()
   if (isRefresh)
     refreshing.value = true
   else
@@ -178,8 +210,7 @@ async function loadEvents(isRefresh = false, resetPage = false) {
   loadError.value = ''
   try {
     const range = filterDateRange()
-
-    const result = await listAttendanceWithTotal({
+    const listParams = {
       product_id: filters.product_id || undefined,
       product_type: filters.product_type || undefined,
       date_from: range.date_from,
@@ -188,10 +219,18 @@ async function loadEvents(isRefresh = false, resetPage = false) {
       include_voided: filters.include_voided || undefined,
       page: page.value,
       page_size: pageSize.value,
-    })
+    }
+    const [result, stats] = await Promise.all([
+      listAttendanceWithTotal(listParams),
+      getAttendanceDayStats({
+        date_from: range.date_from,
+        date_to: range.date_to,
+      }),
+    ])
 
     events.value = result.items
     totalCount.value = result.total
+    dayStats.value = stats
   }
   catch (e) {
     console.error('Failed to load attendance log', e)
@@ -240,11 +279,6 @@ function onManualDateChange() {
     activeDatePreset.value = '30d'
   else
     activeDatePreset.value = 'custom'
-}
-
-function onPageSizeChange() {
-  page.value = 1
-  loadEvents(true)
 }
 
 function eventColor(type: string) {
@@ -512,6 +546,8 @@ async function confirmVoid() {
       </div>
     </VCard>
 
+    <StatCards :cards="dayStatCards" />
+
     <VAlert
       v-if="loadError"
       type="error"
@@ -661,35 +697,14 @@ async function confirmVoid() {
           </tbody>
         </VTable>
       </div>
-      <div
+      <AttendancePaginationBar
         v-if="!loading && events.length > 0"
-        class="d-flex flex-wrap align-center justify-space-between gap-2 pa-4 pt-0"
-      >
-        <div class="d-flex align-center gap-2">
-          <span class="text-caption text-medium-emphasis">
-            Page {{ page }} of {{ totalPages }}
-          </span>
-          <VSelect
-            v-model="pageSize"
-            :items="pageSizeOptions"
-            density="compact"
-            variant="plain"
-            hide-details
-            class="page-size-select"
-            style="max-width: 70px;"
-            @update:model-value="onPageSizeChange"
-          />
-          <span class="text-caption text-medium-emphasis">per page</span>
-        </div>
-        <VPagination
-          v-model="page"
-          :length="totalPages"
-          :total-visible="5"
-          density="compact"
-          size="small"
-          @update:model-value="loadEvents(true)"
-        />
-      </div>
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total-pages="totalPages"
+        :page-size-options="pageSizeOptions"
+        @change="loadEvents(true)"
+      />
       <div class="text-caption text-medium-emphasis px-4 pb-3 d-md-none">
         Swipe sideways to see all columns. Notes are hidden on small screens.
       </div>

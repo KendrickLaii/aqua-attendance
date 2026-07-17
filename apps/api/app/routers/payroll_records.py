@@ -12,6 +12,7 @@ from app.models.product import Product
 from app.schemas.payroll_record import PayrollRecordCreate, PayrollRecordOut, PayrollRecordUpdate
 from app.services import audit_log as audit_log_svc
 from app.services.payroll_generator import generate_monthly_payroll
+from app.services.payroll_status import can_transition_payroll_status
 
 router = APIRouter(prefix="/payroll-records", tags=["payroll-records"])
 
@@ -118,6 +119,16 @@ async def update_payroll_record(
         raise HTTPException(status_code=404, detail="Payroll record not found")
 
     update_data = body.model_dump(exclude_unset=True)
+
+    if "status" in update_data:
+        new_status = update_data["status"]
+        if not can_transition_payroll_status(record.status, new_status):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Cannot change payroll status from '{record.status}' to '{new_status}'"
+                ),
+            )
 
     # Approval logic: when status changes to approved
     if update_data.get("status") == PayrollStatus.approved.value:
