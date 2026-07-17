@@ -12,7 +12,6 @@ export interface AttendanceSummary {
   last_check_out: string | null
   total_work_minutes: number
   total_overtime_minutes: number
-  total_break_minutes: number
   is_complete: boolean
   is_holiday: boolean
   is_weekend: boolean
@@ -37,7 +36,6 @@ export interface SummaryOverviewItem {
   days_incomplete: number
   total_regular_hours: number
   total_overtime_hours: number
-  total_break_minutes: number
   first_date: string | null
   last_date: string | null
 }

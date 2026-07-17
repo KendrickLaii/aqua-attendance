@@ -54,6 +54,12 @@ class PayrollRecord(Base):
     allowance: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     deduction: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     bonus: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+
+    # Manual adjustments
+    adjustment_1: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    adjustment_2: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    adjustment_1_remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adjustment_2_remark: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     # Totals
     gross_pay: Mapped[float] = mapped_column(Numeric(10, 2), default=0)

@@ -12,7 +12,6 @@ class AttendanceSummaryCreate(BaseModel):
     last_check_out: datetime | None = None
     total_work_minutes: int = Field(default=0, ge=0)
     total_overtime_minutes: int = Field(default=0, ge=0)
-    total_break_minutes: int = Field(default=0, ge=0)
     is_complete: bool = False
     is_holiday: bool = False
     is_weekend: bool = False
@@ -36,7 +35,6 @@ class AttendanceSummaryOut(BaseModel):
     last_check_out: datetime | None = None
     total_work_minutes: int
     total_overtime_minutes: int
-    total_break_minutes: int
     is_complete: bool
     is_holiday: bool
     is_weekend: bool
@@ -63,6 +61,5 @@ class AttendanceSummaryOverviewOut(BaseModel):
     days_incomplete: int
     total_regular_hours: float
     total_overtime_hours: float
-    total_break_minutes: int
     first_date: date | None = None
     last_date: date | None = None

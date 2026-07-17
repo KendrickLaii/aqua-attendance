@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export interface PayrollRecord {
   id: string
@@ -23,6 +23,10 @@ export interface PayrollRecord {
   allowance: number
   deduction: number
   bonus: number
+  adjustment_1: number
+  adjustment_2: number
+  adjustment_1_remark: string | null
+  adjustment_2_remark: string | null
   gross_pay: number
   net_pay: number
   status: 'draft' | 'calculated' | 'approved' | 'paid' | 'cancelled'
@@ -93,6 +97,12 @@ export async function createPayrollRecord(payload: {
 export async function updatePayrollRecord(recordId: string, payload: {
   status?: string
   payroll_notes?: string | null
+  adjustment_1?: number
+  adjustment_2?: number
+  adjustment_1_remark?: string | null
+  adjustment_2_remark?: string | null
+  gross_pay?: number
+  net_pay?: number
 }): Promise<PayrollRecord> {
   return await $attendanceApi(`/payroll-records/${recordId}`, { method: 'PATCH', body: payload })
 }

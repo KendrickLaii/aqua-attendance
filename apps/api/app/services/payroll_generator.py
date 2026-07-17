@@ -126,8 +126,11 @@ async def generate_monthly_payroll(
             staff, regular_slots, ot_slots
         )
 
-        gross_pay = round(base_salary + overtime_pay, 2)
-        net_pay = gross_pay  # allowances/deductions/bonus are manually edited later
+        adjustment_1 = float(record.adjustment_1) if record and record.adjustment_1 is not None else 0.0
+        adjustment_2 = float(record.adjustment_2) if record and record.adjustment_2 is not None else 0.0
+
+        gross_pay = round(base_salary + overtime_pay + adjustment_1, 2)
+        net_pay = round(gross_pay + adjustment_2, 2)
 
         if record:
             if record.status in (PayrollStatus.approved.value, PayrollStatus.paid.value):

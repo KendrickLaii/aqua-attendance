@@ -6,6 +6,7 @@
 import argparse
 import asyncio
 import calendar
+import copy
 from datetime import date, datetime, time, timezone
 
 from sqlalchemy import select
@@ -22,174 +23,325 @@ from app.services.auth import hash_password
 # Months filled with bulk generated rows (year, month)
 BULK_SUMMARY_MONTHS = [(2026, 6), (2026, 7)]
 
+# Weekday business hours used by OT calculation (location.business_hours.close)
+DEFAULT_BUSINESS_HOURS = {
+    "monday": {"open": "09:00", "close": "18:00"},
+    "tuesday": {"open": "09:00", "close": "18:00"},
+    "wednesday": {"open": "09:00", "close": "18:00"},
+    "thursday": {"open": "09:00", "close": "18:00"},
+    "friday": {"open": "09:00", "close": "18:00"},
+    "saturday": None,
+    "sunday": None,
+}
+
 SEED_USERS = [
     {"username": "admin", "email": "admin@aqua.local", "password": "admin123", "full_name": "Admin User", "role": "admin"},
     {"username": "superadmin", "email": "superadmin@aqua.local", "password": "super123", "full_name": "Super Admin", "role": "superadmin"},
 ]
 
 SEED_LOCATIONS = [
-    {"code": "HK-CWB", "name_en": "Causeway Bay", "name_zh": "銅鑼灣", "region": "Hong Kong Island"},
-    {"code": "HK-MK", "name_en": "Mong Kok", "name_zh": "旺角", "region": "Kowloon"},
+    {
+        "code": "HK-CWB",
+        "name_en": "Causeway Bay",
+        "name_zh": "銅鑼灣",
+        "region": "Hong Kong Island",
+        "location_type": "branch",
+        "business_hours": DEFAULT_BUSINESS_HOURS,
+        "address": "Causeway Bay, Hong Kong",
+        "is_active": True,
+    },
+    {
+        "code": "HK-MK",
+        "name_en": "Mong Kok",
+        "name_zh": "旺角",
+        "region": "Kowloon",
+        "location_type": "branch",
+        "business_hours": DEFAULT_BUSINESS_HOURS,
+        "address": "Mong Kok, Kowloon",
+        "is_active": True,
+    },
 ]
 
+# Staff pay rates drive payroll_generator (slot × rate).
+# full_time → monthly + optional hourly for OT; part_time → hourly.
 SEED_PRODUCTS = [
     {
         "code": "STAFF-001",
         "full_name": "Tanaka Sensei",
+        "english_name": "Tanaka",
         "product_type": "staff",
         "status": "active",
         "allowed_codes": ["HK-CWB", "HK-MK"],
         "home_code": "HK-CWB",
-        "staff_profile": {"employment_type": "full_time", "department": "Math"},
+        "staff_profile": {
+            "employment_type": "full_time",
+            "department": "Math",
+            "position": "Senior Tutor",
+            "employee_id": "E-001",
+            "hire_date": date(2024, 4, 1),
+            "pay_type": "monthly",
+            "monthly_salary": 28000.00,
+            "hourly_rate": 180.00,
+            "ot_multiplier": 1.5,
+            "work_schedule": "Mon–Fri 09:00–18:00",
+        },
     },
     {
         "code": "STAFF-002",
         "full_name": "Yamamoto Sensei",
+        "english_name": "Yamamoto",
         "product_type": "staff",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
-        "staff_profile": {"employment_type": "part_time", "department": "English"},
+        "staff_profile": {
+            "employment_type": "part_time",
+            "department": "English",
+            "position": "Tutor",
+            "employee_id": "E-002",
+            "hire_date": date(2025, 1, 15),
+            "pay_type": "hourly",
+            "hourly_rate": 220.00,
+            "ot_multiplier": 1.5,
+            "work_schedule": "Mon/Wed/Fri afternoons",
+        },
     },
     {
         "code": "STU-001",
         "full_name": "Suzuki Taro",
+        "english_name": "Taro Suzuki",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
-        "student_profile": {"school_name": "Tokyo High", "grade_class": "3-A"},
+        "student_profile": {
+            "school_name": "Tokyo High",
+            "grade_class": "3-A",
+            "student_id": "S-001",
+            "enrollment_date": date(2025, 4, 1),
+        },
     },
     {
         "code": "STU-002",
         "full_name": "Yamada Hanako",
+        "english_name": "Hanako Yamada",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
-        "student_profile": {"school_name": "Osaka Middle", "grade_class": "2-B"},
+        "student_profile": {
+            "school_name": "Osaka Middle",
+            "grade_class": "2-B",
+            "student_id": "S-002",
+            "enrollment_date": date(2025, 4, 1),
+        },
     },
     {
         "code": "STAFF-003",
         "full_name": "Nakamura Sensei",
+        "english_name": "Nakamura",
         "product_type": "staff",
         "status": "active",
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
-        "staff_profile": {"employment_type": "full_time", "department": "Science"},
+        "staff_profile": {
+            "employment_type": "full_time",
+            "department": "Science",
+            "position": "Tutor",
+            "employee_id": "E-003",
+            "hire_date": date(2024, 9, 1),
+            "pay_type": "monthly",
+            "monthly_salary": 25000.00,
+            "hourly_rate": 160.00,
+            "ot_multiplier": 1.5,
+        },
     },
     {
         "code": "STAFF-004",
         "full_name": "Sato Sensei",
+        "english_name": "Sato",
         "product_type": "staff",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
-        "staff_profile": {"employment_type": "full_time", "department": "Chinese"},
+        "staff_profile": {
+            "employment_type": "full_time",
+            "department": "Chinese",
+            "position": "Tutor",
+            "employee_id": "E-004",
+            "hire_date": date(2023, 4, 1),
+            "pay_type": "monthly",
+            "monthly_salary": 26000.00,
+            "hourly_rate": 170.00,
+            "ot_multiplier": 1.5,
+        },
     },
     {
         "code": "STAFF-005",
         "full_name": "Kobayashi Sensei",
+        "english_name": "Kobayashi",
         "product_type": "staff",
         "status": "active",
         "allowed_codes": ["HK-CWB", "HK-MK"],
         "home_code": "HK-CWB",
-        "staff_profile": {"employment_type": "part_time", "department": "Art"},
+        "staff_profile": {
+            "employment_type": "part_time",
+            "department": "Art",
+            "position": "Tutor",
+            "employee_id": "E-005",
+            "hire_date": date(2025, 6, 1),
+            "pay_type": "hourly",
+            "hourly_rate": 200.00,
+            "ot_multiplier": 1.5,
+            "work_schedule": "Mon/Wed/Fri afternoons",
+        },
     },
     {
         "code": "STAFF-006",
         "full_name": "Ito Sensei",
+        "english_name": "Ito",
         "product_type": "staff",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
-        "staff_profile": {"employment_type": "part_time", "department": "Music"},
+        "staff_profile": {
+            "employment_type": "part_time",
+            "department": "Music",
+            "position": "Tutor",
+            "employee_id": "E-006",
+            "hire_date": date(2025, 3, 1),
+            "pay_type": "hourly",
+            "hourly_rate": 210.00,
+            "ot_multiplier": 1.5,
+            "work_schedule": "Mon/Wed/Fri afternoons",
+        },
     },
     {
         "code": "STU-003",
         "full_name": "Watanabe Ken",
+        "english_name": "Ken Watanabe",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
-        "student_profile": {"school_name": "Tokyo High", "grade_class": "1-C"},
+        "student_profile": {
+            "school_name": "Tokyo High",
+            "grade_class": "1-C",
+            "student_id": "S-003",
+            "enrollment_date": date(2026, 4, 1),
+        },
     },
     {
         "code": "STU-004",
         "full_name": "Takahashi Yui",
+        "english_name": "Yui Takahashi",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
-        "student_profile": {"school_name": "Tokyo High", "grade_class": "2-A"},
+        "student_profile": {
+            "school_name": "Tokyo High",
+            "grade_class": "2-A",
+            "student_id": "S-004",
+            "enrollment_date": date(2025, 4, 1),
+        },
     },
     {
         "code": "STU-005",
         "full_name": "Saito Ryo",
+        "english_name": "Ryo Saito",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
-        "student_profile": {"school_name": "Osaka Middle", "grade_class": "3-A"},
+        "student_profile": {
+            "school_name": "Osaka Middle",
+            "grade_class": "3-A",
+            "student_id": "S-005",
+            "enrollment_date": date(2024, 4, 1),
+        },
     },
     {
         "code": "STU-006",
         "full_name": "Kato Mei",
+        "english_name": "Mei Kato",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
-        "student_profile": {"school_name": "Osaka Middle", "grade_class": "1-B"},
+        "student_profile": {
+            "school_name": "Osaka Middle",
+            "grade_class": "1-B",
+            "student_id": "S-006",
+            "enrollment_date": date(2026, 4, 1),
+        },
     },
     {
         "code": "STU-007",
         "full_name": "Yoshida Hiro",
+        "english_name": "Hiro Yoshida",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
-        "student_profile": {"school_name": "Kobe Prep", "grade_class": "4-A"},
+        "student_profile": {
+            "school_name": "Kobe Prep",
+            "grade_class": "4-A",
+            "student_id": "S-007",
+            "enrollment_date": date(2023, 4, 1),
+        },
     },
     {
         "code": "STU-008",
         "full_name": "Mori Aki",
+        "english_name": "Aki Mori",
         "product_type": "student",
         "status": "active",
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
-        "student_profile": {"school_name": "Kobe Prep", "grade_class": "2-C"},
+        "student_profile": {
+            "school_name": "Kobe Prep",
+            "grade_class": "2-C",
+            "student_id": "S-008",
+            "enrollment_date": date(2025, 4, 1),
+        },
     },
 ]
 
 
-# (product_code, summary_date, check_in, check_out, regular_h, ot_h, break_min, is_complete, is_weekend, is_holiday)
+# (product_code, summary_date, check_in, check_out, regular_h, ot_h, is_complete, is_weekend, is_holiday)
 SEED_SUMMARIES: list[tuple] = [
     # May 2026 — staff with mixed complete / OT days
-    ("STAFF-001", date(2026, 5, 6), (9, 0), (18, 30), 8.00, 0.50, 60, True, False, False),
-    ("STAFF-001", date(2026, 5, 7), (8, 45), (17, 15), 7.50, 0.00, 60, True, False, False),
-    ("STAFF-001", date(2026, 5, 8), (9, 15), (19, 0), 8.00, 1.25, 60, True, False, False),
-    ("STAFF-001", date(2026, 5, 10), (9, 0), None, 0.00, 0.00, 60, False, True, False),
-    ("STAFF-001", date(2026, 5, 12), (9, 0), (18, 0), 8.00, 0.00, 60, True, False, False),
-    ("STAFF-001", date(2026, 5, 15), (9, 0), (18, 45), 8.00, 0.75, 60, True, False, False),
-    ("STAFF-001", date(2026, 5, 20), (9, 0), (18, 0), 8.00, 0.00, 60, True, False, False),
-    ("STAFF-002", date(2026, 5, 6), (14, 0), (18, 0), 3.50, 0.00, 30, True, False, False),
-    ("STAFF-002", date(2026, 5, 13), (13, 30), (17, 30), 3.50, 0.00, 30, True, False, False),
-    ("STAFF-002", date(2026, 5, 20), (14, 0), None, 0.00, 0.00, 30, False, False, False),
-    ("STAFF-002", date(2026, 5, 22), (14, 0), (19, 30), 4.00, 1.00, 30, True, False, False),
-    ("STAFF-002", date(2026, 5, 27), (14, 0), (18, 0), 3.50, 0.00, 30, True, False, False),
+    ("STAFF-001", date(2026, 5, 6), (9, 0), (18, 30), 8.00, 0.50, True, False, False),
+    ("STAFF-001", date(2026, 5, 7), (8, 45), (17, 15), 7.50, 0.00, True, False, False),
+    ("STAFF-001", date(2026, 5, 8), (9, 15), (19, 0), 8.00, 1.25, True, False, False),
+    ("STAFF-001", date(2026, 5, 10), (9, 0), None, 0.00, 0.00, False, True, False),
+    ("STAFF-001", date(2026, 5, 12), (9, 0), (18, 0), 8.00, 0.00, True, False, False),
+    ("STAFF-001", date(2026, 5, 15), (9, 0), (18, 45), 8.00, 0.75, True, False, False),
+    ("STAFF-001", date(2026, 5, 20), (9, 0), (18, 0), 8.00, 0.00, True, False, False),
+    ("STAFF-002", date(2026, 5, 6), (14, 0), (18, 0), 3.50, 0.00, True, False, False),
+    ("STAFF-002", date(2026, 5, 13), (13, 30), (17, 30), 3.50, 0.00, True, False, False),
+    ("STAFF-002", date(2026, 5, 20), (14, 0), None, 0.00, 0.00, False, False, False),
+    ("STAFF-002", date(2026, 5, 22), (14, 0), (19, 30), 4.00, 1.00, True, False, False),
+    ("STAFF-002", date(2026, 5, 27), (14, 0), (18, 0), 3.50, 0.00, True, False, False),
     # May 2026 — students
-    ("STU-001", date(2026, 5, 5), (15, 30), (18, 30), 2.50, 0.00, 30, True, False, False),
-    ("STU-001", date(2026, 5, 12), (15, 30), (18, 0), 2.00, 0.00, 30, True, False, False),
-    ("STU-001", date(2026, 5, 19), (16, 0), (18, 30), 2.00, 0.00, 30, True, False, False),
-    ("STU-001", date(2026, 5, 26), (15, 30), None, 0.00, 0.00, 30, False, False, False),
-    ("STU-002", date(2026, 5, 7), (16, 0), (18, 30), 2.00, 0.00, 30, True, False, False),
-    ("STU-002", date(2026, 5, 14), (15, 30), (18, 0), 2.00, 0.00, 30, True, False, False),
-    ("STU-002", date(2026, 5, 18), (16, 0), (19, 0), 2.50, 0.00, 30, True, False, False),
-    ("STU-002", date(2026, 5, 20), (15, 30), (18, 0), 2.00, 0.00, 30, True, False, False),
-    ("STU-002", date(2026, 5, 22), (16, 0), (18, 30), 2.00, 0.00, 30, True, False, False),
-    ("STU-002", date(2026, 5, 27), (15, 30), None, 0.00, 0.00, 30, False, False, False),
-    ("STU-002", date(2026, 5, 29), (16, 0), (18, 30), 2.00, 0.00, 30, True, False, False),
+    ("STU-001", date(2026, 5, 5), (15, 30), (18, 30), 2.50, 0.00, True, False, False),
+    ("STU-001", date(2026, 5, 12), (15, 30), (18, 0), 2.00, 0.00, True, False, False),
+    ("STU-001", date(2026, 5, 19), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
+    ("STU-001", date(2026, 5, 26), (15, 30), None, 0.00, 0.00, False, False, False),
+    ("STU-002", date(2026, 5, 7), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
+    ("STU-002", date(2026, 5, 14), (15, 30), (18, 0), 2.00, 0.00, True, False, False),
+    ("STU-002", date(2026, 5, 18), (16, 0), (19, 0), 2.50, 0.00, True, False, False),
+    ("STU-002", date(2026, 5, 20), (15, 30), (18, 0), 2.00, 0.00, True, False, False),
+    ("STU-002", date(2026, 5, 22), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
+    ("STU-002", date(2026, 5, 27), (15, 30), None, 0.00, 0.00, False, False, False),
+    ("STU-002", date(2026, 5, 29), (16, 0), (18, 30), 2.00, 0.00, True, False, False),
 ]
+
+
+def _hours_to_slots(hours: float) -> int:
+    """1 hour = 4 × 15-min slots."""
+    return int(round(float(hours or 0) * 4))
 
 
 def _roll(product_code: str, product_type: str, summary_date: date) -> int:
@@ -227,21 +379,18 @@ def _build_day_row(product_code: str, product_type: str, summary_date: date) -> 
             check_in = (13 + roll % 2, 30 if roll % 2 else 0)
             regular = round(3.0 + (roll % 5) * 0.25, 2)
             ot = round((roll % 4) * 0.25, 2) if roll % 7 == 0 else 0.0
-            break_min = 30
             out_h = check_in[0] + int(regular) + (1 if check_in[1] else 0)
             check_out = (out_h, check_in[1]) if is_complete else None
         else:
             check_in = (8 + roll % 2, 45 if roll % 3 == 0 else 0)
             regular = round(7.5 + (roll % 4) * 0.25, 2)
             ot = round((roll % 5) * 0.25, 2) if roll % 5 < 2 else 0.0
-            break_min = 60
             out_h = 17 + int(ot) + (roll % 3)
             check_out = (out_h, 30 if roll % 2 else 0) if is_complete else None
     else:
         check_in = (15 + roll % 2, 30 if roll % 2 else 0)
         regular = round(1.5 + (roll % 6) * 0.25, 2)
         ot = 0.0
-        break_min = 30
         out_h = check_in[0] + int(regular) + 1
         check_out = (out_h, check_in[1]) if is_complete else None
 
@@ -252,7 +401,6 @@ def _build_day_row(product_code: str, product_type: str, summary_date: date) -> 
         check_out,
         regular,
         ot,
-        break_min,
         is_complete,
         weekend,
         False,
@@ -276,6 +424,26 @@ def _dt(summary_date: date, hour: int, minute: int) -> datetime:
     return datetime.combine(summary_date, time(hour, minute), tzinfo=timezone.utc)
 
 
+async def _upsert_staff_profile(db, product_id, profile_data: dict) -> None:
+    existing = await db.execute(select(StaffProfile).where(StaffProfile.id == product_id))
+    sp = existing.scalar_one_or_none()
+    if sp:
+        for field, value in profile_data.items():
+            setattr(sp, field, value)
+    else:
+        db.add(StaffProfile(id=product_id, **profile_data))
+
+
+async def _upsert_student_profile(db, product_id, profile_data: dict) -> None:
+    existing = await db.execute(select(StudentProfile).where(StudentProfile.id == product_id))
+    stp = existing.scalar_one_or_none()
+    if stp:
+        for field, value in profile_data.items():
+            setattr(stp, field, value)
+    else:
+        db.add(StudentProfile(id=product_id, **profile_data))
+
+
 async def seed_summaries(db) -> None:
     print("--- Seeding attendance summaries ---")
     result = await db.execute(select(Product))
@@ -285,8 +453,11 @@ async def seed_summaries(db) -> None:
         print("  skipped: no products found (run seed without --users-only first)")
         return
 
-    product_types = {p.code: p.product_type for p in products}
-    bulk_rows = build_bulk_summary_rows(list(products_by_code.keys()), product_types)
+    # Only generate bulk rows for known seed product codes so custom products
+    # (e.g. "mock data stuff") keep their own summaries; slots are still backfilled below.
+    seed_codes = {p["code"] for p in SEED_PRODUCTS}
+    product_types = {code: products_by_code[code].product_type for code in seed_codes if code in products_by_code}
+    bulk_rows = build_bulk_summary_rows(list(product_types.keys()), product_types)
     all_rows = SEED_SUMMARIES + bulk_rows
     print(f"  preparing {len(SEED_SUMMARIES)} fixed + {len(bulk_rows)} bulk rows (Jun/Jul 2026)")
 
@@ -301,7 +472,6 @@ async def seed_summaries(db) -> None:
             check_out,
             regular_h,
             ot_h,
-            break_min,
             is_complete,
             is_weekend,
             is_holiday,
@@ -309,6 +479,10 @@ async def seed_summaries(db) -> None:
 
         product = products_by_code.get(product_code)
         if not product:
+            skipped += 1
+            continue
+
+        if not product.registered_location_id:
             skipped += 1
             continue
 
@@ -332,12 +506,11 @@ async def seed_summaries(db) -> None:
             last_check_out=last_check_out,
             total_work_minutes=work_minutes,
             total_overtime_minutes=ot_minutes,
-            total_break_minutes=break_min,
             is_complete=is_complete,
             is_weekend=is_weekend,
             is_holiday=is_holiday,
-            regular_slots=int(round(regular_h * 4)),
-            ot_slots=int(round(ot_h * 4)),
+            regular_slots=_hours_to_slots(regular_h),
+            ot_slots=_hours_to_slots(ot_h),
             regular_hours=regular_h,
             overtime_hours=ot_h,
             holiday_hours=0.0,
@@ -358,7 +531,27 @@ async def seed_summaries(db) -> None:
             )
             created += 1
 
+    # Backfill any leftover rows (custom products / pre-slot data) that still
+    # have hours but zero slots — preserves hours, only fills slots.
+    backfill_result = await db.execute(
+        select(AttendanceSummary).where(
+            AttendanceSummary.regular_slots == 0,
+            AttendanceSummary.ot_slots == 0,
+        )
+    )
+    backfilled = 0
+    for summary in backfill_result.scalars().all():
+        regular_h = float(summary.regular_hours or 0)
+        ot_h = float(summary.overtime_hours or 0)
+        if regular_h <= 0 and ot_h <= 0:
+            continue
+        summary.regular_slots = _hours_to_slots(regular_h)
+        summary.ot_slots = _hours_to_slots(ot_h)
+        backfilled += 1
+
     print(f"  {created} created, {updated} updated, {skipped} skipped ({len(all_rows)} rows configured)")
+    if backfilled:
+        print(f"  {backfilled} existing rows backfilled slots from hours")
 
 
 async def main(*, users_only: bool = False, summaries_only: bool = False) -> None:
@@ -395,22 +588,24 @@ async def main(*, users_only: bool = False, summaries_only: bool = False) -> Non
             print("--- Seeding locations ---")
             location_by_code: dict[str, Location] = {}
             for loc in SEED_LOCATIONS:
-                existing = await db.execute(select(Location).where(Location.code == loc["code"]))
+                loc_data = copy.deepcopy(loc)
+                existing = await db.execute(select(Location).where(Location.code == loc_data["code"]))
                 location = existing.scalar_one_or_none()
                 if location:
-                    for field, value in loc.items():
+                    for field, value in loc_data.items():
                         setattr(location, field, value)
-                    print(f"  updated {loc['code']}")
+                    print(f"  updated {loc_data['code']}")
                 else:
-                    location = Location(**loc)
+                    location = Location(**loc_data)
                     db.add(location)
-                    print(f"  created {loc['code']} - {loc['name_en']}")
-                location_by_code[loc["code"]] = location
+                    print(f"  created {loc_data['code']} - {loc_data['name_en']}")
+                location_by_code[loc_data["code"]] = location
 
             await db.flush()
 
             print("--- Seeding products ---")
-            for p in SEED_PRODUCTS:
+            for raw in SEED_PRODUCTS:
+                p = copy.deepcopy(raw)
                 allowed_codes = p.pop("allowed_codes")
                 home_code = p.pop("home_code")
                 profile_data = p.pop("staff_profile", None) or p.pop("student_profile", None)
@@ -424,26 +619,11 @@ async def main(*, users_only: bool = False, summaries_only: bool = False) -> Non
                         setattr(product, field, value)
                     product.registered_location_id = registered_location.id
                     product.scan_locations = scan_locations
-
-                    # Update or create profile for existing product
                     await db.flush()
                     if p["product_type"] == "staff" and profile_data:
-                        existing_sp = await db.execute(select(StaffProfile).where(StaffProfile.id == product.id))
-                        sp = existing_sp.scalar_one_or_none()
-                        if sp:
-                            for field, value in profile_data.items():
-                                setattr(sp, field, value)
-                        else:
-                            db.add(StaffProfile(id=product.id, **profile_data))
+                        await _upsert_staff_profile(db, product.id, profile_data)
                     elif p["product_type"] == "student" and profile_data:
-                        existing_stp = await db.execute(select(StudentProfile).where(StudentProfile.id == product.id))
-                        stp = existing_stp.scalar_one_or_none()
-                        if stp:
-                            for field, value in profile_data.items():
-                                setattr(stp, field, value)
-                        else:
-                            db.add(StudentProfile(id=product.id, **profile_data))
-
+                        await _upsert_student_profile(db, product.id, profile_data)
                     print(f"  updated {p['code']} ({p['product_type']})")
                     continue
 
@@ -452,7 +632,6 @@ async def main(*, users_only: bool = False, summaries_only: bool = False) -> Non
                 db.add(product)
                 await db.flush()
 
-                # Create corresponding profile
                 if p["product_type"] == "staff" and profile_data:
                     db.add(StaffProfile(id=product.id, **profile_data))
                 elif p["product_type"] == "student" and profile_data:

@@ -29,7 +29,6 @@ class AttendanceSummary(Base):
     last_check_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_work_minutes: Mapped[int] = mapped_column(Integer, default=0)  # Regular work hours
     total_overtime_minutes: Mapped[int] = mapped_column(Integer, default=0)  # OT hours
-    total_break_minutes: Mapped[int] = mapped_column(Integer, default=0)  # Break/lunch time
     
     # Status flags
     is_complete: Mapped[bool] = mapped_column(default=False)  # Has complete check-in/out cycle

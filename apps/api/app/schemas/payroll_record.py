@@ -32,6 +32,10 @@ class PayrollRecordCreate(BaseModel):
     allowance: float = Field(default=0.0, ge=0)
     deduction: float = Field(default=0.0, ge=0)
     bonus: float = Field(default=0.0, ge=0)
+    adjustment_1: float = Field(default=0.0)
+    adjustment_2: float = Field(default=0.0)
+    adjustment_1_remark: str | None = None
+    adjustment_2_remark: str | None = None
     gross_pay: float = Field(default=0.0, ge=0)
     net_pay: float = Field(default=0.0, ge=0)
     status: str = Field(default=PayrollStatus.draft.value)
@@ -46,6 +50,12 @@ class PayrollRecordUpdate(BaseModel):
     payment_date: datetime | None = None
     payroll_notes: str | None = None
     approved_by_user_id: uuid.UUID | None = None
+    adjustment_1: float | None = None
+    adjustment_2: float | None = None
+    adjustment_1_remark: str | None = None
+    adjustment_2_remark: str | None = None
+    gross_pay: float | None = None
+    net_pay: float | None = None
 
 
 class PayrollRecordOut(BaseModel):
@@ -70,6 +80,10 @@ class PayrollRecordOut(BaseModel):
     allowance: float
     deduction: float
     bonus: float
+    adjustment_1: float = 0.0
+    adjustment_2: float = 0.0
+    adjustment_1_remark: str | None = None
+    adjustment_2_remark: str | None = None
     gross_pay: float
     net_pay: float
     status: str

@@ -24,7 +24,6 @@ async def generate_monthly_summaries(
     db: AsyncSession,
     year: int,
     month: int,
-    lunch_minutes: int = 60,
 ) -> dict:
     """Generate attendance summaries for every product for the given month.
 
@@ -85,7 +84,6 @@ async def generate_monthly_summaries(
                 last_check_out=last_check_out,
                 location=location,
                 target_date=event_date,
-                lunch_minutes=lunch_minutes,
             )
             is_complete = True
         else:
@@ -116,7 +114,6 @@ async def generate_monthly_summaries(
             summary.last_check_out = last_check_out
             summary.total_work_minutes = total_minutes
             summary.total_overtime_minutes = ot_minutes
-            summary.total_break_minutes = lunch_minutes
             summary.is_complete = is_complete
             summary.is_weekend = event_date.weekday() >= 5
             summary.regular_slots = regular_slots
@@ -135,7 +132,6 @@ async def generate_monthly_summaries(
                 last_check_out=last_check_out,
                 total_work_minutes=total_minutes,
                 total_overtime_minutes=ot_minutes,
-                total_break_minutes=lunch_minutes,
                 is_complete=is_complete,
                 is_weekend=event_date.weekday() >= 5,
                 regular_slots=regular_slots,

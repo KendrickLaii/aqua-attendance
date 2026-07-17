@@ -36,9 +36,8 @@ const selectedRecord = ref<PayrollRecord | null>(null)
 const summaries = ref<AttendanceSummary[]>([])
 const detailTotalCount = ref(0)
 
-// Stepper workflow state (configure = Type+Products+Month, result = invoice cards)
+// Stepper workflow state (configure = Products+Month, result = invoice cards)
 const step = ref('configure')
-const stepType = ref<'staff' | 'student' | null>(null)
 const stepMonth = ref('')
 const stepProducts = ref<Product[]>([])
 const stepProductsLoading = ref(false)
@@ -129,9 +128,8 @@ const detailTotals = computed(() => {
   const regularSlots = summaries.value.reduce((sum, s) => sum + safeNumber(s.regular_slots), 0)
   const overtime = summaries.value.reduce((sum, s) => sum + safeNumber(s.overtime_hours), 0)
   const otSlots = summaries.value.reduce((sum, s) => sum + safeNumber(s.ot_slots), 0)
-  const breakMinutes = summaries.value.reduce((sum, s) => sum + safeNumber(s.total_break_minutes), 0)
 
-  return { regular, regularSlots, overtime, otSlots, breakMinutes, days: summaries.value.length }
+  return { regular, regularSlots, overtime, otSlots, days: summaries.value.length }
 })
 
 const stepParsedMonth = computed(() => {
@@ -188,6 +186,8 @@ onMounted(async () => {
   yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   stepMonth.value = yearMonth.value
   await loadRecords()
+  if (viewMode.value === 'wizard')
+    loadStepProducts()
 })
 
 watch([yearMonth, filterStatus], () => {
@@ -268,10 +268,78 @@ async function loadDetail(isRefresh = false) {
   }
 }
 
+const editAdj1 = ref(0)
+const editAdj2 = ref(0)
+const editAdj1Remark = ref('')
+const editAdj2Remark = ref('')
+const editGross = ref(0)
+const editNet = ref(0)
+
 function openDetail(record: PayrollRecord) {
   selectedRecord.value = record
   summaries.value = []
+  editAdj1.value = record.adjustment_1 ?? 0
+  editAdj2.value = record.adjustment_2 ?? 0
+  editAdj1Remark.value = record.adjustment_1_remark ?? ''
+  editAdj2Remark.value = record.adjustment_2_remark ?? ''
+  editGross.value = record.gross_pay
+  editNet.value = record.net_pay
   loadDetail()
+}
+
+function onAdjChange() {
+  if (!selectedRecord.value)
+    return
+  const r = selectedRecord.value
+  const gross = r.base_salary + r.overtime_pay + r.holiday_pay + (editAdj1.value || 0)
+  const net = gross + (editAdj2.value || 0)
+
+  editGross.value = gross
+  editNet.value = net
+  updatePayrollRecord(r.id, {
+    adjustment_1: editAdj1.value || 0,
+    adjustment_2: editAdj2.value || 0,
+    adjustment_1_remark: editAdj1Remark.value || null,
+    adjustment_2_remark: editAdj2Remark.value || null,
+    gross_pay: gross,
+    net_pay: net,
+  }).then(updated => {
+    r.adjustment_1 = updated.adjustment_1
+    r.adjustment_2 = updated.adjustment_2
+    r.adjustment_1_remark = updated.adjustment_1_remark
+    r.adjustment_2_remark = updated.adjustment_2_remark
+    r.gross_pay = updated.gross_pay
+    r.net_pay = updated.net_pay
+  }).catch(e => {
+    console.error('Failed to update adjustments', e)
+  })
+}
+
+function onCardAdjChange(record: PayrollRecord) {
+  const adj1 = Number(record.adjustment_1) || 0
+  const adj2 = Number(record.adjustment_2) || 0
+  const gross = record.base_salary + record.overtime_pay + record.holiday_pay + adj1
+  const net = gross + adj2
+
+  record.gross_pay = gross
+  record.net_pay = net
+  updatePayrollRecord(record.id, {
+    adjustment_1: adj1,
+    adjustment_2: adj2,
+    adjustment_1_remark: record.adjustment_1_remark || null,
+    adjustment_2_remark: record.adjustment_2_remark || null,
+    gross_pay: gross,
+    net_pay: net,
+  }).then(updated => {
+    record.adjustment_1 = updated.adjustment_1
+    record.adjustment_2 = updated.adjustment_2
+    record.adjustment_1_remark = updated.adjustment_1_remark
+    record.adjustment_2_remark = updated.adjustment_2_remark
+    record.gross_pay = updated.gross_pay
+    record.net_pay = updated.net_pay
+  }).catch(e => {
+    console.error('Failed to update adjustments', e)
+  })
 }
 
 function backToOverview() {
@@ -333,7 +401,6 @@ async function confirmDelete() {
 
 function resetWizard() {
   step.value = 'configure'
-  stepType.value = null
   stepMonth.value = yearMonth.value
   stepSearch.value = ''
   stepProducts.value = []
@@ -348,6 +415,7 @@ function showWizard() {
   resetWizard()
   viewMode.value = 'wizard'
   selectedRecord.value = null
+  loadStepProducts()
   summaries.value = []
 }
 
@@ -360,7 +428,7 @@ async function loadStepProducts() {
   stepProductsLoading.value = true
   stepProductsError.value = ''
   try {
-    const items = await listProducts({ product_type: stepType.value, page_size: 200 })
+    const items = await listProducts({ product_type: 'staff', page_size: 200 })
 
     stepProducts.value = [...items].sort((a, b) => a.full_name.localeCompare(b.full_name))
     stepSelectedIds.value = stepProducts.value.map(p => p.id)
@@ -375,15 +443,7 @@ async function loadStepProducts() {
 }
 
 watch(step, newStep => {
-  if (newStep === 'configure' && stepType.value)
-    loadStepProducts()
-})
-
-watch(stepType, newType => {
-  stepProducts.value = []
-  stepSelectedIds.value = []
-  stepSearch.value = ''
-  if (step.value === 'configure' && newType)
+  if (newStep === 'configure')
     loadStepProducts()
 })
 
@@ -402,11 +462,6 @@ async function handleGenerate() {
 
     return
   }
-  if (!stepType.value) {
-    generateError.value = 'Select a payroll type'
-
-    return
-  }
   if (stepSelectedCount.value === 0) {
     generateError.value = 'Select at least one product'
 
@@ -415,21 +470,20 @@ async function handleGenerate() {
 
   const { year, month } = parsed
   const idsToSend = stepAllSelected.value ? undefined : stepSelectedIds.value
-  const type = stepType.value
 
   generating.value = true
   generateError.value = ''
   generateSuccess.value = null
   generatedRecords.value = []
   try {
-    await generatePayroll(year, month, type, idsToSend)
+    await generatePayroll(year, month, 'staff', idsToSend)
 
     generateSuccess.value = formatPayrollGenerateMessage({ created: stepSelectedCount.value, updated: 0, skipped: 0 }, year, month)
-    filterProductType.value = type
+    filterProductType.value = 'staff'
     yearMonth.value = stepMonth.value
 
     const result = await listPayrollRecordsWithTotal({
-      product_type: type,
+      product_type: 'staff',
       year,
       month,
       page: 1,
@@ -469,10 +523,6 @@ function statusColor(s: AttendanceSummary) {
 
 function formatHours(h: number) {
   return Number.isFinite(h) ? h.toFixed(2) : '-'
-}
-
-function minutesToHours(m: number) {
-  return Number.isFinite(m) ? (m / 60).toFixed(2) : '-'
 }
 
 function safeNumber(value: number) {
@@ -586,180 +636,115 @@ function formatCurrency(n: number | null | undefined) {
                 {{ generateError }}
               </VAlert>
 
-              <!-- Type -->
-              <h3 class="text-subtitle-2 font-weight-medium mb-2">
-                1. Payroll type
-              </h3>
-              <VRow dense>
-                <VCol
-                  cols="12"
-                  sm="6"
-                >
-                  <VCard
-                    :variant="stepType === 'staff' ? 'flat' : 'outlined'"
-                    :color="stepType === 'staff' ? 'primary' : undefined"
-                    class="pa-6 text-center cursor-pointer type-card"
-                    :class="{ 'text-white': stepType === 'staff' }"
-                    @click="stepType = 'staff'"
-                  >
-                    <VIcon size="40">
-                      ri-user-line
-                    </VIcon>
-                    <div
-                      class="text-h6 mt-3"
-                      :class="stepType === 'staff' ? 'text-white' : ''"
-                    >
-                      Staff
-                    </div>
-                    <div
-                      class="text-body-2"
-                      :class="stepType === 'staff' ? 'text-white' : 'text-medium-emphasis'"
-                    >
-                      Generate salary from attendance
-                    </div>
-                  </VCard>
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                >
-                  <VCard
-                    :variant="stepType === 'student' ? 'flat' : 'outlined'"
-                    :color="stepType === 'student' ? 'primary' : undefined"
-                    class="pa-6 text-center cursor-pointer type-card"
-                    :class="{ 'text-white': stepType === 'student' }"
-                    @click="stepType = 'student'"
-                  >
-                    <VIcon size="40">
-                      ri-graduation-cap-line
-                    </VIcon>
-                    <div
-                      class="text-h6 mt-3"
-                      :class="stepType === 'student' ? 'text-white' : ''"
-                    >
-                      Student
-                    </div>
-                    <div
-                      class="text-body-2"
-                      :class="stepType === 'student' ? 'text-white' : 'text-medium-emphasis'"
-                    >
-                      Generate allowance or records
-                    </div>
-                  </VCard>
-                </VCol>
-              </VRow>
-
               <!-- Products -->
-              <template v-if="stepType">
-                <h3 class="text-subtitle-2 font-weight-medium mb-2 mt-6">
-                  2. {{ stepType === 'staff' ? 'Staff' : 'Student' }} products
-                </h3>
-                <div class="d-flex align-center gap-3 mb-3">
-                  <VTextField
-                    v-model="stepSearch"
-                    label="Search by name or code"
-                    density="compact"
-                    prepend-inner-icon="ri-search-line"
-                    clearable
-                    hide-details
-                    style="max-inline-size: 280px;"
-                  />
-                  <VCheckbox
-                    v-model="stepAllSelected"
-                    label="Select all"
-                    density="compact"
-                    hide-details
-                  />
-                  <VSpacer />
-                  <span class="text-caption text-medium-emphasis">
-                    {{ stepProducts.length }} loaded · {{ stepSelectedCount }} selected
-                  </span>
-                </div>
+              <h3 class="text-subtitle-2 font-weight-medium mb-2">
+                1. Staff products
+              </h3>
+              <div class="d-flex align-center gap-3 mb-3">
+                <VTextField
+                  v-model="stepSearch"
+                  label="Search by name or code"
+                  density="compact"
+                  prepend-inner-icon="ri-search-line"
+                  clearable
+                  hide-details
+                  style="max-inline-size: 280px;"
+                />
+                <VCheckbox
+                  v-model="stepAllSelected"
+                  label="Select all"
+                  density="compact"
+                  hide-details
+                />
+                <VSpacer />
+                <span class="text-caption text-medium-emphasis">
+                  {{ stepProducts.length }} loaded · {{ stepSelectedCount }} selected
+                </span>
+              </div>
 
-                <VProgressLinear
-                  v-if="stepProductsLoading"
-                  indeterminate
-                  color="primary"
-                  class="mb-2"
+              <VProgressLinear
+                v-if="stepProductsLoading"
+                indeterminate
+                color="primary"
+                class="mb-2"
+              />
+              <VAlert
+                v-else-if="stepProductsError"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="mb-2"
+              >
+                {{ stepProductsError }}
+              </VAlert>
+
+              <div class="product-list">
+                <VListItem
+                  v-for="p in stepFilteredProducts"
+                  :key="p.id"
+                  :title="p.full_name"
+                  :subtitle="p.code"
+                  density="comfortable"
+                  class="product-list-item"
+                  @click="toggleStepProduct(p.id)"
+                >
+                  <template #prepend>
+                    <VCheckbox
+                      :model-value="stepSelectedIds.includes(p.id)"
+                      density="comfortable"
+                      hide-details
+                      @click.stop="toggleStepProduct(p.id)"
+                    />
+                  </template>
+                </VListItem>
+                <div
+                  v-if="!stepProductsLoading && stepFilteredProducts.length === 0"
+                  class="text-center text-medium-emphasis py-8"
+                >
+                  No staff products found.
+                </div>
+              </div>
+
+              <!-- Month -->
+              <h3 class="text-subtitle-2 font-weight-medium mb-2 mt-6">
+                2. Payroll month
+              </h3>
+              <div
+                class="d-flex align-center gap-4 mb-4 flex-wrap"
+                :class="{ 'opacity-50': stepSelectedCount === 0 }"
+              >
+                <VTextField
+                  v-model="stepMonth"
+                  label="Month"
+                  type="month"
+                  density="compact"
+                  :disabled="stepSelectedCount === 0"
+                  style="max-inline-size: 220px;"
                 />
                 <VAlert
-                  v-else-if="stepProductsError"
-                  type="error"
+                  type="info"
                   variant="tonal"
                   density="compact"
-                  class="mb-2"
+                  class="mb-0"
                 >
-                  {{ stepProductsError }}
+                  Generating for
+                  <strong>{{ stepSelectedCount }}</strong>
+                  staff product{{ stepSelectedCount === 1 ? '' : 's' }}
+                  · <strong>{{ stepMonthLabel }}</strong>
                 </VAlert>
+              </div>
 
-                <div class="product-list">
-                  <VListItem
-                    v-for="p in stepFilteredProducts"
-                    :key="p.id"
-                    :title="p.full_name"
-                    :subtitle="p.code"
-                    density="comfortable"
-                    class="product-list-item"
-                    @click="toggleStepProduct(p.id)"
-                  >
-                    <template #prepend>
-                      <VCheckbox
-                        :model-value="stepSelectedIds.includes(p.id)"
-                        density="comfortable"
-                        hide-details
-                        @click.stop="toggleStepProduct(p.id)"
-                      />
-                    </template>
-                  </VListItem>
-                  <div
-                    v-if="!stepProductsLoading && stepFilteredProducts.length === 0"
-                    class="text-center text-medium-emphasis py-8"
-                  >
-                    No {{ stepType }} products found.
-                  </div>
-                </div>
-
-                <!-- Month -->
-                <h3 class="text-subtitle-2 font-weight-medium mb-2 mt-6">
-                  3. Payroll month
-                </h3>
-                <div
-                  class="d-flex align-center gap-4 mb-4 flex-wrap"
-                  :class="{ 'opacity-50': stepSelectedCount === 0 }"
+              <div class="d-flex justify-end mt-6">
+                <VBtn
+                  color="primary"
+                  :loading="generating"
+                  :disabled="stepSelectedCount === 0"
+                  prepend-icon="ri-magic-line"
+                  @click="handleGenerate"
                 >
-                  <VTextField
-                    v-model="stepMonth"
-                    label="Month"
-                    type="month"
-                    density="compact"
-                    :disabled="stepSelectedCount === 0"
-                    style="max-inline-size: 220px;"
-                  />
-                  <VAlert
-                    type="info"
-                    variant="tonal"
-                    density="compact"
-                    class="mb-0"
-                  >
-                    Generating for
-                    <strong>{{ stepSelectedCount }}</strong>
-                    {{ stepType }} product{{ stepSelectedCount === 1 ? '' : 's' }}
-                    · <strong>{{ stepMonthLabel }}</strong>
-                  </VAlert>
-                </div>
-
-                <div class="d-flex justify-end mt-6">
-                  <VBtn
-                    color="primary"
-                    :loading="generating"
-                    :disabled="stepSelectedCount === 0"
-                    prepend-icon="ri-magic-line"
-                    @click="handleGenerate"
-                  >
-                    Generate payroll
-                  </VBtn>
-                </div>
-              </template>
+                  Generate payroll
+                </VBtn>
+              </div>
             </div>
           </VStepperWindowItem>
 
@@ -875,10 +860,52 @@ function formatCurrency(n: number | null | undefined) {
                         <span>Holiday pay</span>
                         <span class="font-weight-medium">{{ formatCurrency(record.holiday_pay) }}</span>
                       </div>
+                      <div class="invoice-line align-center">
+                        <span>Adjustment 1</span>
+                        <VTextField
+                          v-model.number="record.adjustment_1"
+                          type="number"
+                          density="compact"
+                          variant="outlined"
+                          hide-details
+                          style="max-inline-size: 120px;"
+                          @update:model-value="onCardAdjChange(record)"
+                        />
+                      </div>
+                      <VTextField
+                        v-model="record.adjustment_1_remark"
+                        class="invoice-remark mb-1"
+                        placeholder="Remark"
+                        density="compact"
+                        variant="underlined"
+                        hide-details
+                        @update:model-value="onCardAdjChange(record)"
+                      />
                       <div class="invoice-line total">
                         <span>Gross pay</span>
                         <span class="font-weight-bold">{{ formatCurrency(record.gross_pay) }}</span>
                       </div>
+                      <div class="invoice-line align-center">
+                        <span>Adjustment 2</span>
+                        <VTextField
+                          v-model.number="record.adjustment_2"
+                          type="number"
+                          density="compact"
+                          variant="outlined"
+                          hide-details
+                          style="max-inline-size: 120px;"
+                          @update:model-value="onCardAdjChange(record)"
+                        />
+                      </div>
+                      <VTextField
+                        v-model="record.adjustment_2_remark"
+                        class="invoice-remark mb-1"
+                        placeholder="Remark"
+                        density="compact"
+                        variant="underlined"
+                        hide-details
+                        @update:model-value="onCardAdjChange(record)"
+                      />
                       <div class="invoice-line grand">
                         <span>Net pay</span>
                         <span class="text-h6 font-weight-bold text-primary">{{ formatCurrency(record.net_pay) }}</span>
@@ -1221,6 +1248,80 @@ function formatCurrency(n: number | null | undefined) {
           </VChip>
         </div>
       </VCardTitle>
+      <VCardText class="pb-0">
+        <VRow dense>
+          <VCol
+            cols="12"
+            sm="3"
+          >
+            <VTextField
+              v-model.number="editAdj1"
+              label="Adjustment 1"
+              type="number"
+              density="compact"
+              hide-details
+              @update:model-value="onAdjChange"
+            />
+            <VTextField
+              v-model="editAdj1Remark"
+              class="mt-2"
+              label="Remark"
+              density="compact"
+              hide-details
+              @update:model-value="onAdjChange"
+            />
+            <div class="text-caption text-medium-emphasis mt-1">
+              Base + OT + Holiday + Adj1 = Gross
+            </div>
+          </VCol>
+          <VCol
+            cols="12"
+            sm="3"
+          >
+            <VTextField
+              v-model.number="editAdj2"
+              label="Adjustment 2"
+              type="number"
+              density="compact"
+              hide-details
+              @update:model-value="onAdjChange"
+            />
+            <VTextField
+              v-model="editAdj2Remark"
+              class="mt-2"
+              label="Remark"
+              density="compact"
+              hide-details
+              @update:model-value="onAdjChange"
+            />
+            <div class="text-caption text-medium-emphasis mt-1">
+              Gross + Adj2 = Net
+            </div>
+          </VCol>
+          <VCol
+            cols="12"
+            sm="3"
+          >
+            <div class="text-caption text-medium-emphasis">
+              Gross pay
+            </div>
+            <div class="text-h6 font-weight-bold">
+              {{ formatCurrency(editGross) }}
+            </div>
+          </VCol>
+          <VCol
+            cols="12"
+            sm="3"
+          >
+            <div class="text-caption text-medium-emphasis">
+              Net pay
+            </div>
+            <div class="text-h6 font-weight-bold text-primary">
+              {{ formatCurrency(editNet) }}
+            </div>
+          </VCol>
+        </VRow>
+      </VCardText>
       <VCardText class="text-caption text-medium-emphasis pb-0">
         Daily attendance summaries used to calculate this payroll record.
       </VCardText>
@@ -1246,9 +1347,6 @@ function formatCurrency(n: number | null | undefined) {
               </th>
               <th class="text-end">
                 OT slots
-              </th>
-              <th class="text-end">
-                Break
               </th>
               <th>Status</th>
             </tr>
@@ -1291,9 +1389,6 @@ function formatCurrency(n: number | null | undefined) {
               <td class="text-end text-medium-emphasis">
                 {{ s.ot_slots }}
               </td>
-              <td class="text-end">
-                {{ minutesToHours(s.total_break_minutes) }}
-              </td>
               <td>
                 <VChip
                   :color="statusColor(s)"
@@ -1323,14 +1418,11 @@ function formatCurrency(n: number | null | undefined) {
               <td class="text-end text-medium-emphasis">
                 {{ detailTotals.otSlots }}
               </td>
-              <td class="text-end">
-                {{ minutesToHours(detailTotals.breakMinutes) }}
-              </td>
               <td />
             </tr>
             <tr v-if="summaries.length === 0 && !loading">
               <td
-                colspan="9"
+                colspan="8"
                 class="text-center text-medium-emphasis py-6"
               >
                 No daily summaries found for this product in {{ monthLabel }}.
@@ -1429,6 +1521,10 @@ function formatCurrency(n: number | null | undefined) {
   display: flex;
   justify-content: space-between;
   padding-block: 4px;
+}
+
+.invoice-remark {
+  margin-block-start: -2px;
 }
 
 .invoice-line.total {

@@ -115,9 +115,10 @@ const visibleSummaries = computed(() => {
 const detailTotals = computed(() => {
   const regular = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.regular_hours), 0)
   const overtime = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.overtime_hours), 0)
-  const breakMinutes = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.total_break_minutes), 0)
+  const regularSlots = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.regular_slots), 0)
+  const otSlots = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.ot_slots), 0)
 
-  return { regular, overtime, breakMinutes, days: visibleSummaries.value.length }
+  return { regular, overtime, regularSlots, otSlots, days: visibleSummaries.value.length }
 })
 
 const statCards = computed(() => {
@@ -340,10 +341,6 @@ function statusColor(s: AttendanceSummary) {
 
 function formatHours(h: number) {
   return Number.isFinite(h) ? h.toFixed(2) : '-'
-}
-
-function minutesToHours(m: number) {
-  return Number.isFinite(m) ? (m / 60).toFixed(2) : '-'
 }
 
 function safeNumber(value: number) {
@@ -651,13 +648,13 @@ function safeNumber(value: number) {
             color="success"
             label
           >
-            {{ formatHours(detailTotals.regular) }} regular
+            {{ formatHours(detailTotals.regular) }} regular · {{ detailTotals.regularSlots }} slots
           </VChip>
           <VChip
             color="info"
             label
           >
-            {{ formatHours(detailTotals.overtime) }} OT
+            {{ formatHours(detailTotals.overtime) }} OT · {{ detailTotals.otSlots }} slots
           </VChip>
         </div>
       </VCardTitle>
@@ -698,10 +695,13 @@ function safeNumber(value: number) {
                 Regular
               </th>
               <th class="text-end">
+                Reg slots
+              </th>
+              <th class="text-end">
                 OT
               </th>
               <th class="text-end">
-                Break
+                OT slots
               </th>
               <th>
                 Status
@@ -738,10 +738,13 @@ function safeNumber(value: number) {
                 {{ formatHours(s.regular_hours) }}
               </td>
               <td class="text-end">
+                {{ s.regular_slots }}
+              </td>
+              <td class="text-end">
                 {{ formatHours(s.overtime_hours) }}
               </td>
               <td class="text-end">
-                {{ minutesToHours(s.total_break_minutes) }}
+                {{ s.ot_slots }}
               </td>
               <td>
                 <VChip
@@ -764,16 +767,19 @@ function safeNumber(value: number) {
                 {{ formatHours(detailTotals.regular) }}
               </td>
               <td class="text-end">
+                {{ detailTotals.regularSlots }}
+              </td>
+              <td class="text-end">
                 {{ formatHours(detailTotals.overtime) }}
               </td>
               <td class="text-end">
-                {{ minutesToHours(detailTotals.breakMinutes) }}
+                {{ detailTotals.otSlots }}
               </td>
               <td />
             </tr>
             <tr v-if="visibleSummaries.length === 0 && !loading">
               <td
-                colspan="7"
+                colspan="8"
                 class="text-center text-medium-emphasis py-6"
               >
                 No daily records match this status filter.

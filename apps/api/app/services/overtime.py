@@ -4,7 +4,6 @@ Rules (from DATABASE_CHANGES.md):
 - 15-minute time slots, rounded (<7.5min down, >=7.5min up)
 - OT = work beyond location.business_hours.close
 - Work hours = first check_in + last check_out of the day
-- Lunch break is fixed and deducted at service layer
 """
 
 from datetime import date, datetime, time, timedelta
@@ -67,10 +66,15 @@ def _location_close_time(
     if location is None or location.business_hours is None:
         return None
 
-    weekday = target_date.strftime("%a").lower()  # mon, tue, ...
+    weekday_full = target_date.strftime("%A").lower()  # monday
+    weekday_abbr = target_date.strftime("%a").lower()  # mon
     hours = location.business_hours
     if isinstance(hours, dict):
-        day_hours = hours.get(weekday) or hours.get(weekday[:3])
+        day_hours = (
+            hours.get(weekday_full)
+            or hours.get(weekday_abbr)
+            or hours.get(weekday_abbr[:3])
+        )
         if day_hours and isinstance(day_hours, dict):
             close_str = day_hours.get("close")
             if close_str:
@@ -89,7 +93,6 @@ def calculate_workday(
     last_check_out: datetime,
     location: Location | None = None,
     target_date: date | None = None,
-    lunch_minutes: int = 60,
 ) -> WorkDayResult:
     """Calculate workday metrics from first check-in and last check-out.
 
@@ -98,7 +101,6 @@ def calculate_workday(
         last_check_out: datetime of the last check-out of the day
         location: optional Location to determine closing time for OT
         target_date: the date being calculated (defaults to first_check_in.date)
-        lunch_minutes: fixed lunch break deduction (default 60)
 
     Returns:
         WorkDayResult with slot-based hours
@@ -114,22 +116,18 @@ def calculate_workday(
         return WorkDayResult(0, 0, 0.0, 0.0, 0.0)
 
     total_minutes = _minutes_between(rounded_in, rounded_out)
-
-    # Deduct lunch
-    work_minutes = max(0, total_minutes - lunch_minutes)
-    total_slots = work_minutes // _SLOT_MINUTES
+    total_slots = total_minutes // _SLOT_MINUTES
     total_hours = total_slots / _SLOTS_PER_HOUR
 
     # Determine standard hours from location closing time
     close_time = _location_close_time(location, target_date)
     if close_time:
-        # Standard = from check-in time to location close time (minus lunch)
+        # Standard = from check-in time to location close time
         close_dt = datetime.combine(target_date, close_time)
         if close_time.hour < 6:  # e.g. 02:00 next day
             close_dt += timedelta(days=1)
 
-        standard_minutes_raw = _minutes_between(rounded_in, close_dt)
-        standard_minutes = max(0, standard_minutes_raw - lunch_minutes)
+        standard_minutes = max(0, _minutes_between(rounded_in, close_dt))
         standard_slots = standard_minutes // _SLOT_MINUTES
         standard_hours = standard_slots / _SLOTS_PER_HOUR
 
