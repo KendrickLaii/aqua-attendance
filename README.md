@@ -122,10 +122,7 @@ After `python seed.py`:
 
 ### Login users
 
-| Username | Password | Role |
-|----------|----------|------|
-| admin | admin123 | admin |
-| superadmin | super123 | superadmin |
+預設帳號與密碼見 `apps/api/seed.py`（執行 `python seed.py` 後）。角色包含 `admin`、`superadmin`。**勿將預設密碼寫入公開文件；生產環境請立即修改。**
 
 ### Sample products (QR issued from web)
 

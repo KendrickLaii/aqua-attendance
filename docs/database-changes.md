@@ -160,7 +160,6 @@ erDiagram
         datetime last_check_out "末次簽退"
         int total_work_minutes "總工作分鐘"
         int total_overtime_minutes "總加班分鐘"
-        int total_break_minutes "午休分鐘"
         boolean is_complete "完整上下班"
         boolean is_holiday "假日"
         boolean is_weekend "週末"

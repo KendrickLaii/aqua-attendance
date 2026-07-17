@@ -141,19 +141,15 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 
 ### 1.8 種子資料
 
-執行 `python seed.py` 後：
+執行 `python seed.py` 後會建立預設帳號與示範人員。
 
-| Username | Password | Role |
-|----------|----------|------|
-| admin | admin123 | admin |
-| superadmin | super123 | superadmin |
+| 欄位 | 說明 |
+|------|------|
+| 預設帳號 | 使用者名稱與密碼見 `apps/api/seed.py`（**勿寫入公開文件**） |
+| 角色 | `admin`、`superadmin` |
+| 示範人員 | 例如 `STAFF-001`（staff）、`STU-001`（student） |
 
-| Code | Name | Type |
-|------|------|------|
-| STAFF-001 | Tanaka Sensei | staff |
-| STU-001 | Suzuki Taro | student |
-
-**生產使用前務必修改所有種子密碼。**
+**生產環境務必在 seed 後立即修改所有預設密碼；公開文件請勿列出實際密碼。**
 
 ---
 
@@ -207,7 +203,7 @@ npx expo start
 | 跑 migration | `alembic upgrade head` |
 | 重載種子資料 | `python seed.py` |
 | 安裝新依賴 | `npm install` / `pip install -r requirements.txt` |
-| 檢視 DB | DBeaver 連線 `127.0.0.1:5432`，db/user/pass = `attendance`/`attendance`/`attendance` |
+| 檢視 DB | DBeaver 連線 `127.0.0.1:5432`；帳密見 `apps/api/.env.example`（本地開發預設） |
 
 ### 2.4 測試
 
@@ -464,7 +460,7 @@ cd deploy
 
 **雲端伺服器** = 執行 app 的電腦
 - 持續運行、公開 IP、可從網際網路存取
-- Ubuntu Linux（目前 AWS Lightsail Tokyo）
+- Ubuntu Linux（雲端 VM，例如 AWS Lightsail；實際區域與主機細節僅內部維運文件記載）
 - 已安裝 Docker
 
 **Docker Compose** = 編排器
@@ -1035,7 +1031,7 @@ cd apps/mobile && cp .env.example .env
 npx expo start
 ```
 
-Login：`admin` / `admin123`（after `python seed.py`）。
+登入帳密見 `apps/api/seed.py`（執行 `python seed.py` 後）。**勿將預設密碼寫入公開文件。**
 
 ---
 
@@ -1092,7 +1088,7 @@ API container 啟動時會自動執行 Alembic — `008` 新增 `products.employ
 - [ ] Locations — create / edit / delete（tabbed form）
 - [ ] QR Codes — QR visible on cards；select several → **Print selected**
 - [ ] QR Codes — **Rotate / copy** 仍可運作
-- [ ] 修改 seed account passwords（若仍使用 `admin123`）
+- [ ] 修改 seed 預設帳號密碼（若仍使用 seed.py 內建密碼）
 
 #### 回滾
 
@@ -1120,7 +1116,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | New | `notifications` CRUD + 標記已讀 |
 | New | `audit_logs` 查詢端點（superadmin） |
 | New | `auto_checkout` 排程端點（`POST /api/auto-checkout/run`） |
-| New | OT 計算服務（`services/overtime.py` — 15 分鐘槽、lunch 扣除） |
+| New | OT 計算服務（`services/overtime.py` — 15 分鐘槽） |
 | Enhancement | Rate limit 改用 Redis backend（多副本安全） |
 | Enhancement | `notification.extra_data` 改 JSON 型別 |
 | Enhancement | attendance 作廢端點（`voided_at`） |
@@ -1386,7 +1382,6 @@ erDiagram
         datetime last_check_out
         int total_work_minutes
         int total_overtime_minutes
-        int total_break_minutes
         boolean is_complete
         boolean is_holiday
         boolean is_weekend

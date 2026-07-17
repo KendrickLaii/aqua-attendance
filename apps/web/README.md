@@ -32,7 +32,7 @@ npm run dev
 
 開啟：http://localhost:5173/attendance/login
 
-預設登入：`admin` / `admin123`（API 執行 `python seed.py` 後）。
+預設登入帳密見 `apps/api/seed.py`（API 執行 `python seed.py` 後）。**勿將預設密碼寫入公開文件。**
 
 ## 環境變數
 

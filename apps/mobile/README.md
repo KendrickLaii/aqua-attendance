@@ -57,10 +57,7 @@ npx expo start
 
 ### 種子登入（API 執行 `python seed.py` 後）
 
-| Username | Password | Scan tab |
-|----------|----------|----------|
-| admin | admin123 | Yes |
-| superadmin | super123 | Yes |
+帳密見 `apps/api/seed.py`（角色 `admin`、`superadmin` 皆可使用 Scan tab）。**勿將預設密碼寫入公開文件。**
 
 ## 功能
 
@@ -78,7 +75,7 @@ App 透過 `package.json` 的 `"main": "expo/AppEntry.js"` 載入 **`App.tsx`**�
 
 ## 手動測試流程
 
-1. 啟動 API + DB + seed：`admin` / `admin123`，products `STU-001` 等。
+1. 啟動 API + DB + seed（帳密見 `apps/api/seed.py`），products `STU-001` 等。
 2. Web：建立一個 active **location**（需填英文名稱）。
 3. Web：**QR Codes** → **STU-001** → 在另一個畫面顯示 QR。
 4. Mobile：登入 → **Scan** → 選擇**預設 location**（儲存在裝置上）→ 每次選擇**簽到/簽退** → **Start scanning** → 掃描 QR。

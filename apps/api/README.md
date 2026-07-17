@@ -47,16 +47,17 @@ python seed.py --summaries  # 僅 attendance_summaries（需已有 products）
 
 產生：
 
-- Users：`admin` / `admin123`、`superadmin` / `super123`
+- Users：帳密見 `seed.py`（角色 `admin`、`superadmin`）。**勿將預設密碼寫入公開文件；生產環境請立即修改。**
+- Locations：`HK-CWB` / `HK-MK`（結構化 `business_hours`，平日 09:00–18:00，供 OT 判斷）
 - Products + Profiles：
-  - `STAFF-001`（full_time / Math）
-  - `STAFF-002`（part_time / English）
-  - `STU-001`（Tokyo High / 3-A）
-  - `STU-002`（Osaka Middle / 2-B）
+  - Staff 含薪資欄位 `pay_type` / `hourly_rate` / `monthly_salary` / `ot_multiplier`（供 Payroll Generate）
+    - full_time（如 `STAFF-001`）：`monthly` + 時薪（供 OT）
+    - part_time（如 `STAFF-002`）：`hourly`
+  - Students：學校 / 班級 / `student_id`
   - 以及 `STAFF-003`–`006`、`STU-003`–`008`（bulk 測試用）
 - **Attendance summaries**（測試用）：
-  - 2026-05：固定少數列
-  - 2026-06、2026-07：大量 bulk 列（**無**對應打卡事件）
+  - 2026-05：固定少數列（含 `regular_slots` / `ot_slots`）
+  - 2026-06、2026-07：大量 bulk 列（**無**對應打卡事件；slots = hours × 4）
 
 彙總與 Generate 行為見 [docs/ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md)。
 
