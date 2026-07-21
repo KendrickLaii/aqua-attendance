@@ -1042,8 +1042,16 @@ function formatCurrency(n: number | null | undefined) {
                         <span>Holiday pay</span>
                         <span class="font-weight-medium">{{ formatCurrency(record.holiday_pay) }}</span>
                       </div>
-                      <div class="invoice-line align-center">
-                        <span>Adjustment 1</span>
+                      <div class="invoice-adj-row">
+                        <VTextField
+                          v-model="record.adjustment_1_remark"
+                          class="invoice-remark"
+                          label="Adjustment 1"
+                          density="compact"
+                          variant="outlined"
+                          hide-details
+                          @update:model-value="onCardAdjChange(record)"
+                        />
                         <VTextField
                           v-model.number="record.adjustment_1"
                           class="invoice-adj-amount"
@@ -1051,25 +1059,23 @@ function formatCurrency(n: number | null | undefined) {
                           density="compact"
                           variant="underlined"
                           hide-details
-                          style="max-inline-size: 120px;"
                           @update:model-value="onCardAdjChange(record)"
                         />
                       </div>
-                      <VTextField
-                        v-model="record.adjustment_1_remark"
-                        class="invoice-remark mb-1"
-                        label="Remark"
-                        density="compact"
-                        variant="outlined"
-                        hide-details
-                        @update:model-value="onCardAdjChange(record)"
-                      />
                       <div class="invoice-line total">
                         <span>Gross pay</span>
                         <span class="font-weight-bold">{{ formatCurrency(record.gross_pay) }}</span>
                       </div>
-                      <div class="invoice-line align-center">
-                        <span>Adjustment 2</span>
+                      <div class="invoice-adj-row">
+                        <VTextField
+                          v-model="record.adjustment_2_remark"
+                          class="invoice-remark"
+                          label="Adjustment 2"
+                          density="compact"
+                          variant="outlined"
+                          hide-details
+                          @update:model-value="onCardAdjChange(record)"
+                        />
                         <VTextField
                           v-model.number="record.adjustment_2"
                           class="invoice-adj-amount"
@@ -1077,19 +1083,9 @@ function formatCurrency(n: number | null | undefined) {
                           density="compact"
                           variant="underlined"
                           hide-details
-                          style="max-inline-size: 120px;"
                           @update:model-value="onCardAdjChange(record)"
                         />
                       </div>
-                      <VTextField
-                        v-model="record.adjustment_2_remark"
-                        class="invoice-remark mb-1"
-                        label="Remark"
-                        density="compact"
-                        variant="outlined"
-                        hide-details
-                        @update:model-value="onCardAdjChange(record)"
-                      />
                       <div class="invoice-line grand">
                         <span class="d-flex align-center gap-1">
                           <VIcon
@@ -1833,8 +1829,21 @@ function formatCurrency(n: number | null | undefined) {
   padding-block: 4px;
 }
 
+.invoice-adj-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 6px;
+}
+
 .invoice-remark {
-  margin-block-start: 10px;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.invoice-adj-amount {
+  flex: 0 0 96px;
+  max-inline-size: 96px;
 }
 
 .invoice-adj-amount :deep(input) {
