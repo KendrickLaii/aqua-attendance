@@ -261,7 +261,6 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 - [ ] Parent portal
 - [ ] Geofencing
 - [ ] Bulk CSV import for products
-- [ ] Rate limiting / Redis throttling
 - [ ] E2E tests (Playwright / Detox)
 - [ ] Mobile CI and EAS build docs
 - [ ] WebSocket live feed
@@ -272,6 +271,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 - [x] CI (pytest + web build on PR/main)
 - [x] Container images to GHCR
 - [x] Production compose + Caddy + deploy scripts
+- [x] Rate limiting / Redis throttling
 - [x] Disable public registration (use User Management)
 - [x] Scan and attendance list restricted to admin/superadmin
 - [x] CSV export auth on web (Bearer blob download)

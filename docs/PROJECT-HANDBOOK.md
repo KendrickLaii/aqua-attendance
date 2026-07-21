@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-07-10。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-07-21。
 
 ---
 
@@ -609,29 +609,35 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
+> **2026-07-21 更新**：後端架構審查發現 **午休未扣除** 為新的 High 缺口（直接影響薪資），並新增 Summaries/Payroll 相依、Generate 競態、`attendance_status` 一致性等 Medium 問題 — 見 [known-gaps.md](known-gaps.md) #H6、#M15–#M18。  
 > **2026-07-17 更新**：釐清 **auto checkout 非完整自動版**（有手動 Day-end + Generate 回填，**無** 23:59 cron／無 00:00 status 重置）— 見 [known-gaps.md](known-gaps.md) #M14。  
 > **2026-07-10 更新**：Summaries / Payroll 重構完成（主從式 UI、overview 聚合、Generate upsert、薪資率計算、seed bulk 測試資料）— 見 [attendance-summaries.md](attendance-summaries.md)。多項 Medium/Low 問題已修復。  
 > **2026-06-16 更新**：後端大量修復已完成（StaffProfile 外鍵歧義、`employment_type` 遷移、profile 一對一關係、通知/彙總/薪資/稽核端點、OT 計算、auto_checkout **手動 API／helper** 等），詳見 [known-gaps.md](known-gaps.md)。
 
 ### 5.1 優先行動計劃
 
-**第一階段 — 立即修（High）** ✅ 全部完成
+**第一階段 — 立即修（High）**
 1. `recorded_at` 複合索引 ✅
 2. Web/Mobile refresh single-flight ✅
 3. 多副本前換 Redis rate limit storage ✅
+4. **午休 / Break 扣除**（`services/overtime.py`、`summary_generator.py`）⬜ — 見 [known-gaps.md](known-gaps.md) #H6
 
 **第二階段 — 上線前應補（Medium）**
-4. Compose / Dockerfile healthcheck + 非 root ⬜
-5. 結構化 logging + request ID ⬜
-6. 統一 API 錯誤格式 ✅ Done（2026-07）
-7. CSV 真串流 ⬜
-8. 補 RBAC 矩陣 + refresh 競態測試 ⬜
-8b. Auto checkout **排程**（現僅手動 Day-end + Generate 回填；見 known-gaps #M14）⬜
+5. Compose / Dockerfile healthcheck + 非 root ⬜
+6. 結構化 logging + request ID ⬜
+7. 統一 API 錯誤格式 ✅ Done（2026-07）
+8. CSV 真串流 ⬜
+9. 補 RBAC 矩陣 + refresh 競態測試 ⬜
+9b. Auto checkout **排程**（現僅手動 Day-end + Generate 回填；見 known-gaps #M14）⬜
+9c. Payroll 前自動 Generate summaries / 過期警告 ⬜ — 見 [known-gaps.md](known-gaps.md) #M15
+9d. Void event 後自動重算單日 summary ⬜ — 見 [known-gaps.md](known-gaps.md) #M16
+9e. Generate 端點互斥鎖 ⬜ — 見 [known-gaps.md](known-gaps.md) #M17
+9f. `products.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
 
 **第三階段 — 可延後（Low）**
-9. Refresh token 改 HttpOnly cookie ⬜
-10. 前端區分 admin/superadmin ⬜
-11. QR 錯誤訊息、密碼長度、mobile CI ⬜
+10. Refresh token 改 HttpOnly cookie ⬜
+11. 前端區分 admin/superadmin ⬜
+12. QR 錯誤訊息、密碼長度、mobile CI ⬜
 
 **設計取捨（已知且接受）**
 - QR token 無過期（靠 `qr_token_version` 手動輪替）

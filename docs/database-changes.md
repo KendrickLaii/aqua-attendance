@@ -249,10 +249,10 @@ erDiagram
 | 時間精度 | **15分鐘時間槽，四捨五入**（<7.5min歸前槽，>=7.5min歸後槽） |
 | OT判斷 | **以 `location.business_hours.close` 判斷**，超過關門時間 = OT |
 | standard_hours_per_day | **不要**，OT 完全由 business_hours 決定 |
-| 工時計算 | **首次 check_in + 末次 check_out**，午休固定扣除於服務層處理 |
+| 工時計算 | **首次 check_in + 末次 check_out**，目前**不扣除午休** |
 | 忘記簽退 | auto_checkout 觸發時間 = **23:59（日界）**，非關門時間 |
 | 雙次 check_in / check_out | **全部允許**，全部記錄，計算只取首次和末次 |
-| 午休 | **不打卡**，固定扣除槽數在**服務層**處理，不存入資料庫 |
+| 午休 | **不打卡**，固定扣除槽數尚未實作，會影響薪資正確性 — 見 [known-gaps.md](known-gaps.md) **#H6** |
 
 > **Auto checkout 實作狀態（2026-07-17）— 非完整自動版**  
 > 設計上的「23:59 兜底」已有**共用邏輯**與**手動／Generate 路徑**，但**沒有排程會在 23:59 自動執行**。詳見 [known-gaps.md](known-gaps.md) **#M14**。  

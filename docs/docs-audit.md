@@ -1,6 +1,6 @@
 # 文件審計 — 問題清單
 
-> 審計日期：2026-07-10
+> 審計日期：2026-07-10；本次更新：2026-07-21
 > 目的：列出 `docs/` 中所有過時、缺失、不一致的項目，作為後續更新依據。
 
 ---
@@ -102,8 +102,8 @@
 | # | 問題 | 嚴重度 |
 |---|------|--------|
 | B1 | 日期 2026-06-16，§4–§7 多項已標完成但分散在各階段，不易一眼看出整體進度 | 🟡 |
-| B2 | §5.3 `business_hours` 未被服務層使用 — OT 計算已實作（`services/overtime.py`），此項可能已過時 | 🟡 |
-| B3 | §5.4 列表端點無排序參數 — 需確認是否仍為現況 | 🟢 |
+| B2 | ~~§5.3 `business_hours` 未被服務層使用~~ | ✅ 已修 — `services/overtime.py:_location_close_time` 已讀取 `location.business_hours` 判斷關門時間，用於 OT 計算 |
+| B3 | §5.4 列表端點無排序參數 — 仍為現況（固定排序，未開放 `sort_by`/`sort_order`） | 🟢 |
 | B4 | §7 階段四「結構化 logging + request id」仍 pending | 🟡 |
 | B5 | §8 測試狀態仍寫 53 passed — 需確認最新測試數量 | 🟡 |
 
@@ -132,6 +132,21 @@
 | # | 問題 | 嚴重度 |
 |---|------|--------|
 | I1 | ~~未列出新文件~~ | ✅ 已修 — 加入 attendance-summaries.md、docs-audit.md、known-gaps.md |
+
+---
+
+## 7. 後端架構審查補充（2026-07-21）
+
+本次審查後新增/確認的文件缺口：
+
+| # | 問題 | 嚴重度 |
+|---|------|--------|
+| AR1 | `KNOWN-GAPS.md` 應新增 **午休未扣除**（直接影響薪資） | 🔴 |
+| AR2 | `KNOWN-GAPS.md` 應新增 **Payroll 依賴手動 Generate summaries** | 🟡 |
+| AR3 | `KNOWN-GAPS.md` 應新增 **Void 後 summary 不自動重算** | 🟡 |
+| AR4 | `KNOWN-GAPS.md` 應新增 **Generate 端點無互斥鎖** | 🟡 |
+| AR5 | `KNOWN-GAPS.md` 應新增 **`products.attendance_status` 非正規化一致性** | 🟡 |
+| AR6 | `attendance-summaries.md`、`database-changes.md` 應補充 break 計算現況 | 🟡 |
 
 ---
 

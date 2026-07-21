@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-07-17（已審查：2026-07-17）
+> 最後更新：2026-07-21（已審查：2026-07-21）
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 1. 🔴 High — 全部已修
+## 1. 🔴 High
 
 | # | 項目 | 狀態 |
 |---|------|------|
@@ -26,6 +26,13 @@
 | H3 | Web refresh 競態 | ✅ 已修（single-flight） |
 | H4 | Rate limit 使用記憶體儲存 | ✅ 已修（Redis backend） |
 | H5 | 掃描競態保護 | ✅ 已修（`SELECT FOR UPDATE`） |
+
+### #H6 午休（break）未從工時扣除
+
+- **位置**：`apps/api/app/services/overtime.py:calculate_workday`、`apps/api/app/services/summary_generator.py`
+- **問題**：`calculate_workday` 只計算 `first_check_in → last_check_out` 總時長，**未扣除午休**；`summary_generator` 雖有 `lunch_minutes` 參數但**從未使用**，`total_break_minutes` 永遠寫入 `0`。
+- **影響**：9:00–18:00 出勤會被算成 9 小時 regular（含午休），staff 薪資會**多算**。
+- **建議**：在 `calculate_workday` 加入 break 扣除邏輯（例如超過 X 小時自動扣 60 分鐘，或依 `location` 設定），並寫入 `total_break_minutes`。上線前必修。
 
 ---
 
@@ -134,6 +141,30 @@
 - **設計意圖**（見 [database-changes.md](database-changes.md)）：日界 23:59 兜底，非關門時間；避免忘記簽退造成 OT 虛高。
 - **現況**：邏輯與手動／Generate 路徑已對齊，但**不會自己跑**。Router 註解裡「Normally run by a scheduled job」是目標態，不是現況。
 - **建議**：部署後加排程（例如每天 23:59 呼叫 `POST /api/auto-checkout/run`，或獨立 worker）；可選再補 00:00 status 重置 job。文件與 UI 文案應持續標明「手動／回填」，避免當成完整自動。
+
+### #M15 Payroll 必須先手動 Generate summaries
+
+- **位置**：`apps/api/app/services/payroll_generator.py`
+- **問題**：Payroll generate 只讀 `attendance_summaries`。如果 admin 忘記先 Generate summaries，Payroll 會用**過期彙總**算薪水，且沒有警告。
+- **建議**：Payroll generate 前先自動觸發 summary generate（同交易），或比對 events 最新時間 vs summaries `updated_at`，過期回傳警告。
+
+### #M16 Void 事件後 summary 不會自動重算
+
+- **位置**：`apps/api/app/routers/attendance.py`（`POST /api/attendance/{event_id}/void`）
+- **問題**：作廢 event 只寫 audit log 與 `voided_at`；該 product 該日的 `attendance_summaries` 要等到下次手動 Generate 才更新。期間 UI 顯示舊數字。
+- **建議**：void endpoint 順便重算該 product 該日的 summary（單日重算很便宜）。
+
+### #M17 Generate 端點無互斥鎖
+
+- **位置**：`apps/api/app/routers/attendance_summaries.py`、`routers/payroll_records.py`
+- **問題**：Summaries / Payroll generate 都是「select 再 upsert」；兩個 admin 同時按會競態，可能噴 `IntegrityError` 或重複計算。
+- **建議**：改用 PostgreSQL `INSERT ... ON CONFLICT DO UPDATE`，或以 Redis/advisory lock 互斥。單一塾使用下機率低，但修法便宜。
+
+### #M18 `products.attendance_status` 非正規化狀態可能與 events 不一致
+
+- **位置**：`apps/api/app/services/attendance.py:_next_event_type`、`models/product.py`
+- **問題**：scan 的 check_in/check_out 推斷依賴 `products.attendance_status`。void、manual correction、隔夜未簽退後，此欄位可能與實際 events 不一致（雖有 `recompute_product_attendance_status` 但不是所有路徑都會觸發）。
+- **建議**：確保所有寫入/作廢 events 的路徑都呼叫 recompute，或改用「查最近一筆非作廢 event」來決定下一個動作。
 
 ---
 

@@ -1,6 +1,6 @@
 # 出勤彙總（Attendance Summaries）
 
-> 最後更新：2026-07-17  
+> 最後更新：2026-07-21  
 > 涵蓋 Summaries 頁面、Payroll 頁面、後端 overview 聚合、Generate 流程、slot 計薪與 seed 測試資料。
 
 本文件為 **Summaries / Payroll 月度流程** 的單一參考來源（SSOT）。資料庫欄位定義見 [database-changes.md](database-changes.md)；前端對齊總覽見 [project-handbook.md](project-handbook.md)。
@@ -39,6 +39,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 - 時間四捨五入到 **15 分鐘槽**（1 slot = 15 min = 0.25h；&lt;7.5 分捨、≥7.5 分入）
 - OT = 超過地點 `business_hours.close` 的部分；未設定營業時間則全部算常規
 - **不扣除午休 / Break**（已移除 `total_break_minutes` 與固定 lunch 扣減）
+  - ⚠️ 此為已知缺口，會影響薪資正確性，詳見 [known-gaps.md](known-gaps.md) #H6
 - `regular_slots` / `ot_slots` 為計薪來源；`regular_hours` / `overtime_hours` = slots × 0.25
 
 ---
