@@ -62,11 +62,12 @@
 - **現況**：已改善（分頁讀取 + 上限 `CSV_EXPORT_MAX_ROWS`），但 `StringIO` 仍會佔用與資料量成正比的記憶體。
 - **建議**：改為逐頁 yield 寫入 generator，真正串流。
 
-### #M5 無 mobile CI
+### #M5 無 mobile CI ✅ 已修（2026-07-22）
 
-- **位置**：`.github/workflows/`
-- **問題**：`eas.json` 已存在但無 workflow 觸發 EAS Build。
-- **建議**：加 GitHub Action 跑 `tsc`/lint，或觸發 EAS build。
+- **位置**：`.github/workflows/ci.yml`（`mobile-typecheck` job）
+- **原問題**：`eas.json` 已存在但無 workflow 觸發任何 mobile 檢查。
+- **現況**：已加 `mobile-typecheck` job，於 PR / push main 時跑 `npm run typecheck`（`tsc --noEmit`）。
+- **後續（可選）**：mobile 尚無 ESLint 設定；若要 lint 需先建立 eslint config。EAS Build 觸發仍可延後（免費額度有限，非必要）。
 
 ---
 

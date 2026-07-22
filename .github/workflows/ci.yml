@@ -54,3 +54,24 @@ jobs:
         env:
           # Sensible defaults so attendance bundles do not point at localhost in CI artifacts.
           VITE_ATTENDANCE_API_URL: https://api.example.com/api
+
+  mobile-typecheck:
+    name: Mobile (tsc)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
