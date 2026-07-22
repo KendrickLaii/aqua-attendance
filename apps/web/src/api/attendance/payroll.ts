@@ -130,12 +130,19 @@ export async function deletePayrollRecord(recordId: string): Promise<void> {
   await $attendanceApi(`/payroll-records/${recordId}`, { method: 'DELETE' })
 }
 
+export interface StaleSummaryProduct {
+  product_id: string
+  product_code: string | null
+  product_name: string | null
+  reason: 'no_summary' | 'outdated'
+}
+
 export async function generatePayroll(
   year: number,
   month: number,
   productType?: string,
   productIds?: string[],
-): Promise<{ created: number; updated: number; skipped: number }> {
+): Promise<{ created: number; updated: number; skipped: number; stale_summaries?: StaleSummaryProduct[] }> {
   const params = new URLSearchParams()
 
   params.set('year', String(year))

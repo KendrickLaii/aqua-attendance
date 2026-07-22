@@ -47,7 +47,7 @@ const filterStatus = ref('')
 const filterProductType = ref('staff')
 const generating = ref(false)
 const generateError = ref('')
-const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
+const generateSuccess = ref<{ title: string; detail?: string; warning?: string } | null>(null)
 const deleteDialog = ref(false)
 const deleteTarget = ref<PayrollRecord | null>(null)
 
@@ -607,6 +607,16 @@ function formatCurrency(n: number | null | undefined) {
       :title="generateSuccess.title"
       :text="generateSuccess.detail"
       @click:close="generateSuccess = null"
+    />
+
+    <VAlert
+      v-if="generateSuccess?.warning"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mb-4"
+      title="Attendance summaries may be out of date"
+      :text="generateSuccess.warning"
     />
 
     <VAlert

@@ -6,10 +6,18 @@ export interface SummaryGenerateResult {
   auto_checkouts?: number
 }
 
+export interface StaleSummaryProduct {
+  product_id: string
+  product_code: string | null
+  product_name: string | null
+  reason: 'no_summary' | 'outdated'
+}
+
 export interface PayrollGenerateResult {
   created: number
   updated: number
   skipped: number
+  stale_summaries?: StaleSummaryProduct[]
 }
 
 function formatPeriod(year: number, month: number): string {
@@ -86,27 +94,51 @@ export function formatSummaryGenerateMessage(
   }
 }
 
+function staleWarning(
+  stale: StaleSummaryProduct[] | undefined,
+  period: string,
+): string | undefined {
+  if (!stale || stale.length === 0)
+    return undefined
+
+  const missing = stale.filter(s => s.reason === 'no_summary').length
+  const outdated = stale.filter(s => s.reason === 'outdated').length
+  const people = plural(stale.length, 'staff member', 'staff members')
+  const reasons: string[] = []
+
+  if (outdated > 0)
+    reasons.push(`${outdated} with attendance changed after their summary`)
+  if (missing > 0)
+    reasons.push(`${missing} with events but no summary yet`)
+
+  return `${stale.length} ${people} may be out of date (${reasons.join(', ')}). Re-generate attendance summaries for ${period}, then run payroll again.`
+}
+
 export function formatPayrollGenerateMessage(
   result: PayrollGenerateResult,
   year: number,
   month: number,
-): { title: string; detail?: string } {
+): { title: string; detail?: string; warning?: string } {
   const period = formatPeriod(year, month)
   const { created, updated, skipped } = result
   const processed = created + updated
+  const warning = staleWarning(result.stale_summaries, period)
 
   if (processed === 0 && skipped === 0) {
     return {
       title: `No summaries for ${period}`,
       detail: 'Generate attendance summaries first, then run payroll.',
+      warning,
     }
   }
 
   if (processed === 0 && skipped > 0) {
     const recordLabel = plural(skipped, 'record')
+
     return {
       title: `No payroll changes for ${period}`,
       detail: `All ${skipped} ${recordLabel} are already approved or paid.`,
+      warning,
     }
   }
 
@@ -135,5 +167,5 @@ export function formatPayrollGenerateMessage(
       : `${skipped} ${skipLabel} skipped.`
   }
 
-  return { title, detail }
+  return { title, detail, warning }
 }

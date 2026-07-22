@@ -145,11 +145,12 @@
 - **現況**：邏輯與手動／Generate 路徑已對齊，但**不會自己跑**。Router 註解裡「Normally run by a scheduled job」是目標態，不是現況。
 - **建議**：部署後加排程（例如每天 23:59 呼叫 `POST /api/auto-checkout/run`，或獨立 worker）；可選再補 00:00 status 重置 job。文件與 UI 文案應持續標明「手動／回填」，避免當成完整自動。
 
-### #M15 Payroll 必須先手動 Generate summaries
+### #M15 Payroll 必須先手動 Generate summaries（過期警告 ✅ 已實作，2026-07-22）
 
 - **位置**：`apps/api/app/services/payroll_generator.py`
-- **問題**：Payroll generate 只讀 `attendance_summaries`。如果 admin 忘記先 Generate summaries，Payroll 會用**過期彙總**算薪水，且沒有警告。
-- **建議**：Payroll generate 前先自動觸發 summary generate（同交易），或比對 events 最新時間 vs summaries `updated_at`，過期回傳警告。
+- **問題**：Payroll generate 只讀 `attendance_summaries`。如果 admin 忘記先 Generate summaries，Payroll 會用**過期彙總**算薪水。
+- **現況（過期警告已補）**：`detect_stale_summary_products()` 會比對每個 product 該月 events 的最後異動時間（`created_at` / `voided_at`）vs summaries `updated_at`，`POST /payroll-records/generate` 回傳 `stale_summaries`（reason=`outdated` 或 `no_summary`），前端顯示黃色警告提示先重新 Generate summaries。
+- **待辦（可選）**：Payroll generate 前**自動**觸發 summary generate（同交易），免去手動兩步驟。
 
 ### #M16 Void 事件後 summary 不會自動重算
 

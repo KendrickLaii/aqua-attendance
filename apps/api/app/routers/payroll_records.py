@@ -246,12 +246,14 @@ async def generate_payroll_records(
         db, year=year, month=month, product_type=product_type, product_ids=product_ids
     )
 
+    stale_count = len(result.get("stale_summaries") or [])
+    stale_note = f", {stale_count} stale summaries" if stale_count else ""
     await audit_log_svc.log_audit(
         db,
         user_id=admin.id,
         action="DATA_EXPORT",
         table_name="payroll_records",
-        description=f"Generated payroll records for {year}-{month:02d}: {result['created']} created, {result['updated']} updated, {result['skipped']} skipped",
+        description=f"Generated payroll records for {year}-{month:02d}: {result['created']} created, {result['updated']} updated, {result['skipped']} skipped{stale_note}",
     )
 
     return result
