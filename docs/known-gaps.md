@@ -100,11 +100,13 @@
 
 ## 4. 🟡 Medium — Summaries / Payroll
 
-### #M10 統計卡僅加總當前分頁
+### #M10 統計卡僅加總當前分頁 ✅ 已修（2026-07-22）
 
 - **位置**：`apps/web/src/pages/attendance/summaries.vue`、`payroll.vue`
-- **問題**：統計卡加總**當前 overview 分頁**的列，非全月 DB 總計（`page_size` 預設 200 時影響小）。
-- **建議**：Overview 專用統計端點（全月總計，不受分頁影響）。
+- **原問題**：統計卡加總**當前分頁**的列，非全月 DB 總計。
+- **現況**：兩頁皆改用專用統計端點（全月 DB 聚合，不受分頁影響）：
+  - Summaries：`GET /attendance-summaries/overview/stats`（`getSummaryOverviewStats`）
+  - Payroll：`GET /payroll-records/stats`（`getPayrollStats`）— gross/net/approved/paid/pending 全月加總
 
 ### #M11 Generate orphan 清理（已實作，保留 seed）
 

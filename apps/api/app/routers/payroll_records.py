@@ -3,13 +3,18 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB, SuperAdminOnly
 from app.models.payroll_record import PayrollRecord, PayrollStatus
 from app.models.product import Product
-from app.schemas.payroll_record import PayrollRecordCreate, PayrollRecordOut, PayrollRecordUpdate
+from app.schemas.payroll_record import (
+    PayrollRecordCreate,
+    PayrollRecordOut,
+    PayrollRecordStatsOut,
+    PayrollRecordUpdate,
+)
 from app.services import audit_log as audit_log_svc
 from app.services.payroll_generator import generate_monthly_payroll
 from app.services.payroll_status import can_transition_payroll_status
@@ -74,6 +79,74 @@ async def list_payroll_records(
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
     return [_record_to_out(r) for r in result.scalars().all()]
+
+
+@router.get("/stats", response_model=PayrollRecordStatsOut)
+async def payroll_record_stats(
+    _admin: AdminOnly,
+    db: DB,
+    product_id: uuid.UUID | None = None,
+    status: str | None = None,
+    product_type: str | None = None,
+    year: int | None = None,
+    month: int | None = None,
+) -> PayrollRecordStatsOut:
+    """Month-wide payroll totals matching list filters (not paginated)."""
+    clauses = []
+    if product_id:
+        clauses.append(PayrollRecord.product_id == product_id)
+    if status:
+        clauses.append(PayrollRecord.status == status)
+    if year and month:
+        if not (1 <= month <= 12):
+            raise HTTPException(status_code=422, detail="month must be 1-12")
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+        clauses.append(PayrollRecord.payroll_period_start >= first_day)
+        clauses.append(PayrollRecord.payroll_period_start <= last_day)
+
+    q = select(
+        func.count(PayrollRecord.id).label("records"),
+        func.coalesce(func.sum(PayrollRecord.gross_pay), 0).label("total_gross_pay"),
+        func.coalesce(func.sum(PayrollRecord.net_pay), 0).label("total_net_pay"),
+        func.coalesce(
+            func.sum(case((PayrollRecord.status == PayrollStatus.approved.value, 1), else_=0)),
+            0,
+        ).label("approved"),
+        func.coalesce(
+            func.sum(case((PayrollRecord.status == PayrollStatus.paid.value, 1), else_=0)),
+            0,
+        ).label("paid"),
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        PayrollRecord.status.in_(
+                            [PayrollStatus.draft.value, PayrollStatus.calculated.value]
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+            0,
+        ).label("pending"),
+    ).select_from(PayrollRecord)
+
+    if product_type:
+        q = q.join(PayrollRecord.product).where(Product.product_type == product_type)
+    if clauses:
+        q = q.where(*clauses)
+
+    row = (await db.execute(q)).one()
+    return PayrollRecordStatsOut(
+        records=int(row.records or 0),
+        total_gross_pay=float(row.total_gross_pay or 0),
+        total_net_pay=float(row.total_net_pay or 0),
+        approved=int(row.approved or 0),
+        paid=int(row.paid or 0),
+        pending=int(row.pending or 0),
+    )
 
 
 @router.post("", response_model=PayrollRecordOut, status_code=status.HTTP_201_CREATED)

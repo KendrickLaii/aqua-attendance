@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { deletePayrollRecord, generatePayroll, listPayrollRecordsWithTotal, updatePayrollRecord } from '@/api/attendance/payroll'
-import type { PayrollRecord } from '@/api/attendance/payroll'
+import { deletePayrollRecord, generatePayroll, getPayrollStats, listPayrollRecordsWithTotal, updatePayrollRecord } from '@/api/attendance/payroll'
+import type { PayrollRecord, PayrollStats } from '@/api/attendance/payroll'
 import { listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
 import type { AttendanceSummary } from '@/api/attendance/summaries'
 import { listProducts } from '@/api/attendance/products'
@@ -38,6 +38,7 @@ const {
 } = usePagedList({ pageSize: 40 })
 
 const records = ref<PayrollRecord[]>([])
+const payrollStats = ref<PayrollStats | null>(null)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
@@ -105,11 +106,12 @@ const pageSubtitle = computed(() => {
 })
 
 const recordsStatCards = computed(() => {
-  const gross = records.value.reduce((sum, r) => sum + safeNumber(r.gross_pay), 0)
-  const net = records.value.reduce((sum, r) => sum + safeNumber(r.net_pay), 0)
-  const approved = records.value.filter(r => r.status === 'approved').length
-  const paid = records.value.filter(r => r.status === 'paid').length
-  const pending = records.value.filter(r => r.status === 'draft' || r.status === 'calculated').length
+  const stats = payrollStats.value
+  const gross = safeNumber(stats?.total_gross_pay ?? 0)
+  const net = safeNumber(stats?.total_net_pay ?? 0)
+  const approved = stats?.approved ?? 0
+  const paid = stats?.paid ?? 0
+  const pending = stats?.pending ?? 0
 
   return [
     {
@@ -122,21 +124,21 @@ const recordsStatCards = computed(() => {
     {
       label: 'Gross pay',
       value: formatCurrency(gross),
-      hint: 'this page',
+      hint: 'all matching',
       icon: 'ri-money-dollar-circle-line',
       color: 'info',
     },
     {
       label: 'Net pay',
       value: formatCurrency(net),
-      hint: 'this page',
+      hint: 'all matching',
       icon: 'ri-wallet-3-line',
       color: 'success',
     },
     {
       label: 'Paid',
       value: String(paid),
-      hint: `${approved} approved · ${pending} pending · this page`,
+      hint: `${approved} approved · ${pending} pending`,
       icon: 'ri-checkbox-circle-line',
       color: 'secondary',
     },
@@ -217,17 +219,26 @@ async function loadRecords(isRefresh = false, shouldResetPage = false) {
     loading.value = true
   loadError.value = ''
   try {
-    const result = await listPayrollRecordsWithTotal({
-      status: filterStatus.value || undefined,
-      product_type: filterProductType.value || undefined,
-      year: parsed.year,
-      month: parsed.month,
-      page: page.value,
-      page_size: pageSize.value,
-    })
+    const [result, stats] = await Promise.all([
+      listPayrollRecordsWithTotal({
+        status: filterStatus.value || undefined,
+        product_type: filterProductType.value || undefined,
+        year: parsed.year,
+        month: parsed.month,
+        page: page.value,
+        page_size: pageSize.value,
+      }),
+      getPayrollStats({
+        status: filterStatus.value || undefined,
+        product_type: filterProductType.value || undefined,
+        year: parsed.year,
+        month: parsed.month,
+      }),
+    ])
 
     records.value = result.items
     totalCount.value = result.total
+    payrollStats.value = stats
   }
   catch (e) {
     console.error('Failed to load payroll records', e)

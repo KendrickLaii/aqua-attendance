@@ -66,6 +66,25 @@ export async function listPayrollRecordsWithTotal(params?: {
   return await fetchAttendanceListWithTotal<PayrollRecord>('/payroll-records', params)
 }
 
+export interface PayrollStats {
+  records: number
+  total_gross_pay: number
+  total_net_pay: number
+  approved: number
+  paid: number
+  pending: number
+}
+
+export async function getPayrollStats(params?: {
+  product_id?: string
+  status?: string
+  product_type?: string
+  year?: number
+  month?: number
+}): Promise<PayrollStats> {
+  return await $attendanceApi<PayrollStats>('/payroll-records/stats', { params })
+}
+
 export async function createPayrollRecord(payload: {
   product_id: string
   payroll_period_start: string

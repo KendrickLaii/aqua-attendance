@@ -58,6 +58,17 @@ class PayrollRecordUpdate(BaseModel):
     net_pay: float | None = None
 
 
+class PayrollRecordStatsOut(BaseModel):
+    """Month-wide payroll totals matching list filters (not limited to the current page)."""
+
+    records: int
+    total_gross_pay: float
+    total_net_pay: float
+    approved: int
+    paid: int
+    pending: int
+
+
 class PayrollRecordOut(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID
