@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB
 from app.models.attendance_summary import AttendanceSummary
-from app.models.product import Product
+from app.models.unit import Unit
 from app.schemas.attendance_summary import (
     AttendanceSummaryCreate,
     AttendanceSummaryOut,
@@ -23,9 +23,9 @@ router = APIRouter(prefix="/attendance-summaries", tags=["attendance-summaries"]
 
 def _summary_to_out(summary: AttendanceSummary) -> AttendanceSummaryOut:
     out = AttendanceSummaryOut.model_validate(summary)
-    if summary.product:
-        out.product_name = summary.product.full_name
-        out.product_code = summary.product.code
+    if summary.unit:
+        out.unit_name = summary.unit.full_name
+        out.unit_code = summary.unit.code
     return out
 
 
@@ -34,21 +34,21 @@ async def list_attendance_summaries(
     _admin: AdminOnly,
     db: DB,
     response: Response,
-    product_id: uuid.UUID | None = None,
+    unit_id: uuid.UUID | None = None,
     summary_date: date | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    product_type: str | None = None,
+    unit_type: str | None = None,
     is_complete: bool | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[AttendanceSummaryOut]:
-    q = select(AttendanceSummary).options(selectinload(AttendanceSummary.product))
+    q = select(AttendanceSummary).options(selectinload(AttendanceSummary.unit))
     count_q = select(func.count()).select_from(AttendanceSummary)
 
     clauses = []
-    if product_id:
-        clauses.append(AttendanceSummary.product_id == product_id)
+    if unit_id:
+        clauses.append(AttendanceSummary.unit_id == unit_id)
     if summary_date:
         clauses.append(AttendanceSummary.summary_date == summary_date)
     if date_from:
@@ -58,9 +58,9 @@ async def list_attendance_summaries(
     if is_complete is not None:
         clauses.append(AttendanceSummary.is_complete.is_(is_complete))
 
-    if product_type:
-        q = q.join(AttendanceSummary.product).where(Product.product_type == product_type)
-        count_q = count_q.join(AttendanceSummary.product).where(Product.product_type == product_type)
+    if unit_type:
+        q = q.join(AttendanceSummary.unit).where(Unit.unit_type == unit_type)
+        count_q = count_q.join(AttendanceSummary.unit).where(Unit.unit_type == unit_type)
 
     if clauses:
         q = q.where(*clauses)
@@ -68,7 +68,7 @@ async def list_attendance_summaries(
 
     total = (await db.execute(count_q)).scalar_one()
     q = (
-        q.order_by(AttendanceSummary.product_id.asc(), AttendanceSummary.summary_date.asc())
+        q.order_by(AttendanceSummary.unit_id.asc(), AttendanceSummary.summary_date.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -84,7 +84,7 @@ async def list_attendance_summary_overview(
     response: Response,
     date_from: date,
     date_to: date,
-    product_type: str | None = None,
+    unit_type: str | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
@@ -96,10 +96,10 @@ async def list_attendance_summary_overview(
 
     q = (
         select(
-            Product.id.label("product_id"),
-            Product.full_name.label("product_name"),
-            Product.code.label("product_code"),
-            Product.product_type.label("product_type"),
+            Unit.id.label("unit_id"),
+            Unit.full_name.label("unit_name"),
+            Unit.code.label("unit_code"),
+            Unit.unit_type.label("unit_type"),
             func.count(AttendanceSummary.id).label("days_present"),
             func.sum(
                 case((AttendanceSummary.is_complete.is_(True), 1), else_=0)
@@ -123,29 +123,29 @@ async def list_attendance_summary_overview(
             func.max(AttendanceSummary.summary_date).label("last_date"),
         )
         .select_from(AttendanceSummary)
-        .join(AttendanceSummary.product)
+        .join(AttendanceSummary.unit)
     )
     count_q = (
-        select(func.count(func.distinct(AttendanceSummary.product_id)))
+        select(func.count(func.distinct(AttendanceSummary.unit_id)))
         .select_from(AttendanceSummary)
-        .join(AttendanceSummary.product)
+        .join(AttendanceSummary.unit)
     )
 
-    if product_type:
-        clauses.append(Product.product_type == product_type)
+    if unit_type:
+        clauses.append(Unit.unit_type == unit_type)
     if search:
         clauses.append(
             or_(
-                ilike_contains(Product.code, search),
-                ilike_contains(Product.full_name, search),
-                ilike_contains(Product.english_name, search),
+                ilike_contains(Unit.code, search),
+                ilike_contains(Unit.full_name, search),
+                ilike_contains(Unit.english_name, search),
             )
         )
 
     q = (
         q.where(*clauses)
-        .group_by(Product.id, Product.full_name, Product.code, Product.product_type)
-        .order_by(Product.code.asc())
+        .group_by(Unit.id, Unit.full_name, Unit.code, Unit.unit_type)
+        .order_by(Unit.code.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -157,10 +157,10 @@ async def list_attendance_summary_overview(
 
     return [
         AttendanceSummaryOverviewOut(
-            product_id=row.product_id,
-            product_name=row.product_name,
-            product_code=row.product_code,
-            product_type=row.product_type,
+            unit_id=row.unit_id,
+            unit_name=row.unit_name,
+            unit_code=row.unit_code,
+            unit_type=row.unit_type,
             days_present=row.days_present,
             days_complete=row.days_complete or 0,
             days_incomplete=row.days_incomplete or 0,
@@ -181,7 +181,7 @@ async def attendance_summary_overview_stats(
     db: DB,
     date_from: date,
     date_to: date,
-    product_type: str | None = None,
+    unit_type: str | None = None,
     search: str | None = None,
 ) -> AttendanceSummaryOverviewStatsOut:
     """Month-wide overview totals matching overview filters (not paginated)."""
@@ -189,20 +189,20 @@ async def attendance_summary_overview_stats(
         AttendanceSummary.summary_date >= date_from,
         AttendanceSummary.summary_date <= date_to,
     ]
-    if product_type:
-        clauses.append(Product.product_type == product_type)
+    if unit_type:
+        clauses.append(Unit.unit_type == unit_type)
     if search:
         clauses.append(
             or_(
-                ilike_contains(Product.code, search),
-                ilike_contains(Product.full_name, search),
-                ilike_contains(Product.english_name, search),
+                ilike_contains(Unit.code, search),
+                ilike_contains(Unit.full_name, search),
+                ilike_contains(Unit.english_name, search),
             )
         )
 
     q = (
         select(
-            func.count(func.distinct(AttendanceSummary.product_id)).label("people"),
+            func.count(func.distinct(AttendanceSummary.unit_id)).label("people"),
             func.count(AttendanceSummary.id).label("days_present"),
             func.coalesce(
                 func.sum(case((AttendanceSummary.is_complete.is_(True), 1), else_=0)),
@@ -226,7 +226,7 @@ async def attendance_summary_overview_stats(
             ),
         )
         .select_from(AttendanceSummary)
-        .join(AttendanceSummary.product)
+        .join(AttendanceSummary.unit)
         .where(*clauses)
     )
     row = (await db.execute(q)).one()
@@ -252,7 +252,7 @@ async def create_attendance_summary(
     await db.refresh(summary)
     result = await db.execute(
         select(AttendanceSummary)
-        .options(selectinload(AttendanceSummary.product))
+        .options(selectinload(AttendanceSummary.unit))
         .where(AttendanceSummary.id == summary.id)
     )
     return _summary_to_out(result.scalar_one())
@@ -264,7 +264,7 @@ async def get_attendance_summary(
 ) -> AttendanceSummaryOut:
     result = await db.execute(
         select(AttendanceSummary)
-        .options(selectinload(AttendanceSummary.product))
+        .options(selectinload(AttendanceSummary.unit))
         .where(AttendanceSummary.id == summary_id)
     )
     summary = result.scalar_one_or_none()
@@ -283,7 +283,7 @@ async def generate_summaries(
     """Manually generate attendance summaries for a month.
 
     Admin selects year/month → system calculates daily summaries
-    for every product from attendance_events and inserts/updates rows.
+    for every unit from attendance_events and inserts/updates rows.
     """
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")

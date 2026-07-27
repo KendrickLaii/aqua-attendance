@@ -35,14 +35,14 @@ class Location(Base):
     )
 
     attendance_events = relationship("AttendanceEvent", back_populates="location_ref")
-    registered_products = relationship(
-        "Product",
-        foreign_keys="Product.registered_location_id",
+    registered_units = relationship(
+        "Unit",
+        foreign_keys="Unit.registered_location_id",
         back_populates="registered_location",
     )
-    last_event_products = relationship(
-        "Product",
-        foreign_keys="Product.last_event_location_id",
+    last_event_units = relationship(
+        "Unit",
+        foreign_keys="Unit.last_event_location_id",
         back_populates="last_event_location_ref",
     )
     attendance_summaries = relationship("AttendanceSummary", back_populates="location", cascade="all, delete-orphan")

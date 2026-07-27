@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.location import Location
-from app.models.product import Product
+from app.models.unit import Unit
 
 
 async def fetch_active_locations(
@@ -49,7 +49,7 @@ def validate_scan_location_ids(scan_location_ids: list[uuid.UUID]) -> list[uuid.
     return unique_ids
 
 
-async def resolve_product_locations(
+async def resolve_unit_locations(
     db: AsyncSession,
     *,
     registered_location_id: uuid.UUID,
@@ -64,30 +64,30 @@ async def resolve_product_locations(
 
 
 async def replace_scan_locations(
-    product: Product,
+    unit: Unit,
     scan_locations: list[Location],
 ) -> None:
-    product.scan_locations = scan_locations
+    unit.scan_locations = scan_locations
 
 
-async def load_product_with_locations(
+async def load_unit_with_locations(
     db: AsyncSession,
-    product_id: uuid.UUID,
-) -> Product | None:
+    unit_id: uuid.UUID,
+) -> Unit | None:
     result = await db.execute(
-        select(Product)
+        select(Unit)
         .options(
-            selectinload(Product.registered_location),
-            selectinload(Product.scan_locations),
-            selectinload(Product.student_profile),
-            selectinload(Product.staff_profile),
+            selectinload(Unit.registered_location),
+            selectinload(Unit.scan_locations),
+            selectinload(Unit.student_profile),
+            selectinload(Unit.staff_profile),
         )
-        .where(Product.id == product_id)
+        .where(Unit.id == unit_id)
     )
     return result.scalar_one_or_none()
 
 
-def product_allows_location(product: Product, location_id: uuid.UUID | None) -> bool:
+def unit_allows_location(unit: Unit, location_id: uuid.UUID | None) -> bool:
     if location_id is None:
         return False
-    return any(loc.id == location_id for loc in product.scan_locations)
+    return any(loc.id == location_id for loc in unit.scan_locations)

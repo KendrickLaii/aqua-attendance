@@ -1,6 +1,6 @@
 """Regression: payroll generate flags summaries that are stale vs their events.
 
-Covers KNOWN-GAPS #M15 — detect_stale_summary_products compares the latest
+Covers KNOWN-GAPS #M15 — detect_stale_summary_units compares the latest
 attendance-event mutation (insert/void) against the summary's updated_at.
 """
 
@@ -12,21 +12,21 @@ from httpx import AsyncClient
 
 from app.models.attendance import AttendanceEvent
 from app.models.attendance_summary import AttendanceSummary
-from app.services.payroll_generator import detect_stale_summary_products
+from app.services.payroll_generator import detect_stale_summary_units
 from tests.conftest import TestSessionLocal
 
 YEAR, MONTH = 2026, 3
 SUMMARY_DAY = date(YEAR, MONTH, 15)
 
 
-async def _staff_product(client: AsyncClient, token: str, location_id: str) -> dict:
+async def _staff_unit(client: AsyncClient, token: str, location_id: str) -> dict:
     code = f"STF-{uuid.uuid4().hex[:6]}"
     resp = await client.post(
-        "/api/products",
+        "/api/units",
         json={
             "code": code,
             "full_name": "Test Staff",
-            "product_type": "staff",
+            "unit_type": "staff",
             "registered_location_id": location_id,
             "scan_location_ids": [location_id],
         },
@@ -40,10 +40,10 @@ def _dt(day: int, hour: int = 9) -> datetime:
     return datetime(YEAR, MONTH, day, hour, tzinfo=timezone.utc)
 
 
-async def _add_summary(session, product_id: str, location_id: str, updated_at: datetime) -> None:
+async def _add_summary(session, unit_id: str, location_id: str, updated_at: datetime) -> None:
     session.add(
         AttendanceSummary(
-            product_id=uuid.UUID(product_id),
+            unit_id=uuid.UUID(unit_id),
             summary_date=SUMMARY_DAY,
             location_id=uuid.UUID(location_id),
             created_at=updated_at,
@@ -54,7 +54,7 @@ async def _add_summary(session, product_id: str, location_id: str, updated_at: d
 
 async def _add_event(
     session,
-    product_id: str,
+    unit_id: str,
     location_id: str,
     *,
     created_at: datetime,
@@ -62,7 +62,7 @@ async def _add_event(
 ) -> None:
     session.add(
         AttendanceEvent(
-            product_id=uuid.UUID(product_id),
+            unit_id=uuid.UUID(unit_id),
             event_type="check_in",
             source="scan",
             recorded_at=_dt(15),
@@ -78,10 +78,10 @@ async def test_detects_outdated_missing_and_voided(
     client: AsyncClient, admin_token: str, sample_location: dict
 ) -> None:
     loc = sample_location["id"]
-    fresh = await _staff_product(client, admin_token, loc)
-    outdated = await _staff_product(client, admin_token, loc)
-    missing = await _staff_product(client, admin_token, loc)
-    voided = await _staff_product(client, admin_token, loc)
+    fresh = await _staff_unit(client, admin_token, loc)
+    outdated = await _staff_unit(client, admin_token, loc)
+    missing = await _staff_unit(client, admin_token, loc)
+    voided = await _staff_unit(client, admin_token, loc)
 
     async with TestSessionLocal() as session:
         # fresh: summary generated AFTER its event → up to date
@@ -101,11 +101,11 @@ async def test_detects_outdated_missing_and_voided(
 
         await session.commit()
 
-        stale = await detect_stale_summary_products(
-            session, year=YEAR, month=MONTH, product_type="staff"
+        stale = await detect_stale_summary_units(
+            session, year=YEAR, month=MONTH, unit_type="staff"
         )
 
-    by_id = {s["product_id"]: s["reason"] for s in stale}
+    by_id = {s["unit_id"]: s["reason"] for s in stale}
     assert fresh["id"] not in by_id
     assert by_id.get(outdated["id"]) == "outdated"
     assert by_id.get(missing["id"]) == "no_summary"
@@ -117,19 +117,19 @@ async def test_generate_payroll_returns_stale_warning(
     client: AsyncClient, admin_token: str, sample_location: dict
 ) -> None:
     loc = sample_location["id"]
-    product = await _staff_product(client, admin_token, loc)
+    unit = await _staff_unit(client, admin_token, loc)
 
     async with TestSessionLocal() as session:
-        await _add_summary(session, product["id"], loc, updated_at=_dt(16))
-        await _add_event(session, product["id"], loc, created_at=_dt(17))
+        await _add_summary(session, unit["id"], loc, updated_at=_dt(16))
+        await _add_event(session, unit["id"], loc, created_at=_dt(17))
         await session.commit()
 
     resp = await client.post(
         "/api/payroll-records/generate",
-        params={"year": YEAR, "month": MONTH, "product_type": "staff"},
+        params={"year": YEAR, "month": MONTH, "unit_type": "staff"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 200
     body = resp.json()
     stale = body.get("stale_summaries") or []
-    assert any(s["product_id"] == product["id"] and s["reason"] == "outdated" for s in stale)
+    assert any(s["unit_id"] == unit["id"] and s["reason"] == "outdated" for s in stale)

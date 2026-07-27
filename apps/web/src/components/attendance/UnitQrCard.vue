@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { useIntersectionObserver } from '@vueuse/core'
-import type { Product } from '@/api/attendance/products'
+import type { Unit } from '@/api/attendance/units'
 import { getQRToken } from '@/api/attendance/events'
 import { useQrImageUrl } from '@/composables/useQrImageUrl'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { PRODUCT_QR_CARD_IMAGE_SIZE } from '@/utils/printProductQrs'
+import { UNIT_QR_CARD_IMAGE_SIZE } from '@/utils/printUnitQrs'
 
 const props = defineProps<{
-  product: Product
+  unit: Unit
 }>()
 
 const emit = defineEmits<{
@@ -23,7 +23,7 @@ const loadError = ref('')
 const loadingToken = ref(false)
 const hasLoaded = ref(false)
 
-const { qrImageUrl, qrImageError, qrImageLoading } = useQrImageUrl(token, PRODUCT_QR_CARD_IMAGE_SIZE)
+const { qrImageUrl, qrImageError, qrImageLoading } = useQrImageUrl(token, UNIT_QR_CARD_IMAGE_SIZE)
 
 async function loadQrToken() {
   if (hasLoaded.value || loadingToken.value)
@@ -32,7 +32,7 @@ async function loadQrToken() {
   loadingToken.value = true
   loadError.value = ''
   try {
-    const data = await getQRToken(props.product.id)
+    const data = await getQRToken(props.unit.id)
 
     token.value = data.qr_token
     hasLoaded.value = true
@@ -77,21 +77,21 @@ function typeLabel(type: string) {
     class="h-100"
   >
     <VCard
-      class="qr-product-card text-center h-100"
+      class="qr-unit-card text-center h-100"
       variant="outlined"
     >
-      <div class="qr-product-card__select">
+      <div class="qr-unit-card__select">
         <VCheckbox
           v-model="selected"
           density="compact"
           hide-details
-          :aria-label="`Select ${product.full_name}`"
+          :aria-label="`Select ${unit.full_name}`"
           @click.stop
         />
       </div>
 
       <VCardText class="pt-8 pb-3">
-        <div class="qr-product-card__image-wrap d-flex justify-center align-center mx-auto mb-3">
+        <div class="qr-unit-card__image-wrap d-flex justify-center align-center mx-auto mb-3">
           <VProgressCircular
             v-if="showQrSpinner"
             indeterminate
@@ -110,36 +110,36 @@ function typeLabel(type: string) {
           <VImg
             v-else-if="qrImageUrl"
             :src="qrImageUrl"
-            :width="PRODUCT_QR_CARD_IMAGE_SIZE"
-            :height="PRODUCT_QR_CARD_IMAGE_SIZE"
-            class="qr-product-card__image rounded"
-            :alt="`QR code for ${product.full_name}`"
+            :width="UNIT_QR_CARD_IMAGE_SIZE"
+            :height="UNIT_QR_CARD_IMAGE_SIZE"
+            class="qr-unit-card__image rounded"
+            :alt="`QR code for ${unit.full_name}`"
           />
         </div>
 
         <div
-          class="qr-product-name text-subtitle-2 font-weight-bold"
-          :title="product.full_name"
+          class="qr-unit-name text-subtitle-2 font-weight-bold"
+          :title="unit.full_name"
         >
-          {{ product.full_name }}
+          {{ unit.full_name }}
         </div>
         <div class="text-body-2 text-medium-emphasis mb-2">
-          {{ product.code }}
+          {{ unit.code }}
         </div>
         <div class="d-flex justify-center gap-2 mb-2">
           <VChip
-            :color="typeColor(product.product_type)"
+            :color="typeColor(unit.unit_type)"
             size="small"
             label
           >
-            {{ typeLabel(product.product_type) }}
+            {{ typeLabel(unit.unit_type) }}
           </VChip>
         </div>
         <div
           class="text-caption"
-          :class="product.last_event_at && product.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
+          :class="unit.last_event_at && unit.attendance_status === 'checked_in' ? 'text-success' : 'text-medium-emphasis'"
         >
-          {{ formatLastAttendance(product, { compact: true }) }}
+          {{ formatLastAttendance(unit, { compact: true }) }}
         </div>
       </VCardText>
 
@@ -158,7 +158,7 @@ function typeLabel(type: string) {
 </template>
 
 <style scoped lang="scss">
-.qr-product-card {
+.qr-unit-card {
   position: relative;
   height: 100%;
 
@@ -181,7 +181,7 @@ function typeLabel(type: string) {
   }
 }
 
-.qr-product-name {
+.qr-unit-name {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;

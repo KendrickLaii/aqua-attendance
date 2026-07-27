@@ -3,8 +3,8 @@ import { deletePayrollRecord, generatePayroll, getPayrollStats, listPayrollRecor
 import type { PayrollRecord, PayrollStats } from '@/api/attendance/payroll'
 import { listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
 import type { AttendanceSummary } from '@/api/attendance/summaries'
-import { listProducts } from '@/api/attendance/products'
-import type { Product } from '@/api/attendance/products'
+import { listUnits } from '@/api/attendance/units'
+import type { Unit } from '@/api/attendance/units'
 import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
 import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -44,7 +44,7 @@ const refreshing = ref(false)
 const loadError = ref('')
 
 const filterStatus = ref('')
-const filterProductType = ref('staff')
+const filterUnitType = ref('staff')
 const generating = ref(false)
 const generateError = ref('')
 const generateSuccess = ref<{ title: string; detail?: string; warning?: string } | null>(null)
@@ -55,11 +55,11 @@ const selectedRecord = ref<PayrollRecord | null>(null)
 const summaries = ref<AttendanceSummary[]>([])
 const detailTotalCount = ref(0)
 
-// Stepper workflow state (configure = Products+Month, result = invoice cards)
+// Stepper workflow state (configure = Units+Month, result = invoice cards)
 const step = ref('configure')
-const stepProducts = ref<Product[]>([])
-const stepProductsLoading = ref(false)
-const stepProductsError = ref('')
+const stepUnits = ref<Unit[]>([])
+const stepUnitsLoading = ref(false)
+const stepUnitsError = ref('')
 const stepSelectedIds = ref<string[]>([])
 const stepSearch = ref('')
 /** Default: only staff who have attendance summaries for the payroll month. */
@@ -93,13 +93,13 @@ const pageSubtitle = computed(() => {
     return 'Loading…'
 
   if (isDetailView.value && selectedRecord.value)
-    return `${selectedRecord.value.product_name || selectedRecord.value.product_code} · ${monthLabel.value}`
+    return `${selectedRecord.value.unit_name || selectedRecord.value.unit_code} · ${monthLabel.value}`
 
   if (viewMode.value === 'wizard') {
     if (step.value === 'result')
       return `${stepMonthLabel.value} · ${generatedRecords.value.length} generated`
 
-    return `${stepMonthLabel.value} · ${stepSelectedCount.value} of ${stepProducts.value.length} staff selected`
+    return `${stepMonthLabel.value} · ${stepSelectedCount.value} of ${stepUnits.value.length} staff selected`
   }
 
   return `${monthLabel.value} · ${totalCount.value} record${totalCount.value === 1 ? '' : 's'}`
@@ -165,20 +165,20 @@ const detailTotals = computed(() => {
 
 
 
-const stepFilteredProducts = computed(() => {
+const stepFilteredUnits = computed(() => {
   const q = stepSearch.value.trim().toLowerCase()
   if (!q)
-    return stepProducts.value
+    return stepUnits.value
 
-  return stepProducts.value.filter(p =>
-    p.full_name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q),
+  return stepUnits.value.filter(u =>
+    u.full_name.toLowerCase().includes(q) || u.code.toLowerCase().includes(q),
   )
 })
 
 const stepAllSelected = computed({
-  get: () => stepProducts.value.length > 0 && stepSelectedIds.value.length === stepProducts.value.length,
+  get: () => stepUnits.value.length > 0 && stepSelectedIds.value.length === stepUnits.value.length,
   set: (val: boolean) => {
-    stepSelectedIds.value = val ? stepProducts.value.map(p => p.id) : []
+    stepSelectedIds.value = val ? stepUnits.value.map(u => u.id) : []
   },
 })
 
@@ -192,10 +192,10 @@ onMounted(async () => {
   toStepCurrentMonth()
   await loadRecords()
   if (viewMode.value === 'wizard')
-    loadStepProducts()
+    loadStepUnits()
 })
 
-watch([yearMonth, filterStatus, filterProductType], () => {
+watch([yearMonth, filterStatus, filterUnitType], () => {
   selectedRecord.value = null
   summaries.value = []
   loadRecords(true, true)
@@ -222,7 +222,7 @@ async function loadRecords(isRefresh = false, shouldResetPage = false) {
     const [result, stats] = await Promise.all([
       listPayrollRecordsWithTotal({
         status: filterStatus.value || undefined,
-        product_type: filterProductType.value || undefined,
+        unit_type: filterUnitType.value || undefined,
         year: parsed.year,
         month: parsed.month,
         page: page.value,
@@ -230,7 +230,7 @@ async function loadRecords(isRefresh = false, shouldResetPage = false) {
       }),
       getPayrollStats({
         status: filterStatus.value || undefined,
-        product_type: filterProductType.value || undefined,
+        unit_type: filterUnitType.value || undefined,
         year: parsed.year,
         month: parsed.month,
       }),
@@ -262,7 +262,7 @@ async function loadDetail(isRefresh = false) {
   loadError.value = ''
   try {
     const result = await listSummariesWithTotal({
-      product_id: selectedRecord.value.product_id,
+      unit_id: selectedRecord.value.unit_id,
       date_from: range.date_from,
       date_to: range.date_to,
       page: 1,
@@ -367,9 +367,9 @@ function resetWizard() {
   step.value = 'configure'
   stepMonth.value = yearMonth.value
   stepSearch.value = ''
-  stepProducts.value = []
+  stepUnits.value = []
   stepSelectedIds.value = []
-  stepProductsError.value = ''
+  stepUnitsError.value = ''
   stepShowAllStaff.value = false
   stepStaffWithSummariesCount.value = 0
   generateError.value = ''
@@ -381,7 +381,7 @@ function showWizard() {
   resetWizard()
   viewMode.value = 'wizard'
   selectedRecord.value = null
-  loadStepProducts()
+  loadStepUnits()
   summaries.value = []
 }
 
@@ -390,66 +390,66 @@ function showRecords() {
   loadRecords(true, true)
 }
 
-async function loadStepProducts() {
-  stepProductsLoading.value = true
-  stepProductsError.value = ''
+async function loadStepUnits() {
+  stepUnitsLoading.value = true
+  stepUnitsError.value = ''
   try {
     const range = stepMonthDateRange.value
     if (!range) {
-      stepProducts.value = []
+      stepUnits.value = []
       stepSelectedIds.value = []
       stepStaffWithSummariesCount.value = 0
-      stepProductsError.value = 'Select a valid month'
+      stepUnitsError.value = 'Select a valid month'
 
       return
     }
 
     const [allStaff, overview] = await Promise.all([
-      listProducts({ product_type: 'staff', page_size: 200 }),
+      listUnits({ unit_type: 'staff', page_size: 200 }),
       listSummaryOverview({
         date_from: range.date_from,
         date_to: range.date_to,
-        product_type: 'staff',
+        unit_type: 'staff',
         page: 1,
         page_size: 200,
       }),
     ])
 
-    const withSummaryIds = new Set(overview.items.map(item => item.product_id))
+    const withSummaryIds = new Set(overview.items.map(item => item.unit_id))
     stepStaffWithSummariesCount.value = withSummaryIds.size
 
     const sorted = [...allStaff].sort((a, b) => a.full_name.localeCompare(b.full_name))
-    stepProducts.value = stepShowAllStaff.value
+    stepUnits.value = stepShowAllStaff.value
       ? sorted
-      : sorted.filter(p => withSummaryIds.has(p.id))
+      : sorted.filter(u => withSummaryIds.has(u.id))
 
     // Keep prior selection when possible; otherwise select everyone in the visible list
-    const visibleIds = new Set(stepProducts.value.map(p => p.id))
+    const visibleIds = new Set(stepUnits.value.map(u => u.id))
     const kept = stepSelectedIds.value.filter(id => visibleIds.has(id))
     stepSelectedIds.value = kept.length > 0
       ? kept
-      : stepProducts.value.map(p => p.id)
+      : stepUnits.value.map(u => u.id)
   }
   catch (e) {
-    console.error('Failed to load products for payroll generation', e)
-    stepProductsError.value = formatApiError(e, 'Failed to load products')
+    console.error('Failed to load units for payroll generation', e)
+    stepUnitsError.value = formatApiError(e, 'Failed to load units')
   }
   finally {
-    stepProductsLoading.value = false
+    stepUnitsLoading.value = false
   }
 }
 
 watch(step, newStep => {
   if (newStep === 'configure')
-    loadStepProducts()
+    loadStepUnits()
 })
 
 watch([stepMonth, stepShowAllStaff], () => {
   if (viewMode.value === 'wizard' && step.value === 'configure')
-    loadStepProducts()
+    loadStepUnits()
 })
 
-function toggleStepProduct(id: string) {
+function toggleStepUnit(id: string) {
   const idx = stepSelectedIds.value.indexOf(id)
   if (idx === -1)
     stepSelectedIds.value.push(id)
@@ -465,7 +465,7 @@ async function handleGenerate() {
     return
   }
   if (stepSelectedCount.value === 0) {
-    generateError.value = 'Select at least one product'
+    generateError.value = 'Select at least one unit'
 
     return
   }
@@ -481,11 +481,11 @@ async function handleGenerate() {
     const generateResult = await generatePayroll(year, month, 'staff', idsToSend)
 
     generateSuccess.value = formatPayrollGenerateMessage(generateResult, year, month)
-    filterProductType.value = 'staff'
+    filterUnitType.value = 'staff'
     yearMonth.value = stepMonth.value
 
     const result = await listPayrollRecordsWithTotal({
-      product_type: 'staff',
+      unit_type: 'staff',
       year,
       month,
       page: 1,
@@ -493,7 +493,7 @@ async function handleGenerate() {
     })
 
     generatedRecords.value = result.items.filter(r =>
-      idsToSend ? idsToSend.includes(r.product_id) : true,
+      idsToSend ? idsToSend.includes(r.unit_id) : true,
     )
     viewMode.value = 'wizard'
     step.value = 'result'
@@ -715,10 +715,10 @@ function formatCurrency(n: number | null | undefined) {
                     </VAvatar>
                   </template>
                   <VCardTitle class="text-subtitle-1">
-                    Staff products
+                    Staff units
                   </VCardTitle>
                   <VCardSubtitle>
-                    {{ stepProducts.length }} shown · {{ stepSelectedCount }} selected
+                    {{ stepUnits.length }} shown · {{ stepSelectedCount }} selected
                     <template v-if="!stepShowAllStaff">
                       · {{ stepStaffWithSummariesCount }} with summaries this month
                     </template>
@@ -752,40 +752,40 @@ function formatCurrency(n: number | null | undefined) {
                   </div>
 
                   <VProgressLinear
-                    v-if="stepProductsLoading"
+                    v-if="stepUnitsLoading"
                     indeterminate
                     color="primary"
                     class="mb-2"
                   />
                   <VAlert
-                    v-else-if="stepProductsError"
+                    v-else-if="stepUnitsError"
                     type="error"
                     variant="tonal"
                     density="compact"
                     class="mb-2"
                   >
-                    {{ stepProductsError }}
+                    {{ stepUnitsError }}
                   </VAlert>
 
-                  <div class="product-list">
+                  <div class="unit-list">
                     <VListItem
-                      v-for="p in stepFilteredProducts"
-                      :key="p.id"
-                      :title="p.full_name"
-                      :subtitle="p.code"
+                      v-for="u in stepFilteredUnits"
+                      :key="u.id"
+                      :title="u.full_name"
+                      :subtitle="u.code"
                       density="comfortable"
-                      class="product-list-item"
-                      :active="stepSelectedIds.includes(p.id)"
+                      class="unit-list-item"
+                      :active="stepSelectedIds.includes(u.id)"
                       color="primary"
-                      @click="toggleStepProduct(p.id)"
+                      @click="toggleStepUnit(u.id)"
                     >
                       <template #prepend>
                         <VCheckbox
-                          :model-value="stepSelectedIds.includes(p.id)"
+                          :model-value="stepSelectedIds.includes(u.id)"
                           density="comfortable"
                           hide-details
                           color="primary"
-                          @click.stop="toggleStepProduct(p.id)"
+                          @click.stop="toggleStepUnit(u.id)"
                         />
                       </template>
                       <template #append>
@@ -801,7 +801,7 @@ function formatCurrency(n: number | null | undefined) {
                       </template>
                     </VListItem>
                     <div
-                      v-if="!stepProductsLoading && stepFilteredProducts.length === 0"
+                      v-if="!stepUnitsLoading && stepFilteredUnits.length === 0"
                       class="text-center text-medium-emphasis py-8"
                     >
                       <template v-if="!stepShowAllStaff && stepSearch.trim() === ''">
@@ -809,7 +809,7 @@ function formatCurrency(n: number | null | undefined) {
                         Generate Summaries first, or enable Show all staff.
                       </template>
                       <template v-else>
-                        No staff products found.
+                        No staff units found.
                       </template>
                     </div>
                   </div>
@@ -966,7 +966,7 @@ function formatCurrency(n: number | null | undefined) {
                       <template #title>
                         <div class="d-flex align-center gap-2 flex-wrap">
                           <span class="text-h6 font-weight-bold">
-                            {{ record.product_name || '—' }}
+                            {{ record.unit_name || '—' }}
                           </span>
                           <VChip
                             :color="statusColorMap[record.status] ?? 'grey'"
@@ -980,7 +980,7 @@ function formatCurrency(n: number | null | undefined) {
                       </template>
                       <template #subtitle>
                         <div class="text-medium-emphasis">
-                          {{ record.product_code || record.product_id }}
+                          {{ record.unit_code || record.unit_id }}
                         </div>
                       </template>
                     </VCardItem>
@@ -1224,7 +1224,7 @@ function formatCurrency(n: number | null | undefined) {
           md="3"
         >
           <VSelect
-            v-model="filterProductType"
+            v-model="filterUnitType"
             :items="[{ title: 'Staff', value: 'staff' }, { title: 'Student', value: 'student' }]"
             item-title="title"
             item-value="value"
@@ -1278,7 +1278,7 @@ function formatCurrency(n: number | null | undefined) {
           >
             <thead>
               <tr>
-                <th>Product</th>
+                <th>Unit</th>
                 <th class="text-end">
                   <span class="th-label">
                     <VIcon
@@ -1353,13 +1353,13 @@ function formatCurrency(n: number | null | undefined) {
                     </VAvatar>
                     <div>
                       <div class="font-weight-medium">
-                        {{ r.product_name || '—' }}
+                        {{ r.unit_name || '—' }}
                       </div>
                       <div
-                        v-if="r.product_code"
+                        v-if="r.unit_code"
                         class="text-caption text-medium-emphasis"
                       >
-                        {{ r.product_code }}
+                        {{ r.unit_code }}
                       </div>
                     </div>
                   </div>
@@ -1506,7 +1506,7 @@ function formatCurrency(n: number | null | undefined) {
           </VBtn>
           <div>
             <div class="font-weight-medium">
-              {{ selectedRecord.product_name || selectedRecord.product_code }}
+              {{ selectedRecord.unit_name || selectedRecord.unit_code }}
             </div>
             <div class="text-caption text-medium-emphasis">
               {{ monthLabel }} · {{ selectedRecord.payroll_period_start }} – {{ selectedRecord.payroll_period_end }}
@@ -1718,7 +1718,7 @@ function formatCurrency(n: number | null | undefined) {
                 colspan="8"
                 class="text-center text-medium-emphasis py-6"
               >
-                No daily summaries found for this product in {{ monthLabel }}.
+                No daily summaries found for this unit in {{ monthLabel }}.
               </td>
             </tr>
           </tbody>
@@ -1739,7 +1739,7 @@ function formatCurrency(n: number | null | undefined) {
           Confirm Delete
         </VCardTitle>
         <VCardText>
-          Delete payroll record for <strong>{{ deleteTarget.product_name || deleteTarget.product_code || deleteTarget.product_id }}</strong> ({{ deleteTarget.payroll_period_start }} – {{ deleteTarget.payroll_period_end }})?
+          Delete payroll record for <strong>{{ deleteTarget.unit_name || deleteTarget.unit_code || deleteTarget.unit_id }}</strong> ({{ deleteTarget.payroll_period_start }} – {{ deleteTarget.payroll_period_end }})?
         </VCardText>
         <VCardActions class="justify-end">
           <VBtn
@@ -1809,14 +1809,14 @@ function formatCurrency(n: number | null | undefined) {
   }
 }
 
-.product-list {
+.unit-list {
   max-block-size: 340px;
   overflow-y: auto;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 4px;
 }
 
-.product-list-item {
+.unit-list-item {
   cursor: pointer;
 }
 

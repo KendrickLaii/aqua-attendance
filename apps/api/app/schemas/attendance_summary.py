@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class AttendanceSummaryCreate(BaseModel):
-    product_id: uuid.UUID
+    unit_id: uuid.UUID
     summary_date: date
     location_id: uuid.UUID
     first_check_in: datetime | None = None
@@ -26,9 +26,9 @@ class AttendanceSummaryCreate(BaseModel):
 
 class AttendanceSummaryOut(BaseModel):
     id: uuid.UUID
-    product_id: uuid.UUID
-    product_name: str | None = None
-    product_code: str | None = None
+    unit_id: uuid.UUID
+    unit_name: str | None = None
+    unit_code: str | None = None
     summary_date: date
     location_id: uuid.UUID
     first_check_in: datetime | None = None
@@ -52,10 +52,10 @@ class AttendanceSummaryOut(BaseModel):
 
 
 class AttendanceSummaryOverviewOut(BaseModel):
-    product_id: uuid.UUID
-    product_name: str | None = None
-    product_code: str | None = None
-    product_type: str
+    unit_id: uuid.UUID
+    unit_name: str | None = None
+    unit_code: str | None = None
+    unit_type: str
     days_present: int
     days_complete: int
     days_incomplete: int

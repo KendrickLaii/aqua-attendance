@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB, SuperAdminOnly
 from app.models.payroll_record import PayrollRecord, PayrollStatus
-from app.models.product import Product
+from app.models.unit import Unit
 from app.schemas.payroll_record import (
     PayrollRecordCreate,
     PayrollRecordOut,
@@ -24,9 +24,9 @@ router = APIRouter(prefix="/payroll-records", tags=["payroll-records"])
 
 def _record_to_out(record: PayrollRecord) -> PayrollRecordOut:
     out = PayrollRecordOut.model_validate(record)
-    if record.product:
-        out.product_name = record.product.full_name
-        out.product_code = record.product.code
+    if record.unit:
+        out.unit_name = record.unit.full_name
+        out.unit_code = record.unit.code
     return out
 
 
@@ -35,20 +35,20 @@ async def list_payroll_records(
     _admin: AdminOnly,
     db: DB,
     response: Response,
-    product_id: uuid.UUID | None = None,
+    unit_id: uuid.UUID | None = None,
     status: str | None = None,
-    product_type: str | None = None,
+    unit_type: str | None = None,
     year: int | None = None,
     month: int | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[PayrollRecordOut]:
-    q = select(PayrollRecord).options(selectinload(PayrollRecord.product))
+    q = select(PayrollRecord).options(selectinload(PayrollRecord.unit))
     count_q = select(func.count()).select_from(PayrollRecord)
 
     clauses = []
-    if product_id:
-        clauses.append(PayrollRecord.product_id == product_id)
+    if unit_id:
+        clauses.append(PayrollRecord.unit_id == unit_id)
     if status:
         clauses.append(PayrollRecord.status == status)
     if year and month:
@@ -59,14 +59,14 @@ async def list_payroll_records(
         clauses.append(PayrollRecord.payroll_period_start >= first_day)
         clauses.append(PayrollRecord.payroll_period_start <= last_day)
 
-    needs_product_join = product_type is not None
-    if product_type:
-        clauses.append(Product.product_type == product_type)
+    needs_unit_join = unit_type is not None
+    if unit_type:
+        clauses.append(Unit.unit_type == unit_type)
 
     if clauses:
-        if needs_product_join:
-            q = q.join(PayrollRecord.product)
-            count_q = count_q.join(PayrollRecord.product)
+        if needs_unit_join:
+            q = q.join(PayrollRecord.unit)
+            count_q = count_q.join(PayrollRecord.unit)
         q = q.where(*clauses)
         count_q = count_q.where(*clauses)
 
@@ -85,16 +85,16 @@ async def list_payroll_records(
 async def payroll_record_stats(
     _admin: AdminOnly,
     db: DB,
-    product_id: uuid.UUID | None = None,
+    unit_id: uuid.UUID | None = None,
     status: str | None = None,
-    product_type: str | None = None,
+    unit_type: str | None = None,
     year: int | None = None,
     month: int | None = None,
 ) -> PayrollRecordStatsOut:
     """Month-wide payroll totals matching list filters (not paginated)."""
     clauses = []
-    if product_id:
-        clauses.append(PayrollRecord.product_id == product_id)
+    if unit_id:
+        clauses.append(PayrollRecord.unit_id == unit_id)
     if status:
         clauses.append(PayrollRecord.status == status)
     if year and month:
@@ -133,8 +133,8 @@ async def payroll_record_stats(
         ).label("pending"),
     ).select_from(PayrollRecord)
 
-    if product_type:
-        q = q.join(PayrollRecord.product).where(Product.product_type == product_type)
+    if unit_type:
+        q = q.join(PayrollRecord.unit).where(Unit.unit_type == unit_type)
     if clauses:
         q = q.where(*clauses)
 
@@ -159,7 +159,7 @@ async def create_payroll_record(
     await db.refresh(record)
     result = await db.execute(
         select(PayrollRecord)
-        .options(selectinload(PayrollRecord.product))
+        .options(selectinload(PayrollRecord.unit))
         .where(PayrollRecord.id == record.id)
     )
     return _record_to_out(result.scalar_one())
@@ -171,7 +171,7 @@ async def get_payroll_record(
 ) -> PayrollRecordOut:
     result = await db.execute(
         select(PayrollRecord)
-        .options(selectinload(PayrollRecord.product))
+        .options(selectinload(PayrollRecord.unit))
         .where(PayrollRecord.id == record_id)
     )
     record = result.scalar_one_or_none()
@@ -218,7 +218,7 @@ async def update_payroll_record(
     await db.refresh(record)
     result = await db.execute(
         select(PayrollRecord)
-        .options(selectinload(PayrollRecord.product))
+        .options(selectinload(PayrollRecord.unit))
         .where(PayrollRecord.id == record.id)
     )
     return _record_to_out(result.scalar_one())
@@ -230,20 +230,20 @@ async def generate_payroll_records(
     db: DB,
     year: int,
     month: int,
-    product_type: str | None = "staff",
-    product_ids: list[uuid.UUID] | None = Query(default=None),
+    unit_type: str | None = "staff",
+    unit_ids: list[uuid.UUID] | None = Query(default=None),
 ) -> dict:
     """Manually generate payroll records for a month from attendance summaries.
 
-    Admin selects year/month (and optionally specific products) → system
-    aggregates daily attendance summaries per product and inserts/updates
+    Admin selects year/month (and optionally specific units) → system
+    aggregates daily attendance summaries per unit and inserts/updates
     payroll records, calculating pay from staff pay-rate fields.
     """
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
 
     result = await generate_monthly_payroll(
-        db, year=year, month=month, product_type=product_type, product_ids=product_ids
+        db, year=year, month=month, unit_type=unit_type, unit_ids=unit_ids
     )
 
     stale_count = len(result.get("stale_summaries") or [])

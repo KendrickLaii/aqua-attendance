@@ -4,11 +4,11 @@ import {
   maxCharsRule,
   requiredValidator,
 } from '@core/utils/validators'
-import { createProduct, deleteProduct, listProductsWithTotal, updateProduct, updateStaffProfile, updateStudentProfile } from '@/api/attendance/products'
-import type { Product } from '@/api/attendance/products'
+import { createUnit, deleteUnit, listUnitsWithTotal, updateUnit, updateStaffProfile, updateStudentProfile } from '@/api/attendance/units'
+import type { Unit } from '@/api/attendance/units'
 import { listLocations } from '@/api/attendance/locations'
 import type { LocationItem } from '@/api/attendance/locations'
-import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
+import UnitQrDialogs from '@/components/attendance/UnitQrDialogs.vue'
 import AppToastStack from '@/components/AppToastStack.vue'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -24,7 +24,7 @@ const { authStore, ensureAccess } = useAttendanceAdminGate()
 const { show: showToast } = useToast()
 const router = useRouter()
 
-const products = ref<Product[]>([])
+const units = ref<Unit[]>([])
 const locations = ref<LocationItem[]>([])
 const totalCount = ref(0)
 const page = ref(1)
@@ -32,13 +32,13 @@ const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 const dialogOpen = ref(false)
-const editingProduct = ref<Product | null>(null)
+const editingUnit = ref<Unit | null>(null)
 
 const form = reactive({
   code: '',
   full_name: '',
   english_name: '',
-  product_type: 'student' as 'student' | 'staff',
+  unit_type: 'student' as 'student' | 'staff',
   is_active: true,
   status: 'active',
   gender: '',
@@ -91,10 +91,10 @@ const filterType = ref('')
 const filterActive = ref('')
 const filterAttendance = ref('')
 const filterEmployment = ref('')
-const qrDialogsRef = ref<InstanceType<typeof ProductQrDialogs> | null>(null)
+const qrDialogsRef = ref<InstanceType<typeof UnitQrDialogs> | null>(null)
 
 const deleteConfirmOpen = ref(false)
-const deleteTarget = ref<Product | null>(null)
+const deleteTarget = ref<Unit | null>(null)
 const deleting = ref(false)
 const deleteError = ref('')
 
@@ -161,7 +161,7 @@ const relationshipOptions = [
   'Other',
 ]
 
-const productFormRef = ref<VForm>()
+const unitFormRef = ref<VForm>()
 
 const codeRules = [requiredValidator, maxCharsRule(100, 'Code')] as const
 const fullNameRules = [requiredValidator, maxCharsRule(255, 'Full name')] as const
@@ -173,7 +173,7 @@ const pageSubtitle = computed(() => {
     return 'Loading…'
 
   const total = totalCount.value
-  let label = `${total} product${total === 1 ? '' : 's'}`
+  let label = `${total} unit${total === 1 ? '' : 's'}`
   if (filterAttendance.value === 'checked_in')
     label += ' · checked in'
   else if (filterAttendance.value === 'checked_out')
@@ -189,10 +189,10 @@ const listCaption = computed(() => {
     return ''
 
   const from = (page.value - 1) * pageSize.value + 1
-  const to = from + products.value.length - 1
+  const to = from + units.value.length - 1
 
   if (totalCount.value <= pageSize.value)
-    return `${totalCount.value} product${totalCount.value === 1 ? '' : 's'}`
+    return `${totalCount.value} unit${totalCount.value === 1 ? '' : 's'}`
 
   return `${from}–${to} of ${totalCount.value}`
 })
@@ -205,7 +205,7 @@ onMounted(async () => {
   if (!(await ensureAccess()))
     return
   await loadLocations()
-  await loadProducts()
+  await loadUnits()
 })
 
 async function loadLocations() {
@@ -217,7 +217,7 @@ async function loadLocations() {
   }
 }
 
-async function loadProducts(isRefresh = false, resetPage = false) {
+async function loadUnits(isRefresh = false, resetPage = false) {
   const softRefresh = isRefresh === true
 
   if (resetPage)
@@ -228,9 +228,9 @@ async function loadProducts(isRefresh = false, resetPage = false) {
     loading.value = true
   loadError.value = ''
   try {
-    const result = await listProductsWithTotal({
+    const result = await listUnitsWithTotal({
       search: searchQuery.value || undefined,
-      product_type: filterType.value || undefined,
+      unit_type: filterType.value || undefined,
       is_active: filterActive.value === 'active' ? true : filterActive.value === 'inactive' ? false : undefined,
       attendance_status: filterAttendance.value === 'checked_in' || filterAttendance.value === 'checked_out'
         ? filterAttendance.value
@@ -247,12 +247,12 @@ async function loadProducts(isRefresh = false, resetPage = false) {
       )
     }
 
-    products.value = items
+    units.value = items
     totalCount.value = result.total
   }
   catch (e) {
-    console.error('Failed to load products', e)
-    loadError.value = formatApiError(e, 'Failed to load products. Please try again.')
+    console.error('Failed to load units', e)
+    loadError.value = formatApiError(e, 'Failed to load units. Please try again.')
   }
   finally {
     loading.value = false
@@ -260,28 +260,28 @@ async function loadProducts(isRefresh = false, resetPage = false) {
   }
 }
 
-const debouncedLoadProducts = useDebounceFn(() => loadProducts(true, true), SEARCH_DEBOUNCE_MS)
+const debouncedLoadUnits = useDebounceFn(() => loadUnits(true, true), SEARCH_DEBOUNCE_MS)
 
 watch(searchQuery, () => {
-  debouncedLoadProducts()
+  debouncedLoadUnits()
 })
 
 watch(filterType, () => {
   if (filterType.value === 'student')
     filterEmployment.value = ''
-  loadProducts(true, true)
+  loadUnits(true, true)
 })
 
 watch(filterActive, () => {
-  loadProducts(true, true)
+  loadUnits(true, true)
 })
 
 watch(filterAttendance, () => {
-  loadProducts(true, true)
+  loadUnits(true, true)
 })
 
 watch(filterEmployment, () => {
-  loadProducts(true, true)
+  loadUnits(true, true)
 })
 
 watch(() => form.staff_profile.pay_type, payType => {
@@ -299,7 +299,7 @@ watch(() => form.staff_profile.pay_type, payType => {
     form.staff_profile.ot_multiplier = '1.5'
 })
 
-watch(() => form.product_type, type => {
+watch(() => form.unit_type, type => {
   if (type !== 'staff') {
     form.staff_profile.employment_type = ''
     form.staff_profile.department = ''
@@ -339,7 +339,7 @@ watch(() => form.status, (val) => {
 
 function onPageSizeChange() {
   page.value = 1
-  loadProducts(true)
+  loadUnits(true)
 }
 
 function resetForm() {
@@ -347,7 +347,7 @@ function resetForm() {
     code: '',
     full_name: '',
     english_name: '',
-    product_type: 'student',
+    unit_type: 'student',
     is_active: true,
     status: 'active',
     gender: '',
@@ -395,22 +395,22 @@ function resetForm() {
 
 function openCreate() {
   saveError.value = null
-  editingProduct.value = null
+  editingUnit.value = null
   resetForm()
   dialogOpen.value = true
-  nextTick(() => productFormRef.value?.resetValidation())
+  nextTick(() => unitFormRef.value?.resetValidation())
 }
 
-function openEdit(p: Product) {
+function openEdit(p: Unit) {
   saveError.value = null
-  editingProduct.value = p
+  editingUnit.value = p
   const sp = p.student_profile
   const stp = p.staff_profile
   Object.assign(form, {
     code: p.code,
     full_name: p.full_name,
     english_name: p.english_name ?? '',
-    product_type: p.product_type,
+    unit_type: p.unit_type,
     is_active: p.is_active,
     status: p.status ?? 'active',
     gender: p.gender ?? '',
@@ -461,7 +461,7 @@ function openEdit(p: Product) {
     },
   })
   dialogOpen.value = true
-  nextTick(() => productFormRef.value?.resetValidation())
+  nextTick(() => unitFormRef.value?.resetValidation())
 }
 
 function normalizeString(value: string): string | null {
@@ -482,7 +482,7 @@ function normalizeNumber(value: string): number | null {
 async function handleSave() {
   saveError.value = null
 
-  if (form.product_type === 'staff' && !form.staff_profile.employment_type) {
+  if (form.unit_type === 'staff' && !form.staff_profile.employment_type) {
     saveError.value = 'Employment type is required for staff'
 
     return
@@ -500,7 +500,7 @@ async function handleSave() {
     return
   }
 
-  const validation = await productFormRef.value?.validate()
+  const validation = await unitFormRef.value?.validate()
   if (validation && !validation.valid)
     return
 
@@ -510,7 +510,7 @@ async function handleSave() {
       code: form.code.trim(),
       full_name: form.full_name.trim(),
       english_name: normalizeString(form.english_name),
-      product_type: form.product_type,
+      unit_type: form.unit_type,
       status: form.status,
       gender: normalizeString(form.gender),
       date_of_birth: normalizeString(form.date_of_birth),
@@ -530,7 +530,7 @@ async function handleSave() {
 
     let payload: Record<string, unknown>
 
-    if (form.product_type === 'student') {
+    if (form.unit_type === 'student') {
       const guardians: Record<string, unknown> = {}
       form.guardians.forEach((g, idx) => {
         if (g.name.trim()) {
@@ -576,16 +576,16 @@ async function handleSave() {
       }
     }
 
-    const finalPayload = editingProduct.value
+    const finalPayload = editingUnit.value
       ? { ...payload, is_active: form.is_active }
       : { ...payload, is_active: form.is_active }
 
-    if (editingProduct.value) {
-      await updateProduct(editingProduct.value.id, finalPayload)
+    if (editingUnit.value) {
+      await updateUnit(editingUnit.value.id, finalPayload)
 
-      // Update nested profile via dedicated endpoint (PATCH /products does not handle profiles)
-      if (form.product_type === 'staff') {
-        await updateStaffProfile(editingProduct.value.id, {
+      // Update nested profile via dedicated endpoint (PATCH /units does not handle profiles)
+      if (form.unit_type === 'staff') {
+        await updateStaffProfile(editingUnit.value.id, {
           employee_id: normalizeString(form.staff_profile.employee_id),
           employment_type: normalizeString(form.staff_profile.employment_type),
           department: normalizeString(form.staff_profile.department),
@@ -602,7 +602,7 @@ async function handleSave() {
           employment_notes: normalizeString(form.staff_profile.employment_notes),
         })
       }
-      else if (form.product_type === 'student') {
+      else if (form.unit_type === 'student') {
         const guardians: Record<string, unknown> = {}
         form.guardians.forEach((g, idx) => {
           if (g.name.trim()) {
@@ -613,7 +613,7 @@ async function handleSave() {
             }
           }
         })
-        await updateStudentProfile(editingProduct.value.id, {
+        await updateStudentProfile(editingUnit.value.id, {
           school_name: normalizeString(form.student_profile.school_name),
           grade_class: normalizeString(form.student_profile.grade_class),
           student_id: normalizeString(form.student_profile.student_id),
@@ -625,15 +625,15 @@ async function handleSave() {
       }
     }
     else {
-      await createProduct(finalPayload as Parameters<typeof createProduct>[0])
+      await createUnit(finalPayload as Parameters<typeof createUnit>[0])
     }
 
     dialogOpen.value = false
-    await loadProducts(true)
-    showToast(editingProduct.value ? 'Product updated successfully.' : 'Product created successfully.', 'success')
+    await loadUnits(true)
+    showToast(editingUnit.value ? 'Unit updated successfully.' : 'Unit created successfully.', 'success')
   }
   catch (e: unknown) {
-    saveError.value = formatApiError(e, 'Could not save product')
+    saveError.value = formatApiError(e, 'Could not save unit')
     showToast(saveError.value, 'error')
   }
   finally {
@@ -641,7 +641,7 @@ async function handleSave() {
   }
 }
 
-function openDeleteConfirm(p: Product) {
+function openDeleteConfirm(p: Unit) {
   deleteError.value = ''
   deleteTarget.value = p
   deleteConfirmOpen.value = true
@@ -660,19 +660,19 @@ async function confirmDelete() {
   deleting.value = true
   deleteError.value = ''
   try {
-    await deleteProduct(deleteTarget.value.id)
+    await deleteUnit(deleteTarget.value.id)
     closeDeleteConfirm()
-    await loadProducts(true)
+    await loadUnits(true)
   }
   catch (e: unknown) {
-    deleteError.value = formatApiError(e, 'Could not delete product')
+    deleteError.value = formatApiError(e, 'Could not delete unit')
   }
   finally {
     deleting.value = false
   }
 }
 
-function openQR(p: Product) {
+function openQR(p: Unit) {
   qrDialogsRef.value?.openQR(p)
 }
 
@@ -693,14 +693,14 @@ function employmentTypeLabel(value: string | null | undefined) {
   return '—'
 }
 
-function locationLabel(location: Product['registered_location']) {
+function locationLabel(location: Unit['registered_location']) {
   if (!location)
     return '—'
 
   return location.name_en || location.name_zh || location.code || '—'
 }
 
-function scanLocationsLabel(p: Product) {
+function scanLocationsLabel(p: Unit) {
   if (!p.scan_locations?.length)
     return '—'
 
@@ -723,7 +723,7 @@ function statusLabel(status: string) {
   return statusOptions.find(o => o.value === status)?.title ?? status
 }
 
-function rowStatusChip(p: Product) {
+function rowStatusChip(p: Unit) {
   if (!p.is_active) {
     return {
       color: 'grey',
@@ -751,7 +751,7 @@ function rowStatusChip(p: Product) {
         sm="8"
       >
         <div class="text-h5 font-weight-medium">
-          Product Management
+          Unit Management
         </div>
         <div class="text-body-2 text-medium-emphasis">
           {{ pageSubtitle }}
@@ -775,7 +775,7 @@ function rowStatusChip(p: Product) {
           color="primary"
           prepend-icon="ri-refresh-line"
           :loading="refreshing"
-          @click="loadProducts(true)"
+          @click="loadUnits(true)"
         >
           Refresh
         </VBtn>
@@ -784,12 +784,12 @@ function rowStatusChip(p: Product) {
           prepend-icon="ri-add-line"
           @click="openCreate"
         >
-          Add Product
+          Add Unit
         </VBtn>
       </VCol>
     </VRow>
 
-    <!-- Attendance filter uses server-side attendance_status — see GET /api/products -->
+    <!-- Attendance filter uses server-side attendance_status — see GET /api/units -->
     <VRow
       class="mb-4"
       align="center"
@@ -801,7 +801,7 @@ function rowStatusChip(p: Product) {
       >
         <VTextField
           v-model="searchQuery"
-          placeholder="Search products..."
+          placeholder="Search units..."
           prepend-inner-icon="ri-search-line"
           density="compact"
           hide-details
@@ -876,7 +876,7 @@ function rowStatusChip(p: Product) {
         <VBtn
           variant="text"
           size="small"
-          @click="loadProducts(true)"
+          @click="loadUnits(true)"
         >
           Retry
         </VBtn>
@@ -885,7 +885,7 @@ function rowStatusChip(p: Product) {
 
     <VCard :loading="loading">
       <VCardTitle class="d-flex align-center justify-space-between flex-wrap gap-2">
-        <span>Products</span>
+        <span>Units</span>
         <span
           v-if="listCaption"
           class="text-caption text-medium-emphasis"
@@ -893,8 +893,8 @@ function rowStatusChip(p: Product) {
           {{ listCaption }}
         </span>
       </VCardTitle>
-      <div class="products-table-scroll">
-        <VTable class="products-table">
+      <div class="units-table-scroll">
+        <VTable class="units-table">
           <thead>
             <tr>
               <th width="100">
@@ -940,9 +940,9 @@ function rowStatusChip(p: Product) {
           </thead>
           <tbody>
             <tr
-              v-for="p in products"
+              v-for="p in units"
               :key="p.id"
-              :class="{ 'product-row-inactive': !p.is_active }"
+              :class="{ 'unit-row-inactive': !p.is_active }"
             >
               <td class="font-weight-medium">
                 {{ p.code }}
@@ -950,11 +950,11 @@ function rowStatusChip(p: Product) {
               <td>{{ p.full_name }}</td>
               <td>
                 <VChip
-                  :color="typeColor(p.product_type)"
+                  :color="typeColor(p.unit_type)"
                   size="small"
                   label
                 >
-                  {{ typeLabel(p.product_type) }}
+                  {{ typeLabel(p.unit_type) }}
                 </VChip>
               </td>
               <td>{{ locationLabel(p.registered_location) }}</td>
@@ -962,7 +962,7 @@ function rowStatusChip(p: Product) {
                 {{ scanLocationsLabel(p) }}
               </td>
               <td>
-                <span v-if="p.product_type === 'staff'">{{ employmentTypeLabel(p.staff_profile?.employment_type) }}</span>
+                <span v-if="p.unit_type === 'staff'">{{ employmentTypeLabel(p.staff_profile?.employment_type) }}</span>
                 <span
                   v-else
                   class="text-medium-emphasis"
@@ -1000,7 +1000,7 @@ function rowStatusChip(p: Product) {
                     variant="text"
                     color="primary"
                     :disabled="!p.is_active"
-                    :title="p.is_active ? 'QR Code' : 'QR unavailable — product is inactive'"
+                    :title="p.is_active ? 'QR Code' : 'QR unavailable — unit is inactive'"
                     :aria-label="`View QR code for ${p.full_name}`"
                     @click="openQR(p)"
                   >
@@ -1030,13 +1030,13 @@ function rowStatusChip(p: Product) {
                 </div>
               </td>
             </tr>
-            <tr v-if="products.length === 0 && !loading">
+            <tr v-if="units.length === 0 && !loading">
               <td
                 colspan="8"
                 class="text-center text-medium-emphasis py-6"
               >
                 <div class="mb-3">
-                  {{ searchQuery || filterType || filterActive || filterAttendance ? 'No products match your search or filters' : 'No products yet' }}
+                  {{ searchQuery || filterType || filterActive || filterAttendance ? 'No units match your search or filters' : 'No units yet' }}
                 </div>
                 <VBtn
                   v-if="showEmptyCreateCta"
@@ -1044,7 +1044,7 @@ function rowStatusChip(p: Product) {
                   prepend-icon="ri-add-line"
                   @click="openCreate"
                 >
-                  Add Product
+                  Add Unit
                 </VBtn>
               </td>
             </tr>
@@ -1052,7 +1052,7 @@ function rowStatusChip(p: Product) {
         </VTable>
       </div>
       <div
-        v-if="!loading && products.length > 0"
+        v-if="!loading && units.length > 0"
         class="d-flex flex-wrap align-center justify-space-between gap-2 pa-4 pt-0"
       >
         <div class="d-flex align-center gap-2">
@@ -1076,7 +1076,7 @@ function rowStatusChip(p: Product) {
           :total-visible="5"
           density="compact"
           size="small"
-          @update:model-value="loadProducts(true)"
+          @update:model-value="loadUnits(true)"
         />
       </div>
       <div class="text-caption text-medium-emphasis px-4 pb-3 d-md-none">
@@ -1086,7 +1086,7 @@ function rowStatusChip(p: Product) {
 
     <AttendanceFormDialog
       v-model="dialogOpen"
-      :title="editingProduct ? 'Edit Product' : 'Create Product'"
+      :title="editingUnit ? 'Edit Unit' : 'Create Unit'"
       icon="ri-group-line"
       :max-width="900"
       :saving="saving"
@@ -1096,7 +1096,7 @@ function rowStatusChip(p: Product) {
       @clear-error="saveError = null"
     >
       <VForm
-        ref="productFormRef"
+        ref="unitFormRef"
         @submit.prevent="handleSave"
       >
         <h4 class="text-subtitle-2 text-medium-emphasis mb-2">
@@ -1111,7 +1111,7 @@ function rowStatusChip(p: Product) {
             <VTextField
               v-model="form.code"
               label="Code *"
-              :disabled="!!editingProduct"
+              :disabled="!!editingUnit"
               maxlength="100"
               :rules="codeRules"
             />
@@ -1122,12 +1122,12 @@ function rowStatusChip(p: Product) {
             md="4"
           >
             <VSelect
-              v-model="form.product_type"
+              v-model="form.unit_type"
               :items="typeOptions"
               item-title="title"
               item-value="value"
               label="Type *"
-              :disabled="!!editingProduct"
+              :disabled="!!editingUnit"
             />
           </VCol>
           <VCol
@@ -1300,7 +1300,7 @@ function rowStatusChip(p: Product) {
             />
           </VCol>
           <VCol
-            v-if="form.product_type === 'student'"
+            v-if="form.unit_type === 'student'"
             cols="12"
             sm="6"
             md="3"
@@ -1312,7 +1312,7 @@ function rowStatusChip(p: Product) {
             />
           </VCol>
           <VCol
-            v-if="form.product_type === 'student'"
+            v-if="form.unit_type === 'student'"
             cols="12"
             sm="6"
             md="3"
@@ -1351,7 +1351,7 @@ function rowStatusChip(p: Product) {
           </VCol>
         </VRow>
 
-        <template v-if="form.product_type === 'student'">
+        <template v-if="form.unit_type === 'student'">
           <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
             School & guardian
           </h4>
@@ -1445,7 +1445,7 @@ function rowStatusChip(p: Product) {
           </VRow>
         </template>
 
-        <template v-if="form.product_type === 'staff'">
+        <template v-if="form.unit_type === 'staff'">
           <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
             Staff profile
           </h4>
@@ -1622,9 +1622,9 @@ function rowStatusChip(p: Product) {
 
     <AppToastStack />
 
-    <ProductQrDialogs
+    <UnitQrDialogs
       ref="qrDialogsRef"
-      @rotated="loadProducts(true)"
+      @rotated="loadUnits(true)"
     />
   </VContainer>
 </template>
@@ -1634,22 +1634,22 @@ function rowStatusChip(p: Product) {
   padding-block: 4px !important;
 }
 
-.product-row-inactive {
+.unit-row-inactive {
   opacity: 0.55;
 }
 
-.products-table-scroll {
+.units-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-.products-table :deep(thead th),
-.products-table :deep(tbody td) {
+.units-table :deep(thead th),
+.units-table :deep(tbody td) {
   vertical-align: middle;
   white-space: nowrap;
 }
 
-.products-table :deep(.col-actions) {
+.units-table :deep(.col-actions) {
   position: sticky;
   right: 0;
   background: rgb(var(--v-theme-surface));
@@ -1659,13 +1659,13 @@ function rowStatusChip(p: Product) {
   border-left: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
-.products-table :deep(thead th.col-actions) {
+.units-table :deep(thead th.col-actions) {
   z-index: 3;
 }
 
 @media (max-width: 960px) {
-  .products-table :deep(.col-phone),
-  .products-table :deep(.col-school) {
+  .units-table :deep(.col-phone),
+  .units-table :deep(.col-school) {
     display: none;
   }
 }

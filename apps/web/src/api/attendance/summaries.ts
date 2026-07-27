@@ -3,9 +3,9 @@ import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils
 
 export interface AttendanceSummary {
   id: string
-  product_id: string
-  product_name: string | null
-  product_code: string | null
+  unit_id: string
+  unit_name: string | null
+  unit_code: string | null
   summary_date: string
   location_id: string
   first_check_in: string | null
@@ -27,10 +27,10 @@ export interface AttendanceSummary {
 }
 
 export interface SummaryOverviewItem {
-  product_id: string
-  product_name: string | null
-  product_code: string | null
-  product_type: string
+  unit_id: string
+  unit_name: string | null
+  unit_code: string | null
+  unit_type: string
   days_present: number
   days_complete: number
   days_incomplete: number
@@ -43,11 +43,11 @@ export interface SummaryOverviewItem {
 }
 
 export async function listSummaries(params?: {
-  product_id?: string
+  unit_id?: string
   summary_date?: string
   date_from?: string
   date_to?: string
-  product_type?: string
+  unit_type?: string
   is_complete?: boolean
   page?: number
   page_size?: number
@@ -58,11 +58,11 @@ export async function listSummaries(params?: {
 }
 
 export async function listSummariesWithTotal(params?: {
-  product_id?: string
+  unit_id?: string
   summary_date?: string
   date_from?: string
   date_to?: string
-  product_type?: string
+  unit_type?: string
   is_complete?: boolean
   page?: number
   page_size?: number
@@ -73,7 +73,7 @@ export async function listSummariesWithTotal(params?: {
 export async function listSummaryOverview(params: {
   date_from: string
   date_to: string
-  product_type?: string
+  unit_type?: string
   search?: string
   page?: number
   page_size?: number
@@ -95,7 +95,7 @@ export interface SummaryOverviewStats {
 export async function getSummaryOverviewStats(params: {
   date_from: string
   date_to: string
-  product_type?: string
+  unit_type?: string
   search?: string
 }): Promise<SummaryOverviewStats> {
   return await $attendanceApi<SummaryOverviewStats>('/attendance-summaries/overview/stats', { params })

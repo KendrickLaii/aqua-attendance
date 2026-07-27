@@ -14,7 +14,7 @@ class PayrollStatus(str, enum.Enum):
 
 
 class PayrollRecordCreate(BaseModel):
-    product_id: uuid.UUID
+    unit_id: uuid.UUID
     payroll_period_start: date
     payroll_period_end: date
     total_regular_hours: float = Field(default=0.0, ge=0)
@@ -71,9 +71,9 @@ class PayrollRecordStatsOut(BaseModel):
 
 class PayrollRecordOut(BaseModel):
     id: uuid.UUID
-    product_id: uuid.UUID
-    product_name: str | None = None
-    product_code: str | None = None
+    unit_id: uuid.UUID
+    unit_name: str | None = None
+    unit_code: str | None = None
     payroll_period_start: date
     payroll_period_end: date
     total_regular_hours: float

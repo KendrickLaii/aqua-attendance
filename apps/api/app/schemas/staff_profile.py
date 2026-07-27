@@ -5,12 +5,12 @@ from pydantic import BaseModel, Field
 
 
 class StaffProfileCreate(BaseModel):
+    gender: str | None = Field(default=None, max_length=20)
+    date_of_birth: date | None = None
     employee_id: str | None = Field(default=None, max_length=100)
     employment_type: str | None = Field(default=None, max_length=20)
     department: str | None = Field(default=None, max_length=100)
     position: str | None = Field(default=None, max_length=100)
-    hire_date: date | None = None
-    termination_date: date | None = None
     salary_grade: str | None = Field(default=None, max_length=50)
     pay_type: str | None = Field(default=None, max_length=20)
     hourly_rate: float | None = Field(default=None, ge=0)
@@ -22,12 +22,12 @@ class StaffProfileCreate(BaseModel):
 
 
 class StaffProfileUpdate(BaseModel):
+    gender: str | None = Field(default=None, max_length=20)
+    date_of_birth: date | None = None
     employee_id: str | None = Field(default=None, max_length=100)
     employment_type: str | None = Field(default=None, max_length=20)
     department: str | None = Field(default=None, max_length=100)
     position: str | None = Field(default=None, max_length=100)
-    hire_date: date | None = None
-    termination_date: date | None = None
     salary_grade: str | None = Field(default=None, max_length=50)
     pay_type: str | None = Field(default=None, max_length=20)
     hourly_rate: float | None = Field(default=None, ge=0)
@@ -40,12 +40,12 @@ class StaffProfileUpdate(BaseModel):
 
 class StaffProfileOut(BaseModel):
     id: uuid.UUID
+    gender: str | None = None
+    date_of_birth: date | None = None
     employee_id: str | None = None
     employment_type: str | None = None
     department: str | None = None
     position: str | None = None
-    hire_date: date | None = None
-    termination_date: date | None = None
     salary_grade: str | None = None
     pay_type: str | None = None
     hourly_rate: float | None = None

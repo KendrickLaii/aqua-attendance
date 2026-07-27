@@ -7,17 +7,17 @@ from tests.conftest import scan_body
 
 
 @pytest.mark.asyncio
-async def test_list_products_x_total_count(
+async def test_list_units_x_total_count(
     client: AsyncClient, admin_token: str, sample_location: dict
 ) -> None:
     for i in range(3):
         code = f"CNT-{uuid.uuid4().hex[:6]}"
         resp = await client.post(
-            "/api/products",
+            "/api/units",
             json={
                 "code": code,
-                "full_name": f"Product {i}",
-                "product_type": "student",
+                "full_name": f"Unit {i}",
+                "unit_type": "student",
                 "registered_location_id": sample_location["id"],
                 "scan_location_ids": [sample_location["id"]],
             },
@@ -26,7 +26,7 @@ async def test_list_products_x_total_count(
         assert resp.status_code == 201
 
     resp = await client.get(
-        "/api/products",
+        "/api/units",
         params={"page": 1, "page_size": 2},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -36,37 +36,37 @@ async def test_list_products_x_total_count(
 
 
 @pytest.mark.asyncio
-async def test_list_products_attendance_status_filter(
+async def test_list_units_attendance_status_filter(
     client: AsyncClient,
     admin_token: str,
-    sample_product: dict,
+    sample_unit: dict,
 ):
     qr = await client.get(
-        f"/api/qr/token/{sample_product['id']}",
+        f"/api/qr/token/{sample_unit['id']}",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     token = qr.json()["qr_token"]
 
     scan = await client.post(
         "/api/attendance/scan",
-        json=scan_body(token, sample_product, event_type="check_in"),
+        json=scan_body(token, sample_unit, event_type="check_in"),
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert scan.status_code == 200
     assert scan.json()["attendance_status"] == "checked_in"
 
     checked_in = await client.get(
-        "/api/products",
+        "/api/units",
         params={"attendance_status": "checked_in"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert checked_in.status_code == 200
     assert checked_in.headers.get("X-Total-Count") == "1"
     assert len(checked_in.json()) == 1
-    assert checked_in.json()[0]["id"] == sample_product["id"]
+    assert checked_in.json()[0]["id"] == sample_unit["id"]
 
     checked_out = await client.get(
-        "/api/products",
+        "/api/units",
         params={"attendance_status": "checked_out"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -76,9 +76,9 @@ async def test_list_products_attendance_status_filter(
 
 
 @pytest.mark.asyncio
-async def test_list_products_invalid_attendance_status(client: AsyncClient, admin_token: str) -> None:
+async def test_list_units_invalid_attendance_status(client: AsyncClient, admin_token: str) -> None:
     resp = await client.get(
-        "/api/products",
+        "/api/units",
         params={"attendance_status": "invalid"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -92,24 +92,24 @@ async def test_staff_profile_employment_type(
     headers = {"Authorization": f"Bearer {admin_token}"}
     code = f"EMP-{uuid.uuid4().hex[:6]}"
 
-    # 1. Create staff product (employment_type moved to staff_profiles)
+    # 1. Create staff unit (employment_type moved to staff_profiles)
     create = await client.post(
-        "/api/products",
+        "/api/units",
         json={
             "code": code,
             "full_name": "Part-time Tutor",
-            "product_type": "staff",
+            "unit_type": "staff",
             "registered_location_id": sample_location["id"],
             "scan_location_ids": [sample_location["id"]],
         },
         headers=headers,
     )
     assert create.status_code == 201
-    product_id = create.json()["id"]
+    unit_id = create.json()["id"]
 
     # 2. Create staff_profile with employment_type
     profile = await client.post(
-        f"/api/staff-profiles/{product_id}",
+        f"/api/staff-profiles/{unit_id}",
         json={
             "employment_type": "part_time",
             "department": "Math",
@@ -121,7 +121,7 @@ async def test_staff_profile_employment_type(
 
     # 3. Verify staff_profile has employment_type
     get_profile = await client.get(
-        f"/api/staff-profiles/{product_id}",
+        f"/api/staff-profiles/{unit_id}",
         headers=headers,
     )
     assert get_profile.status_code == 200
@@ -129,7 +129,7 @@ async def test_staff_profile_employment_type(
 
     # 4. Update employment_type
     updated = await client.patch(
-        f"/api/staff-profiles/{product_id}",
+        f"/api/staff-profiles/{unit_id}",
         json={"employment_type": "full_time"},
         headers=headers,
     )
@@ -138,16 +138,16 @@ async def test_staff_profile_employment_type(
 
 
 @pytest.mark.asyncio
-async def test_product_requires_registered_and_scan_locations(
+async def test_unit_requires_registered_and_scan_locations(
     client: AsyncClient, admin_token: str
 ) -> None:
     headers = {"Authorization": f"Bearer {admin_token}"}
     resp = await client.post(
-        "/api/products",
+        "/api/units",
         json={
             "code": f"NOLOC-{uuid.uuid4().hex[:6]}",
             "full_name": "Missing locations",
-            "product_type": "student",
+            "unit_type": "student",
         },
         headers=headers,
     )
@@ -155,7 +155,7 @@ async def test_product_requires_registered_and_scan_locations(
 
 
 @pytest.mark.asyncio
-async def test_product_registered_and_scan_locations(
+async def test_unit_registered_and_scan_locations(
     client: AsyncClient,
     admin_token: str,
     sample_location: dict,
@@ -165,11 +165,11 @@ async def test_product_registered_and_scan_locations(
     code = f"LOC-{uuid.uuid4().hex[:6]}"
 
     create = await client.post(
-        "/api/products",
+        "/api/units",
         json={
             "code": code,
             "full_name": "Multi-branch staff",
-            "product_type": "staff",
+            "unit_type": "staff",
             "registered_location_id": sample_location["id"],
             "scan_location_ids": [sample_location["id"], sample_location_b["id"]],
         },
@@ -183,7 +183,7 @@ async def test_product_registered_and_scan_locations(
     assert len(body["scan_locations"]) == 2
 
     patch = await client.patch(
-        f"/api/products/{body['id']}",
+        f"/api/units/{body['id']}",
         json={
             "scan_location_ids": [sample_location_b["id"]],
             "registered_location_id": sample_location_b["id"],

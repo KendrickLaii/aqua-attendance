@@ -13,7 +13,7 @@ router = APIRouter(prefix="/auto-checkout", tags=["auto-checkout"])
 
 class AutoCheckoutRequest(BaseModel):
     target_date: date | None = None
-    product_ids: list[uuid.UUID] | None = None
+    unit_ids: list[uuid.UUID] | None = None
 
 
 @router.post("/run", status_code=status.HTTP_200_OK)
@@ -28,8 +28,8 @@ async def trigger_auto_checkout(
     endpoint (or an equivalent worker) on a schedule. Until then, admins
     use Dashboard Day-end checkout for testing / end-of-day backfill.
 
-    When ``product_ids`` is provided, only those still-checked-in products
-    are checked out. Unselected products stay checked in so admins can
+    When ``unit_ids`` is provided, only those still-checked-in units
+    are checked out. Unselected units stay checked in so admins can
     investigate why they never scanned out.
 
     After creating events, regenerates that month's attendance summaries
@@ -38,7 +38,7 @@ async def trigger_auto_checkout(
     from app.services.summary_generator import generate_monthly_summaries
 
     events = await auto_checkout_for_date(
-        db, target_date=payload.target_date, product_ids=payload.product_ids
+        db, target_date=payload.target_date, unit_ids=payload.unit_ids
     )
     target = payload.target_date or attendance_today()
     summaries = await generate_monthly_summaries(db, year=target.year, month=target.month)
@@ -56,6 +56,6 @@ async def trigger_auto_checkout(
 
 @router.get("/status")
 async def auto_checkout_status(_admin: AdminOnly, db: DB) -> dict:
-    """Return the number of products still checked in (pending auto-checkout)."""
+    """Return the number of units still checked in (pending auto-checkout)."""
     count = await get_still_checked_in_count(db)
     return {"still_checked_in_count": count}

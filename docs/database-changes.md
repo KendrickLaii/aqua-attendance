@@ -15,6 +15,9 @@
 | 7 | 考勤彙總 attendance_summaries | ✅ **要**（每日一行，含 slot 與小時） |
 | 8 | 員工薪資／OT | ✅ 新增 `staff_profiles` 薪資率＋`attendance_summaries` slots＋`payroll_records` 快照與計算 |
 | 9 | 未來 device/goods | ✅ 預留 `device_profiles` / `goods_profiles` 子表 |
+| 10 | 個人資料欄位搬移至 profiles | ✅ **決定搬移**（2026-07-27）— 見下方「§ 欄位搬移至 profiles（2026-07-27）」 |
+| 11 | 出勤邏輯保留在 products | ✅ **決定保留**（2026-07-27）— 見下方「§ 出勤邏輯架構決定（2026-07-27）」 |
+| 12 | `status` enum 拆分 | 🔄 **可選**（2026-07-27）— 見下方「§ status enum 拆分分析（2026-07-27）」 |
 
 ## 完整 ER 圖 (Mermaid)
 
@@ -45,16 +48,7 @@ erDiagram
         string attendance_status "簽到狀態 checked_in/out"
         int qr_token_version "QR版本號"
         uuid registered_location_id FK "註冊地點"
-        string gender "性別"
-        date date_of_birth "出生日期"
-        string phone "電話"
-        string address "地址"
-        string email "電子郵件"
-        string emergency_contact_name "緊急聯絡人"
-        string emergency_contact_phone "緊急聯絡人電話"
-        string photo_url "照片URL 新增"
-        date enrollment_date "加入日期 新增"
-        date exit_date "離開日期 新增"
+        string photo_url "照片URL"
         string remarks "備註"
         datetime last_event_at "最後事件時間"
         datetime created_at "建立時間"
@@ -69,6 +63,13 @@ erDiagram
         date enrollment_date "入學日期"
         date graduation_date "畢業日期"
         string academic_notes "學業備註"
+        string gender "性別"
+        date date_of_birth "出生日期"
+        string phone "電話"
+        string address "地址"
+        string email "電子郵件"
+        string emergency_contact_name "緊急聯絡人"
+        string emergency_contact_phone "緊急聯絡人電話"
     }
     staff_profiles {
         uuid product_id PK "FK 員工ID"
@@ -86,6 +87,13 @@ erDiagram
         string work_schedule "工作班表"
         uuid supervisor_id FK "直屬主管 product_id"
         string employment_notes "員工備註"
+        string gender "性別"
+        date date_of_birth "出生日期"
+        string phone "電話"
+        string address "地址"
+        string email "電子郵件"
+        string emergency_contact_name "緊急聯絡人"
+        string emergency_contact_phone "緊急聯絡人電話"
     }
     device_profiles {
         uuid product_id PK "FK 設備ID 未來"
@@ -341,6 +349,8 @@ ot_hours      = ot_slots * 0.25
 
 ## 完整欄位搬遷核對表（遷移時逐項勾選，確保零遺漏）
 
+> **2026-07-27 更新**：個人資料欄位決定搬移至 profiles，出勤欄位保留在 products。詳見下方「§ 欄位搬移至 profiles（2026-07-27 決定）」。
+
 | 現有 products 欄位 | 去向 |
 |---|---|
 | id, code, product_type | products（核心） |
@@ -348,19 +358,21 @@ ot_hours      = ot_slots * 0.25
 | english_name | products |
 | is_active | products（系統層快速開關） |
 | status | products（業務狀態：active / inactive / graduated / terminated / suspended） |
-| attendance_status, qr_token_version | products |
-| registered_location_id | products |
-| last_event_at | products |
-| created_at, updated_at | products |
-| gender, date_of_birth, phone, address, email | products（共用欄位） |
-| emergency_contact_name, emergency_contact_phone | products（共用—決定5） |
+| attendance_status, qr_token_version | products（出勤核心 — 保留） |
+| registered_location_id | products（出勤 fallback location — 保留） |
+| last_event_at | products（出勤核心 — 保留） |
+| last_event_location_id | products（出勤核心 — 保留） |
+| last_event_location | products（出勤核心 — 保留） |
+| photo_url | products |
 | remarks | products |
 | whatsapp_enabled | products 通知偏好欄位 |
+| created_at, updated_at | products |
+| gender, date_of_birth, phone, address, email | **→ staff_profiles + student_profiles**（2026-07-27 決定） |
+| emergency_contact_name, emergency_contact_phone | **→ staff_profiles + student_profiles**（2026-07-27 決定，修正原決定 #5） |
+| enrollment_date, exit_date | **刪除** — 改用 profile 已有欄位（enrollment_date/graduation_date for student，hire_date/termination_date for staff） |
 | employment_type, pay_type, hourly_rate, monthly_salary, ot_multiplier, employee_id, department, position, hire_date, termination_date, salary_grade, work_schedule, supervisor_id, employment_notes | staff_profiles |
 | school_name, grade_class, student_id, enrollment_date, graduation_date, academic_notes | student_profiles |
 | guardian1/2_*（6個欄位） | student_profiles.guardians JSON |
-
-**新增（現有 products 沒有）：** `photo_url`、`enrollment_date`、`exit_date`（→ products）。
 
 ---
 
@@ -507,3 +519,182 @@ ot_hours      = ot_slots * 0.25
 | `audit_logs` | 哪位管理員改了哪筆資料 | 監視器錄影 |
 
 **Generate 與瀏覽分離：** 列表與 overview 直接讀 `attendance_summaries`；`POST .../generate` 僅從 `attendance_events` 重算**選中月份**並 upsert。Seed 可直寫彙總而無打卡事件 — 詳見 [attendance-summaries.md](attendance-summaries.md)。
+
+---
+
+## 欄位搬移至 profiles（2026-07-27 決定）
+
+### 背景
+
+`products` 表目前包含大量個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`、`enrollment_date`、`exit_date`）。這些欄位只適用於 `staff` 和 `student` 類型，未來 `device`/`goods` 類型不需要。決定將個人資料欄位搬移至對應的 profile 子表，使 `products` 保持為純粹的 supertype 核心表。
+
+### 搬移計畫
+
+#### ✅ 搬移到 `staff_profiles` 和 `student_profiles`（兩表都加）
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| `gender` | `String(20)` nullable | 性別 |
+| `date_of_birth` | `Date` nullable | 出生日期 |
+| `phone` | `String(50)` nullable | 電話 |
+| `address` | `String(500)` nullable | 地址 |
+| `email` | `String(255)` nullable | 電子郵件 |
+| `emergency_contact_name` | `String(255)` nullable | 緊急聯絡人姓名 |
+| `emergency_contact_phone` | `String(50)` nullable | 緊急聯絡人電話 |
+
+#### ✅ 刪除 `products.enrollment_date` / `products.exit_date`（改用 profile 已有欄位）
+
+`products` 表上的 `enrollment_date` / `exit_date` 與 profile 表已有的欄位語意重疊：
+
+| products 欄位（刪除） | student_profiles 對應欄位 | staff_profiles 對應欄位 |
+|----------------------|--------------------------|------------------------|
+| `enrollment_date` | `enrollment_date`（已存在） | `hire_date`（已存在） |
+| `exit_date` | `graduation_date`（已存在） | `termination_date`（已存在） |
+
+> **決定**：刪除 `products.enrollment_date` / `products.exit_date`，統一使用 profile 表已有的日期欄位。前端建立/更新 product 時，依 `product_type` 將入學/到職日期寫入對應 profile 欄位。
+
+#### ❌ 不搬移 — 保留在 `products`
+
+| 欄位 | 原因 |
+|------|------|
+| `code` | 核心業務識別碼，被 attendance、summaries、payroll、CSV 匯出、audit log 等廣泛使用。搬移後每個查詢都需 JOIN profile 表，且唯一性約束需跨兩表保證，大幅增加複雜度。 |
+| `registered_location_id` | 出勤摘要生成（`summary_generator.py`）用作 fallback `location_id`；product 建立流程需要先設定此 FK。搬移後需額外 JOIN profile 表，且建立流程更複雜（需先 flush product 再設定 profile FK）。 |
+
+### 受影響檔案清單
+
+#### 後端（apps/api/）
+
+| 檔案 | 變更 |
+|------|------|
+| `app/models/product.py` | 移除 `gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_name`、`emergency_contact_phone`、`enrollment_date`、`exit_date` 欄位 |
+| `app/models/staff_profile.py` | 新增上述 7 個個人資料欄位 |
+| `app/models/student_profile.py` | 新增上述 7 個個人資料欄位 |
+| `app/schemas/product.py` | 從 `ProductCreate`、`ProductUpdate`、`ProductOut` 移除個人資料欄位；`ProductOut` 改為從 profile 讀取 |
+| `app/schemas/staff_profile.py` | `StaffProfileCreate`、`StaffProfileUpdate`、`StaffProfileOut` 新增個人資料欄位 |
+| `app/schemas/student_profile.py` | `StudentProfileCreate`、`StudentProfileUpdate`、`StudentProfileOut` 新增個人資料欄位 |
+| `app/routers/products.py` | `create_product` 和 `update_product` 中將個人資料欄位轉發到 profile 子物件 |
+| `app/services/product.py` | `load_product_with_locations` 已 eager-load profiles，無需修改 |
+| `seed.py` | 種子資料中個人資料欄位改寫入 profile |
+
+#### 前端（apps/web/）
+
+| 檔案 | 變更 |
+|------|------|
+| `src/pages/attendance/products.vue` | 表單 payload 將個人資料欄位放入 `student_profile` / `staff_profile` 子物件；`enrollment_date` / `exit_date` 改為依 `product_type` 映射到 `enrollment_date`/`graduation_date`（student）或 `hire_date`/`termination_date`（staff） |
+
+#### Migration
+
+需要新增 Alembic migration：
+1. `staff_profiles` 新增 7 欄位
+2. `student_profiles` 新增 7 欄位
+3. 資料搬移：`INSERT INTO ... SELECT ... FROM products WHERE product_type = 'staff'`（同理 student）
+4. `products` 移除 9 欄位（7 個人資料 + `enrollment_date` + `exit_date`）
+
+### 決定 #5 修正
+
+> **原決定 #5**：緊急聯絡人放 `products` 共用（學生＋員工都用）
+> **修正（2026-07-27）**：緊急聯絡人隨其他個人資料欄位一起搬移至 `staff_profiles` 和 `student_profiles`。雖然兩種類型都有此欄位，但它屬於個人資料而非出勤核心，放在 profile 表更符合 supertype/subtype 分離原則。
+
+---
+
+## 出勤邏輯架構決定（2026-07-27）
+
+### 問題
+
+`products` 是 supertype 表，未來會有 `device`、`goods` 等不需要出勤的類型。是否應該將出勤邏輯（`attendance_events` FK、`attendance_status` 欄位等）搬移到 `staff_profiles` / `student_profiles`？
+
+### 決定：**保留在 `products`，加 `product_type` 白名單檢查**
+
+### 原因分析
+
+#### 1. 搬移到 profiles 會造成 polymorphic FK 噩夢
+
+`attendance_events.product_id` 目前是簡單的 FK → `products.id`。如果改為指向 profiles：
+
+| 選項 | 問題 |
+|------|------|
+| 兩張出勤表（`staff_attendance_events` + `student_attendance_events`） | 所有邏輯複製兩份，summary/payroll 也要拆兩份 |
+| Polymorphic FK（`profile_id` + `profile_type`） | 無法用標準 FK constraint，破壞 referential integrity |
+| Union table（`attendance_subjects`） | 多一層 indirection，所有查詢多一個 JOIN |
+
+#### 2. toggle 邏輯依賴 products 表欄位
+
+`_next_event_type()`（`app/services/attendance.py:25-38`）直接讀取 `product.attendance_status` 和 `product.last_event_at`。如果搬移到 profile 表，每次掃碼都要先判斷 `product_type` 再 JOIN 對應 profile 表，效能變差、邏輯更複雜。
+
+#### 3. 現有 schema 層已有保護
+
+`ProductCreate.product_type` 使用 `Literal["staff", "student"]`（`app/schemas/product.py:24`），目前透過 API 無法建立 device/goods 類型。白名單事實上已存在於 schema 驗證層。
+
+#### 4. 只需一行檢查即可防護未來
+
+在 `_resolve_product_for_scan`（`app/routers/attendance.py:134`）加 `product_type` 白名單：
+
+```python
+_ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}
+
+if product.product_type not in _ATTENDANCE_ELIGIBLE_TYPES:
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"Product type '{product.product_type}' does not support attendance",
+    )
+```
+
+同時需要在以下端點加白名單：
+- `_resolve_product_for_scan`（掃碼）
+- `create_manual_correction`（手動補登，`app/routers/attendance.py:257`）
+- QR token 發放端點（`app/routers/qr.py:31`）
+
+### 保留在 products 的出勤欄位
+
+| 欄位 | 保留原因 |
+|------|---------|
+| `attendance_status` | toggle 邏輯核心，每次掃碼都要讀寫 |
+| `qr_token_version` | QR 驗證邏輯直接讀取，不需 JOIN |
+| `last_event_at` | 跨日判斷用，與 `attendance_status` 配合 |
+| `last_event_location_id` | scan preview 顯示用 |
+| `last_event_location` | denormalized 快取，避免 JOIN location 表 |
+
+> **Trade-off**：device/goods 類型會有空的出勤欄位（nullable/有 default），但這是 supertype 表的正常 trade-off — 用一些空欄位換取架構簡潔性。
+
+### 未來擴充
+
+如果未來新增需要出勤的 product_type（例如 `contractor`），只需加進 `_ATTENDANCE_ELIGIBLE_TYPES` 即可。如果用搬移方案，就需要新建 `contractor_profiles` 表 + 修改所有出勤 FK。
+
+---
+
+## status enum 拆分分析（2026-07-27）
+
+### 現況
+
+`ProductStatus` enum（`app/models/product.py:30-35`）混合了學生和員工的狀態：
+
+| 狀態 | 適用對象 |
+|------|---------|
+| `active` | 學生 + 員工 |
+| `inactive` | 學生 + 員工 |
+| `graduated` | **僅學生** |
+| `terminated` | **僅員工** |
+| `suspended` | 學生 + 員工 |
+
+### 可選方案：拆分為兩個 enum
+
+```python
+class StudentStatus(str, enum.Enum):
+    active = "active"
+    inactive = "inactive"
+    graduated = "graduated"
+    suspended = "suspended"
+
+class StaffStatus(str, enum.Enum):
+    active = "active"
+    inactive = "inactive"
+    terminated = "terminated"
+    suspended = "suspended"
+```
+
+### 決定：**🔄 可選，不急迫**
+
+- `status` 是業務狀態，不是個人資料，**保留在 `products` 表**（方便統一查詢和篩選）
+- 拆分後可在 schema 驗證層做 type-specific 限制（例如 student 不能設 `terminated`，staff 不能設 `graduated`）
+- 目前不拆分也沒有功能錯誤，只是防呆層面
+- 如果未來 device/goods 有自己的狀態需求，再考慮拆分

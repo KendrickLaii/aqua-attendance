@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, select
 from app.deps import AdminOnly, DB
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
-from app.models.product import Product, product_scan_locations
+from app.models.unit import Unit, unit_scan_locations
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
 from app.utils.search import ilike_contains
 
@@ -121,24 +121,24 @@ async def delete_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
         raise HTTPException(status_code=404, detail="Location not found")
 
     used_in_events = await db.execute(select(AttendanceEvent.id).where(AttendanceEvent.location_id == location_id).limit(1))
-    used_in_products = await db.execute(select(Product.id).where(Product.last_event_location_id == location_id).limit(1))
+    used_in_units = await db.execute(select(Unit.id).where(Unit.last_event_location_id == location_id).limit(1))
     used_as_registered = await db.execute(
-        select(Product.id).where(Product.registered_location_id == location_id).limit(1)
+        select(Unit.id).where(Unit.registered_location_id == location_id).limit(1)
     )
     used_in_scan = await db.execute(
-        select(product_scan_locations.c.product_id)
-        .where(product_scan_locations.c.location_id == location_id)
+        select(unit_scan_locations.c.unit_id)
+        .where(unit_scan_locations.c.location_id == location_id)
         .limit(1)
     )
     if (
         used_in_events.scalar_one_or_none()
-        or used_in_products.scalar_one_or_none()
+        or used_in_units.scalar_one_or_none()
         or used_as_registered.scalar_one_or_none()
         or used_in_scan.first()
     ):
         raise HTTPException(
             status_code=409,
-            detail="Location is referenced by products or attendance records. Set it inactive instead of deleting.",
+            detail="Location is referenced by units or attendance records. Set it inactive instead of deleting.",
         )
 
     await db.delete(location)

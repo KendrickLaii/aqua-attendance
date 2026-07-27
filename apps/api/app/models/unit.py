@@ -7,16 +7,16 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-product_scan_locations = Table(
-    "product_scan_locations",
+unit_scan_locations = Table(
+    "unit_scan_locations",
     Base.metadata,
-    Column("product_id", Uuid, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True),
+    Column("unit_id", Uuid, ForeignKey("units.id", ondelete="CASCADE"), primary_key=True),
     Column("location_id", Uuid, ForeignKey("locations.id", ondelete="RESTRICT"), primary_key=True),
 )
 
 
 class AttendanceStatus(str, enum.Enum):
-    """Current presence of a product (separate from account status)."""
+    """Current presence of a unit (separate from account status)."""
 
     checked_in = "checked_in"
     checked_out = "checked_out"
@@ -27,7 +27,7 @@ class EmploymentType(str, enum.Enum):
     full_time = "full_time"
 
 
-class ProductStatus(str, enum.Enum):
+class UnitStatus(str, enum.Enum):
     active = "active"
     inactive = "inactive"
     graduated = "graduated"
@@ -35,21 +35,21 @@ class ProductStatus(str, enum.Enum):
     suspended = "suspended"
 
 
-class Product(Base):
+class Unit(Base):
     """A managed entity (staff member, student, etc.) that can check in/out."""
 
-    __tablename__ = "products"
+    __tablename__ = "units"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     english_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    product_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    unit_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default=ProductStatus.active.value)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=UnitStatus.active.value)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    enrollment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    exit_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     attendance_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=AttendanceStatus.checked_out.value
@@ -64,8 +64,6 @@ class Product(Base):
     )
     last_event_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -83,37 +81,37 @@ class Product(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    attendance_events = relationship("AttendanceEvent", back_populates="product", lazy="select")
+    attendance_events = relationship("AttendanceEvent", back_populates="unit", lazy="select")
     registered_location = relationship(
-        "Location", foreign_keys=[registered_location_id], back_populates="registered_products"
+        "Location", foreign_keys=[registered_location_id], back_populates="registered_units"
     )
     scan_locations = relationship(
         "Location",
-        secondary=product_scan_locations,
+        secondary=unit_scan_locations,
         lazy="selectin",
     )
     last_event_location_ref = relationship(
         "Location",
         foreign_keys=[last_event_location_id],
-        back_populates="last_event_products",
+        back_populates="last_event_units",
     )
-    
+
     # Polymorphic relationships to profile tables
     student_profile = relationship(
         "StudentProfile",
-        back_populates="product",
+        back_populates="unit",
         cascade="all, delete-orphan",
         uselist=False,
     )
     staff_profile = relationship(
         "StaffProfile",
-        back_populates="product",
+        back_populates="unit",
         cascade="all, delete-orphan",
         uselist=False,
         foreign_keys="StaffProfile.id",
     )
-    
+
     # Additional relationships
-    notifications = relationship("Notification", back_populates="product", cascade="all, delete-orphan")
-    attendance_summaries = relationship("AttendanceSummary", back_populates="product", cascade="all, delete-orphan")
-    payroll_records = relationship("PayrollRecord", back_populates="product", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="unit", cascade="all, delete-orphan")
+    attendance_summaries = relationship("AttendanceSummary", back_populates="unit", cascade="all, delete-orphan")
+    payroll_records = relationship("PayrollRecord", back_populates="unit", cascade="all, delete-orphan")

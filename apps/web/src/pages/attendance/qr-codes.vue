@@ -1,26 +1,26 @@
 <script setup lang="ts">
-import { listProducts } from '@/api/attendance/products'
-import type { Product } from '@/api/attendance/products'
-import ProductQrDialogs from '@/components/attendance/ProductQrDialogs.vue'
+import { listUnits } from '@/api/attendance/units'
+import type { Unit } from '@/api/attendance/units'
+import UnitQrDialogs from '@/components/attendance/UnitQrDialogs.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { openProductQrPrintPlaceholder, printProductQrs } from '@/utils/printProductQrs'
+import { openUnitQrPrintPlaceholder, printUnitQrs } from '@/utils/printUnitQrs'
 
 definePage({ meta: {} })
 
-const PRODUCT_PAGE_SIZE = 200
+const UNIT_PAGE_SIZE = 200
 const SEARCH_DEBOUNCE_MS = 300
 
 const { authStore, ensureAccess } = useAttendanceAdminGate()
 const router = useRouter()
 
-const products = ref<Product[]>([])
+const units = ref<Unit[]>([])
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 const filterType = ref('')
 const showInactive = ref(false)
 const searchQuery = ref('')
-const qrDialogsRef = ref<InstanceType<typeof ProductQrDialogs> | null>(null)
+const qrDialogsRef = ref<InstanceType<typeof UnitQrDialogs> | null>(null)
 const selectedIds = ref<Set<string>>(new Set())
 const printing = ref(false)
 const printError = ref('')
@@ -30,59 +30,59 @@ const typeOptions = [
   { title: 'Staff', value: 'staff' },
 ]
 
-const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE)
-const checkedInCount = computed(() => products.value.filter(p => p.attendance_status === 'checked_in').length)
+const unitsCapped = computed(() => units.value.length >= UNIT_PAGE_SIZE)
+const checkedInCount = computed(() => units.value.filter(u => u.attendance_status === 'checked_in').length)
 const selectedCount = computed(() => selectedIds.value.size)
 
 const allVisibleSelected = computed(() =>
-  products.value.length > 0 && products.value.every(p => selectedIds.value.has(p.id)),
+  units.value.length > 0 && units.value.every(u => selectedIds.value.has(u.id)),
 )
 
-const selectedProducts = computed(() =>
-  products.value.filter(p => selectedIds.value.has(p.id)),
+const selectedUnits = computed(() =>
+  units.value.filter(u => selectedIds.value.has(u.id)),
 )
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
     return 'Loading…'
 
-  const total = products.value.length
-  const countLabel = productsCapped.value ? `${PRODUCT_PAGE_SIZE}+` : String(total)
+  const total = units.value.length
+  const countLabel = unitsCapped.value ? `${UNIT_PAGE_SIZE}+` : String(total)
 
   return `${countLabel} active · ${checkedInCount.value} checked in`
 })
 
 const listCaption = computed(() => {
-  if (loading.value || products.value.length === 0)
+  if (loading.value || units.value.length === 0)
     return ''
 
-  const total = products.value.length
-  if (productsCapped.value)
-    return `Showing ${total} of ${PRODUCT_PAGE_SIZE}+ active products`
+  const total = units.value.length
+  if (unitsCapped.value)
+    return `Showing ${total} of ${UNIT_PAGE_SIZE}+ active units`
   if (searchQuery.value || filterType.value || showInactive.value)
-    return `Showing ${total} matching active product${total === 1 ? '' : 's'}`
+    return `Showing ${total} matching active unit${total === 1 ? '' : 's'}`
 
-  return `${total} active product${total === 1 ? '' : 's'}`
+  return `${total} active unit${total === 1 ? '' : 's'}`
 })
 
 const emptyStateMessage = computed(() => {
   if (searchQuery.value || filterType.value || showInactive.value)
-    return 'No matching active products'
+    return 'No matching active units'
 
-  return 'No active products found'
+  return 'No active units found'
 })
 
-const showEmptyProductsCta = computed(() =>
+const showEmptyUnitsCta = computed(() =>
   !searchQuery.value && !filterType.value && !showInactive.value,
 )
 
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
-  await loadProducts()
+  await loadUnits()
 })
 
-async function loadProducts(isRefresh = false) {
+async function loadUnits(isRefresh = false) {
   const softRefresh = isRefresh === true
 
   if (softRefresh)
@@ -91,16 +91,16 @@ async function loadProducts(isRefresh = false) {
     loading.value = true
   loadError.value = ''
   try {
-    products.value = await listProducts({
+    units.value = await listUnits({
       search: searchQuery.value || undefined,
-      product_type: filterType.value || undefined,
+      unit_type: filterType.value || undefined,
       is_active: showInactive.value ? undefined : true,
-      page_size: PRODUCT_PAGE_SIZE,
+      page_size: UNIT_PAGE_SIZE,
     })
   }
   catch (e) {
-    console.error('Failed to load QR products', e)
-    loadError.value = formatApiError(e, 'Failed to load products. Please try again.')
+    console.error('Failed to load QR units', e)
+    loadError.value = formatApiError(e, 'Failed to load units. Please try again.')
   }
   finally {
     loading.value = false
@@ -108,18 +108,18 @@ async function loadProducts(isRefresh = false) {
   }
 }
 
-const debouncedLoadProducts = useDebounceFn(() => loadProducts(true), SEARCH_DEBOUNCE_MS)
+const debouncedLoadUnits = useDebounceFn(() => loadUnits(true), SEARCH_DEBOUNCE_MS)
 
 watch(searchQuery, () => {
-  debouncedLoadProducts()
+  debouncedLoadUnits()
 })
 
 watch(filterType, () => {
-  loadProducts(true)
+  loadUnits(true)
 })
 
 watch(showInactive, () => {
-  loadProducts(true)
+  loadUnits(true)
 })
 
 function isSelected(id: string) {
@@ -141,25 +141,25 @@ function toggleSelectAllVisible() {
 
     return
   }
-  selectedIds.value = new Set(products.value.map(p => p.id))
+  selectedIds.value = new Set(units.value.map(u => u.id))
 }
 
 function clearSelection() {
   selectedIds.value = new Set()
 }
 
-function openQR(p: Product) {
-  qrDialogsRef.value?.openQR(p)
+function openQR(u: Unit) {
+  qrDialogsRef.value?.openQR(u)
 }
 
 async function printSelected() {
-  if (!selectedProducts.value.length)
+  if (!selectedUnits.value.length)
     return
 
   let printWindow: Window | null = null
 
   try {
-    printWindow = openProductQrPrintPlaceholder()
+    printWindow = openUnitQrPrintPlaceholder()
   }
   catch (e) {
     printError.value = formatApiError(e, 'Could not open print window')
@@ -170,7 +170,7 @@ async function printSelected() {
   printing.value = true
   printError.value = ''
   try {
-    await printProductQrs(selectedProducts.value, printWindow)
+    await printUnitQrs(selectedUnits.value, printWindow)
   }
   catch (e) {
     printError.value = formatApiError(e, 'Could not print selected QR codes')
@@ -207,16 +207,16 @@ async function printSelected() {
           variant="outlined"
           color="primary"
           prepend-icon="ri-group-line"
-          :to="{ name: 'attendance-products' }"
+          :to="{ name: 'attendance-units' }"
         >
-          Manage products
+          Manage units
         </VBtn>
         <VBtn
           variant="tonal"
           color="primary"
           prepend-icon="ri-refresh-line"
           :loading="refreshing"
-          @click="loadProducts(true)"
+          @click="loadUnits(true)"
         >
           Refresh
         </VBtn>
@@ -233,7 +233,7 @@ async function printSelected() {
       >
         <VTextField
           v-model="searchQuery"
-          placeholder="Search products..."
+          placeholder="Search units..."
           prepend-inner-icon="ri-search-line"
           density="compact"
           hide-details
@@ -269,7 +269,7 @@ async function printSelected() {
           variant="tonal"
           size="small"
           :prepend-icon="allVisibleSelected ? 'ri-checkbox-blank-line' : 'ri-checkbox-multiple-line'"
-          :disabled="!products.length || loading"
+          :disabled="!units.length || loading"
           @click="toggleSelectAllVisible"
         >
           {{ allVisibleSelected ? 'Deselect all' : 'Select all' }}
@@ -315,7 +315,7 @@ async function printSelected() {
         <VBtn
           variant="text"
           size="small"
-          @click="loadProducts(true)"
+          @click="loadUnits(true)"
         >
           Retry
         </VBtn>
@@ -347,43 +347,43 @@ async function printSelected() {
     </VRow>
 
     <div
-      v-else-if="products.length === 0 && !loadError"
+      v-else-if="units.length === 0 && !loadError"
       class="text-center text-medium-emphasis py-12"
     >
       <div class="mb-3">
         {{ emptyStateMessage }}
       </div>
       <VBtn
-        v-if="showEmptyProductsCta"
+        v-if="showEmptyUnitsCta"
         color="primary"
         prepend-icon="ri-group-line"
-        :to="{ name: 'attendance-products' }"
+        :to="{ name: 'attendance-units' }"
       >
-        Go to Product Management
+        Go to Unit Management
       </VBtn>
     </div>
 
     <VRow v-else-if="!loadError">
       <VCol
-        v-for="p in products"
-        :key="p.id"
+        v-for="u in units"
+        :key="u.id"
         cols="12"
         sm="6"
         md="4"
         lg="3"
       >
-        <ProductQrCard
-          :product="p"
-          :selected="isSelected(p.id)"
-          @update:selected="setSelected(p.id, $event)"
-          @open-detail="openQR(p)"
+        <UnitQrCard
+          :unit="u"
+          :selected="isSelected(u.id)"
+          @update:selected="setSelected(u.id, $event)"
+          @open-detail="openQR(u)"
         />
       </VCol>
     </VRow>
 
-    <ProductQrDialogs
+    <UnitQrDialogs
       ref="qrDialogsRef"
-      @rotated="loadProducts(true)"
+      @rotated="loadUnits(true)"
     />
   </VContainer>
 </template>

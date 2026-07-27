@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     QR_SECRET: str = "change-me-qr-secret"
     # QR tokens have no expiry; rotation happens via the refresh endpoint
-    # which bumps Product.qr_token_version.  Same token toggles check-in/out.
+    # which bumps Unit.qr_token_version.  Same token toggles check-in/out.
     SCAN_DEBOUNCE_SECONDS: int = 3
 
     CSV_EXPORT_MAX_ROWS: int = 50_000

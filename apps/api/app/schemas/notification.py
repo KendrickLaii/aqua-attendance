@@ -21,7 +21,7 @@ class NotificationPriority(str, enum.Enum):
 
 class NotificationCreate(BaseModel):
     user_id: uuid.UUID | None = None
-    product_id: uuid.UUID | None = None
+    unit_id: uuid.UUID | None = None
     title: str = Field(min_length=1, max_length=255)
     message: str = Field(min_length=1)
     notification_type: str = Field(default=NotificationType.attendance_alert.value)
@@ -39,7 +39,7 @@ class NotificationUpdate(BaseModel):
 class NotificationOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID | None = None
-    product_id: uuid.UUID | None = None
+    unit_id: uuid.UUID | None = None
     title: str
     message: str
     notification_type: str

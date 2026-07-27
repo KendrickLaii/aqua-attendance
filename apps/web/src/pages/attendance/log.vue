@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { createManualCorrection, exportAttendanceCSV, getAttendanceDayStats, listAttendanceWithTotal, voidAttendanceEvent } from '@/api/attendance/events'
 import type { AttendanceDayStats, AttendanceEvent } from '@/api/attendance/events'
-import { listProducts } from '@/api/attendance/products'
+import { listUnits } from '@/api/attendance/units'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
-import type { Product } from '@/api/attendance/products'
+import type { Unit } from '@/api/attendance/units'
 import { eventSourceColor, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
-const PRODUCT_PAGE_SIZE = 200
+const UNIT_PAGE_SIZE = 200
 const { authStore, ensureAccess } = useAttendanceAdminGate()
 const {
   page,
@@ -25,15 +25,15 @@ const todayKey = getTodayRangeIso().dateKey
 
 const events = ref<AttendanceEvent[]>([])
 const dayStats = ref<AttendanceDayStats | null>(null)
-const products = ref<Product[]>([])
+const units = ref<Unit[]>([])
 const locations = ref<LocationItem[]>([])
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 
 const filters = reactive({
-  product_id: '' as string,
-  product_type: '' as string,
+  unit_id: '' as string,
+  unit_type: '' as string,
   date_from: todayKey,
   date_to: todayKey,
   event_type: '' as string,
@@ -45,7 +45,7 @@ const filters = reactive({
 const correctionDialog = ref(false)
 
 const correctionForm = reactive({
-  product_id: '',
+  unit_id: '',
   event_type: 'manual_correction',
   location_id: '',
   notes: '',
@@ -159,12 +159,12 @@ const dayStatCards = computed(() => {
   ]
 })
 
-const productSelectItems = computed(() => [
-  { title: 'All Products', value: '' },
-  ...products.value.map(p => ({ title: `${p.full_name} (${p.code})`, value: p.id })),
+const unitSelectItems = computed(() => [
+  { title: 'All Units', value: '' },
+  ...units.value.map(u => ({ title: `${u.full_name} (${u.code})`, value: u.id })),
 ])
 
-const productsCapped = computed(() => products.value.length >= PRODUCT_PAGE_SIZE)
+const unitsCapped = computed(() => units.value.length >= UNIT_PAGE_SIZE)
 
 const filtersReady = ref(false)
 
@@ -173,10 +173,10 @@ onMounted(async () => {
     return
 
   try {
-    products.value = await listProducts({ page_size: PRODUCT_PAGE_SIZE })
+    units.value = await listUnits({ page_size: UNIT_PAGE_SIZE })
   }
   catch (e) {
-    console.error('Failed to load products for log filters', e)
+    console.error('Failed to load units for log filters', e)
   }
   try {
     locations.value = await listLocations({ is_active: true, page_size: 200 })
@@ -190,8 +190,8 @@ onMounted(async () => {
 
 watch(
   () => [
-    filters.product_id,
-    filters.product_type,
+    filters.unit_id,
+    filters.unit_type,
     filters.event_type,
     filters.source,
     filters.date_from,
@@ -220,8 +220,8 @@ async function loadEvents(isRefresh = false, shouldResetPage = false) {
   try {
     const range = filterDateRange()
     const listParams = {
-      product_id: filters.product_id || undefined,
-      product_type: filters.product_type || undefined,
+      unit_id: filters.unit_id || undefined,
+      unit_type: filters.unit_type || undefined,
       date_from: range.date_from,
       date_to: range.date_to,
       event_type: filters.event_type || undefined,
@@ -311,7 +311,7 @@ function eventTypeLabel(type: string) {
 function openCorrectionDialog() {
   correctionError.value = ''
   Object.assign(correctionForm, {
-    product_id: '',
+    unit_id: '',
     event_type: 'manual_correction',
     location_id: '',
     notes: '',
@@ -331,8 +331,8 @@ async function handleExport() {
     const range = filterDateRange()
 
     const blob = await exportAttendanceCSV({
-      product_id: filters.product_id || undefined,
-      product_type: filters.product_type || undefined,
+      unit_id: filters.unit_id || undefined,
+      unit_type: filters.unit_type || undefined,
       date_from: range.date_from,
       date_to: range.date_to,
       include_voided: filters.include_voided || undefined,
@@ -357,8 +357,8 @@ async function handleExport() {
 }
 
 async function handleCorrection() {
-  if (!correctionForm.product_id) {
-    correctionError.value = 'Please select a product'
+  if (!correctionForm.unit_id) {
+    correctionError.value = 'Please select a unit'
 
     return
   }
@@ -366,7 +366,7 @@ async function handleCorrection() {
   correctionError.value = ''
   try {
     await createManualCorrection({
-      product_id: correctionForm.product_id,
+      unit_id: correctionForm.unit_id,
       event_type: correctionForm.event_type,
       location_id: correctionForm.location_id || undefined,
       notes: correctionForm.notes || undefined,
@@ -457,9 +457,9 @@ async function confirmVoid() {
           sm="4"
         >
           <VSelect
-            v-model="filters.product_id"
-            :items="productSelectItems"
-            :label="productsCapped ? 'Product (200+ loaded)' : 'Product'"
+            v-model="filters.unit_id"
+            :items="unitSelectItems"
+            :label="unitsCapped ? 'Unit (200+ loaded)' : 'Unit'"
             density="compact"
             hide-details
           />
@@ -469,7 +469,7 @@ async function confirmVoid() {
           sm="2"
         >
           <VSelect
-            v-model="filters.product_type"
+            v-model="filters.unit_type"
             :items="[{ title: 'All Types', value: '' }, ...typeOptions]"
             label="Type"
             density="compact"
@@ -630,7 +630,7 @@ async function confirmVoid() {
                 Date / Time
               </th>
               <th width="160">
-                Product
+                Unit
               </th>
               <th width="80">
                 Type
@@ -673,16 +673,16 @@ async function confirmVoid() {
                 </VChip>
               </td>
               <td :class="{ 'text-medium-emphasis': evt.voided_at }">
-                {{ evt.product_name || evt.product_code || evt.product_id }}
+                {{ evt.unit_name || evt.unit_code || evt.unit_id }}
               </td>
               <td>
                 <VChip
-                  v-if="evt.product_type"
-                  :color="evt.product_type === 'staff' ? 'info' : 'success'"
+                  v-if="evt.unit_type"
+                  :color="evt.unit_type === 'staff' ? 'info' : 'success'"
                   size="x-small"
                   label
                 >
-                  {{ typeLabel(evt.product_type) }}
+                  {{ typeLabel(evt.unit_type) }}
                 </VChip>
                 <span v-else>—</span>
               </td>
@@ -763,9 +763,9 @@ async function confirmVoid() {
     >
       <VForm @submit.prevent="handleCorrection">
             <VSelect
-              v-model="correctionForm.product_id"
-              :items="products.map(p => ({ title: `${p.full_name} (${p.code})`, value: p.id }))"
-              label="Product *"
+              v-model="correctionForm.unit_id"
+              :items="units.map(u => ({ title: `${u.full_name} (${u.code})`, value: u.id }))"
+              label="Unit *"
               density="compact"
               variant="outlined"
               class="mb-3"
@@ -806,7 +806,7 @@ async function confirmVoid() {
           Confirm Void
         </VCardTitle>
         <VCardText>
-          Void attendance event for <strong>{{ voidTarget?.product_name || voidTarget?.product_code || voidTarget?.product_id }}</strong>?<br>
+          Void attendance event for <strong>{{ voidTarget?.unit_name || voidTarget?.unit_code || voidTarget?.unit_id }}</strong>?<br>
           <span class="text-medium-emphasis">This action cannot be undone.</span>
         </VCardText>
         <VCardActions class="justify-end">

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.product import Product
+    from app.models.unit import Unit
     from app.models.location import Location
 
 
@@ -18,16 +18,16 @@ class AttendanceSummary(Base):
     __tablename__ = "attendance_summaries"
     __table_args__ = (
         UniqueConstraint(
-            "product_id",
+            "unit_id",
             "summary_date",
-            name="uq_attendance_summaries_product_date",
+            name="uq_attendance_summaries_unit_date",
         ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     
     # Primary keys
-    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    unit_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("units.id", ondelete="CASCADE"), nullable=False, index=True)
     summary_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     location_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True)
     
@@ -64,5 +64,5 @@ class AttendanceSummary(Base):
     )
     
     # Relationships
-    product: Mapped["Product"] = relationship("Product", back_populates="attendance_summaries")
+    unit: Mapped["Unit"] = relationship("Unit", back_populates="attendance_summaries")
     location: Mapped["Location"] = relationship("Location", back_populates="attendance_summaries")

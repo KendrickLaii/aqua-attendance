@@ -1,13 +1,13 @@
 import { getQRToken } from '@/api/attendance/events'
-import type { Product } from '@/api/attendance/products'
+import type { Unit } from '@/api/attendance/units'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { toQrDataUrl } from '@/utils/qrCodeDataUrl'
 
-export const PRODUCT_QR_CARD_IMAGE_SIZE = 152
-export const PRODUCT_QR_PRINT_IMAGE_SIZE = 120
+export const UNIT_QR_CARD_IMAGE_SIZE = 152
+export const UNIT_QR_PRINT_IMAGE_SIZE = 120
 
-export interface ProductQrPrintItem {
-  product: Product
+export interface UnitQrPrintItem {
+  unit: Unit
   qrDataUrl: string
 }
 
@@ -29,7 +29,7 @@ function escapeHtml(value: string) {
 }
 
 /** Call synchronously from a click handler before any await. */
-export function openProductQrPrintPlaceholder(): Window {
+export function openUnitQrPrintPlaceholder(): Window {
   const printWindow = window.open('about:blank', '_blank')
   if (!printWindow)
     throw new Error('Pop-up blocked. Allow pop-ups to print QR codes.')
@@ -45,13 +45,13 @@ export function openProductQrPrintPlaceholder(): Window {
   return printWindow
 }
 
-export async function fetchProductQrPrintItems(products: Product[]): Promise<ProductQrPrintItem[]> {
+export async function fetchUnitQrPrintItems(units: Unit[]): Promise<UnitQrPrintItem[]> {
   const results = await Promise.all(
-    products.map(async (product) => {
-      const { qr_token } = await getQRToken(product.id)
-      const qrDataUrl = await toQrDataUrl(qr_token, PRODUCT_QR_PRINT_IMAGE_SIZE)
+    units.map(async (unit) => {
+      const { qr_token } = await getQRToken(unit.id)
+      const qrDataUrl = await toQrDataUrl(qr_token, UNIT_QR_PRINT_IMAGE_SIZE)
 
-      return { product, qrDataUrl }
+      return { unit, qrDataUrl }
     }),
   )
 
@@ -76,16 +76,16 @@ function waitForImages(doc: Document): Promise<void> {
   ).then(() => undefined)
 }
 
-export function renderProductQrPrintWindow(printWindow: Window, items: ProductQrPrintItem[]) {
+export function renderUnitQrPrintWindow(printWindow: Window, items: UnitQrPrintItem[]) {
   if (!items.length)
     return
 
-  const cards = items.map(({ product, qrDataUrl }) => `
+  const cards = items.map(({ unit, qrDataUrl }) => `
     <section class="print-card">
-      <img src="${qrDataUrl}" alt="QR for ${escapeHtml(product.full_name)}" width="${PRODUCT_QR_PRINT_IMAGE_SIZE}" height="${PRODUCT_QR_PRINT_IMAGE_SIZE}" style="width:2.3cm;height:2.3cm" />
-      <h2>${escapeHtml(product.full_name)}</h2>
-      <p class="code">${escapeHtml(product.code)}</p>
-      <p class="meta">${escapeHtml(typeLabel(product.product_type))}</p>
+      <img src="${qrDataUrl}" alt="QR for ${escapeHtml(unit.full_name)}" width="${UNIT_QR_PRINT_IMAGE_SIZE}" height="${UNIT_QR_PRINT_IMAGE_SIZE}" style="width:2.3cm;height:2.3cm" />
+      <h2>${escapeHtml(unit.full_name)}</h2>
+      <p class="code">${escapeHtml(unit.code)}</p>
+      <p class="meta">${escapeHtml(typeLabel(unit.unit_type))}</p>
     </section>
   `).join('')
 
@@ -157,7 +157,7 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
   </style>
 </head>
 <body>
-  <h1>QR Codes — ${items.length} product${items.length === 1 ? '' : 's'}</h1>
+  <h1>QR Codes — ${items.length} unit${items.length === 1 ? '' : 's'}</h1>
   <div class="grid">${cards}</div>
 </body>
 </html>`
@@ -167,14 +167,14 @@ export function renderProductQrPrintWindow(printWindow: Window, items: ProductQr
   printWindow.document.close()
 }
 
-export async function printProductQrs(products: Product[], printWindow: Window) {
-  if (!products.length)
+export async function printUnitQrs(units: Unit[], printWindow: Window) {
+  if (!units.length)
     return
 
   try {
-    const items = await fetchProductQrPrintItems(products)
+    const items = await fetchUnitQrPrintItems(units)
 
-    renderProductQrPrintWindow(printWindow, items)
+    renderUnitQrPrintWindow(printWindow, items)
     await waitForImages(printWindow.document)
     printWindow.focus()
     printWindow.print()

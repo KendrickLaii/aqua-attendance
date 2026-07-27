@@ -27,8 +27,8 @@ from app.attendance_tz import (
     day_boundary_at,
 )
 from app.models.attendance import AttendanceEvent, EventSource, EventType
-from app.models.product import AttendanceStatus, Product
-from app.services.attendance import recompute_product_attendance_status
+from app.models.unit import AttendanceStatus, Unit
+from app.services.attendance import recompute_unit_attendance_status
 
 # Re-export for callers / tests that import from this module.
 __all__ = [
@@ -46,7 +46,7 @@ DAY_BOUNDARY_NOTE = "Auto checkout at day boundary (23:59)"
 
 def make_day_boundary_checkout_event(
     *,
-    product_id: uuid.UUID,
+    unit_id: uuid.UUID,
     checkout_time: datetime,
     location_id: uuid.UUID | None = None,
     location: str | None = None,
@@ -54,7 +54,7 @@ def make_day_boundary_checkout_event(
     """Build a day-boundary check-out event (caller adds to session)."""
     loc = (location or "").strip() or "auto"
     return AttendanceEvent(
-        product_id=product_id,
+        unit_id=unit_id,
         event_type=EventType.check_out.value,
         source=EventSource.auto_checkout.value,
         recorded_at=checkout_time,
@@ -67,17 +67,17 @@ def make_day_boundary_checkout_event(
 async def auto_checkout_for_date(
     db: AsyncSession,
     target_date: date | None = None,
-    product_ids: list[uuid.UUID] | None = None,
+    unit_ids: list[uuid.UUID] | None = None,
 ) -> list[AttendanceEvent]:
-    """Create auto-checkout events for products still checked-in at 23:59.
+    """Create auto-checkout events for units still checked-in at 23:59.
 
     Args:
         db: database session
         target_date: the date to process (defaults to today in HKT)
-        product_ids: when provided, only these products are checked out.
-            Unselected products stay checked in so admins can investigate
+        unit_ids: when provided, only these units are checked out.
+            Unselected units stay checked in so admins can investigate
             why they never scanned out. When ``None`` all still-checked-in
-            products are processed (intended scheduled-job behaviour once
+            units are processed (intended scheduled-job behaviour once
             a cron exists; today only the manual API uses this path).
 
     Returns:
@@ -87,36 +87,36 @@ async def auto_checkout_for_date(
         target_date = attendance_today()
 
     query = (
-        select(Product)
-        .options(selectinload(Product.registered_location))
-        .where(Product.attendance_status == AttendanceStatus.checked_in.value)
-        .where(Product.is_active.is_(True))
+        select(Unit)
+        .options(selectinload(Unit.registered_location))
+        .where(Unit.attendance_status == AttendanceStatus.checked_in.value)
+        .where(Unit.is_active.is_(True))
     )
-    if product_ids is not None:
-        if not product_ids:
+    if unit_ids is not None:
+        if not unit_ids:
             return []
-        query = query.where(Product.id.in_(product_ids))
+        query = query.where(Unit.id.in_(unit_ids))
 
     result = await db.execute(query)
-    products = list(result.scalars().all())
+    units = list(result.scalars().all())
 
     checkout_time = day_boundary_at(target_date)
     created_events: list[AttendanceEvent] = []
 
-    for product in products:
+    for unit in units:
         event = make_day_boundary_checkout_event(
-            product_id=product.id,
+            unit_id=unit.id,
             checkout_time=checkout_time,
-            location_id=product.last_event_location_id,
-            location=product.last_event_location or "auto",
+            location_id=unit.last_event_location_id,
+            location=unit.last_event_location or "auto",
         )
         db.add(event)
         created_events.append(event)
 
     if created_events:
         await db.flush()
-        for product in products:
-            await recompute_product_attendance_status(db, product=product)
+        for unit in units:
+            await recompute_unit_attendance_status(db, unit=unit)
         await db.commit()
         for event in created_events:
             await db.refresh(event)
@@ -125,13 +125,13 @@ async def auto_checkout_for_date(
 
 
 async def get_still_checked_in_count(db: AsyncSession) -> int:
-    """Return the number of products currently checked in."""
+    """Return the number of units currently checked in."""
     from sqlalchemy import func
 
     result = await db.execute(
         select(func.count())
-        .select_from(Product)
-        .where(Product.attendance_status == AttendanceStatus.checked_in.value)
-        .where(Product.is_active.is_(True))
+        .select_from(Unit)
+        .where(Unit.attendance_status == AttendanceStatus.checked_in.value)
+        .where(Unit.is_active.is_(True))
     )
     return result.scalar_one()

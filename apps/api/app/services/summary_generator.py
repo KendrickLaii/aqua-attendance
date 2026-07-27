@@ -1,7 +1,7 @@
 """Generate attendance summaries from raw events for a given month.
 
 Admin selects a month → this service calculates daily summaries for every
-product and inserts / updates `attendance_summaries` rows.
+unit and inserts / updates `attendance_summaries` rows.
 
 Forgotten check-outs on past days are closed at the day boundary (23:59)
 with an ``auto_checkout`` event — same helper as the Auto Checkout job —
@@ -22,8 +22,8 @@ from sqlalchemy.orm import selectinload
 
 from app.models.attendance import AttendanceEvent, EventSource, EventType
 from app.models.attendance_summary import AttendanceSummary
-from app.models.product import Product
-from app.services.attendance import recompute_product_attendance_status
+from app.models.unit import Unit
+from app.services.attendance import recompute_unit_attendance_status
 from app.attendance_tz import ATTENDANCE_TZ, attendance_date, attendance_today, day_boundary_at
 from app.services.auto_checkout import DAY_BOUNDARY_NOTE, make_day_boundary_checkout_event
 
@@ -35,7 +35,7 @@ async def generate_monthly_summaries(
     year: int,
     month: int,
 ) -> dict:
-    """Generate attendance summaries for every product for the given month.
+    """Generate attendance summaries for every unit for the given month.
 
     Returns:
         dict with counts: {"created": int, "updated": int, "total_days": int,
@@ -49,11 +49,11 @@ async def generate_monthly_summaries(
     end_dt = datetime.combine(last_day, datetime.max.time(), tzinfo=ATTENDANCE_TZ)
     today = attendance_today()
 
-    # Fetch all non-voided events in range with product & location
+    # Fetch all non-voided events in range with unit & location
     result = await db.execute(
         select(AttendanceEvent)
         .options(
-            selectinload(AttendanceEvent.product).selectinload(Product.registered_location),
+            selectinload(AttendanceEvent.unit).selectinload(Unit.registered_location),
             selectinload(AttendanceEvent.location_ref),
         )
         .where(AttendanceEvent.recorded_at >= start_dt)
@@ -63,19 +63,19 @@ async def generate_monthly_summaries(
     )
     events = result.scalars().all()
 
-    # Group by (product_id, attendance-local date) so HKT day-boundary outs stay on that day
+    # Group by (unit_id, attendance-local date) so HKT day-boundary outs stay on that day
     grouped: dict[tuple[uuid.UUID, date], list[AttendanceEvent]] = defaultdict(list)
     for event in events:
         event_date = attendance_date(event.recorded_at)
-        grouped[(event.product_id, event_date)].append(event)
+        grouped[(event.unit_id, event_date)].append(event)
 
     created_count = 0
     updated_count = 0
     auto_checkout_count = 0
-    products_to_recompute: set[uuid.UUID] = set()
+    units_to_recompute: set[uuid.UUID] = set()
     kept_keys: set[tuple[uuid.UUID, date]] = set()
 
-    for (product_id, event_date), day_events in grouped.items():
+    for (unit_id, event_date), day_events in grouped.items():
         # Separate check_ins and check_outs
         check_ins = [e for e in day_events if e.event_type == EventType.check_in.value]
         check_outs = [e for e in day_events if e.event_type == EventType.check_out.value]
@@ -89,13 +89,13 @@ async def generate_monthly_summaries(
         )
         last_check_out = last_out_event.recorded_at if last_out_event else None
 
-        # Determine location (prefer first event's location, fallback to product's registered)
+        # Determine location (prefer first event's location, fallback to unit's registered)
         first_event = day_events[0]
         location = first_event.location_ref or (
-            first_event.product.registered_location if first_event.product else None
+            first_event.unit.registered_location if first_event.unit else None
         )
         location_id = location.id if location else (
-            first_event.product.registered_location_id if first_event.product else None
+            first_event.unit.registered_location_id if first_event.unit else None
         )
         if location_id is None:
             continue  # summaries require a location_id
@@ -107,7 +107,7 @@ async def generate_monthly_summaries(
             last_check_out = day_boundary_at(event_date)
             db.add(
                 make_day_boundary_checkout_event(
-                    product_id=product_id,
+                    unit_id=unit_id,
                     checkout_time=last_check_out,
                     location_id=location_id,
                     location=first_event.location
@@ -116,7 +116,7 @@ async def generate_monthly_summaries(
             )
             notes = "Closed by day-boundary auto checkout (23:59)"
             auto_checkout_count += 1
-            products_to_recompute.add(product_id)
+            units_to_recompute.add(unit_id)
         elif (
             last_out_event is not None
             and last_out_event.source == EventSource.auto_checkout.value
@@ -150,7 +150,7 @@ async def generate_monthly_summaries(
         # Upsert
         existing_result = await db.execute(
             select(AttendanceSummary).where(
-                AttendanceSummary.product_id == product_id,
+                AttendanceSummary.unit_id == unit_id,
                 AttendanceSummary.summary_date == event_date,
             )
         )
@@ -169,13 +169,13 @@ async def generate_monthly_summaries(
             summary.overtime_hours = ot_hours
             summary.location_id = location_id
             summary.attendance_notes = notes
-            # Real events replace seed demo rows for this product/day
+            # Real events replace seed demo rows for this unit/day
             summary.calculation_method = "standard"
             summary.updated_at = datetime.now(timezone.utc)
             updated_count += 1
         else:
             summary = AttendanceSummary(
-                product_id=product_id,
+                unit_id=unit_id,
                 summary_date=event_date,
                 location_id=location_id,
                 first_check_in=first_check_in,
@@ -194,7 +194,7 @@ async def generate_monthly_summaries(
             db.add(summary)
             created_count += 1
 
-        kept_keys.add((product_id, event_date))
+        kept_keys.add((unit_id, event_date))
 
     # Remove event-less month rows, but keep seed demo data (calculation_method=seed)
     existing_summaries = await db.execute(
@@ -206,7 +206,7 @@ async def generate_monthly_summaries(
     orphan_ids = [
         row.id
         for row in existing_summaries.scalars().all()
-        if (row.product_id, row.summary_date) not in kept_keys
+        if (row.unit_id, row.summary_date) not in kept_keys
         and (row.calculation_method or "").lower() != "seed"
     ]
     orphans_deleted = 0
@@ -216,13 +216,13 @@ async def generate_monthly_summaries(
         )
         orphans_deleted = len(orphan_ids)
 
-    if products_to_recompute:
+    if units_to_recompute:
         await db.flush()
-        product_result = await db.execute(
-            select(Product).where(Product.id.in_(products_to_recompute))
+        unit_result = await db.execute(
+            select(Unit).where(Unit.id.in_(units_to_recompute))
         )
-        for product in product_result.scalars().all():
-            await recompute_product_attendance_status(db, product=product)
+        for unit in unit_result.scalars().all():
+            await recompute_unit_attendance_status(db, unit=unit)
 
     await db.commit()
 

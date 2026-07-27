@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.attendance_tz import is_same_attendance_day
 from app.config import settings
 from app.models.attendance import AttendanceEvent, EventType
-from app.models.product import AttendanceStatus, Product
+from app.models.unit import AttendanceStatus, Unit
 
 
 def _now() -> datetime:
@@ -22,17 +22,17 @@ def _normalize_location(location: str | None) -> str | None:
     return trimmed[:255] if trimmed else None
 
 
-def _next_event_type(product: Product, now: datetime) -> str:
-    """Decide check_in vs check_out based on the product's current attendance status.
+def _next_event_type(unit: Unit, now: datetime) -> str:
+    """Decide check_in vs check_out based on the unit's current attendance status.
 
     If the last event was on a previous Hong Kong calendar day, treat the
-    product as checked_out regardless of stored status so the new day starts
+    unit as checked_out regardless of stored status so the new day starts
     fresh (overnight missed checkout → next HKT day scan is check_in).
     """
     if (
-        product.attendance_status == AttendanceStatus.checked_in.value
-        and product.last_event_at is not None
-        and is_same_attendance_day(product.last_event_at, now)
+        unit.attendance_status == AttendanceStatus.checked_in.value
+        and unit.last_event_at is not None
+        and is_same_attendance_day(unit.last_event_at, now)
     ):
         return EventType.check_out.value
     return EventType.check_in.value
@@ -41,11 +41,11 @@ def _next_event_type(product: Product, now: datetime) -> str:
 async def find_recent_event(
     db: AsyncSession,
     *,
-    product_id: uuid.UUID,
+    unit_id: uuid.UUID,
     within_seconds: int,
     event_type: str | None = None,
 ) -> AttendanceEvent | None:
-    """Return the latest scan event for this product within the debounce window.
+    """Return the latest scan event for this unit within the debounce window.
 
     When ``event_type`` is set, only debounce duplicate scans of the same action
     (so check-in followed quickly by check-out still creates two events).
@@ -54,7 +54,7 @@ async def find_recent_event(
         return None
     cutoff = _now() - timedelta(seconds=within_seconds)
     conditions = [
-        AttendanceEvent.product_id == product_id,
+        AttendanceEvent.unit_id == unit_id,
         AttendanceEvent.recorded_at >= cutoff,
         AttendanceEvent.voided_at.is_(None),
         AttendanceEvent.event_type.in_(
@@ -75,7 +75,7 @@ async def find_recent_event(
 async def record_scan(
     db: AsyncSession,
     *,
-    product: Product,
+    unit: Unit,
     jti: str | None,
     recorded_by_user_id: uuid.UUID | None = None,
     device_id: str | None = None,
@@ -83,14 +83,14 @@ async def record_scan(
     location: str | None = None,
     event_type: str | None = None,
 ) -> tuple[AttendanceEvent, bool]:
-    """Record a scan and update the product's attendance status.
+    """Record a scan and update the unit's attendance status.
 
     When ``event_type`` is omitted, check-in vs check-out is inferred from
-    the product's current status (toggle).  Callers may pass an explicit
+    the unit's current status (toggle).  Callers may pass an explicit
     ``check_in`` or ``check_out`` so kiosk staff choose the action.
 
     Returns (event, created). If a scan landed within the debounce window
-    for this product, returns the existing event with created=False so
+    for this unit, returns the existing event with created=False so
     rapid double-taps at a kiosk do not produce duplicate rows.
     """
     debounce = getattr(settings, "SCAN_DEBOUNCE_SECONDS", 3)
@@ -98,7 +98,7 @@ async def record_scan(
     if event_type in (EventType.check_in.value, EventType.check_out.value):
         resolved_event_type = event_type
     else:
-        resolved_event_type = _next_event_type(product, now)
+        resolved_event_type = _next_event_type(unit, now)
 
     debounce_type = (
         resolved_event_type
@@ -107,7 +107,7 @@ async def record_scan(
     )
     recent = await find_recent_event(
         db,
-        product_id=product.id,
+        unit_id=unit.id,
         within_seconds=debounce,
         event_type=debounce_type,
     )
@@ -116,7 +116,7 @@ async def record_scan(
     loc = _normalize_location(location)
 
     event = AttendanceEvent(
-        product_id=product.id,
+        unit_id=unit.id,
         event_type=resolved_event_type,
         source="scan",  # 掃碼預設來源
         recorded_at=now,
@@ -128,14 +128,14 @@ async def record_scan(
     )
     db.add(event)
 
-    product.attendance_status = (
+    unit.attendance_status = (
         AttendanceStatus.checked_in.value
         if resolved_event_type == EventType.check_in.value
         else AttendanceStatus.checked_out.value
     )
-    product.last_event_at = now
-    product.last_event_location_id = location_id
-    product.last_event_location = loc
+    unit.last_event_at = now
+    unit.last_event_location_id = location_id
+    unit.last_event_location = loc
 
     await db.commit()
     await db.refresh(event)
@@ -145,8 +145,8 @@ async def record_scan(
 async def list_events(
     db: AsyncSession,
     *,
-    product_id: uuid.UUID | None = None,
-    product_type: str | None = None,
+    unit_id: uuid.UUID | None = None,
+    unit_type: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     event_type: str | None = None,
@@ -161,16 +161,16 @@ async def list_events(
     """
     q = (
         select(AttendanceEvent)
-        .join(Product, AttendanceEvent.product_id == Product.id)
-        .options(selectinload(AttendanceEvent.product))
+        .join(Unit, AttendanceEvent.unit_id == Unit.id)
+        .options(selectinload(AttendanceEvent.unit))
     )
     count_q = select(func.count()).select_from(AttendanceEvent)
 
     conditions = []
-    if product_id:
-        conditions.append(AttendanceEvent.product_id == product_id)
-    if product_type:
-        conditions.append(Product.product_type == product_type)
+    if unit_id:
+        conditions.append(AttendanceEvent.unit_id == unit_id)
+    if unit_type:
+        conditions.append(Unit.unit_type == unit_type)
     if date_from:
         conditions.append(AttendanceEvent.recorded_at >= date_from)
     if date_to:
@@ -185,7 +185,7 @@ async def list_events(
     if conditions:
         q = q.where(and_(*conditions))
         count_q_with_join = select(func.count()).select_from(AttendanceEvent).join(
-            Product, AttendanceEvent.product_id == Product.id
+            Unit, AttendanceEvent.unit_id == Unit.id
         ).where(and_(*conditions))
         total = (await db.execute(count_q_with_join)).scalar_one()
     else:
@@ -234,16 +234,16 @@ async def event_day_stats(
     breakdown_q = (
         select(
             AttendanceEvent.event_type,
-            Product.product_type,
+            Unit.unit_type,
             func.count().label("count"),
         )
-        .join(Product, AttendanceEvent.product_id == Product.id)
+        .join(Unit, AttendanceEvent.unit_id == Unit.id)
         .where(
             AttendanceEvent.event_type.in_(
                 [EventType.check_in.value, EventType.check_out.value]
             )
         )
-        .group_by(AttendanceEvent.event_type, Product.product_type)
+        .group_by(AttendanceEvent.event_type, Unit.unit_type)
     )
     if conditions:
         breakdown_q = breakdown_q.where(and_(*conditions))
@@ -257,16 +257,16 @@ async def event_day_stats(
         "check_outs_student": 0,
         "check_outs_staff": 0,
     }
-    for event_type, product_type, count in rows:
+    for event_type, unit_type, count in rows:
         if event_type == EventType.check_in.value:
-            if product_type == "student":
+            if unit_type == "student":
                 stats["check_ins_student"] = count
-            elif product_type == "staff":
+            elif unit_type == "staff":
                 stats["check_ins_staff"] = count
         elif event_type == EventType.check_out.value:
-            if product_type == "student":
+            if unit_type == "student":
                 stats["check_outs_student"] = count
-            elif product_type == "staff":
+            elif unit_type == "staff":
                 stats["check_outs_staff"] = count
 
     return stats
@@ -275,8 +275,8 @@ async def event_day_stats(
 async def list_events_for_export(
     db: AsyncSession,
     *,
-    product_id: uuid.UUID | None = None,
-    product_type: str | None = None,
+    unit_id: uuid.UUID | None = None,
+    unit_type: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     include_voided: bool = False,
@@ -291,8 +291,8 @@ async def list_events_for_export(
     while len(all_events) < max_rows:
         events, total = await list_events(
             db,
-            product_id=product_id,
-            product_type=product_type,
+            unit_id=unit_id,
+            unit_type=unit_type,
             date_from=date_from,
             date_to=date_to,
             include_voided=include_voided,
@@ -313,16 +313,16 @@ async def list_events_for_export(
     return all_events, truncated
 
 
-async def recompute_product_attendance_status(
+async def recompute_unit_attendance_status(
     db: AsyncSession,
     *,
-    product: Product,
+    unit: Unit,
 ) -> None:
-    """Set product attendance fields from the latest non-voided check-in/out event."""
+    """Set unit attendance fields from the latest non-voided check-in/out event."""
     result = await db.execute(
         select(AttendanceEvent)
         .where(
-            AttendanceEvent.product_id == product.id,
+            AttendanceEvent.unit_id == unit.id,
             AttendanceEvent.voided_at.is_(None),
             AttendanceEvent.event_type.in_(
                 [EventType.check_in.value, EventType.check_out.value]
@@ -333,20 +333,20 @@ async def recompute_product_attendance_status(
     )
     latest = result.scalar_one_or_none()
     if latest is None:
-        product.attendance_status = AttendanceStatus.checked_out.value
-        product.last_event_at = None
-        product.last_event_location_id = None
-        product.last_event_location = None
+        unit.attendance_status = AttendanceStatus.checked_out.value
+        unit.last_event_at = None
+        unit.last_event_location_id = None
+        unit.last_event_location = None
         return
 
-    product.attendance_status = (
+    unit.attendance_status = (
         AttendanceStatus.checked_in.value
         if latest.event_type == EventType.check_in.value
         else AttendanceStatus.checked_out.value
     )
-    product.last_event_at = latest.recorded_at
-    product.last_event_location_id = latest.location_id
-    product.last_event_location = latest.location
+    unit.last_event_at = latest.recorded_at
+    unit.last_event_location_id = latest.location_id
+    unit.last_event_location = latest.location
 
 
 async def void_event(
@@ -354,19 +354,19 @@ async def void_event(
     *,
     event: AttendanceEvent,
 ) -> AttendanceEvent:
-    """Soft-void an event and recompute the product's live attendance status."""
+    """Soft-void an event and recompute the unit's live attendance status."""
     if event.voided_at is not None:
         return event
 
     event.voided_at = _now()
 
-    product = event.product
-    if product is None:
-        result = await db.execute(select(Product).where(Product.id == event.product_id))
-        product = result.scalar_one_or_none()
+    unit = event.unit
+    if unit is None:
+        result = await db.execute(select(Unit).where(Unit.id == event.unit_id))
+        unit = result.scalar_one_or_none()
 
-    if product is not None:
-        await recompute_product_attendance_status(db, product=product)
+    if unit is not None:
+        await recompute_unit_attendance_status(db, unit=unit)
 
     await db.commit()
     await db.refresh(event)
@@ -376,7 +376,7 @@ async def void_event(
 async def manual_correction(
     db: AsyncSession,
     *,
-    product: Product,
+    unit: Unit,
     event_type: str,
     recorded_at: datetime | None = None,
     location_id: uuid.UUID | None = None,
@@ -385,13 +385,13 @@ async def manual_correction(
     recorded_by_user_id: uuid.UUID | None = None,
 ) -> AttendanceEvent:
     """Insert a manual correction.  If the correction is an explicit
-    check_in/check_out, also update the product's attendance_status so the
+    check_in/check_out, also update the unit's attendance_status so the
     next scan continues the toggle from the corrected state.
     """
     when = recorded_at or _now()
     loc = _normalize_location(location)
     event = AttendanceEvent(
-        product_id=product.id,
+        unit_id=unit.id,
         event_type=event_type,
         source="manual",  # 手動修正來源
         recorded_at=when,
@@ -403,24 +403,24 @@ async def manual_correction(
     db.add(event)
 
     if event_type == EventType.check_in.value:
-        product.attendance_status = AttendanceStatus.checked_in.value
-        product.last_event_at = when
-        product.last_event_location_id = location_id
-        product.last_event_location = loc
+        unit.attendance_status = AttendanceStatus.checked_in.value
+        unit.last_event_at = when
+        unit.last_event_location_id = location_id
+        unit.last_event_location = loc
     elif event_type == EventType.check_out.value:
-        product.attendance_status = AttendanceStatus.checked_out.value
-        product.last_event_at = when
-        product.last_event_location_id = location_id
-        product.last_event_location = loc
+        unit.attendance_status = AttendanceStatus.checked_out.value
+        unit.last_event_at = when
+        unit.last_event_location_id = location_id
+        unit.last_event_location = loc
 
     await db.commit()
     await db.refresh(event)
     return event
 
 
-async def rotate_product_qr(db: AsyncSession, *, product: Product) -> Product:
-    """Invalidate any existing QR for this product by bumping its token version."""
-    product.qr_token_version = (product.qr_token_version or 0) + 1
+async def rotate_unit_qr(db: AsyncSession, *, unit: Unit) -> Unit:
+    """Invalidate any existing QR for this unit by bumping its token version."""
+    unit.qr_token_version = (unit.qr_token_version or 0) + 1
     await db.commit()
-    await db.refresh(product)
-    return product
+    await db.refresh(unit)
+    return unit

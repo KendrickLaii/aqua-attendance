@@ -633,11 +633,13 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 9d. Void event 後自動重算單日 summary ⬜ — 見 [known-gaps.md](known-gaps.md) #M16
 9e. Generate 端點互斥鎖 ⬜ — 見 [known-gaps.md](known-gaps.md) #M17
 9f. `products.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
+9g. **個人資料欄位搬移至 profiles**（products 瘦身）⬜ — 見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles（2026-07-27）
 
 **第三階段 — 可延後（Low）**
 10. Refresh token 改 HttpOnly cookie ⬜
 11. 前端區分 admin/superadmin ⬜
 12. QR 錯誤訊息、密碼長度、mobile CI ⬜
+13. 出勤端點 `product_type` 白名單檢查 ⬜ — 見 [known-gaps.md](known-gaps.md) #M19（新增 device/goods 時必須補齊）
 
 **設計取捨（已知且接受）**
 - QR token 無過期（靠 `qr_token_version` 手動輪替）
@@ -1281,16 +1283,7 @@ erDiagram
         string attendance_status "checked_in / checked_out"
         int qr_token_version
         uuid registered_location_id FK
-        string gender
-        date date_of_birth
-        string phone
-        string address
-        string email
-        string emergency_contact_name
-        string emergency_contact_phone
         string photo_url
-        date enrollment_date
-        date exit_date
         string remarks
         datetime last_event_at
         datetime created_at
@@ -1298,7 +1291,7 @@ erDiagram
     }
 
     student_profiles {
-        uuid product_id PK_FK
+        uuid product_id PK, FK
         string school_name
         string grade_class
         string student_id
@@ -1306,10 +1299,17 @@ erDiagram
         date enrollment_date
         date graduation_date
         string academic_notes
+        string gender
+        date date_of_birth
+        string phone
+        string address
+        string email
+        string emergency_contact_name
+        string emergency_contact_phone
     }
 
     staff_profiles {
-        uuid product_id PK_FK
+        uuid product_id PK, FK
         string employee_id
         string employment_type "part_time / full_time"
         string department
@@ -1324,6 +1324,13 @@ erDiagram
         string work_schedule
         uuid supervisor_id FK
         string employment_notes
+        string gender
+        date date_of_birth
+        string phone
+        string address
+        string email
+        string emergency_contact_name
+        string emergency_contact_phone
     }
 
     locations {
@@ -1349,8 +1356,8 @@ erDiagram
     }
 
     product_scan_locations {
-        uuid product_id PK_FK
-        uuid location_id PK_FK
+        uuid product_id PK, FK
+        uuid location_id PK, FK
     }
 
     attendance_events {
@@ -1463,3 +1470,5 @@ erDiagram
 ```
 
 > **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–026）見 `apps/api/alembic/versions/`。
+>
+> **2026-07-27 更新**：個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`）已從 `products` 搬移至 `staff_profiles` / `student_profiles`。`products.enrollment_date` / `exit_date` 已刪除（改用 profile 表已有的 `enrollment_date`/`graduation_date` 和 `hire_date`/`termination_date`）。出勤邏輯保留在 `products`（supertype），未來新增 `device`/`goods` 時需加 `product_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles、§ 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。

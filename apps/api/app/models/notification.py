@@ -10,7 +10,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.user import User
-    from app.models.product import Product
+    from app.models.unit import Unit
 
 
 class NotificationType(str, enum.Enum):
@@ -28,7 +28,7 @@ class NotificationPriority(str, enum.Enum):
 
 
 class Notification(Base):
-    """System notifications for users and products."""
+    """System notifications for users and units."""
     
     __tablename__ = "notifications"
 
@@ -36,7 +36,7 @@ class Notification(Base):
     
     # Target
     user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    product_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("products.id", ondelete="CASCADE"), nullable=True, index=True)
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("units.id", ondelete="CASCADE"), nullable=True, index=True)
     
     # Content
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -58,4 +58,4 @@ class Notification(Base):
     
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="notifications")
-    product: Mapped["Product"] = relationship("Product", back_populates="notifications")
+    unit: Mapped["Unit"] = relationship("Unit", back_populates="notifications")

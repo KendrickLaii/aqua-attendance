@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.product import Product
+    from app.models.unit import Unit
 
 
 class PayrollStatus(str, enum.Enum):
@@ -21,22 +21,22 @@ class PayrollStatus(str, enum.Enum):
 
 
 class PayrollRecord(Base):
-    """Payroll calculation records for individual products."""
+    """Payroll calculation records for individual units."""
     
     __tablename__ = "payroll_records"
     __table_args__ = (
         UniqueConstraint(
-            "product_id",
+            "unit_id",
             "payroll_period_start",
             "payroll_period_end",
-            name="uq_payroll_records_product_period",
+            name="uq_payroll_records_unit_period",
         ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     
     # Primary keys
-    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    unit_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("units.id", ondelete="CASCADE"), nullable=False, index=True)
     payroll_period_start: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     payroll_period_end: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     
@@ -93,5 +93,5 @@ class PayrollRecord(Base):
     )
     
     # Relationships
-    product: Mapped["Product"] = relationship("Product", back_populates="payroll_records")
+    unit: Mapped["Unit"] = relationship("Unit", back_populates="payroll_records")
     approved_by: Mapped["User"] = relationship("User", foreign_keys=[approved_by_user_id])

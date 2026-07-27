@@ -37,9 +37,9 @@ const generating = ref(false)
 const generateError = ref('')
 const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
 
-const filterProductType = ref('staff')
+const filterUnitType = ref('staff')
 const searchQuery = ref('')
-const selectedProduct = ref<SummaryOverviewItem | null>(null)
+const selectedUnit = ref<SummaryOverviewItem | null>(null)
 const detailStatus = ref<DetailStatus>('all')
 
 let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined
@@ -57,21 +57,21 @@ const statusOptions: { title: string; value: DetailStatus }[] = [
   { title: 'Weekend', value: 'weekend' },
 ]
 
-const isDetailView = computed(() => !!selectedProduct.value)
+const isDetailView = computed(() => !!selectedUnit.value)
 
 const pageSubtitle = computed(() => {
   if (loading.value && !refreshing.value)
     return 'Loading…'
 
-  if (isDetailView.value && selectedProduct.value)
-    return `${selectedProduct.value.product_name || selectedProduct.value.product_code} · ${monthLabel.value}`
+  if (isDetailView.value && selectedUnit.value)
+    return `${selectedUnit.value.unit_name || selectedUnit.value.unit_code} · ${monthLabel.value}`
 
-  const selectedTypeLabel = typeOptions.find(o => o.value === filterProductType.value)?.title ?? 'All types'
+  const selectedTypeLabel = typeOptions.find(o => o.value === filterUnitType.value)?.title ?? 'All types'
 
-  return `${monthLabel.value} · ${selectedTypeLabel} · ${overviewTotalCount.value} product${overviewTotalCount.value === 1 ? '' : 's'}`
+  return `${monthLabel.value} · ${selectedTypeLabel} · ${overviewTotalCount.value} unit${overviewTotalCount.value === 1 ? '' : 's'}`
 })
 
-const overviewCaption = computed(() => overviewListCaption(overviewItems.value.length, 'product'))
+const overviewCaption = computed(() => overviewListCaption(overviewItems.value.length, 'unit'))
 
 const visibleSummaries = computed(() => {
   if (detailStatus.value !== 'weekend')
@@ -139,15 +139,15 @@ onMounted(async () => {
   await loadData()
 })
 
-watch([yearMonth, filterProductType], () => {
-  selectedProduct.value = null
+watch([yearMonth, filterUnitType], () => {
+  selectedUnit.value = null
   detailStatus.value = 'all'
   resetOverviewPage()
   loadData()
 })
 
 watch(detailStatus, () => {
-  if (selectedProduct.value)
+  if (selectedUnit.value)
     loadDetail()
 })
 
@@ -161,7 +161,7 @@ watch(searchQuery, () => {
 
 async function loadData(isRefresh = false) {
   await loadOverview(isRefresh)
-  if (selectedProduct.value)
+  if (selectedUnit.value)
     await loadDetail(isRefresh)
 }
 
@@ -179,7 +179,7 @@ async function loadOverview(isRefresh = false) {
     const overviewParams = {
       date_from: range.date_from,
       date_to: range.date_to,
-      product_type: filterProductType.value || undefined,
+      unit_type: filterUnitType.value || undefined,
       search: (searchQuery.value || '').trim() || undefined,
     }
     const [result, stats] = await Promise.all([
@@ -207,7 +207,7 @@ async function loadOverview(isRefresh = false) {
 
 async function loadDetail(isRefresh = false) {
   const range = monthDateRange.value
-  if (!range || !selectedProduct.value)
+  if (!range || !selectedUnit.value)
     return
 
   if (isRefresh)
@@ -217,7 +217,7 @@ async function loadDetail(isRefresh = false) {
   loadError.value = ''
   try {
     const result = await listSummariesWithTotal({
-      product_id: selectedProduct.value.product_id,
+      unit_id: selectedUnit.value.unit_id,
       date_from: range.date_from,
       date_to: range.date_to,
       is_complete: detailStatusQueryValue(),
@@ -270,13 +270,13 @@ async function handleGenerate() {
 }
 
 function openDetail(item: SummaryOverviewItem) {
-  selectedProduct.value = item
+  selectedUnit.value = item
   detailStatus.value = 'all'
   loadDetail()
 }
 
 function backToOverview() {
-  selectedProduct.value = null
+  selectedUnit.value = null
   summaries.value = []
   detailStatus.value = 'all'
 }
@@ -394,7 +394,7 @@ function safeNumber(value: number) {
           <VIcon>ri-arrow-right-s-line</VIcon>
         </VBtn>
         <VSelect
-          v-model="filterProductType"
+          v-model="filterUnitType"
           :items="typeOptions"
           label="Type"
           density="compact"
@@ -492,7 +492,7 @@ function safeNumber(value: number) {
           <thead>
             <tr>
               <th>
-                Product
+                Unit
               </th>
               <th>
                 Type
@@ -587,26 +587,26 @@ function safeNumber(value: number) {
           <tbody>
             <tr
               v-for="item in overviewItems"
-              :key="item.product_id"
+              :key="item.unit_id"
               class="summary-row"
               @click="openDetail(item)"
             >
               <td>
                 <div class="font-weight-medium">
-                  {{ item.product_name || '—' }}
+                  {{ item.unit_name || '—' }}
                 </div>
                 <div class="text-caption text-medium-emphasis">
-                  {{ item.product_code || item.product_id }}
+                  {{ item.unit_code || item.unit_id }}
                 </div>
               </td>
               <td>
                 <VChip
-                  :color="typeColor(item.product_type)"
+                  :color="typeColor(item.unit_type)"
                   size="small"
                   label
-                  :prepend-icon="item.product_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
+                  :prepend-icon="item.unit_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
                 >
-                  {{ typeLabel(item.product_type) }}
+                  {{ typeLabel(item.unit_type) }}
                 </VChip>
               </td>
               <td class="text-end">
@@ -757,7 +757,7 @@ function safeNumber(value: number) {
           </VBtn>
           <div>
             <div class="font-weight-medium">
-              {{ selectedProduct?.product_name || selectedProduct?.product_code }}
+              {{ selectedUnit?.unit_name || selectedUnit?.unit_code }}
             </div>
             <div class="text-caption text-medium-emphasis">
               {{ monthLabel }}

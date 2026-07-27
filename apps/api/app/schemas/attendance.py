@@ -25,7 +25,7 @@ class ScanRequest(BaseModel):
     location: str | None = Field(default=None, max_length=255)
     event_type: ScanEventType | None = Field(
         default=None,
-        description="Explicit check-in or check-out. Omit to auto-toggle from product status.",
+        description="Explicit check-in or check-out. Omit to auto-toggle from unit status.",
     )
 
 
@@ -35,10 +35,10 @@ class ScanPreviewRequest(BaseModel):
 
 
 class ScanPreviewOut(BaseModel):
-    product_id: uuid.UUID
-    product_code: str | None = None
-    product_name: str | None = None
-    product_type: str | None = None
+    unit_id: uuid.UUID
+    unit_code: str | None = None
+    unit_name: str | None = None
+    unit_type: str | None = None
     attendance_status: str | None = None
     location: str | None = None
 
@@ -53,17 +53,17 @@ class ScanAllowedLocation(BaseModel):
 class ScanLocationNotAllowedDetail(BaseModel):
     code: str = "location_not_allowed"
     message: str
-    product_name: str | None = None
-    product_code: str | None = None
+    unit_name: str | None = None
+    unit_code: str | None = None
     allowed_locations: list[ScanAllowedLocation] = Field(default_factory=list)
 
 
 class AttendanceOut(BaseModel):
     id: uuid.UUID
-    product_id: uuid.UUID
-    product_code: str | None = None
-    product_name: str | None = None
-    product_type: str | None = None
+    unit_id: uuid.UUID
+    unit_code: str | None = None
+    unit_name: str | None = None
+    unit_type: str | None = None
     event_type: str
     source: EventSourceOut
     recorded_at: datetime
@@ -81,7 +81,7 @@ class AttendanceOut(BaseModel):
 
 
 class ManualCorrectionRequest(BaseModel):
-    product_id: uuid.UUID
+    unit_id: uuid.UUID
     event_type: EventType  # 現在必須明確指定 check_in 或 check_out
     recorded_at: datetime | None = None
     location_id: uuid.UUID | None = None
@@ -101,7 +101,7 @@ class ManualCorrectionRequest(BaseModel):
 
 
 class AttendanceListParams(BaseModel):
-    product_id: uuid.UUID | None = None
+    unit_id: uuid.UUID | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
     event_type: EventType | None = None

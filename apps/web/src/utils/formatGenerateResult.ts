@@ -6,10 +6,10 @@ export interface SummaryGenerateResult {
   auto_checkouts?: number
 }
 
-export interface StaleSummaryProduct {
-  product_id: string
-  product_code: string | null
-  product_name: string | null
+export interface StaleSummaryUnit {
+  unit_id: string
+  unit_code: string | null
+  unit_name: string | null
   reason: 'no_summary' | 'outdated'
 }
 
@@ -17,7 +17,7 @@ export interface PayrollGenerateResult {
   created: number
   updated: number
   skipped: number
-  stale_summaries?: StaleSummaryProduct[]
+  stale_summaries?: StaleSummaryUnit[]
 }
 
 function formatPeriod(year: number, month: number): string {
@@ -95,7 +95,7 @@ export function formatSummaryGenerateMessage(
 }
 
 function staleWarning(
-  stale: StaleSummaryProduct[] | undefined,
+  stale: StaleSummaryUnit[] | undefined,
   period: string,
 ): string | undefined {
   if (!stale || stale.length === 0)

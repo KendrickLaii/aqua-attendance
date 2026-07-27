@@ -2,10 +2,10 @@ import { $attendanceApi } from '@/utils/attendanceApi'
 
 export interface AttendanceEvent {
   id: string
-  product_id: string
-  product_code: string | null
-  product_name: string | null
-  product_type: string | null
+  unit_id: string
+  unit_code: string | null
+  unit_name: string | null
+  unit_type: string | null
   event_type: 'check_in' | 'check_out' | 'manual_correction'
   source: string
   recorded_at: string
@@ -25,12 +25,12 @@ export interface QRPayload {
   token_version: number
 }
 
-export async function getQRToken(productId: string): Promise<QRPayload> {
-  return await $attendanceApi(`/qr/token/${productId}`)
+export async function getQRToken(unitId: string): Promise<QRPayload> {
+  return await $attendanceApi(`/qr/token/${unitId}`)
 }
 
-export async function refreshQRToken(productId: string): Promise<QRPayload> {
-  return await $attendanceApi(`/qr/token/${productId}/refresh`, { method: 'POST' })
+export async function refreshQRToken(unitId: string): Promise<QRPayload> {
+  return await $attendanceApi(`/qr/token/${unitId}/refresh`, { method: 'POST' })
 }
 
 export async function scanQR(payload: {
@@ -64,8 +64,8 @@ export async function getAttendanceDayStats(params?: {
 }
 
 export async function listAttendance(params?: {
-  product_id?: string
-  product_type?: string
+  unit_id?: string
+  unit_type?: string
   date_from?: string
   date_to?: string
   event_type?: string
@@ -80,8 +80,8 @@ export async function listAttendance(params?: {
 }
 
 export async function listAttendanceWithTotal(params?: {
-  product_id?: string
-  product_type?: string
+  unit_id?: string
+  unit_type?: string
   date_from?: string
   date_to?: string
   event_type?: string
@@ -105,7 +105,7 @@ export async function listAttendanceWithTotal(params?: {
 }
 
 export async function createManualCorrection(payload: {
-  product_id: string
+  unit_id: string
   event_type?: string
   recorded_at?: string
   location_id?: string
@@ -116,8 +116,8 @@ export async function createManualCorrection(payload: {
 }
 
 export async function exportAttendanceCSV(params?: {
-  product_id?: string
-  product_type?: string
+  unit_id?: string
+  unit_type?: string
   date_from?: string
   date_to?: string
   include_voided?: boolean

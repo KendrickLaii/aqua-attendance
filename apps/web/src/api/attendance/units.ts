@@ -1,7 +1,7 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
 import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
 
-export interface ProductLocationRef {
+export interface UnitLocationRef {
   id: string
   code: string | null
   name_zh: string
@@ -43,20 +43,20 @@ export interface StaffProfileOut {
   employment_notes: string | null
 }
 
-export interface Product {
+export interface Unit {
   id: string
   code: string
   full_name: string
   english_name: string | null
-  product_type: 'student' | 'staff'
+  unit_type: 'student' | 'staff'
   is_active: boolean
   status: string
   attendance_status: 'checked_in' | 'checked_out'
   qr_token_version: number
   registered_location_id: string
-  registered_location: ProductLocationRef | null
+  registered_location: UnitLocationRef | null
   scan_location_ids: string[]
-  scan_locations: ProductLocationRef[]
+  scan_locations: UnitLocationRef[]
   last_event_at: string | null
   last_event_location: string | null
   gender: string | null
@@ -104,39 +104,39 @@ export interface StaffProfileInput {
   employment_notes?: string | null
 }
 
-export async function listProducts(params?: {
-  product_type?: string
+export async function listUnits(params?: {
+  unit_type?: string
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
   page?: number
   page_size?: number
-}): Promise<Product[]> {
-  const result = await listProductsWithTotal(params)
+}): Promise<Unit[]> {
+  const result = await listUnitsWithTotal(params)
 
   return result.items
 }
 
-export async function listProductsWithTotal(params?: {
-  product_type?: string
+export async function listUnitsWithTotal(params?: {
+  unit_type?: string
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
   page?: number
   page_size?: number
-}): Promise<AttendanceListResult<Product>> {
-  return await fetchAttendanceListWithTotal<Product>('/products', params)
+}): Promise<AttendanceListResult<Unit>> {
+  return await fetchAttendanceListWithTotal<Unit>('/units', params)
 }
 
-export async function getProduct(productId: string): Promise<Product> {
-  return await $attendanceApi(`/products/${productId}`)
+export async function getUnit(unitId: string): Promise<Unit> {
+  return await $attendanceApi(`/units/${unitId}`)
 }
 
-export async function createProduct(payload: {
+export async function createUnit(payload: {
   code: string
   full_name: string
   english_name?: string | null
-  product_type: 'student' | 'staff'
+  unit_type: 'student' | 'staff'
   is_active?: boolean
   status?: string
   registered_location_id: string
@@ -155,15 +155,15 @@ export async function createProduct(payload: {
   remarks?: string | null
   student_profile?: StudentProfileInput | null
   staff_profile?: StaffProfileInput | null
-}): Promise<Product> {
-  return await $attendanceApi('/products', { method: 'POST', body: payload })
+}): Promise<Unit> {
+  return await $attendanceApi('/units', { method: 'POST', body: payload })
 }
 
-export async function updateProduct(productId: string, payload: {
+export async function updateUnit(unitId: string, payload: {
   code?: string
   full_name?: string
   english_name?: string | null
-  product_type?: 'student' | 'staff'
+  unit_type?: 'student' | 'staff'
   is_active?: boolean
   status?: string
   registered_location_id?: string
@@ -182,18 +182,18 @@ export async function updateProduct(productId: string, payload: {
   remarks?: string | null
   student_profile?: StudentProfileInput | null
   staff_profile?: StaffProfileInput | null
-}): Promise<Product> {
-  return await $attendanceApi(`/products/${productId}`, { method: 'PATCH', body: payload })
+}): Promise<Unit> {
+  return await $attendanceApi(`/units/${unitId}`, { method: 'PATCH', body: payload })
 }
 
-export async function deleteProduct(productId: string): Promise<void> {
-  await $attendanceApi(`/products/${productId}`, { method: 'DELETE' })
+export async function deleteUnit(unitId: string): Promise<void> {
+  await $attendanceApi(`/units/${unitId}`, { method: 'DELETE' })
 }
 
-export async function updateStaffProfile(productId: string, payload: StaffProfileInput): Promise<void> {
-  await $attendanceApi(`/staff-profiles/${productId}`, { method: 'PATCH', body: payload })
+export async function updateStaffProfile(unitId: string, payload: StaffProfileInput): Promise<void> {
+  await $attendanceApi(`/staff-profiles/${unitId}`, { method: 'PATCH', body: payload })
 }
 
-export async function updateStudentProfile(productId: string, payload: StudentProfileInput): Promise<void> {
-  await $attendanceApi(`/student-profiles/${productId}`, { method: 'PATCH', body: payload })
+export async function updateStudentProfile(unitId: string, payload: StudentProfileInput): Promise<void> {
+  await $attendanceApi(`/student-profiles/${unitId}`, { method: 'PATCH', body: payload })
 }

@@ -32,10 +32,10 @@ async def test_refresh_token_rotation(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_scan_rejects_manual_correction_event_type(
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
     qr = await client.get(
-        f"/api/qr/token/{sample_product['id']}",
+        f"/api/qr/token/{sample_unit['id']}",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     resp = await client.post(
@@ -50,19 +50,19 @@ async def test_scan_rejects_manual_correction_event_type(
 
 
 @pytest.mark.asyncio
-async def test_delete_product_with_events_blocked(
-    client: AsyncClient, admin_token: str, sample_product: dict
+async def test_delete_unit_with_events_blocked(
+    client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
     headers = {"Authorization": f"Bearer {admin_token}"}
-    product_id = sample_product["id"]
-    qr = await client.get(f"/api/qr/token/{product_id}", headers=headers)
+    unit_id = sample_unit["id"]
+    qr = await client.get(f"/api/qr/token/{unit_id}", headers=headers)
     await client.post(
         "/api/attendance/scan",
-        json=scan_body(qr.json()["qr_token"], sample_product, event_type="check_in"),
+        json=scan_body(qr.json()["qr_token"], sample_unit, event_type="check_in"),
         headers=headers,
     )
 
-    delete = await client.delete(f"/api/products/{product_id}", headers=headers)
+    delete = await client.delete(f"/api/units/{unit_id}", headers=headers)
     assert delete.status_code == 409
     assert "attendance" in delete.json()["detail"].lower()
 
@@ -78,19 +78,19 @@ async def test_export_csv_requires_date_range(
 
 @pytest.mark.asyncio
 async def test_debounce_allows_opposite_action_within_window(
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
     headers = {"Authorization": f"Bearer {admin_token}"}
     qr_token = (
         await client.get(
-            f"/api/qr/token/{sample_product['id']}",
+            f"/api/qr/token/{sample_unit['id']}",
             headers=headers,
         )
     ).json()["qr_token"]
 
     first = await client.post(
         "/api/attendance/scan",
-        json=scan_body(qr_token, sample_product, event_type="check_in"),
+        json=scan_body(qr_token, sample_unit, event_type="check_in"),
         headers=headers,
     )
     assert first.status_code == 200
@@ -98,7 +98,7 @@ async def test_debounce_allows_opposite_action_within_window(
 
     second = await client.post(
         "/api/attendance/scan",
-        json=scan_body(qr_token, sample_product, event_type="check_out"),
+        json=scan_body(qr_token, sample_unit, event_type="check_out"),
         headers=headers,
     )
     assert second.status_code == 200
@@ -194,13 +194,13 @@ async def test_admin_list_users_superadmin_role_filter_422(client: AsyncClient) 
 
 
 @pytest.mark.asyncio
-async def test_create_product_invalid_product_type_422(
+async def test_create_unit_invalid_unit_type_422(
     client: AsyncClient, admin_token: str
 ) -> None:
     code = f"BAD-{uuid.uuid4().hex[:6]}"
     resp = await client.post(
-        "/api/products",
-        json={"code": code, "full_name": "Bad Type", "product_type": "teacher"},
+        "/api/units",
+        json={"code": code, "full_name": "Bad Type", "unit_type": "teacher"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 422

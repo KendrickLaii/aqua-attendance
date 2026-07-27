@@ -6,14 +6,14 @@ import pytest
 from httpx import AsyncClient
 
 
-async def _create_staff_product(client: AsyncClient, token: str, location_id: str) -> dict:
+async def _create_staff_unit(client: AsyncClient, token: str, location_id: str) -> dict:
     code = f"STF-{uuid.uuid4().hex[:6]}"
     resp = await client.post(
-        "/api/products",
+        "/api/units",
         json={
             "code": code,
             "full_name": "Test Staff",
-            "product_type": "staff",
+            "unit_type": "staff",
             "registered_location_id": location_id,
             "scan_location_ids": [location_id],
         },
@@ -26,7 +26,7 @@ async def _create_staff_product(client: AsyncClient, token: str, location_id: st
 async def _create_payroll(
     client: AsyncClient,
     token: str,
-    product_id: str,
+    unit_id: str,
     *,
     status: str,
     gross: float,
@@ -35,7 +35,7 @@ async def _create_payroll(
     resp = await client.post(
         "/api/payroll-records",
         json={
-            "product_id": product_id,
+            "unit_id": unit_id,
             "payroll_period_start": "2026-07-01",
             "payroll_period_end": "2026-07-31",
             "gross_pay": gross,
@@ -60,15 +60,15 @@ async def test_stats_aggregates_all_records_regardless_of_page(
         ("paid", 3000.0, 2700.0),
     ]
     for status, gross, net in specs:
-        product = await _create_staff_product(client, admin_token, sample_location["id"])
+        unit = await _create_staff_unit(client, admin_token, sample_location["id"])
         await _create_payroll(
-            client, admin_token, product["id"], status=status, gross=gross, net=net
+            client, admin_token, unit["id"], status=status, gross=gross, net=net
         )
 
     # Page size of 1 would only surface one record in the list, but stats must be full-month.
     resp = await client.get(
         "/api/payroll-records/stats",
-        params={"product_type": "staff", "year": 2026, "month": 7},
+        params={"unit_type": "staff", "year": 2026, "month": 7},
         headers=headers,
     )
     assert resp.status_code == 200
@@ -89,9 +89,9 @@ async def test_stats_status_filter(
     headers = {"Authorization": f"Bearer {admin_token}"}
 
     for status, gross, net in [("paid", 3000.0, 2700.0), ("draft", 1000.0, 900.0)]:
-        product = await _create_staff_product(client, admin_token, sample_location["id"])
+        unit = await _create_staff_unit(client, admin_token, sample_location["id"])
         await _create_payroll(
-            client, admin_token, product["id"], status=status, gross=gross, net=net
+            client, admin_token, unit["id"], status=status, gross=gross, net=net
         )
 
     resp = await client.get(

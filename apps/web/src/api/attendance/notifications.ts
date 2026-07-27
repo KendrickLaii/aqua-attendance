@@ -4,7 +4,7 @@ import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils
 export interface Notification {
   id: string
   user_id: string | null
-  product_id: string | null
+  unit_id: string | null
   title: string
   message: string
   notification_type: string

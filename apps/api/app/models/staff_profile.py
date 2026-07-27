@@ -8,26 +8,26 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.product import Product
+    from app.models.unit import Unit
 
 
 class StaffProfile(Base):
-    """Staff-specific profile data linked to a product."""
-    
+    """Staff-specific profile data linked to a unit."""
+
     __tablename__ = "staff_profiles"
 
-    id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
-    
+    id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), primary_key=True)
+
+    # Personal information (moved from units)
+    gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     # Employment information
     employee_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     employment_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     position: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    
-    # Employment dates
-    hire_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    termination_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    
+
     # Compensation (basic info, details in separate payroll system)
     salary_grade: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
@@ -36,16 +36,16 @@ class StaffProfile(Base):
     hourly_rate: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     monthly_salary: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     ot_multiplier: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True, default=1.5)
-    
+
     # Work information
     work_schedule: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    supervisor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
-    
+    supervisor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), nullable=True)
+
     # Notes
     employment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    
+
     # Relationships
-    product: Mapped["Product"] = relationship(
-        "Product", back_populates="staff_profile", foreign_keys=[id]
+    unit: Mapped["Unit"] = relationship(
+        "Unit", back_populates="staff_profile", foreign_keys=[id]
     )
-    supervisor: Mapped["Product"] = relationship("Product", foreign_keys=[supervisor_id])
+    supervisor: Mapped["Unit"] = relationship("Unit", foreign_keys=[supervisor_id])

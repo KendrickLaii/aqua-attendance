@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { getAttendanceDayStats, listAttendanceWithTotal } from '@/api/attendance/events'
-import { listProducts } from '@/api/attendance/products'
-import type { Product } from '@/api/attendance/products'
+import { listUnits } from '@/api/attendance/units'
+import type { Unit } from '@/api/attendance/units'
 import { type BusinessHours, listLocations } from '@/api/attendance/locations'
 import { getAutoCheckoutStatus, triggerAutoCheckout } from '@/api/attendance/autoCheckout'
 import type { AttendanceEvent } from '@/api/attendance/events'
@@ -35,7 +35,7 @@ const autoCheckoutLoading = ref(false)
 const autoCheckoutResult = ref('')
 
 const autoCheckoutDialog = ref(false)
-const autoCheckoutCandidates = ref<Product[]>([])
+const autoCheckoutCandidates = ref<Unit[]>([])
 const autoCheckoutSelectedIds = ref<string[]>([])
 const autoCheckoutCandidatesLoading = ref(false)
 const autoCheckoutDialogError = ref('')
@@ -126,7 +126,7 @@ const summaryStatCards = computed(() => [
     color: 'primary',
   },
   {
-    label: 'Active products',
+    label: 'Active units',
     value: String(activeTotal.value),
     hint: `${activeStudentCount.value} students · ${activeStaffCount.value} staff`,
     icon: 'ri-group-line',
@@ -194,8 +194,8 @@ function closeToMinutes(close: string): number {
   return h * 60 + m
 }
 
-function isPastLocationClose(product: Product, now = new Date()): boolean {
-  const locationId = product.registered_location_id
+function isPastLocationClose(unit: Unit, now = new Date()): boolean {
+  const locationId = unit.registered_location_id
   const close = locationCloseById.value[locationId]
   if (!close)
     return false
@@ -203,17 +203,17 @@ function isPastLocationClose(product: Product, now = new Date()): boolean {
   return currentMinutesInTz(now) >= closeToMinutes(close)
 }
 
-function onSiteKind(product: Product): OnSiteKind {
-  if (!isLastEventToday(product.last_event_at))
+function onSiteKind(unit: Unit): OnSiteKind {
+  if (!isLastEventToday(unit.last_event_at))
     return 'possible_missed'
-  if (isPastLocationClose(product))
+  if (isPastLocationClose(unit))
     return 'past_closing'
 
   return 'on_site_today'
 }
 
-function shouldDefaultSelect(product: Product): boolean {
-  const kind = onSiteKind(product)
+function shouldDefaultSelect(unit: Unit): boolean {
+  const kind = onSiteKind(unit)
 
   return kind === 'possible_missed' || kind === 'past_closing'
 }
@@ -228,10 +228,10 @@ async function loadDashboard(isRefresh = false) {
 
     const range = getTodayRangeIso()
 
-    const [eventsResult, dayStats, products, checkoutStatus] = await Promise.all([
+    const [eventsResult, dayStats, units, checkoutStatus] = await Promise.all([
       listAttendanceWithTotal({ date_from: range.date_from, date_to: range.date_to, page_size: RECENT_EVENTS_LIMIT }),
       getAttendanceDayStats({ date_from: range.date_from, date_to: range.date_to }),
-      listProducts({ is_active: true, page_size: 200 }),
+      listUnits({ is_active: true, page_size: 200 }),
       getAutoCheckoutStatus().catch(() => ({ still_checked_in_count: 0 })),
     ])
 
@@ -239,10 +239,10 @@ async function loadDashboard(isRefresh = false) {
 
     todayEventTotal.value = dayStats.total
     recentEvents.value = events
-    presentStudentCount.value = products.filter(p => p.product_type === 'student' && p.attendance_status === 'checked_in').length
-    presentStaffCount.value = products.filter(p => p.product_type === 'staff' && p.attendance_status === 'checked_in').length
-    activeStudentCount.value = products.filter(p => p.product_type === 'student').length
-    activeStaffCount.value = products.filter(p => p.product_type === 'staff').length
+    presentStudentCount.value = units.filter(u => u.unit_type === 'student' && u.attendance_status === 'checked_in').length
+    presentStaffCount.value = units.filter(u => u.unit_type === 'staff' && u.attendance_status === 'checked_in').length
+    activeStudentCount.value = units.filter(u => u.unit_type === 'student').length
+    activeStaffCount.value = units.filter(u => u.unit_type === 'staff').length
     todayCheckInsStudent.value = dayStats.check_ins_student
     todayCheckInsStaff.value = dayStats.check_ins_staff
     todayCheckOutsStudent.value = dayStats.check_outs_student
@@ -315,8 +315,8 @@ async function openAutoCheckoutDialog() {
   autoCheckoutSelectedIds.value = []
   locationCloseById.value = {}
   try {
-    const [products, locations] = await Promise.all([
-      listProducts({ is_active: true, attendance_status: 'checked_in', page_size: 200 }),
+    const [units, locations] = await Promise.all([
+      listUnits({ is_active: true, attendance_status: 'checked_in', page_size: 200 }),
       listLocations({ is_active: true, page_size: 200 }),
     ])
 
@@ -325,12 +325,12 @@ async function openAutoCheckoutDialog() {
       closeMap[loc.id] = parseCloseFromBusinessHours(loc.business_hours)
     locationCloseById.value = closeMap
 
-    autoCheckoutCandidates.value = products
+    autoCheckoutCandidates.value = units
     // Default-select overnight missed + past-closing; leave in-hours people unchecked.
-    autoCheckoutSelectedIds.value = products.filter(shouldDefaultSelect).map(p => p.id)
+    autoCheckoutSelectedIds.value = units.filter(shouldDefaultSelect).map(u => u.id)
   }
   catch (e: unknown) {
-    autoCheckoutDialogError.value = formatApiError(e, 'Failed to load checked-in products')
+    autoCheckoutDialogError.value = formatApiError(e, 'Failed to load checked-in units')
   }
   finally {
     autoCheckoutCandidatesLoading.value = false
@@ -344,7 +344,7 @@ async function confirmAutoCheckout() {
   autoCheckoutLoading.value = true
   autoCheckoutResult.value = ''
   try {
-    const result = await triggerAutoCheckout({ productIds: [...autoCheckoutSelectedIds.value] })
+    const result = await triggerAutoCheckout({ unitIds: [...autoCheckoutSelectedIds.value] })
     autoCheckoutResult.value = result.message
     autoCheckoutDialog.value = false
     await loadDashboard(true)
@@ -597,7 +597,7 @@ async function confirmAutoCheckout() {
                       icon="ri-user-line"
                       size="14"
                     />
-                    Product
+                    Unit
                   </span>
                 </th>
                 <th>
@@ -637,16 +637,16 @@ async function confirmAutoCheckout() {
                 <td class="text-no-wrap">
                   {{ formatAttendanceTime(evt.recorded_at) }}
                 </td>
-                <td>{{ evt.product_name || evt.product_code || evt.product_id }}</td>
+                <td>{{ evt.unit_name || evt.unit_code || evt.unit_id }}</td>
                 <td>
                   <VChip
-                    v-if="evt.product_type"
-                    :color="evt.product_type === 'staff' ? 'info' : 'success'"
+                    v-if="evt.unit_type"
+                    :color="evt.unit_type === 'staff' ? 'info' : 'success'"
                     size="x-small"
                     label
-                    :prepend-icon="evt.product_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
+                    :prepend-icon="evt.unit_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
                   >
-                    {{ typeLabel(evt.product_type) }}
+                    {{ typeLabel(evt.unit_type) }}
                   </VChip>
                   <span v-else>—</span>
                 </td>
@@ -765,29 +765,29 @@ async function confirmAutoCheckout() {
           class="border rounded"
         >
           <VListItem
-            v-for="product in autoCheckoutCandidates"
-            :key="product.id"
+            v-for="unit in autoCheckoutCandidates"
+            :key="unit.id"
           >
             <template #prepend>
               <VCheckbox
                 v-model="autoCheckoutSelectedIds"
-                :value="product.id"
+                :value="unit.id"
                 hide-details
                 density="compact"
               />
             </template>
             <VListItemTitle class="d-flex flex-wrap align-center gap-1">
-              {{ product.full_name }}
+              {{ unit.full_name }}
               <VChip
-                :color="product.product_type === 'staff' ? 'info' : 'success'"
+                :color="unit.unit_type === 'staff' ? 'info' : 'success'"
                 size="x-small"
                 label
-                :prepend-icon="product.product_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
+                :prepend-icon="unit.unit_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
               >
-                {{ typeLabel(product.product_type) }}
+                {{ typeLabel(unit.unit_type) }}
               </VChip>
               <VChip
-                v-if="onSiteKind(product) === 'on_site_today'"
+                v-if="onSiteKind(unit) === 'on_site_today'"
                 color="success"
                 size="x-small"
                 label
@@ -796,7 +796,7 @@ async function confirmAutoCheckout() {
                 On site today
               </VChip>
               <VChip
-                v-else-if="onSiteKind(product) === 'past_closing'"
+                v-else-if="onSiteKind(unit) === 'past_closing'"
                 color="warning"
                 size="x-small"
                 label
@@ -815,9 +815,9 @@ async function confirmAutoCheckout() {
               </VChip>
             </VListItemTitle>
             <VListItemSubtitle>
-              {{ product.code }}
-              <span v-if="product.last_event_at">
-                · last event {{ formatAttendanceTime(product.last_event_at) }}
+              {{ unit.code }}
+              <span v-if="unit.last_event_at">
+                · last event {{ formatAttendanceTime(unit.last_event_at) }}
               </span>
             </VListItemSubtitle>
           </VListItem>

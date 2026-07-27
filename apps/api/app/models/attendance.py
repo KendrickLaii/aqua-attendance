@@ -1,15 +1,15 @@
 """
 Attendance event model.
 
-Tracks check-in / check-out events for products (staff, students, etc.).
+Tracks check-in / check-out events for units (staff, students, etc.).
 
 Each scan records check_in or check_out.  The client may pass an explicit
-``event_type``; otherwise the server toggles from the product's
+``event_type``; otherwise the server toggles from the unit's
 ``attendance_status``.  The same QR token can be re-scanned without rotation.
 Admins may insert manual corrections with event_type = ``manual_correction``.
 
 Replay / double-tap protection is handled in the scan service by a short
-debounce window (same product scanned twice within a few seconds returns
+debounce window (same unit scanned twice within a few seconds returns
 the original event).  `qr_jti` is recorded for audit but is no longer
 globally unique.
 """
@@ -41,11 +41,11 @@ class AttendanceEvent(Base):
     # Indexes mirror migration 013 — keep in sync with create_all (tests) and alembic.
     __table_args__ = (
         Index("ix_attendance_events_recorded_at", "recorded_at"),
-        Index("ix_attendance_events_product_recorded", "product_id", "recorded_at"),
+        Index("ix_attendance_events_unit_recorded", "unit_id", "recorded_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False, index=True)
+    unit_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("units.id", ondelete="RESTRICT"), nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String(30), nullable=False)
     source: Mapped[str] = mapped_column(String(30), nullable=False, default="scan")
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -60,6 +60,6 @@ class AttendanceEvent(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
-    product = relationship("Product", foreign_keys=[product_id], back_populates="attendance_events")
+    unit = relationship("Unit", foreign_keys=[unit_id], back_populates="attendance_events")
     recorded_by = relationship("User", foreign_keys=[recorded_by_user_id])
     location_ref = relationship("Location", foreign_keys=[location_id], back_populates="attendance_events")

@@ -576,19 +576,19 @@ function resetResult() {
           {{ result.event_type.replace('_', ' ').toUpperCase() }}
         </div>
         <div class="text-h6 mb-1">
-          {{ result.product_name || result.product_code }}
+          {{ result.unit_name || result.unit_code }}
         </div>
         <div class="text-caption text-medium-emphasis mb-2">
-          {{ result.product_id }}
+          {{ result.unit_id }}
         </div>
         <div class="d-flex justify-center gap-2 mb-2">
           <VChip
-            v-if="result.product_type"
-            :color="result.product_type === 'staff' ? 'info' : 'success'"
+            v-if="result.unit_type"
+            :color="result.unit_type === 'staff' ? 'info' : 'success'"
             size="small"
             label
           >
-            {{ result.product_type }}
+            {{ result.unit_type }}
           </VChip>
           <VChip
             v-if="result.attendance_status"

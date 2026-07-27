@@ -1,7 +1,7 @@
 """Generate payroll records from attendance summaries for a given month.
 
 Admin selects a month → this service aggregates daily attendance summaries
-per product and inserts/updates `payroll_records` rows.
+per unit and inserts/updates `payroll_records` rows.
 Compensation is calculated from slot totals × the staff profile pay rate
 snapshot at generation time.
 """
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.attendance import AttendanceEvent
 from app.models.attendance_summary import AttendanceSummary
 from app.models.payroll_record import PayrollRecord, PayrollStatus
-from app.models.product import Product
+from app.models.unit import Unit
 from app.models.staff_profile import StaffProfile
 
 
@@ -24,20 +24,20 @@ SLOT_MINUTES = 15
 SLOTS_PER_HOUR = 4  # 60 / 15
 
 
-async def detect_stale_summary_products(
+async def detect_stale_summary_units(
     db: AsyncSession,
     year: int,
     month: int,
-    product_type: str | None = None,
-    product_ids: list | None = None,
+    unit_type: str | None = None,
+    unit_ids: list | None = None,
 ) -> list[dict]:
-    """Flag products whose attendance events changed after their summaries were built.
+    """Flag units whose attendance events changed after their summaries were built.
 
     Payroll reads only `attendance_summaries`. If an event was added or voided
     after the daily summary was last generated, the summary — and therefore any
-    payroll computed from it — is stale. Returns one entry per affected product:
+    payroll computed from it — is stale. Returns one entry per affected unit:
 
-        {"product_id", "product_code", "product_name", "reason"}
+        {"unit_id", "unit_code", "unit_name", "reason"}
 
     where reason is ``"no_summary"`` (has events but no summary at all) or
     ``"outdated"`` (has a summary older than its latest event mutation).
@@ -53,7 +53,7 @@ async def detect_stale_summary_products(
 
     ev_q = (
         select(
-            AttendanceEvent.product_id.label("pid"),
+            AttendanceEvent.unit_id.label("pid"),
             func.max(AttendanceEvent.created_at).label("max_created"),
             func.max(AttendanceEvent.voided_at).label("max_voided"),
         )
@@ -61,34 +61,34 @@ async def detect_stale_summary_products(
             AttendanceEvent.recorded_at >= start_dt,
             AttendanceEvent.recorded_at < end_dt,
         )
-        .group_by(AttendanceEvent.product_id)
+        .group_by(AttendanceEvent.unit_id)
     )
     sm_q = (
         select(
-            AttendanceSummary.product_id.label("pid"),
+            AttendanceSummary.unit_id.label("pid"),
             func.max(AttendanceSummary.updated_at).label("max_updated"),
         )
         .where(
             AttendanceSummary.summary_date >= first_day,
             AttendanceSummary.summary_date <= last_day,
         )
-        .group_by(AttendanceSummary.product_id)
+        .group_by(AttendanceSummary.unit_id)
     )
-    if product_ids:
-        ev_q = ev_q.where(AttendanceEvent.product_id.in_(product_ids))
-        sm_q = sm_q.where(AttendanceSummary.product_id.in_(product_ids))
-    if product_type:
-        ev_q = ev_q.join(AttendanceEvent.product).where(
-            Product.product_type == product_type
+    if unit_ids:
+        ev_q = ev_q.where(AttendanceEvent.unit_id.in_(unit_ids))
+        sm_q = sm_q.where(AttendanceSummary.unit_id.in_(unit_ids))
+    if unit_type:
+        ev_q = ev_q.join(AttendanceEvent.unit).where(
+            Unit.unit_type == unit_type
         )
-        sm_q = sm_q.join(AttendanceSummary.product).where(
-            Product.product_type == product_type
+        sm_q = sm_q.join(AttendanceSummary.unit).where(
+            Unit.unit_type == unit_type
         )
 
     ev_rows = (await db.execute(ev_q)).all()
     sm_map = {row.pid: row.max_updated for row in (await db.execute(sm_q)).all()}
 
-    stale: dict = {}  # product_id -> reason
+    stale: dict = {}  # unit_id -> reason
     for row in ev_rows:
         max_event = row.max_created
         if row.max_voided is not None and (
@@ -107,8 +107,8 @@ async def detect_stale_summary_products(
 
     info_rows = (
         await db.execute(
-            select(Product.id, Product.code, Product.full_name).where(
-                Product.id.in_(list(stale.keys()))
+            select(Unit.id, Unit.code, Unit.full_name).where(
+                Unit.id.in_(list(stale.keys()))
             )
         )
     ).all()
@@ -116,9 +116,9 @@ async def detect_stale_summary_products(
 
     return [
         {
-            "product_id": str(pid),
-            "product_code": info[pid].code if pid in info else None,
-            "product_name": info[pid].full_name if pid in info else None,
+            "unit_id": str(pid),
+            "unit_code": info[pid].code if pid in info else None,
+            "unit_name": info[pid].full_name if pid in info else None,
             "reason": reason,
         }
         for pid, reason in stale.items()
@@ -163,13 +163,13 @@ async def generate_monthly_payroll(
     db: AsyncSession,
     year: int,
     month: int,
-    product_type: str | None = None,
-    product_ids: list | None = None,
+    unit_type: str | None = None,
+    unit_ids: list | None = None,
 ) -> dict:
-    """Generate payroll records for every product with attendance summaries.
+    """Generate payroll records for every unit with attendance summaries.
 
-    If `product_ids` is provided, only those products are processed
-    (still filtered by `product_type` when given).
+    If `unit_ids` is provided, only those units are processed
+    (still filtered by `unit_type` when given).
 
     Returns:
         dict with counts: {"created": int, "updated": int, "skipped": int}
@@ -177,25 +177,25 @@ async def generate_monthly_payroll(
     first_day = date(year, month, 1)
     last_day = date(year, month, calendar.monthrange(year, month)[1])
 
-    stale_summaries = await detect_stale_summary_products(
-        db, year=year, month=month, product_type=product_type, product_ids=product_ids
+    stale_summaries = await detect_stale_summary_units(
+        db, year=year, month=month, unit_type=unit_type, unit_ids=unit_ids
     )
 
     q = select(AttendanceSummary).where(
         AttendanceSummary.summary_date >= first_day,
         AttendanceSummary.summary_date <= last_day,
     )
-    if product_ids:
-        q = q.where(AttendanceSummary.product_id.in_(product_ids))
-    if product_type:
-        q = q.join(AttendanceSummary.product).where(Product.product_type == product_type)
+    if unit_ids:
+        q = q.where(AttendanceSummary.unit_id.in_(unit_ids))
+    if unit_type:
+        q = q.join(AttendanceSummary.unit).where(Unit.unit_type == unit_type)
 
     result = await db.execute(q)
     summaries = result.scalars().all()
 
     grouped: defaultdict = defaultdict(list)
     for summary in summaries:
-        grouped[summary.product_id].append(summary)
+        grouped[summary.unit_id].append(summary)
 
     existing_result = await db.execute(
         select(PayrollRecord).where(
@@ -203,31 +203,31 @@ async def generate_monthly_payroll(
             PayrollRecord.payroll_period_end == last_day,
         )
     )
-    existing_records = {r.product_id: r for r in existing_result.scalars().all()}
+    existing_records = {r.unit_id: r for r in existing_result.scalars().all()}
 
-    # Load staff profiles for all grouped products in one query
-    product_ids = list(grouped.keys())
-    staff_by_product: dict = {}
-    if product_ids:
+    # Load staff profiles for all grouped units in one query
+    unit_ids = list(grouped.keys())
+    staff_by_unit: dict = {}
+    if unit_ids:
         staff_result = await db.execute(
-            select(StaffProfile).where(StaffProfile.id.in_(product_ids))
+            select(StaffProfile).where(StaffProfile.id.in_(unit_ids))
         )
-        staff_by_product = {s.id: s for s in staff_result.scalars().all()}
+        staff_by_unit = {s.id: s for s in staff_result.scalars().all()}
 
     created_count = 0
     updated_count = 0
     skipped_count = 0
     now = datetime.now(timezone.utc)
 
-    for product_id, product_summaries in grouped.items():
-        record = existing_records.get(product_id)
+    for unit_id, unit_summaries in grouped.items():
+        record = existing_records.get(unit_id)
 
-        regular_slots = sum(s.regular_slots for s in product_summaries)
-        ot_slots = sum(s.ot_slots for s in product_summaries)
-        total_holiday_hours = sum(s.holiday_hours for s in product_summaries)
-        total_work_days = len([s for s in product_summaries if s.is_complete])
+        regular_slots = sum(s.regular_slots for s in unit_summaries)
+        ot_slots = sum(s.ot_slots for s in unit_summaries)
+        total_holiday_hours = sum(s.holiday_hours for s in unit_summaries)
+        total_work_days = len([s for s in unit_summaries if s.is_complete])
 
-        staff = staff_by_product.get(product_id)
+        staff = staff_by_unit.get(unit_id)
         regular_hours, ot_hours, base_salary, overtime_pay, hourly_rate_snapshot, ot_multiplier_snapshot = _pay_from_profile(
             staff, regular_slots, ot_slots
         )
@@ -262,7 +262,7 @@ async def generate_monthly_payroll(
             updated_count += 1
         else:
             record = PayrollRecord(
-                product_id=product_id,
+                unit_id=unit_id,
                 payroll_period_start=first_day,
                 payroll_period_end=last_day,
                 regular_slots=regular_slots,

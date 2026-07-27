@@ -3,9 +3,9 @@ import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils
 
 export interface PayrollRecord {
   id: string
-  product_id: string
-  product_name: string | null
-  product_code: string | null
+  unit_id: string
+  unit_name: string | null
+  unit_code: string | null
   payroll_period_start: string
   payroll_period_end: string
   total_regular_hours: number
@@ -41,9 +41,9 @@ export interface PayrollRecord {
 }
 
 export async function listPayrollRecords(params?: {
-  product_id?: string
+  unit_id?: string
   status?: string
-  product_type?: string
+  unit_type?: string
   year?: number
   month?: number
   page?: number
@@ -55,9 +55,9 @@ export async function listPayrollRecords(params?: {
 }
 
 export async function listPayrollRecordsWithTotal(params?: {
-  product_id?: string
+  unit_id?: string
   status?: string
-  product_type?: string
+  unit_type?: string
   year?: number
   month?: number
   page?: number
@@ -76,9 +76,9 @@ export interface PayrollStats {
 }
 
 export async function getPayrollStats(params?: {
-  product_id?: string
+  unit_id?: string
   status?: string
-  product_type?: string
+  unit_type?: string
   year?: number
   month?: number
 }): Promise<PayrollStats> {
@@ -86,7 +86,7 @@ export async function getPayrollStats(params?: {
 }
 
 export async function createPayrollRecord(payload: {
-  product_id: string
+  unit_id: string
   payroll_period_start: string
   payroll_period_end: string
   total_regular_hours?: number
@@ -130,26 +130,26 @@ export async function deletePayrollRecord(recordId: string): Promise<void> {
   await $attendanceApi(`/payroll-records/${recordId}`, { method: 'DELETE' })
 }
 
-export interface StaleSummaryProduct {
-  product_id: string
-  product_code: string | null
-  product_name: string | null
+export interface StaleSummaryUnit {
+  unit_id: string
+  unit_code: string | null
+  unit_name: string | null
   reason: 'no_summary' | 'outdated'
 }
 
 export async function generatePayroll(
   year: number,
   month: number,
-  productType?: string,
-  productIds?: string[],
-): Promise<{ created: number; updated: number; skipped: number; stale_summaries?: StaleSummaryProduct[] }> {
+  unitType?: string,
+  unitIds?: string[],
+): Promise<{ created: number; updated: number; skipped: number; stale_summaries?: StaleSummaryUnit[] }> {
   const params = new URLSearchParams()
 
   params.set('year', String(year))
   params.set('month', String(month))
-  if (productType)
-    params.set('product_type', productType)
-  productIds?.forEach(id => params.append('product_ids', id))
+  if (unitType)
+    params.set('unit_type', unitType)
+  unitIds?.forEach(id => params.append('unit_ids', id))
 
   return await $attendanceApi(`/payroll-records/generate?${params.toString()}`, { method: 'POST' })
 }

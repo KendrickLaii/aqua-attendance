@@ -21,12 +21,12 @@ from tests.conftest import _insert_test_user, scan_body
 
 
 @pytest.mark.asyncio
-async def test_scan_preview_returns_product_without_recording(
-    client: AsyncClient, admin_token: str, sample_product: dict
+async def test_scan_preview_returns_unit_without_recording(
+    client: AsyncClient, admin_token: str, sample_unit: dict
 ):
-    """Preview resolves QR to product name; does not create an attendance row."""
+    """Preview resolves QR to unit name; does not create an attendance row."""
     headers = {"Authorization": f"Bearer {admin_token}"}
-    qr_resp = await client.get(f"/api/qr/token/{sample_product['id']}", headers=headers)
+    qr_resp = await client.get(f"/api/qr/token/{sample_unit['id']}", headers=headers)
     assert qr_resp.status_code == 200
     qr_token = qr_resp.json()["qr_token"]
 
@@ -36,14 +36,14 @@ async def test_scan_preview_returns_product_without_recording(
 
     preview = await client.post(
         "/api/attendance/scan/preview",
-        json=scan_body(qr_token, sample_product),
+        json=scan_body(qr_token, sample_unit),
         headers=headers,
     )
     assert preview.status_code == 200
     body = preview.json()
-    assert body["product_id"] == sample_product["id"]
-    assert body["product_name"] == sample_product["full_name"]
-    assert body["product_type"] == sample_product["product_type"]
+    assert body["unit_id"] == sample_unit["id"]
+    assert body["unit_name"] == sample_unit["full_name"]
+    assert body["unit_type"] == sample_unit["unit_type"]
 
     list_after = await client.get("/api/attendance", headers=headers)
     assert len(list_after.json()) == count_before
@@ -51,17 +51,17 @@ async def test_scan_preview_returns_product_without_recording(
 
 @pytest.mark.asyncio
 
-async def test_qr_issue_and_scan(client: AsyncClient, admin_token: str, sample_product: dict):
+async def test_qr_issue_and_scan(client: AsyncClient, admin_token: str, sample_unit: dict):
 
-    """Happy path: admin issues QR for a product, then scans it to check in."""
+    """Happy path: admin issues QR for a unit, then scans it to check in."""
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
 
 
     qr_resp = await client.get(
 
-        f"/api/qr/token/{product_id}",
+        f"/api/qr/token/{unit_id}",
 
         headers={"Authorization": f"Bearer {admin_token}"},
 
@@ -81,7 +81,7 @@ async def test_qr_issue_and_scan(client: AsyncClient, admin_token: str, sample_p
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_data["qr_token"], sample_product, device_id="kiosk-1"),
+        json=scan_body(qr_data["qr_token"], sample_unit, device_id="kiosk-1"),
 
         headers={"Authorization": f"Bearer {admin_token}"},
 
@@ -95,7 +95,7 @@ async def test_qr_issue_and_scan(client: AsyncClient, admin_token: str, sample_p
 
     assert event["client_device_id"] == "kiosk-1"
 
-    assert event["product_id"] == product_id
+    assert event["unit_id"] == unit_id
 
     assert event["attendance_status"] == "checked_in"
 
@@ -107,13 +107,13 @@ async def test_qr_issue_and_scan(client: AsyncClient, admin_token: str, sample_p
 
 async def test_same_token_toggles_in_then_out(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
     """The same QR scanned again should produce a check_out, no refresh needed."""
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -121,7 +121,7 @@ async def test_same_token_toggles_in_then_out(
 
     qr_token = (
 
-        await client.get(f"/api/qr/token/{product_id}", headers=headers)
+        await client.get(f"/api/qr/token/{unit_id}", headers=headers)
 
     ).json()["qr_token"]
 
@@ -133,7 +133,7 @@ async def test_same_token_toggles_in_then_out(
 
             "/api/attendance/scan",
 
-            json=scan_body(qr_token, sample_product),
+            json=scan_body(qr_token, sample_unit),
 
             headers=headers,
 
@@ -159,7 +159,7 @@ async def test_same_token_toggles_in_then_out(
 
             "/api/attendance/scan",
 
-            json=scan_body(qr_token, sample_product),
+            json=scan_body(qr_token, sample_unit),
 
             headers=headers,
 
@@ -181,13 +181,13 @@ async def test_same_token_toggles_in_then_out(
 
 async def test_debounce_returns_existing_event(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
     """Rapid duplicate scans return the same event (kiosk double-tap protection)."""
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -195,7 +195,7 @@ async def test_debounce_returns_existing_event(
 
     qr_token = (
 
-        await client.get(f"/api/qr/token/{product_id}", headers=headers)
+        await client.get(f"/api/qr/token/{unit_id}", headers=headers)
 
     ).json()["qr_token"]
 
@@ -205,7 +205,7 @@ async def test_debounce_returns_existing_event(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product),
+        json=scan_body(qr_token, sample_unit),
 
         headers=headers,
 
@@ -215,7 +215,7 @@ async def test_debounce_returns_existing_event(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product),
+        json=scan_body(qr_token, sample_unit),
 
         headers=headers,
 
@@ -239,13 +239,13 @@ async def test_debounce_returns_existing_event(
 
 async def test_refresh_invalidates_old_token(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
     """After refresh, the previous QR token is rejected with 400."""
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -253,7 +253,7 @@ async def test_refresh_invalidates_old_token(
 
     old_token = (
 
-        await client.get(f"/api/qr/token/{product_id}", headers=headers)
+        await client.get(f"/api/qr/token/{unit_id}", headers=headers)
 
     ).json()["qr_token"]
 
@@ -261,7 +261,7 @@ async def test_refresh_invalidates_old_token(
 
     refresh = await client.post(
 
-        f"/api/qr/token/{product_id}/refresh", headers=headers
+        f"/api/qr/token/{unit_id}/refresh", headers=headers
 
     )
 
@@ -279,7 +279,7 @@ async def test_refresh_invalidates_old_token(
 
         "/api/attendance/scan",
 
-        json=scan_body(old_token, sample_product),
+        json=scan_body(old_token, sample_unit),
 
         headers=headers,
 
@@ -293,7 +293,7 @@ async def test_refresh_invalidates_old_token(
 
         "/api/attendance/scan",
 
-        json=scan_body(new_data["qr_token"], sample_product),
+        json=scan_body(new_data["qr_token"], sample_unit),
 
         headers=headers,
 
@@ -311,13 +311,13 @@ async def test_refresh_invalidates_old_token(
 
 async def test_scan_with_explicit_event_type(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
     """Caller may pass event_type to force check_in or check_out."""
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -325,7 +325,7 @@ async def test_scan_with_explicit_event_type(
 
     qr_token = (
 
-        await client.get(f"/api/qr/token/{product_id}", headers=headers)
+        await client.get(f"/api/qr/token/{unit_id}", headers=headers)
 
     ).json()["qr_token"]
 
@@ -335,7 +335,7 @@ async def test_scan_with_explicit_event_type(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product, event_type="check_out"),
+        json=scan_body(qr_token, sample_unit, event_type="check_out"),
 
         headers=headers,
 
@@ -361,7 +361,7 @@ async def test_scan_with_explicit_event_type(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product, event_type="check_in"),
+        json=scan_body(qr_token, sample_unit, event_type="check_in"),
 
         headers=headers,
 
@@ -425,13 +425,13 @@ async def test_invalid_qr_rejected(client: AsyncClient, admin_token: str):
 
 async def test_manual_check_in_updates_status(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
-    """A manual check_in correction should set the product's attendance_status."""
+    """A manual check_in correction should set the unit's attendance_status."""
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -441,7 +441,7 @@ async def test_manual_check_in_updates_status(
 
         "/api/attendance/manual",
 
-        json={"product_id": product_id, "event_type": "check_in"},
+        json={"unit_id": unit_id, "event_type": "check_in"},
 
         headers=headers,
 
@@ -453,13 +453,13 @@ async def test_manual_check_in_updates_status(
 
 
 
-    product = (
+    unit = (
 
-        await client.get(f"/api/products/{product_id}", headers=headers)
+        await client.get(f"/api/units/{unit_id}", headers=headers)
 
     ).json()
 
-    assert product["attendance_status"] == "checked_in"
+    assert unit["attendance_status"] == "checked_in"
 
 
 
@@ -467,15 +467,15 @@ async def test_manual_check_in_updates_status(
 
 @pytest.mark.asyncio
 
-async def test_inactive_product_scan_rejected(
+async def test_inactive_unit_scan_rejected(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
-    """Scanning an inactive product should be rejected."""
+    """Scanning an inactive unit should be rejected."""
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -483,7 +483,7 @@ async def test_inactive_product_scan_rejected(
 
     qr_token = (
 
-        await client.get(f"/api/qr/token/{product_id}", headers=headers)
+        await client.get(f"/api/qr/token/{unit_id}", headers=headers)
 
     ).json()["qr_token"]
 
@@ -491,7 +491,7 @@ async def test_inactive_product_scan_rejected(
 
     await client.patch(
 
-        f"/api/products/{product_id}",
+        f"/api/units/{unit_id}",
 
         json={"is_active": False},
 
@@ -505,7 +505,7 @@ async def test_inactive_product_scan_rejected(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product),
+        json=scan_body(qr_token, sample_unit),
 
         headers=headers,
 
@@ -531,7 +531,7 @@ async def test_unauthenticated_cannot_list_attendance(client: AsyncClient):
 
 @pytest.mark.asyncio
 
-async def test_non_admin_cannot_scan_or_list(client: AsyncClient, admin_token: str, sample_product: dict):
+async def test_non_admin_cannot_scan_or_list(client: AsyncClient, admin_token: str, sample_unit: dict):
 
     """Users without admin/superadmin role cannot scan or list attendance."""
 
@@ -559,7 +559,7 @@ async def test_non_admin_cannot_scan_or_list(client: AsyncClient, admin_token: s
 
     qr_resp = await client.get(
 
-        f"/api/qr/token/{sample_product['id']}",
+        f"/api/qr/token/{sample_unit['id']}",
 
         headers={"Authorization": f"Bearer {admin_token}"},
 
@@ -573,7 +573,7 @@ async def test_non_admin_cannot_scan_or_list(client: AsyncClient, admin_token: s
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product),
+        json=scan_body(qr_token, sample_unit),
 
         headers=headers,
 
@@ -595,7 +595,7 @@ async def test_non_admin_cannot_scan_or_list(client: AsyncClient, admin_token: s
 
 async def test_export_csv_quotes_commas_in_fields(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
@@ -603,13 +603,13 @@ async def test_export_csv_quotes_commas_in_fields(
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
 
 
     patch = await client.patch(
 
-        f"/api/products/{product_id}",
+        f"/api/units/{unit_id}",
 
         json={"full_name": "Tanaka, Taro"},
 
@@ -621,7 +621,7 @@ async def test_export_csv_quotes_commas_in_fields(
 
 
 
-    qr_resp = await client.get(f"/api/qr/token/{product_id}", headers=headers)
+    qr_resp = await client.get(f"/api/qr/token/{unit_id}", headers=headers)
 
     assert qr_resp.status_code == 200
 
@@ -633,7 +633,7 @@ async def test_export_csv_quotes_commas_in_fields(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product),
+        json=scan_body(qr_token, sample_unit),
 
         headers=headers,
 
@@ -663,9 +663,9 @@ async def test_export_csv_quotes_commas_in_fields(
 
     rows = list(csv.reader(StringIO(export.text)))
 
-    assert rows[0][3] == "product_name"
+    assert rows[0][3] == "unit_name"
 
-    data_rows = [r for r in rows[1:] if r and r[1] == product_id]
+    data_rows = [r for r in rows[1:] if r and r[1] == unit_id]
 
     assert len(data_rows) >= 1
 
@@ -677,19 +677,19 @@ async def test_export_csv_quotes_commas_in_fields(
 
 @pytest.mark.asyncio
 
-async def test_scan_records_location_on_product(
+async def test_scan_records_location_on_unit(
 
-    client: AsyncClient, admin_token: str, sample_product: dict, sample_location: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 
 ):
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
 
 
-    qr_resp = await client.get(f"/api/qr/token/{product_id}", headers=headers)
+    qr_resp = await client.get(f"/api/qr/token/{unit_id}", headers=headers)
 
     qr_token = qr_resp.json()["qr_token"]
 
@@ -699,7 +699,7 @@ async def test_scan_records_location_on_product(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product, location_id=sample_location["id"]),
+        json=scan_body(qr_token, sample_unit, location_id=sample_location["id"]),
 
         headers=headers,
 
@@ -711,11 +711,11 @@ async def test_scan_records_location_on_product(
 
 
 
-    product = await client.get(f"/api/products/{product_id}", headers=headers)
+    unit = await client.get(f"/api/units/{unit_id}", headers=headers)
 
-    assert product.status_code == 200
+    assert unit.status_code == 200
 
-    body = product.json()
+    body = unit.json()
 
     assert body["last_event_location"] == sample_location["name_en"]
 
@@ -733,7 +733,7 @@ async def test_scan_rejects_location_not_in_whitelist(
 
     admin_token: str,
 
-    sample_product: dict,
+    sample_unit: dict,
 
     sample_location_b: dict,
 
@@ -743,7 +743,7 @@ async def test_scan_rejects_location_not_in_whitelist(
 
     qr_token = (
 
-        await client.get(f"/api/qr/token/{sample_product['id']}", headers=headers)
+        await client.get(f"/api/qr/token/{sample_unit['id']}", headers=headers)
 
     ).json()["qr_token"]
 
@@ -753,7 +753,7 @@ async def test_scan_rejects_location_not_in_whitelist(
 
         "/api/attendance/scan",
 
-        json=scan_body(qr_token, sample_product, location_id=sample_location_b["id"]),
+        json=scan_body(qr_token, sample_unit, location_id=sample_location_b["id"]),
 
         headers=headers,
 
@@ -764,7 +764,7 @@ async def test_scan_rejects_location_not_in_whitelist(
     assert body["code"] == "location_not_allowed"
     assert len(body["allowed_locations"]) >= 1
     allowed_ids = {loc["id"] for loc in body["allowed_locations"]}
-    assert str(sample_product["scan_location_ids"][0]) in allowed_ids
+    assert str(sample_unit["scan_location_ids"][0]) in allowed_ids
     assert str(sample_location_b["id"]) not in allowed_ids
 
 
@@ -772,21 +772,21 @@ async def test_scan_rejects_location_not_in_whitelist(
 async def test_scan_preview_rejects_location_with_allowed_list(
     client: AsyncClient,
     admin_token: str,
-    sample_product: dict,
+    sample_unit: dict,
     sample_location_b: dict,
 ):
     headers = {"Authorization": f"Bearer {admin_token}"}
     qr_token = (
-        await client.get(f"/api/qr/token/{sample_product['id']}", headers=headers)
+        await client.get(f"/api/qr/token/{sample_unit['id']}", headers=headers)
     ).json()["qr_token"]
     resp = await client.post(
         "/api/attendance/scan/preview",
-        json=scan_body(qr_token, sample_product, location_id=sample_location_b["id"]),
+        json=scan_body(qr_token, sample_unit, location_id=sample_location_b["id"]),
         headers=headers,
     )
     assert resp.status_code == 403
     detail = resp.json()["detail"]
-    assert detail["product_name"] == sample_product["full_name"]
+    assert detail["unit_name"] == sample_unit["full_name"]
     assert len(detail["allowed_locations"]) >= 1
 
 
@@ -794,7 +794,7 @@ async def test_scan_preview_rejects_location_with_allowed_list(
 
 async def test_scan_requires_location_id(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
@@ -802,7 +802,7 @@ async def test_scan_requires_location_id(
 
     qr_token = (
 
-        await client.get(f"/api/qr/token/{sample_product['id']}", headers=headers)
+        await client.get(f"/api/qr/token/{sample_unit['id']}", headers=headers)
 
     ).json()["qr_token"]
 
@@ -828,7 +828,7 @@ async def test_scan_requires_location_id(
 
 async def test_attendance_day_stats_aggregates_all_events(
 
-    client: AsyncClient, admin_token: str, sample_product: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict
 
 ):
 
@@ -836,7 +836,7 @@ async def test_attendance_day_stats_aggregates_all_events(
 
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    product_id = sample_product["id"]
+    unit_id = sample_unit["id"]
 
 
 
@@ -846,7 +846,7 @@ async def test_attendance_day_stats_aggregates_all_events(
 
             "/api/attendance/manual",
 
-            json={"product_id": product_id, "event_type": event_type},
+            json={"unit_id": unit_id, "event_type": event_type},
 
             headers=headers,
 

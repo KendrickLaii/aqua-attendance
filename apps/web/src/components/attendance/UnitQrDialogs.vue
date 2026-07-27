@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useDisplay } from 'vuetify'
-import { PRODUCT_QR_IMAGE_SIZE, useProductQrDialog } from '@/composables/useProductQrDialog'
+import { UNIT_QR_IMAGE_SIZE, useUnitQrDialog } from '@/composables/useUnitQrDialog'
 
 const emit = defineEmits<{
   rotated: []
@@ -11,7 +11,7 @@ const { width: windowWidth } = useWindowSize()
 
 const {
   qrDialog,
-  qrProduct,
+  qrUnit,
   qrToken,
   qrError,
   qrLoading,
@@ -30,18 +30,18 @@ const {
   copyQrToken,
   selectTokenField,
   openWebScanner,
-} = useProductQrDialog({
+} = useUnitQrDialog({
   onRotated: () => emit('rotated'),
 })
 
 const displayQrSize = computed(() => {
   if (smAndDown.value)
-    return Math.min(PRODUCT_QR_IMAGE_SIZE, Math.floor(windowWidth.value * 0.72))
+    return Math.min(UNIT_QR_IMAGE_SIZE, Math.floor(windowWidth.value * 0.72))
 
-  return PRODUCT_QR_IMAGE_SIZE
+  return UNIT_QR_IMAGE_SIZE
 })
 
-function productTypeLabel(type: string | undefined) {
+function unitTypeLabel(type: string | undefined) {
   if (type === 'staff')
     return 'Staff'
   if (type === 'student')
@@ -57,8 +57,8 @@ defineExpose({ openQR })
   <!-- QR Code Dialog -->
   <AttendanceInfoDialog
     v-model="qrDialog"
-    :title="qrProduct?.full_name"
-    :subtitle="qrProduct ? `${qrProduct.code} · ${productTypeLabel(qrProduct.product_type)}` : undefined"
+    :title="qrUnit?.full_name"
+    :subtitle="qrUnit ? `${qrUnit.code} · ${unitTypeLabel(qrUnit.unit_type)}` : undefined"
     icon="ri-qr-code-line"
     centered
     @action="qrDialog = false"
@@ -144,7 +144,7 @@ defineExpose({ openQR })
         @focus="selectTokenField"
       />
       <div class="text-caption text-disabled mt-2">
-        Token version: {{ qrProduct?.qr_token_version }}
+        Token version: {{ qrUnit?.qr_token_version }}
       </div>
     </template>
     <VAlert
@@ -158,7 +158,7 @@ defineExpose({ openQR })
 
   <AttendanceConfirmDialog
     v-model="rotateConfirmOpen"
-    :title="`Rotate QR for ${qrProduct?.full_name}?`"
+    :title="`Rotate QR for ${qrUnit?.full_name}?`"
     confirm-label="Rotate"
     confirm-color="warning"
     :loading="rotating"

@@ -2,17 +2,17 @@
 QR token service.
 
 Security design:
-- Tokens are HMAC-signed JWTs that embed the product id and the product's
+- Tokens are HMAC-signed JWTs that embed the unit id and the unit's
   current `qr_token_version`.  They have no `exp` claim — the QR is meant
   to live on a printed badge / lock screen and toggle check-in/out on each
   scan.
 - The signing key (QR_SECRET) is separate from the auth JWT key so a leaked
   auth token cannot forge QR tokens and vice-versa.
 - Rotation: admins can call the refresh endpoint to bump `qr_token_version`
-  on the product; any QR with the previous version becomes invalid
+  on the unit; any QR with the previous version becomes invalid
   immediately.  This is the path to use if a QR is lost or compromised.
 - Replay / double-tap protection: the scan service applies a short debounce
-  window per product, returning the existing event for rapid duplicate
+  window per unit, returning the existing event for rapid duplicate
   scans.  The token's `jti` is still stored on each event for audit.
 """
 
@@ -26,11 +26,11 @@ from app.config import settings
 _ALGORITHM = "HS256"
 
 
-def issue_qr_token(product_id: str, token_version: int) -> str:
-    """Return a signed token tied to (product_id, token_version)."""
+def issue_qr_token(unit_id: str, token_version: int) -> str:
+    """Return a signed token tied to (unit_id, token_version)."""
     now = datetime.now(timezone.utc)
     payload = {
-        "sub": product_id,
+        "sub": unit_id,
         "ver": token_version,
         "jti": uuid.uuid4().hex,
         "iat": now,
@@ -45,7 +45,7 @@ def verify_qr_token(token: str) -> dict:
 
     Raises InvalidTokenError on any failure (bad signature, malformed, wrong type).
     Note: the caller must additionally verify that `ver` matches the
-    product's current `qr_token_version`.
+    unit's current `qr_token_version`.
     """
     payload = jwt.decode(token, settings.QR_SECRET, algorithms=[_ALGORITHM])
     if payload.get("type") != "qr":

@@ -5,9 +5,9 @@ export default [
     to: 'attendance-dashboard',
   },
   {
-    title: 'Product Management',
+    title: 'Unit Management',
     icon: { icon: 'ri-group-line' },
-    to: 'attendance-products',
+    to: 'attendance-units',
   },
   {
     title: 'QR Codes',

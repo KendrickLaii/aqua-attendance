@@ -170,6 +170,18 @@
 - **問題**：scan 的 check_in/check_out 推斷依賴 `products.attendance_status`。void、manual correction、隔夜未簽退後，此欄位可能與實際 events 不一致（雖有 `recompute_product_attendance_status` 但不是所有路徑都會觸發）。
 - **建議**：確保所有寫入/作廢 events 的路徑都呼叫 recompute，或改用「查最近一筆非作廢 event」來決定下一個動作。
 
+### #M19 出勤端點無 `product_type` 白名單檢查
+
+> **2026-07-27 新增** — 目前無實際風險（schema 層已限制），但未來新增 `device`/`goods` 類型時必須補齊。
+
+- **位置**：
+  - `apps/api/app/routers/attendance.py:_resolve_product_for_scan`（掃碼）
+  - `apps/api/app/routers/attendance.py:create_manual_correction`（手動補登）
+  - `apps/api/app/routers/qr.py:get_qr_token` / `refresh_qr_token`（QR 發放）
+- **問題**：出勤相關端點只檢查 `is_active`，不檢查 `product_type`。目前 `ProductCreate.product_type` 使用 `Literal["staff", "student"]`（`app/schemas/product.py:24`），API 無法建立 device/goods 類型，所以無實際風險。但一旦放寬 `Literal` 限制新增 device/goods 類型，這些端點會允許 device/goods 掃碼出勤和發放 QR。
+- **現有保護層**：`ProductCreate` / `ProductUpdate` 的 `Literal["staff", "student"]` 限制（schema 驗證層）
+- **建議**：在上述三處加 `_ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}` 白名單檢查（defense-in-depth）。成本低，一行代碼。應在新增 device/goods 類型時同步補齊。
+
 ---
 
 ## 5. 🟢 Low — 前端改善

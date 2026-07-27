@@ -110,15 +110,15 @@ async def sample_location_b(client: AsyncClient, admin_token: str) -> dict:
 
 
 @pytest_asyncio.fixture
-async def sample_product(client: AsyncClient, admin_token: str, sample_location: dict) -> dict:
-    """Create a sample product and return its data."""
+async def sample_unit(client: AsyncClient, admin_token: str, sample_location: dict) -> dict:
+    """Create a sample unit and return its data."""
     code = f"STU-{uuid.uuid4().hex[:6]}"
     resp = await client.post(
-        "/api/products",
+        "/api/units",
         json={
             "code": code,
             "full_name": "Test Student",
-            "product_type": "student",
+            "unit_type": "student",
             "registered_location_id": sample_location["id"],
             "scan_location_ids": [sample_location["id"]],
         },
@@ -128,7 +128,7 @@ async def sample_product(client: AsyncClient, admin_token: str, sample_location:
     return resp.json()
 
 
-def scan_body(qr_token: str, product: dict, **extra) -> dict:
+def scan_body(qr_token: str, unit: dict, **extra) -> dict:
     """Build scan JSON with a whitelisted location_id."""
-    location_id = extra.pop("location_id", product["scan_location_ids"][0])
+    location_id = extra.pop("location_id", unit["scan_location_ids"][0])
     return {"qr_token": qr_token, "location_id": location_id, **extra}

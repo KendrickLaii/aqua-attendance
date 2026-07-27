@@ -17,17 +17,17 @@ from app.routers import (
     locations,
     notifications,
     payroll_records,
-    products,
     qr,
     staff_profiles,
     student_profiles,
+    units,
     users,
 )
 
 app = FastAPI(
     title="AQUA Attendance API",
     version="2.0.0",
-    description="Time & Attendance system for cram school (juku) — product-based tracking",
+    description="Time & Attendance system for cram school (juku) — unit-based tracking",
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -43,7 +43,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
-app.include_router(products.router, prefix="/api")
+app.include_router(units.router, prefix="/api")
 app.include_router(locations.router, prefix="/api")
 app.include_router(qr.router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")

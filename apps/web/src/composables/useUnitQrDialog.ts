@@ -1,21 +1,21 @@
 import { getQRToken, refreshQRToken } from '@/api/attendance/events'
-import type { Product } from '@/api/attendance/products'
+import type { Unit } from '@/api/attendance/units'
 import { useQrImageUrl } from '@/composables/useQrImageUrl'
 import { copyToClipboard } from '@/utils/copyToClipboard'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { SCAN_ENTRY_SESSION_KEY, SCAN_TOKEN_SESSION_KEY } from '@/utils/attendanceSession'
 
-export const PRODUCT_QR_IMAGE_SIZE = 300
+export const UNIT_QR_IMAGE_SIZE = 300
 
-export function useProductQrDialog(options?: {
+export function useUnitQrDialog(options?: {
   qrSize?: number
   onRotated?: () => void | Promise<void>
 }) {
   const router = useRouter()
-  const qrSize = options?.qrSize ?? PRODUCT_QR_IMAGE_SIZE
+  const qrSize = options?.qrSize ?? UNIT_QR_IMAGE_SIZE
 
   const qrDialog = ref(false)
-  const qrProduct = ref<Product | null>(null)
+  const qrUnit = ref<Unit | null>(null)
   const qrToken = ref('')
   const qrError = ref('')
   const qrLoading = ref(false)
@@ -28,8 +28,8 @@ export function useProductQrDialog(options?: {
 
   const { qrImageUrl, qrImageError, qrImageLoading } = useQrImageUrl(qrToken, qrSize)
 
-  async function openQR(p: Product) {
-    qrProduct.value = p
+  async function openQR(p: Unit) {
+    qrUnit.value = p
     qrLoading.value = true
     qrToken.value = ''
     qrError.value = ''
@@ -59,15 +59,15 @@ export function useProductQrDialog(options?: {
   }
 
   async function confirmRotate() {
-    if (!qrProduct.value)
+    if (!qrUnit.value)
       return
     rotating.value = true
     rotateError.value = ''
     try {
-      const data = await refreshQRToken(qrProduct.value.id)
+      const data = await refreshQRToken(qrUnit.value.id)
 
       qrToken.value = data.qr_token
-      qrProduct.value = { ...qrProduct.value, qr_token_version: data.token_version }
+      qrUnit.value = { ...qrUnit.value, qr_token_version: data.token_version }
       closeRotateConfirm()
       await options?.onRotated?.()
     }
@@ -116,7 +116,7 @@ export function useProductQrDialog(options?: {
 
   return {
     qrDialog,
-    qrProduct,
+    qrUnit,
     qrToken,
     qrError,
     qrLoading,
