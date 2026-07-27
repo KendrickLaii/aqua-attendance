@@ -52,33 +52,33 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 
 | 參數 | 說明 |
 |------|------|
-| `product_id` | 單一 product |
+| `unit_id` | 單一 unit |
 | `date_from` / `date_to` | 日期區間（含端點） |
-| `product_type` | `staff` / `student` |
+| `unit_type` | `staff` / `student` |
 | `is_complete` | `true` / `false` |
 | `page` / `page_size` | 預設 50，最大 200 |
 
-回應標頭：`X-Total-Count`。排序：`product_id`, `summary_date` 升序。
+回應標頭：`X-Total-Count`。排序：`unit_id`, `summary_date` 升序。
 
 回傳含：`regular_slots`、`ot_slots`、`regular_hours`、`overtime_hours`、進出時間與狀態旗標。
 
 ### 2.2 `GET /api/attendance-summaries/overview`
 
-依 **product × 月份** 聚合，供總覽表使用。
+依 **unit × 月份** 聚合，供總覽表使用。
 
 | 參數 | 必填 | 說明 |
 |------|------|------|
 | `date_from` | ✅ | 月初 |
 | `date_to` | ✅ | 月末 |
-| `product_type` | | `staff` / `student` |
-| `search` | | product `code` / `full_name` / `english_name`（ILIKE） |
+| `unit_type` | | `staff` / `student` |
+| `search` | | unit `code` / `full_name` / `english_name`（ILIKE） |
 | `page` / `page_size` | | 預設 50，最大 200 |
 
 回傳欄位（`AttendanceSummaryOverviewOut`）：`days_present`, `days_complete`, `days_incomplete`, `total_regular_hours`, `total_overtime_hours`, `total_regular_slots`, `total_ot_slots`, `first_date`, `last_date`。
 
 ### 2.3 `POST /api/attendance-summaries/generate`
 
-從 `attendance_events` 計算並 **upsert** `attendance_summaries`（鍵：`product_id` + `summary_date`）。
+從 `attendance_events` 計算並 **upsert** `attendance_summaries`（鍵：`unit_id` + `summary_date`）。
 
 | 參數 | 說明 |
 |------|------|
@@ -89,7 +89,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 
 - `total_days`：本月有打卡且可計算的天數（有 check_in）
 - **僅處理選中月份**；不影響其他月份
-- **不篩選** `product_type`（員工與學生一併處理）
+- **不篩選** `unit_type`（員工與學生一併處理）
 - 已有列 → **覆蓋更新**；無列 → 新建；**不會重複插入**
 - 若某天事件已刪除，舊彙總列 **不會自動刪除**
 - 寫入 audit log（`DATA_EXPORT`）
@@ -105,14 +105,14 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 | `year` | ✅ | 4 位數年份 |
 | `month` | ✅ | 1–12 |
 | `status` | | `draft` / `calculated` / `approved` / `paid` / `cancelled` |
-| `product_type` | | `staff` / `student` |
+| `unit_type` | | `staff` / `student` |
 | `page` / `page_size` | | 預設 50，最大 200 |
 
 回應標頭：`X-Total-Count`。依 `payroll_period_start` 落在該年月區間篩選。
 
 ### 2.5 `POST /api/payroll-records/generate`
 
-從當月 `attendance_summaries` 聚合為 `payroll_records`（鍵：`product_id` + `payroll_period_start/end`）。
+從當月 `attendance_summaries` 聚合為 `payroll_records`（鍵：`unit_id` + `payroll_period_start/end`）。
 
 回傳：`{ created, updated, skipped, year, month }`
 
@@ -166,8 +166,8 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 |------|------|
 | **工具列** | 月份箭頭、`Type` 篩選（預設 **Staff**）、`Status` 篩選、Generate、Refresh |
 | **統計卡** | 本月記錄數、總常規工時、總 OT 工時、總 Net pay（當前頁加總） |
-| **總覽** | 每個 product 當月一筆薪資；點列進入明細；分頁；亦有 Generate wizard 卡片檢視 |
-| **明細** | 該 product 當月 `attendance_summaries`：日期、上下班、Regular / Reg slots / OT / OT slots、狀態與 Total；可編輯 Adjustment 1/2 與 remark |
+| **總覽** | 每個 unit 當月一筆薪資；點列進入明細；分頁；亦有 Generate wizard 卡片檢視 |
+| **明細** | 該 unit 當月 `attendance_summaries`：日期、上下班、Regular / Reg slots / OT / OT slots、狀態與 Total；可編輯 Adjustment 1/2 與 remark |
 
 ### 4.2 狀態流程
 
@@ -181,7 +181,7 @@ Superadmin 可刪除 `draft` / `calculated` / `approved` 狀態的記錄。
 
 ### 4.3 與 Summaries 的關聯
 
-Payroll 明細直接呼叫 `GET /api/attendance-summaries?product_id=&date_from=&date_to=`，
+Payroll 明細直接呼叫 `GET /api/attendance-summaries?unit_id=&date_from=&date_to=`，
 展示「這筆薪資是由哪些每日彙總計算而來」。這與 Summaries 的單人每日明細使用同一資料源。
 
 ### 4.4 相關檔案
@@ -200,8 +200,8 @@ Payroll 明細直接呼叫 `GET /api/attendance-summaries?product_id=&date_from=
 
 ```bash
 cd apps/api
-python seed.py              # users + products + summaries（完整 seed 末尾會跑 summaries）
-python seed.py --summaries  # 僅寫入彙總（需已有 products）
+python seed.py              # users + units + summaries（完整 seed 末尾會跑 summaries）
+python seed.py --summaries  # 僅寫入彙總（需已有 units）
 ```
 
 | 資料集 | 月份 | 來源 |
@@ -239,7 +239,7 @@ Bulk 彙總的 `calculation_method = "seed"`，**沒有**對應 `attendance_even
 | Weekend 篩選 | 明細層 Weekend chip 為 **前端篩選**已載入列；Complete/Incomplete 走 API `is_complete` |
 | Holiday | 僅在狀態欄顯示，無獨立 chip |
 | Overview 無 slots | ✅ 已補 `total_regular_slots` / `total_ot_slots` |
-| 唯一約束 | `(product_id, summary_date)` / payroll `(product_id, period_start, period_end)` |
+| 唯一約束 | `(unit_id, summary_date)` / payroll `(unit_id, period_start, period_end)` |
 | 自動化 | 尚無 cron 自動月度 Generate |
 | Auto checkout | **非完整自動版**：有 23:59 日界 helper、手動 Day-end、Generate 過去日回填；**無** 23:59 cron、**無** 00:00 status 重置（見 [known-gaps.md](known-gaps.md) #M14） |
 
@@ -270,13 +270,13 @@ A：多為 `python seed.py` 寫入的測試彙總，或先前已 Generate 過。
 A：每次都重算同一 8 天；`updated` 計數不代表數值有變化。
 
 **Q：Generate 會處理 Type 篩選嗎？**  
-A：不會。Type 只影響列表顯示；Generate 處理該月所有有打卡的 product。
+A：不會。Type 只影響列表顯示；Generate 處理該月所有有打卡的 unit。
 
 **Q：切換月份要再 Generate 嗎？**  
 A：不需要，除非該月打卡有變動且尚未重算。
 
 **Q：Payroll 頁面的明細從哪裡來？**  
-A：點擊 product 的薪資列後，會讀取該 product 在當月的 `attendance_summaries`，展示這筆薪資的計算來源。
+A：點擊 unit 的薪資列後，會讀取該 unit 在當月的 `attendance_summaries`，展示這筆薪資的計算來源。
 
 **Q：Payroll 列表為什麼只顯示單一月份？**  
 A：列表依頂部選中的月份篩選，與 Summaries 的「按月聚焦」模型一致。

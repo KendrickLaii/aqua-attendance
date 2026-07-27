@@ -21,7 +21,7 @@
 
 | 文件 | 類型 | 內容 | 更新頻率 |
 |------|------|------|----------|
-| [../README.md](../README.md) | 總覽 | 系統架構、概念對照表（Product vs User）、QR 流程、快速開始、倉庫結構 | 架構變更時 |
+| [../README.md](../README.md) | 總覽 | 系統架構、概念對照表（Unit vs User）、QR 流程、快速開始、倉庫結構 | 架構變更時 |
 | [project-handbook.md](project-handbook.md) | 手冊 | 本地開發、生產部署（Docker/Caddy）、CI/CD 流程、運維手冊、已知缺口與評分、Mobile 發布、發布紀錄 | 持續累積 |
 | [../apps/api/README.md](../apps/api/README.md) | 開發 | FastAPI 啟動、測試、環境變數、Alembic、seed 資料 | API 變更時 |
 | [../apps/web/README.md](../apps/web/README.md) | 開發 | Vue 3 開發伺服器、Vite 設定、出勤頁面路由、AQUA 模板注意事項 | Web 變更時 |
@@ -57,7 +57,7 @@
 
 ## 閱讀順序建議
 
-1. **理解系統**：Root README（`Product` 與 `User` 的區別、QR 簽到流程）
+1. **理解系統**：Root README（`Unit` 與 `User` 的區別、QR 簽到流程）
 2. **針對層級**：開啟你正在修改的 `apps/<層級>/README.md`
 3. **部署或維運**：翻開 `project-handbook.md`，依角色看對應章節
 4. **合併前**：確認 `REVIEW-PROMPT.md` 的檢查清單

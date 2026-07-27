@@ -56,7 +56,7 @@
 | # | 問題 | 狀態 |
 |---|------|------|
 | MB1 | ~~Phase 3 M3.1 狀態矛盾~~ | ✅ 已修 — 標 ✅ Done |
-| MB2 | Phase 3 M3.5「Mobile 顯示 product QR（admin）」標「待排」，需確認狀態 | 🟡 |
+| MB2 | Phase 3 M3.5「Mobile 顯示 unit QR（admin）」標「待排」，需確認狀態 | 🟡 |
 | MB3 | Phase 4 全部標 ⬜，需確認是否有進展 | 🟡 |
 | MB4 | ~~§7.2 API 對照表缺少新端點~~ | ✅ 已修 — 保留 Mobile 專用端點 |
 | MB5 | ~~§7.3 功能對照缺少 Summaries/Payroll~~ | ✅ 已修 — 加入新列 |
@@ -145,7 +145,7 @@
 | AR2 | `KNOWN-GAPS.md` 應新增 **Payroll 依賴手動 Generate summaries** | 🟡 |
 | AR3 | `KNOWN-GAPS.md` 應新增 **Void 後 summary 不自動重算** | 🟡 |
 | AR4 | `KNOWN-GAPS.md` 應新增 **Generate 端點無互斥鎖** | 🟡 |
-| AR5 | `KNOWN-GAPS.md` 應新增 **`products.attendance_status` 非正規化一致性** | 🟡 |
+| AR5 | `KNOWN-GAPS.md` 應新增 **`units.attendance_status` 非正規化一致性** | 🟡 |
 | AR6 | `attendance-summaries.md`、`database-changes.md` 應補充 break 計算現況 | 🟡 |
 
 ---

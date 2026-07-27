@@ -23,11 +23,11 @@
 
 ### 1.1 系統架構
 
-AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員與學生以 **Product** 身份存在，透過 QR 碼簽到/簽退；**管理員**（`admin` / `superadmin`）透過 Web 與 Mobile App 登入管理資料並掃描 QR。
+AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員與學生以 **Unit** 身份存在，透過 QR 碼簽到/簽退；**管理員**（`admin` / `superadmin`）透過 Web 與 Mobile App 登入管理資料並掃描 QR。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Products（教職員 / 學生）                                      │
+│  Units（教職員 / 學生）                                          │
 │  每人有一個簽名 QR（JWT）— 同一個 QR 反覆簽到/簽退                │
 └───────────────────────────────┬─────────────────────────────┘
                                 │ scan
@@ -46,7 +46,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | 概念 | 說明 |
 |------|------|
 | **User** (`users`) | 登入帳號：`admin` 或 `superadmin` |
-| **Product** (`products`) | 可簽到的實體：`product_type` = `staff`、`student`、`device`、`goods` |
+| **Unit** (`units`) | 可簽到的實體：`unit_type` = `staff`、`student`、`device`、`goods` |
 | **Profile** (`student_profiles` / `staff_profiles`) | 類型專屬資料：學生（學校、監護人）/ 員工（雇用類型、薪資） |
 | **Attendance event** | `check_in`、`check_out`、`manual_correction` 或 `auto_checkout` |
 | **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 [attendance-summaries.md](attendance-summaries.md) |
@@ -57,7 +57,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 
 | 路徑 | 說明 |
 |------|------|
-| `apps/api/` | FastAPI — 認證、Product、Profile、QR 簽名、Attendance、薪資、稽核 |
+| `apps/api/` | FastAPI — 認證、Unit、Profile、QR 簽名、Attendance、薪資、稽核 |
 | `apps/web/` | Vue 3 管理後台 (`src/pages/attendance/`)，基於 AQUA 模板 |
 | `apps/mobile/` | Expo App — QR 掃描器 + 歷史紀錄 |
 | `docker-compose.yml` | 開發：PostgreSQL + API |
@@ -66,14 +66,14 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 
 ### 1.3 QR Token 流程
 
-1. 管理員呼叫 `GET /api/qr/token/{product_id}` → 取得簽名 JWT
-2. Payload：`{ sub: product_id, ver: qr_token_version, jti, iat, type: "qr" }`
+1. 管理員呼叫 `GET /api/qr/token/{unit_id}` → 取得簽名 JWT
+2. Payload：`{ sub: unit_id, ver: qr_token_version, jti, iat, type: "qr" }`
 3. 以 `QR_SECRET` 簽名（與 `SECRET_KEY` 分離）
 4. **無到期日** — 同一個 QR 印在識別證/鎖定畫面；每次掃描切換簽到/簽退
 5. 掃描器將 token POST 到 `/api/attendance/scan`
 6. 伺服器驗證簽名與 `ver` 是否匹配；版本過期 → "rotated"
 
-**輪替**：`POST /api/qr/token/{product_id}/refresh` 會增加 `qr_token_version`，使舊 QR 失效。
+**輪替**：`POST /api/qr/token/{unit_id}/refresh` 會增加 `qr_token_version`，使舊 QR 失效。
 
 ### 1.4 簽到/簽退切換邏輯
 
@@ -83,7 +83,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 
 ### 1.5 防重複掃描（Debounce）
 
-同一個 Product 在 `SCAN_DEBOUNCE_SECONDS`（預設 3 秒）內被重複掃描，會回傳**同一筆**既有 event（適用於櫃檯雙擊），不會產生重複 row。
+同一個 Unit 在 `SCAN_DEBOUNCE_SECONDS`（預設 3 秒）內被重複掃描，會回傳**同一筆**既有 event（適用於櫃檯雙擊），不會產生重複 row。
 
 ### 1.6 API 授權
 
@@ -95,7 +95,7 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | `GET/PATCH /api/users` | Admin |
 | `POST /api/users` | Admin |
 | `DELETE /api/users/:id` | **Superadmin** |
-| `GET/POST/PATCH/DELETE /api/products` | Admin |
+| `GET/POST/PATCH/DELETE /api/units` | Admin |
 | `GET/POST /api/qr/token/...` | Admin |
 | `POST /api/attendance/scan` | Admin |
 | `GET /api/attendance` | Admin |
@@ -353,7 +353,7 @@ docker compose -f docker-compose.prod.yml --env-file .env ps
 docker compose -f docker-compose.prod.yml --env-file .env exec api python seed.py
 ```
 
-產生 `admin` / `superadmin` 與範例 products。**立即修改密碼**。
+產生 `admin` / `superadmin` 與範例 units。**立即修改密碼**。
 
 若要全新開始（migration + seed），使用 `reset-db.sh`（破壞性）。
 
@@ -476,7 +476,7 @@ cd deploy
 - 沒有 Caddy，瀏覽器無法在同一 URL 下同時存取 web + api
 
 **Postgres** = 資料庫
-- 儲存登入 users、products、attendance events
+- 儲存登入 users、units、attendance events
 - 存在 Docker volume → 重啟後資料仍在
 - `first-boot.sh` **不會**自動種子；需手動 `exec api python seed.py`
 
@@ -544,7 +544,7 @@ cd ~/aqua-attendance/deploy
 sudo docker compose -f docker-compose.prod.yml --env-file .env restart
 ```
 
-**種子 users + sample products（空 DB 或重置後）**
+**種子 users + sample units（空 DB 或重置後）**
 ```bash
 sudo docker compose -f docker-compose.prod.yml --env-file .env exec api python seed.py
 ```
@@ -632,14 +632,14 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 9c. Payroll 前自動 Generate summaries / 過期警告 ⬜ — 見 [known-gaps.md](known-gaps.md) #M15
 9d. Void event 後自動重算單日 summary ⬜ — 見 [known-gaps.md](known-gaps.md) #M16
 9e. Generate 端點互斥鎖 ⬜ — 見 [known-gaps.md](known-gaps.md) #M17
-9f. `products.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
-9g. **個人資料欄位搬移至 profiles**（products 瘦身）⬜ — 見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles（2026-07-27）
+9f. `units.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
+9g. **個人資料欄位搬移至 profiles**（units 瘦身）⬜ — 見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles（2026-07-27）
 
 **第三階段 — 可延後（Low）**
 10. Refresh token 改 HttpOnly cookie ⬜
 11. 前端區分 admin/superadmin ⬜
 12. QR 錯誤訊息、密碼長度、mobile CI ⬜
-13. 出勤端點 `product_type` 白名單檢查 ⬜ — 見 [known-gaps.md](known-gaps.md) #M19（新增 device/goods 時必須補齊）
+13. 出勤端點 `unit_type` 白名單檢查 ⬜ — 見 [known-gaps.md](known-gaps.md) #M19（新增 device/goods 時必須補齊）
 
 **設計取捨（已知且接受）**
 - QR token 無過期（靠 `qr_token_version` 手動輪替）
@@ -787,7 +787,7 @@ cd deploy
 | 登入後馬上 401 | access token 30 分過期 + refresh 失敗；或前後端時鐘偏移 | 確認主機時間 `date -u`，NTP 同步 |
 | 手機登入後 Web 被踢 | 設計上 `login` 撤銷該用戶所有 refresh token（單一 session） | 預期行為 |
 | 429 Too many requests | 命中限流（login 5/min、scan 30/min） | 正常防護；可在 `.env` 調限流值 |
-| 掃 QR 回 `Invalid QR: token has been rotated` | QR 已被輪替（版本不符） | 在 Web 重新產生該 product 的 QR |
+| 掃 QR 回 `Invalid QR: token has been rotated` | QR 已被輪替（版本不符） | 在 Web 重新產生該 unit 的 QR |
 
 重設某用戶密碼（無自助流程）：由 superadmin 在 Web User Management，或直接改 DB（最後手段）。
 
@@ -894,7 +894,7 @@ docker compose -f docker-compose.prod.yml down
 | M3.2 | History：pull-to-refresh error toast | P3 | ✅ Done |
 | M3.3 | My QR tab：改為「說明」 | P3 | ✅ Done |
 | M3.4 | Login：失敗時顯示 API connection hint | P3 | ✅ Done |
-| M3.5 | Mobile 顯示 product QR（admin） | P4 | 待排 |
+| M3.5 | Mobile 顯示 unit QR（admin） | P4 | 待排 |
 | M3.6 | Username login trim | P3 | ✅ Done |
 | M3.8 | Session：啟動時透過 `/auth/me` 驗證 token | P2 | ✅ Done |
 | M3.9 | 401 → 返回 login | P2 | ✅ Done |
@@ -945,7 +945,7 @@ apps/mobile/
 | Locations list | GET | `/locations` | Admin |
 | Scan | POST | `/attendance/scan` | Admin |
 | History | GET | `/attendance` | Admin |
-| QR token | GET | `/qr/token/{product_id}` | Admin |
+| QR token | GET | `/qr/token/{unit_id}` | Admin |
 
 ### 7.4 Web 與 Mobile 功能對照
 
@@ -956,8 +956,8 @@ apps/mobile/
 | Scan 簽到/簽退切換 | ✅ | ✅ |
 | Scan location select | ✅ | ✅ |
 | Scan 手動貼上 token | ✅ | ❌（僅 camera） |
-| QR 顯示（per product） | ✅ | ❌（web only） |
-| Product / user / location CRUD | ✅ | ❌ |
+| QR 顯示（per unit） | ✅ | ❌（web only） |
+| Unit / user / location CRUD | ✅ | ❌ |
 | CSV export | ✅ | ❌ |
 | Dashboard stats | ✅ | ❌ |
 | Summaries（月度彙總） | ✅ | ❌ |
@@ -1003,7 +1003,7 @@ eas build --platform ios --profile preview
 |---|----------|-------|------------|----------|
 | 1 | Login | ✅ | ✅ | Tabs: My QR, Scan, History |
 | 2 | Scan + location + 簽到 | ✅ | ✅ | 201 event，modal 顯示 location |
-| 3 | Scan 簽退（same product） | ✅ | ✅ | Second event，status OUT |
+| 3 | Scan 簽退（same unit） | ✅ | ✅ | Second event，status OUT |
 | 4 | Debounce 雙掃（<3s，same action） | ✅ | ✅ | 回傳同一 event id |
 | 5 | Rotated QR（web Refresh QR） | ✅ | ✅ | Error：token rotated |
 | 6 | Logout | ✅ | ✅ | Refresh reuse → 401 |
@@ -1060,12 +1060,12 @@ Ship checklist for `main` → GHCR → Lightsail（`deploy/update.sh`）。
 | P1 | Dashboard today event total via `X-Total-Count` |
 | P2 | UserProfile attendance menu；Web Scanner（QR dialog entry only） |
 | P2 | Shared `DialogFooter`；dialog 統一 P1–P3 |
-| P3 | Product checked-in/out filter（API + UI） |
-| P3 | List pagination — products, users, locations |
+| P3 | Unit checked-in/out filter（API + UI） |
+| P3 | List pagination — units, users, locations |
 | Fix | Dashboard check-in/out counts — `GET /api/attendance/stats` |
 | Refactor | `locations.vue` split |
 | Fix | Location create when Chinese name empty |
-| Feature | **Staff employment type** — `part_time` / `full_time` on products |
+| Feature | **Staff employment type** — `part_time` / `full_time` on units |
 | Feature | **QR Codes** — QR shown on each card；multi-select + **Print selected** |
 
 #### API
@@ -1073,9 +1073,9 @@ Ship checklist for `main` → GHCR → Lightsail（`deploy/update.sh`）。
 | 區域 | 變更 |
 |------|------|
 | New | `GET /api/attendance/stats` — aggregate day counts for dashboard |
-| Enhancement | `X-Total-Count` + `attendance_status` filter on products list |
-| New | Product `employment_type`（`part_time` \| `full_time`）；list filter `?employment_type=` |
-| Migration | `008_product_employment_type` — adds `products.employment_type` column |
+| Enhancement | `X-Total-Count` + `attendance_status` filter on units list |
+| New | Unit `employment_type`（`part_time` \| `full_time`）；list filter `?employment_type=` |
+| Migration | `008_product_employment_type` — adds `units.employment_type` column |
 
 #### 部署前檢查清單
 
@@ -1087,7 +1087,7 @@ Ship checklist for `main` → GHCR → Lightsail（`deploy/update.sh`）。
 
 #### Migration
 
-API container 啟動時會自動執行 Alembic — `008` 新增 `products.employment_type`。既有 staff rows 維持 `NULL`，直到在 Product Management 編輯。
+API container 啟動時會自動執行 Alembic — `008` 新增 `units.employment_type`。既有 staff rows 維持 `NULL`，直到在 Unit Management 編輯。
 
 #### 部署後驗證
 
@@ -1095,7 +1095,7 @@ API container 啟動時會自動執行 Alembic — `008` 新增 `products.employ
 - [ ] `curl -s -o /dev/null -w "%{http_code}" http://<host>/api/attendance/stats` → **403**（not 404）
 - [ ] Login at `/attendance/login` — dashboard 無 console errors
 - [ ] Dashboard — Check-ins / Check-outs Today 顯示數字
-- [ ] Products — attendance filter + pagination；staff Employment（part/full-time）
+- [ ] Units — attendance filter + pagination；staff Employment（part/full-time）
 - [ ] Locations — create / edit / delete（tabbed form）
 - [ ] QR Codes — QR visible on cards；select several → **Print selected**
 - [ ] QR Codes — **Rotate / copy** 仍可運作
@@ -1122,7 +1122,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 |------|------|
 | Critical | StaffProfile 多重外鍵歧義修復（`foreign_keys` 明確指定） |
 | Critical | profile 關係 `uselist=False`（一對一映射修正） |
-| Migration | `employment_type` 從 `products` 遷移至 `staff_profiles`（`e350a1e954db`） |
+| Migration | `employment_type` 從 `units` 遷移至 `staff_profiles`（`e350a1e954db`） |
 | New | `staff_profiles` / `student_profiles` CRUD 端點 |
 | New | `notifications` CRUD + 標記已讀 |
 | New | `audit_logs` 查詢端點（superadmin） |
@@ -1140,7 +1140,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 |------|------|
 | New | Notifications 頁面 |
 | New | Audit Logs 頁面（superadmin） |
-| Enhancement | Staff/Student profile 編輯整合進 Product 頁面 |
+| Enhancement | Staff/Student profile 編輯整合進 Unit 頁面 |
 
 ---
 
@@ -1153,9 +1153,9 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | 區域 | 變更 |
 |------|------|
 | New | `POST /api/attendance-summaries/generate` — 從 events 計算並 upsert 每日彙總 |
-| New | `GET /api/attendance-summaries/overview` — product × 月份聚合（含工時、天數） |
+| New | `GET /api/attendance-summaries/overview` — unit × 月份聚合（含工時、天數） |
 | New | `POST /api/payroll-records/generate` — 從 summaries 聚合薪資記錄 |
-| Enhancement | `GET /api/payroll-records` — 新增 `year`/`month`/`product_type`/`status` 篩選 |
+| Enhancement | `GET /api/payroll-records` — 新增 `year`/`month`/`unit_type`/`status` 篩選 |
 | Enhancement | Payroll generate 依 `staff_profiles` 薪資率計算 `base_salary`/`overtime_pay`/`gross_pay`/`net_pay` |
 | Enhancement | `payroll_records` 凍結 `hourly_rate_snapshot`/`ot_multiplier_snapshot`（防歷史污染） |
 | Enhancement | Generate 寫入 audit log（`DATA_EXPORT`） |
@@ -1219,7 +1219,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | Mobile | ~~History filters~~ | ✅ Done — date range chips + event type filter + pagination |
 | Mobile | My QR tab | Deferred — 目前為「說明」placeholder |
 | Mobile | EAS / store build | `eas.json` 已存在；缺 mobile CI workflow |
-| Mobile | Phase 3 待辦（M3.5 product QR） | 待排 |
+| Mobile | Phase 3 待辦（M3.5 unit QR） | 待排 |
 | API | ~~Scan race~~ | ✅ Done — `SELECT FOR UPDATE` on PostgreSQL |
 | API | ~~python-jose~~ | ✅ Done — migrated to `PyJWT` 2.10.1 |
 | API | ~~Rate limiting~~ | ✅ Done — `slowapi` on login/scan（Redis backend） |
@@ -1272,12 +1272,12 @@ erDiagram
         datetime expires_at
     }
 
-    products {
+    units {
         uuid id PK
         string code "唯一編碼"
         string full_name "名稱"
         string english_name "英文名"
-        string product_type "staff / student / device / goods"
+        string unit_type "staff / student / device / goods"
         boolean is_active
         string status "active / inactive / graduated / terminated / suspended"
         string attendance_status "checked_in / checked_out"
@@ -1291,7 +1291,7 @@ erDiagram
     }
 
     student_profiles {
-        uuid product_id PK, FK
+        uuid unit_id PK, FK
         string school_name
         string grade_class
         string student_id
@@ -1309,7 +1309,7 @@ erDiagram
     }
 
     staff_profiles {
-        uuid product_id PK, FK
+        uuid unit_id PK, FK
         string employee_id
         string employment_type "part_time / full_time"
         string department
@@ -1355,14 +1355,14 @@ erDiagram
         datetime updated_at
     }
 
-    product_scan_locations {
-        uuid product_id PK, FK
+    unit_scan_locations {
+        uuid unit_id PK, FK
         uuid location_id PK, FK
     }
 
     attendance_events {
         uuid id PK
-        uuid product_id FK
+        uuid unit_id FK
         string event_type "check_in / check_out"
         string source "scan / manual / auto_checkout"
         datetime recorded_at
@@ -1376,7 +1376,7 @@ erDiagram
     notifications {
         uuid id PK
         uuid user_id FK
-        uuid product_id FK
+        uuid unit_id FK
         string title
         string message
         string notification_type
@@ -1391,7 +1391,7 @@ erDiagram
 
     attendance_summaries {
         uuid id PK
-        uuid product_id FK
+        uuid unit_id FK
         uuid location_id FK
         date summary_date
         datetime first_check_in
@@ -1414,7 +1414,7 @@ erDiagram
 
     payroll_records {
         uuid id PK
-        uuid product_id FK
+        uuid unit_id FK
         date payroll_period_start
         date payroll_period_end
         numeric total_regular_hours
@@ -1456,14 +1456,14 @@ erDiagram
     users ||--o{ refresh_tokens : has
     users ||--o{ attendance_events : "records (recorded_by_user_id)"
     users ||--o{ audit_logs : performs
-    products ||--o| student_profiles : "has (1:1)"
-    products ||--o| staff_profiles : "has (1:1)"
-    products ||--o{ attendance_events : generates
-    products ||--o{ attendance_summaries : aggregates
-    products ||--o{ payroll_records : receives
-    products ||--o{ product_scan_locations : "allowed at"
-    products ||--o{ notifications : triggers
-    locations ||--o{ product_scan_locations : "hosts scans"
+    units ||--o| student_profiles : "has (1:1)"
+    units ||--o| staff_profiles : "has (1:1)"
+    units ||--o{ attendance_events : generates
+    units ||--o{ attendance_summaries : aggregates
+    units ||--o{ payroll_records : receives
+    units ||--o{ unit_scan_locations : "allowed at"
+    units ||--o{ notifications : triggers
+    locations ||--o{ unit_scan_locations : "hosts scans"
     locations ||--o{ attendance_events : "where occurred"
     locations ||--o{ attendance_summaries : "where summarized"
     staff_profiles ||--o| staff_profiles : "supervisor of"
@@ -1471,4 +1471,4 @@ erDiagram
 
 > **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–026）見 `apps/api/alembic/versions/`。
 >
-> **2026-07-27 更新**：個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`）已從 `products` 搬移至 `staff_profiles` / `student_profiles`。`products.enrollment_date` / `exit_date` 已刪除（改用 profile 表已有的 `enrollment_date`/`graduation_date` 和 `hire_date`/`termination_date`）。出勤邏輯保留在 `products`（supertype），未來新增 `device`/`goods` 時需加 `product_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles、§ 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。
+> **2026-07-27 更新**：個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`）已從 `units` 搬移至 `staff_profiles` / `student_profiles`。`units.enrollment_date` / `exit_date` 已刪除（改用 profile 表已有的 `enrollment_date`/`graduation_date` 和 `hire_date`/`termination_date`）。出勤邏輯保留在 `units`（supertype），未來新增 `device`/`goods` 時需加 `unit_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles、§ 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。

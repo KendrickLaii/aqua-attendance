@@ -149,14 +149,14 @@
 
 - **位置**：`apps/api/app/services/payroll_generator.py`
 - **問題**：Payroll generate 只讀 `attendance_summaries`。如果 admin 忘記先 Generate summaries，Payroll 會用**過期彙總**算薪水。
-- **現況（過期警告已補）**：`detect_stale_summary_products()` 會比對每個 product 該月 events 的最後異動時間（`created_at` / `voided_at`）vs summaries `updated_at`，`POST /payroll-records/generate` 回傳 `stale_summaries`（reason=`outdated` 或 `no_summary`），前端顯示黃色警告提示先重新 Generate summaries。
+- **現況（過期警告已補）**：`detect_stale_summary_units()` 會比對每個 unit 該月 events 的最後異動時間（`created_at` / `voided_at`）vs summaries `updated_at`，`POST /payroll-records/generate` 回傳 `stale_summaries`（reason=`outdated` 或 `no_summary`），前端顯示黃色警告提示先重新 Generate summaries。
 - **待辦（可選）**：Payroll generate 前**自動**觸發 summary generate（同交易），免去手動兩步驟。
 
 ### #M16 Void 事件後 summary 不會自動重算
 
 - **位置**：`apps/api/app/routers/attendance.py`（`POST /api/attendance/{event_id}/void`）
-- **問題**：作廢 event 只寫 audit log 與 `voided_at`；該 product 該日的 `attendance_summaries` 要等到下次手動 Generate 才更新。期間 UI 顯示舊數字。
-- **建議**：void endpoint 順便重算該 product 該日的 summary（單日重算很便宜）。
+- **問題**：作廢 event 只寫 audit log 與 `voided_at`；該 unit 該日的 `attendance_summaries` 要等到下次手動 Generate 才更新。期間 UI 顯示舊數字。
+- **建議**：void endpoint 順便重算該 unit 該日的 summary（單日重算很便宜）。
 
 ### #M17 Generate 端點無互斥鎖
 
@@ -164,22 +164,22 @@
 - **問題**：Summaries / Payroll generate 都是「select 再 upsert」；兩個 admin 同時按會競態，可能噴 `IntegrityError` 或重複計算。
 - **建議**：改用 PostgreSQL `INSERT ... ON CONFLICT DO UPDATE`，或以 Redis/advisory lock 互斥。單一塾使用下機率低，但修法便宜。
 
-### #M18 `products.attendance_status` 非正規化狀態可能與 events 不一致
+### #M18 `units.attendance_status` 非正規化狀態可能與 events 不一致
 
-- **位置**：`apps/api/app/services/attendance.py:_next_event_type`、`models/product.py`
-- **問題**：scan 的 check_in/check_out 推斷依賴 `products.attendance_status`。void、manual correction、隔夜未簽退後，此欄位可能與實際 events 不一致（雖有 `recompute_product_attendance_status` 但不是所有路徑都會觸發）。
+- **位置**：`apps/api/app/services/attendance.py:_next_event_type`、`models/unit.py`
+- **問題**：scan 的 check_in/check_out 推斷依賴 `units.attendance_status`。void、manual correction、隔夜未簽退後，此欄位可能與實際 events 不一致（雖有 `recompute_unit_attendance_status` 但不是所有路徑都會觸發）。
 - **建議**：確保所有寫入/作廢 events 的路徑都呼叫 recompute，或改用「查最近一筆非作廢 event」來決定下一個動作。
 
-### #M19 出勤端點無 `product_type` 白名單檢查
+### #M19 出勤端點無 `unit_type` 白名單檢查
 
 > **2026-07-27 新增** — 目前無實際風險（schema 層已限制），但未來新增 `device`/`goods` 類型時必須補齊。
 
 - **位置**：
-  - `apps/api/app/routers/attendance.py:_resolve_product_for_scan`（掃碼）
+  - `apps/api/app/routers/attendance.py:_resolve_unit_for_scan`（掃碼）
   - `apps/api/app/routers/attendance.py:create_manual_correction`（手動補登）
   - `apps/api/app/routers/qr.py:get_qr_token` / `refresh_qr_token`（QR 發放）
-- **問題**：出勤相關端點只檢查 `is_active`，不檢查 `product_type`。目前 `ProductCreate.product_type` 使用 `Literal["staff", "student"]`（`app/schemas/product.py:24`），API 無法建立 device/goods 類型，所以無實際風險。但一旦放寬 `Literal` 限制新增 device/goods 類型，這些端點會允許 device/goods 掃碼出勤和發放 QR。
-- **現有保護層**：`ProductCreate` / `ProductUpdate` 的 `Literal["staff", "student"]` 限制（schema 驗證層）
+- **問題**：出勤相關端點只檢查 `is_active`，不檢查 `unit_type`。目前 `UnitCreate.unit_type` 使用 `Literal["staff", "student"]`（`app/schemas/unit.py:24`），API 無法建立 device/goods 類型，所以無實際風險。但一旦放寬 `Literal` 限制新增 device/goods 類型，這些端點會允許 device/goods 掃碼出勤和發放 QR。
+- **現有保護層**：`UnitCreate` / `UnitUpdate` 的 `Literal["staff", "student"]` 限制（schema 驗證層）
 - **建議**：在上述三處加 `_ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}` 白名單檢查（defense-in-depth）。成本低，一行代碼。應在新增 device/goods 類型時同步補齊。
 
 ---
