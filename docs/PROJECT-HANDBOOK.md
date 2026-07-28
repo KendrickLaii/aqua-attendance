@@ -609,7 +609,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-07-28 更新**：完成 product → unit 重構審計（後端、web、mobile、docs 均已對齊）。新增 #M20（個人資料欄位搬移未執行）、#M21（legacy constraint/index 名稱未清理）。  
+> **2026-07-28 更新**：完成 product → unit 重構審計（後端、web、mobile、docs 均已對齊）。#M20 個人資料欄位搬移已完成；#M21 legacy constraint/index 名稱仍待清理。  
 > **2026-07-21 更新**：後端架構審查發現 **午休未扣除** 為新的 High 缺口（直接影響薪資），並新增 Summaries/Payroll 相依、Generate 競態、`attendance_status` 一致性等 Medium 問題 — 見 [known-gaps.md](known-gaps.md) #H6、#M15–#M18。  
 > **2026-07-17 更新**：釐清 **auto checkout 非完整自動版**（有手動 Day-end + Generate 回填，**無** 23:59 cron／無 00:00 status 重置）— 見 [known-gaps.md](known-gaps.md) #M14。  
 > **2026-07-10 更新**：Summaries / Payroll 重構完成（主從式 UI、overview 聚合、Generate upsert、薪資率計算、seed bulk 測試資料）— 見 [attendance-summaries.md](attendance-summaries.md)。多項 Medium/Low 問題已修復。  
@@ -639,7 +639,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 **第三階段 — 可延後（Low）**
 10. Refresh token 改 HttpOnly cookie ⬜
 11. 前端區分 admin/superadmin ⬜
-12. QR 錯誤訊息、密碼長度、mobile CI ⬜
+12. QR 錯誤訊息、密碼長度、mobile EAS build/release automation ⬜
 13. 出勤端點 `unit_type` 白名單檢查 ⬜ — 見 [known-gaps.md](known-gaps.md) #M19（新增 device/goods 時必須補齊）
 
 **設計取捨（已知且接受）**
@@ -656,9 +656,9 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 |------|------|------|
 | Backend Security | **8.5/10** | JWT rotation、RBAC、QR 金鑰分離扎實；rate limit 已改用 Redis（多副本安全）；扣分在 QR 無過期 |
 | Frontend Architecture | **7/10** | Pinia + CASL 整合合理；Summaries/Payroll 主從式 UI 完善；扣分在非 HttpOnly token、CASL 時序脆弱、模板死代碼 |
-| Mobile UX/Reliability | **6.5/10** | Token refresh + 401 retry 完整；History filters 已實作；扣分在無離線、無 CI、Phase 3/4 待辦 |
+| Mobile UX/Reliability | **6.5/10** | Token refresh + 401 retry 完整；History filters 已實作；扣分在無離線、無 EAS build/release automation、Phase 3/4 待辦 |
 | Documentation | **8/10** | README/DEPLOY/backup 齊全；Summaries/Payroll 文件完整（attendance-summaries.md）；扣分在缺 logging/監控文件 |
-| Test Coverage | **6/10** | 後端 ~53 測試涵蓋核心；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 零測試 |
+| Test Coverage | **6/10** | 後端 66 個測試涵蓋核心；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 主要仍只有 typecheck |
 
 > **最關鍵三件事**：`recorded_at` 索引 ✅、Web/Mobile refresh 單飛 ✅、多副本 rate limit 儲存 ✅。
 
@@ -735,7 +735,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 032）
+# 最新可用版本（目前最新為 033）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -751,7 +751,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。最新 migration 為 `032_rename_products_to_units.py`（product → unit 重新命名）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名；最新 migration 為 `033_align_staff_student_profile_fields.py`，用於對齊 profile 欄位。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 
 ### 6.5 備份與還原
 
@@ -784,7 +784,7 @@ cd deploy
 
 | 症狀 | 可能原因 | 處理 |
 |------|----------|------|
-| 全部使用者一直被登出 | refresh 競態（Web/Mobile 並發 401） | 待修；暫時避免同時開多分頁狂點 |
+| 全部使用者一直被登出 | refresh token 失效、不同裝置重登入撤銷舊 session，或前端 refresh 流程異常 | 先檢查 `/auth/refresh` 回應與 `refresh_tokens`；單一使用者重登入會撤銷舊 refresh token 屬預期行為 |
 | 登入後馬上 401 | access token 30 分過期 + refresh 失敗；或前後端時鐘偏移 | 確認主機時間 `date -u`，NTP 同步 |
 | 手機登入後 Web 被踢 | 設計上 `login` 撤銷該用戶所有 refresh token（單一 session） | 預期行為 |
 | 429 Too many requests | 命中限流（login 5/min、scan 30/min） | 正常防護；可在 `.env` 調限流值 |
@@ -969,7 +969,7 @@ apps/mobile/
 ### 7.5 Mobile 發布檢查清單
 
 #### 後端準備
-- [ ] `python -m alembic upgrade head` on production DB（migrations through `032`）
+- [ ] `python -m alembic upgrade head` on production DB（migrations through `033`）
 - [ ] `ENV=production` with strong `SECRET_KEY` and `QR_SECRET`
 - [ ] 透過 Web User Management 建立 admin users
 - [ ] Health check：`GET https://<api-host>/api/health` → `{"status":"ok","database":"ok"}`
@@ -1133,7 +1133,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | Enhancement | `notification.extra_data` 改 JSON 型別 |
 | Enhancement | attendance 作廢端點（`voided_at`） |
 | Enhancement | audit_log 寫入 helper，接線關鍵操作 |
-| Migration | 001–032（含 `attendance_summaries`、`payroll_records`、slots、薪資率、product→unit 重新命名） |
+| Migration | 001–033（含 `attendance_summaries`、`payroll_records`、slots、薪資率；032/033 於 7 月完成 product→unit 與 profile 欄位對齊） |
 
 #### Web
 
@@ -1219,13 +1219,13 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | Web | ~~Payroll 主從式重構~~ | ✅ Done — 月度薪資 + 狀態流程 + 明細 |
 | Mobile | ~~History filters~~ | ✅ Done — date range chips + event type filter + pagination |
 | Mobile | My QR tab | Deferred — 目前為「說明」placeholder |
-| Mobile | EAS / store build | `eas.json` 已存在；缺 mobile CI workflow |
+| Mobile | EAS / store build | `eas.json` 已存在；已有 mobile typecheck CI，仍缺 EAS build/release automation |
 | Mobile | Phase 3 待辦（M3.5 unit QR） | 待排 |
 | API | ~~Scan race~~ | ✅ Done — `SELECT FOR UPDATE` on PostgreSQL |
 | API | ~~python-jose~~ | ✅ Done — migrated to `PyJWT` 2.10.1 |
 | API | ~~Rate limiting~~ | ✅ Done — `slowapi` on login/scan（Redis backend） |
 | API | ~~Summaries/Payroll endpoints~~ | ✅ Done — generate + overview + 薪資率計算 |
-| API | RBAC tests | ~53 測試；無 full permission matrix |
+| API | RBAC tests | 66 個後端測試；無 full permission matrix |
 | API | 結構化 logging | 待實作 |
 | Data | Location photo upload | v1 URL-only；upload + S3/R2 later |
 
@@ -1492,6 +1492,6 @@ erDiagram
     units ||--o{ staff_profiles : "supervises (supervisor_id)"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–032）見 `apps/api/alembic/versions/`。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–033）見 `apps/api/alembic/versions/`。
 >
 > **2026-07-28 更新**：ER 圖已與 [database-changes.md](database-changes.md) § 完整 ER 圖同步。`units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`/`exit_date`；`student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`。出勤邏輯保留在 `units`（supertype），未來新增 `device`/`goods` 時需加 `unit_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。

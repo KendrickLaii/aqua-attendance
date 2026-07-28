@@ -104,7 +104,7 @@ erDiagram
         string name_en "英文名稱"
         string location_type "地點類型"
         string region "區域"
-        json business_hours "營業時間JSON 必須改結構化"
+        json business_hours "結構化營業時間JSON"
         string icon_url "圖示URL"
         string main_photo_url "主圖URL"
         json detail_photos "詳細圖片"
@@ -330,7 +330,7 @@ ot_hours      = ot_slots * 0.25
 月 ot_hours      = 月 ot_slots * 0.25
 ```
 
-### `business_hours` 必須改為結構化 JSON（必須遷移）
+### `business_hours` 結構化 JSON（已遷移）
 
 ```json
 {
@@ -344,9 +344,9 @@ ot_hours      = ot_slots * 0.25
 }
 ```
 
-現在是自由文字 `String(255)`，程式無法可靠解析以進行 OT 計算。**必須遷移。**
+舊版曾是自由文字 `String(255)`，程式無法可靠解析以進行 OT 計算；目前已遷移為結構化 JSON，作為 OT 計算的資料來源。
 
-## 完整欄位搬遷核對表（遷移時逐項勾選，確保零遺漏）
+## 完整欄位搬遷核對表（已完成；保留作為審計記錄）
 
 > **2026-07-27 更新**：個人資料欄位決定搬移至 profiles，出勤欄位保留在 units。詳見下方「§ 欄位搬移至 profiles（2026-07-27 決定）」。
 
@@ -505,13 +505,13 @@ ot_hours      = ot_slots * 0.25
 
 ---
 
-## 建議實作順序
+## 歷史實作順序（已完成核心項目）
 
 1. **快速優先：** #1（`created_at`）、#2（`location_id` 索引）、#4（`ondelete` FK）、#3（`event_type` + `source`）
 2. **多型重構：** A1（`units` 瘦身）、A2（`student_profiles`）、A3（`staff_profiles`）、A6（改名）
 3. **欄位新增：** #5、#7、#8、#9、#13（**必須**）、#14
 4. **新建資料表：** N6（`notifications`）、N7（`attendance_summaries`）、N8（`payroll_records`）
-5. **未來擴充：** A5（`device_profiles`、`goods_profiles`）、#19（`audit_logs`）
+5. **未來擴充：** A5（`device_profiles`、`goods_profiles`）；`audit_logs` 已實作完成
 
 ---
 
@@ -590,16 +590,16 @@ ot_hours      = ot_slots * 0.25
 
 #### Migration
 
-需要新增 Alembic migration：
+已由 Alembic migrations `f8e65b7cf82b_align_schema_with_er_diagram` 與 `033_align_staff_student_profile_fields` 執行：
 1. `staff_profiles` 新增 `gender`、`date_of_birth`
 2. `student_profiles` 新增 `gender`、`date_of_birth`
 3. 資料搬移：profile lifecycle 日期搬到 `units.start_date` / `units.exit_date`
 4. 移除 profile 舊日期欄位與 `units.gender` / `units.date_of_birth`
 
-### 決定 #5 修正
+### 決定 #5 最終確認
 
 > **原決定 #5**：緊急聯絡人放 `units` 共用（學生＋員工都用）
-> **修正（2026-07-27）**：緊急聯絡人隨其他個人資料欄位一起搬移至 `staff_profiles` 和 `student_profiles`。雖然兩種類型都有此欄位，但它屬於個人資料而非出勤核心，放在 profile 表更符合 supertype/subtype 分離原則。
+> **最終確認（2026-07-28）**：`emergency_contact_name` / `emergency_contact_phone` 保留在 `units`，與 `phone`、`address`、`email` 一樣作為學生與員工共用聯絡資料。
 
 ---
 
