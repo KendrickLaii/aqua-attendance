@@ -402,7 +402,7 @@ ot_hours      = ot_slots * 0.25
 | # | 變更 | 狀態 |
 |---|---|---|
 | 7 | `units` 新增 `photo_url` | ✅ 完成 |
-| 8 | `units` 新增 `enrollment_date`、`exit_date` | ✅ 完成 |
+| 8 | `units` 新增 `start_date`、`exit_date` | ✅ 完成 |
 | 9 | `status` 擴展為 enum（active/inactive/graduated/terminated/suspended）並保留 `is_active` | ✅ 完成 |
 | 13 | `locations.business_hours` 改為 JSON（**必須**） | ✅ 完成 |
 | 14 | `attendance_events` 新增 `voided_at` | ✅ 完成 |
