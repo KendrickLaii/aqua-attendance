@@ -38,7 +38,7 @@ const actionOptions = [
 
 const tableOptions = [
   { title: 'All tables', value: '' },
-  { title: 'products', value: 'products' },
+  { title: 'units', value: 'units' },
   { title: 'users', value: 'users' },
   { title: 'attendance_events', value: 'attendance_events' },
   { title: 'attendance_summaries', value: 'attendance_summaries' },

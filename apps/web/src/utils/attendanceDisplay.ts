@@ -249,7 +249,7 @@ export interface LastAttendanceInfo {
   last_event_location?: string | null
 }
 
-/** Human-readable line for product list / QR cards. */
+/** Human-readable line for unit list / QR cards. */
 export function formatLastAttendance(
   p: LastAttendanceInfo,
   options?: { compact?: boolean },

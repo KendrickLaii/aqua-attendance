@@ -21,7 +21,7 @@ export const en = {
     scan: 'Scan',
     history: 'History',
   },
-  productType: {
+  unitType: {
     student: 'Student',
     staff: 'Staff',
   },
@@ -35,7 +35,7 @@ export const en = {
     checked_out: 'Checked out',
   },
   help: {
-    qrWebTitle: 'Manage product QR on Web',
+    qrWebTitle: 'Manage unit QR on Web',
     qrWebBody: 'Sign in to Web → {{qrCodes}} to print or display student/staff QR codes.',
     qrWebBodyScan: 'On mobile, use the {{scanTab}} tab: choose check-in/out and location, then scan.',
     qrCodes: 'QR Codes',
@@ -86,8 +86,8 @@ export const en = {
     qrUnrecognized: 'Could not recognize QR',
     scanFailed: 'Scan failed',
     locationNotAllowedTitle: 'Location not allowed',
-    allowedLocationsTitle: 'This product can scan at:',
-    allowedLocationsForProduct: '{{name}} is allowed at:',
+    allowedLocationsTitle: 'This unit can scan at:',
+    allowedLocationsForUnit: '{{name}} is allowed at:',
     confirmTitle: 'Confirm {{action}}?',
     confirmRecord: 'Will record "{{action}}"',
     locationLabel: 'Location: {{name}}',

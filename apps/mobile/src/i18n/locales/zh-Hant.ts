@@ -23,7 +23,7 @@ export const zhHant = {
     scan: '掃描',
     history: '紀錄',
   },
-  productType: {
+  unitType: {
     student: '學生',
     staff: '職員',
   },
@@ -37,7 +37,7 @@ export const zhHant = {
     checked_out: '已簽退',
   },
   help: {
-    qrWebTitle: '產品 QR 請用 Web 管理',
+    qrWebTitle: '單位 QR 請用 Web 管理',
     qrWebBody: '登入 Web → {{qrCodes}} 列印或顯示學生/職員 QR。',
     qrWebBodyScan: '手機請用 {{scanTab}} 分頁，先選簽到/簽退與地點再掃描。',
     qrCodes: 'QR Codes',
@@ -87,8 +87,8 @@ export const zhHant = {
     qrUnrecognized: '無法識別 QR',
     scanFailed: '掃描失敗',
     locationNotAllowedTitle: '此地點不可掃描',
-    allowedLocationsTitle: '此產品可於以下地點掃描：',
-    allowedLocationsForProduct: '{{name}} 可於以下地點掃描：',
+    allowedLocationsTitle: '此單位可於以下地點掃描：',
+    allowedLocationsForUnit: '{{name}} 可於以下地點掃描：',
     confirmTitle: '確認{{action}}？',
     confirmRecord: '即將記錄「{{action}}」',
     locationLabel: '地點：{{name}}',

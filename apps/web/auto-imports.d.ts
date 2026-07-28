@@ -18,6 +18,9 @@ declare global {
   const PRODUCT_QR_PRINT_IMAGE_SIZE: typeof import('./src/utils/printProductQrs')['PRODUCT_QR_PRINT_IMAGE_SIZE']
   const SCAN_ENTRY_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']
   const SCAN_TOKEN_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']
+  const UNIT_QR_CARD_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']
+  const UNIT_QR_IMAGE_SIZE: typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']
+  const UNIT_QR_PRINT_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const addDetailPhotoRow: typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
@@ -77,6 +80,7 @@ declare global {
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const fetchAttendanceListWithTotal: typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']
   const fetchProductQrPrintItems: typeof import('./src/utils/printProductQrs')['fetchProductQrPrintItems']
+  const fetchUnitQrPrintItems: typeof import('./src/utils/printUnitQrs')['fetchUnitQrPrintItems']
   const filterSelectedTableRows: typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
   const formatApiDetail: typeof import('./src/utils/formatApiDetail')['formatApiDetail']
@@ -166,11 +170,13 @@ declare global {
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
   const openProductQrPrintPlaceholder: typeof import('./src/utils/printProductQrs')['openProductQrPrintPlaceholder']
   const openProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['openProductQrPrintWindow']
+  const openUnitQrPrintPlaceholder: typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const printProductQrs: typeof import('./src/utils/printProductQrs')['printProductQrs']
+  const printUnitQrs: typeof import('./src/utils/printUnitQrs')['printUnitQrs']
   const provide: typeof import('vue')['provide']
   const provideLocal: typeof import('@vueuse/core')['provideLocal']
   const reactify: typeof import('@vueuse/core')['reactify']
@@ -190,6 +196,7 @@ declare global {
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const removeDetailPhotoRow: typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']
   const renderProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['renderProductQrPrintWindow']
+  const renderUnitQrPrintWindow: typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
@@ -403,6 +410,7 @@ declare global {
   const useToggle: typeof import('@vueuse/core')['useToggle']
   const useTransition: typeof import('@vueuse/core')['useTransition']
   const useTrunc: typeof import('@vueuse/math')['useTrunc']
+  const useUnitQrDialog: typeof import('./src/composables/useUnitQrDialog')['useUnitQrDialog']
   const useUrlSearchParams: typeof import('@vueuse/core')['useUrlSearchParams']
   const useUserMedia: typeof import('@vueuse/core')['useUserMedia']
   const useVModel: typeof import('@vueuse/core')['useVModel']
@@ -457,11 +465,11 @@ declare module 'vue' {
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly LOCATION_DAYS: UnwrapRef<typeof import('./src/utils/locationHours')['LOCATION_DAYS']>
-    readonly PRODUCT_QR_CARD_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printProductQrs')['PRODUCT_QR_CARD_IMAGE_SIZE']>
-    readonly PRODUCT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']>
-    readonly PRODUCT_QR_PRINT_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printProductQrs')['PRODUCT_QR_PRINT_IMAGE_SIZE']>
     readonly SCAN_ENTRY_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']>
     readonly SCAN_TOKEN_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']>
+    readonly UNIT_QR_CARD_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']>
+    readonly UNIT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']>
+    readonly UNIT_QR_PRINT_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly addDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
@@ -519,7 +527,7 @@ declare module 'vue' {
     readonly eventSourceLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly fetchAttendanceListWithTotal: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']>
-    readonly fetchProductQrPrintItems: UnwrapRef<typeof import('./src/utils/printProductQrs')['fetchProductQrPrintItems']>
+    readonly fetchUnitQrPrintItems: UnwrapRef<typeof import('./src/utils/printUnitQrs')['fetchUnitQrPrintItems']>
     readonly filterSelectedTableRows: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
     readonly formatApiDetail: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiDetail']>
@@ -607,12 +615,12 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
-    readonly openProductQrPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printProductQrs')['openProductQrPrintPlaceholder']>
+    readonly openUnitQrPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
-    readonly printProductQrs: UnwrapRef<typeof import('./src/utils/printProductQrs')['printProductQrs']>
+    readonly printUnitQrs: UnwrapRef<typeof import('./src/utils/printUnitQrs')['printUnitQrs']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
@@ -631,7 +639,7 @@ declare module 'vue' {
     readonly regexValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['regexValidator']>
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly removeDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']>
-    readonly renderProductQrPrintWindow: UnwrapRef<typeof import('./src/utils/printProductQrs')['renderProductQrPrintWindow']>
+    readonly renderUnitQrPrintWindow: UnwrapRef<typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
@@ -795,7 +803,6 @@ declare module 'vue' {
     readonly usePreferredLanguages: UnwrapRef<typeof import('@vueuse/core')['usePreferredLanguages']>
     readonly usePreferredReducedMotion: UnwrapRef<typeof import('@vueuse/core')['usePreferredReducedMotion']>
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
-    readonly useProductQrDialog: UnwrapRef<typeof import('./src/composables/useProductQrDialog')['useProductQrDialog']>
     readonly useProjection: UnwrapRef<typeof import('@vueuse/math')['useProjection']>
     readonly useQrImageUrl: UnwrapRef<typeof import('./src/composables/useQrImageUrl')['useQrImageUrl']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
@@ -845,6 +852,7 @@ declare module 'vue' {
     readonly useToggle: UnwrapRef<typeof import('@vueuse/core')['useToggle']>
     readonly useTransition: UnwrapRef<typeof import('@vueuse/core')['useTransition']>
     readonly useTrunc: UnwrapRef<typeof import('@vueuse/math')['useTrunc']>
+    readonly useUnitQrDialog: UnwrapRef<typeof import('./src/composables/useUnitQrDialog')['useUnitQrDialog']>
     readonly useUrlSearchParams: UnwrapRef<typeof import('@vueuse/core')['useUrlSearchParams']>
     readonly useUserMedia: UnwrapRef<typeof import('@vueuse/core')['useUserMedia']>
     readonly useVModel: UnwrapRef<typeof import('@vueuse/core')['useVModel']>

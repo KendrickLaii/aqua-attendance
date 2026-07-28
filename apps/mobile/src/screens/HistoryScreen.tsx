@@ -158,7 +158,7 @@ export default function HistoryScreen() {
             </View>
             <Text style={styles.time}>{time}</Text>
           </View>
-          <Text style={[styles.product, isVoided && styles.textVoided]}>{item.product_name || item.product_code || t('common.dash')}</Text>
+          <Text style={[styles.unitName, isVoided && styles.textVoided]}>{item.unit_name || item.unit_code || t('common.dash')}</Text>
           {item.location ? <Text style={[styles.location, isVoided && styles.textVoided]}>{item.location}</Text> : null}
           <Text style={[styles.date, isVoided && styles.textVoided]}>{date}</Text>
         </View>
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   time: { ...typography.caption, fontWeight: '600' },
-  product: { ...typography.bodyStrong, marginBottom: spacing.xs },
+  unitName: { ...typography.bodyStrong, marginBottom: spacing.xs },
   location: { ...typography.caption, marginBottom: spacing.xs },
   date: { ...typography.caption },
   rowVoided: { opacity: 0.6 },

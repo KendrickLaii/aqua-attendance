@@ -7,10 +7,10 @@ export interface QRPayload {
 
 export interface AttendanceEvent {
   id: string;
-  product_id: string;
-  product_code: string | null;
-  product_name: string | null;
-  product_type: string | null;
+  unit_id: string;
+  unit_code: string | null;
+  unit_name: string | null;
+  unit_type: string | null;
   event_type: 'check_in' | 'check_out' | 'manual_correction';
   source: string;
   recorded_at: string;
@@ -25,15 +25,15 @@ export interface AttendanceEvent {
   voided_at: string | null;
 }
 
-export async function getQRToken(productId: string): Promise<QRPayload> {
-  return apiRequest(`/qr/token/${productId}`);
+export async function getQRToken(unitId: string): Promise<QRPayload> {
+  return apiRequest(`/qr/token/${unitId}`);
 }
 
 export interface ScanPreview {
-  product_id: string;
-  product_code: string | null;
-  product_name: string | null;
-  product_type: string | null;
+  unit_id: string;
+  unit_code: string | null;
+  unit_name: string | null;
+  unit_type: string | null;
   attendance_status: 'checked_in' | 'checked_out' | null;
   location: string | null;
 }

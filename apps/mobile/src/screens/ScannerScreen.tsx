@@ -53,7 +53,7 @@ export default function ScannerScreen() {
   const [result, setResult] = useState<AttendanceEvent | null>(null);
   const [error, setError] = useState('');
   const [errorAllowedLocations, setErrorAllowedLocations] = useState<AllowedLocationRef[]>([]);
-  const [errorProductName, setErrorProductName] = useState<string | null>(null);
+  const [errorUnitName, setErrorUnitName] = useState<string | null>(null);
   const [resultVisible, setResultVisible] = useState(false);
   const [processing, setProcessing] = useState(false);
 
@@ -117,7 +117,7 @@ export default function ScannerScreen() {
   function clearScanError() {
     setError('');
     setErrorAllowedLocations([]);
-    setErrorProductName(null);
+    setErrorUnitName(null);
   }
 
   function applyScanError(e: unknown) {
@@ -125,12 +125,12 @@ export default function ScannerScreen() {
       const info = getLocationNotAllowedDetail(e);
       setError(info.message);
       setErrorAllowedLocations(info.allowedLocations);
-      setErrorProductName(info.productName);
+      setErrorUnitName(info.unitName);
       return;
     }
     setError(e instanceof Error ? e.message : t('scanner.scanFailed'));
     setErrorAllowedLocations([]);
-    setErrorProductName(null);
+    setErrorUnitName(null);
   }
 
   function handleStartCamera() {
@@ -229,10 +229,10 @@ export default function ScannerScreen() {
   const eventLabel =
     selectedEventType === 'check_in' ? t('scanner.checkIn') : t('scanner.checkOut');
 
-  function labelProductType(productType: string | null): string {
-    if (productType === 'student') return t('productType.student');
-    if (productType === 'staff') return t('productType.staff');
-    return productType ?? '';
+  function labelUnitType(unitType: string | null): string {
+    if (unitType === 'student') return t('unitType.student');
+    if (unitType === 'staff') return t('unitType.staff');
+    return unitType ?? '';
   }
 
   const locationPickerModal = (
@@ -435,16 +435,16 @@ export default function ScannerScreen() {
             {pendingPreview ? (
               <>
                 <Text style={styles.confirmName}>
-                  {pendingPreview.product_name || pendingPreview.product_code || t('common.dash')}
+                  {pendingPreview.unit_name || pendingPreview.unit_code || t('common.dash')}
                 </Text>
-                {pendingPreview.product_type ? (
+                {pendingPreview.unit_type ? (
                   <Text style={styles.confirmType}>
-                    {labelProductType(pendingPreview.product_type)}
+                    {labelUnitType(pendingPreview.unit_type)}
                   </Text>
                 ) : null}
-                {pendingPreview.product_code ? (
+                {pendingPreview.unit_code ? (
                   <Text style={styles.confirmCode}>
-                    {t('scanner.codeLabel', { code: pendingPreview.product_code })}
+                    {t('scanner.codeLabel', { code: pendingPreview.unit_code })}
                   </Text>
                 ) : null}
               </>
@@ -508,7 +508,7 @@ export default function ScannerScreen() {
                     : t('scanner.checkOutSuccess')}
                 </Text>
                 <Text style={styles.resultName}>
-                  {result.product_name || result.product_code || t('common.dash')}
+                  {result.unit_name || result.unit_code || t('common.dash')}
                 </Text>
                 {result.location ? (
                   <Text style={styles.resultLocation}>
@@ -543,8 +543,8 @@ export default function ScannerScreen() {
                 {errorAllowedLocations.length > 0 ? (
                   <View style={styles.allowedBox}>
                     <Text style={styles.allowedTitle}>
-                      {errorProductName
-                        ? t('scanner.allowedLocationsForProduct', { name: errorProductName })
+                      {errorUnitName
+                        ? t('scanner.allowedLocationsForUnit', { name: errorUnitName })
                         : t('scanner.allowedLocationsTitle')}
                     </Text>
                     {errorAllowedLocations.map((loc) => (

@@ -23,17 +23,17 @@ export function isLocationNotAllowedError(error: unknown): error is ApiError {
 
 export function getLocationNotAllowedDetail(error: ApiError): {
   message: string;
-  productName: string | null;
+  unitName: string | null;
   allowedLocations: AllowedLocationRef[];
 } {
   const detail = error.detail as {
     message?: string;
-    product_name?: string | null;
+    unit_name?: string | null;
     allowed_locations?: AllowedLocationRef[];
   };
   return {
     message: detail.message || error.message,
-    productName: detail.product_name ?? null,
+    unitName: detail.unit_name ?? null,
     allowedLocations: detail.allowed_locations ?? [],
   };
 }
