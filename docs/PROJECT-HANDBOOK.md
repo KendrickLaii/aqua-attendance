@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-07-21。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-07-28。
 
 ---
 
@@ -609,6 +609,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
+> **2026-07-28 更新**：完成 product → unit 重構審計（後端、web、mobile、docs 均已對齊）。新增 #M20（個人資料欄位搬移未執行）、#M21（legacy constraint/index 名稱未清理）。  
 > **2026-07-21 更新**：後端架構審查發現 **午休未扣除** 為新的 High 缺口（直接影響薪資），並新增 Summaries/Payroll 相依、Generate 競態、`attendance_status` 一致性等 Medium 問題 — 見 [known-gaps.md](known-gaps.md) #H6、#M15–#M18。  
 > **2026-07-17 更新**：釐清 **auto checkout 非完整自動版**（有手動 Day-end + Generate 回填，**無** 23:59 cron／無 00:00 status 重置）— 見 [known-gaps.md](known-gaps.md) #M14。  
 > **2026-07-10 更新**：Summaries / Payroll 重構完成（主從式 UI、overview 聚合、Generate upsert、薪資率計算、seed bulk 測試資料）— 見 [attendance-summaries.md](attendance-summaries.md)。多項 Medium/Low 問題已修復。  
@@ -734,7 +735,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 026）
+# 最新可用版本（目前最新為 032）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -750,7 +751,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。最新 migration 為 `026_add_slots_and_pay_rates.py`（新增 slots 與薪資率欄位）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。最新 migration 為 `032_rename_products_to_units.py`（product → unit 重新命名）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 
 ### 6.5 備份與還原
 
@@ -968,7 +969,7 @@ apps/mobile/
 ### 7.5 Mobile 發布檢查清單
 
 #### 後端準備
-- [ ] `python -m alembic upgrade head` on production DB（migrations through `026`）
+- [ ] `python -m alembic upgrade head` on production DB（migrations through `032`）
 - [ ] `ENV=production` with strong `SECRET_KEY` and `QR_SECRET`
 - [ ] 透過 Web User Management 建立 admin users
 - [ ] Health check：`GET https://<api-host>/api/health` → `{"status":"ok","database":"ok"}`
@@ -1132,7 +1133,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | Enhancement | `notification.extra_data` 改 JSON 型別 |
 | Enhancement | attendance 作廢端點（`voided_at`） |
 | Enhancement | audit_log 寫入 helper，接線關鍵操作 |
-| Migration | 001–026（含 `attendance_summaries`、`payroll_records`、slots、薪資率） |
+| Migration | 001–032（含 `attendance_summaries`、`payroll_records`、slots、薪資率、product→unit 重新命名） |
 
 #### Web
 
@@ -1159,7 +1160,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | Enhancement | Payroll generate 依 `staff_profiles` 薪資率計算 `base_salary`/`overtime_pay`/`gross_pay`/`net_pay` |
 | Enhancement | `payroll_records` 凍結 `hourly_rate_snapshot`/`ot_multiplier_snapshot`（防歷史污染） |
 | Enhancement | Generate 寫入 audit log（`DATA_EXPORT`） |
-| Migration | `026_add_slots_and_pay_rates.py` — slots + 薪資率欄位 |
+| Migration | `026_add_slots_and_pay_rates.py` — slots + 薪資率欄位；`032_rename_products_to_units.py` — product → unit 重新命名 |
 
 #### Web
 
@@ -1284,8 +1285,20 @@ erDiagram
         int qr_token_version
         uuid registered_location_id FK
         string photo_url
+        string gender "待搬移至 profiles"
+        date date_of_birth "待搬移至 profiles"
+        string phone "待搬移至 profiles"
+        string address "待搬移至 profiles"
+        string email "待搬移至 profiles"
+        string emergency_contact_name "待搬移至 profiles"
+        string emergency_contact_phone "待搬移至 profiles"
+        date enrollment_date
+        date exit_date
+        boolean whatsapp_enabled
         string remarks
         datetime last_event_at
+        string last_event_location
+        uuid last_event_location_id FK
         datetime created_at
         datetime updated_at
     }
@@ -1299,13 +1312,6 @@ erDiagram
         date enrollment_date
         date graduation_date
         string academic_notes
-        string gender
-        date date_of_birth
-        string phone
-        string address
-        string email
-        string emergency_contact_name
-        string emergency_contact_phone
     }
 
     staff_profiles {
@@ -1324,13 +1330,6 @@ erDiagram
         string work_schedule
         uuid supervisor_id FK
         string employment_notes
-        string gender
-        date date_of_birth
-        string phone
-        string address
-        string email
-        string emergency_contact_name
-        string emergency_contact_phone
     }
 
     locations {
@@ -1469,6 +1468,6 @@ erDiagram
     staff_profiles ||--o| staff_profiles : "supervisor of"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–026）見 `apps/api/alembic/versions/`。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–032）見 `apps/api/alembic/versions/`。
 >
-> **2026-07-27 更新**：個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`）已從 `units` 搬移至 `staff_profiles` / `student_profiles`。`units.enrollment_date` / `exit_date` 已刪除（改用 profile 表已有的 `enrollment_date`/`graduation_date` 和 `hire_date`/`termination_date`）。出勤邏輯保留在 `units`（supertype），未來新增 `device`/`goods` 時需加 `unit_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles、§ 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。
+> **2026-07-28 更新**：ER 圖已更新為**實際 DB 狀態**。個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`）仍在 `units` 表中（標註「待搬移」），搬移 migration 尚未執行 — 詳見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態、[known-gaps.md](known-gaps.md) #M20。`enrollment_date`/`exit_date` 仍在 `units` 表。出勤邏輯保留在 `units`（supertype），未來新增 `device`/`goods` 時需加 `unit_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。

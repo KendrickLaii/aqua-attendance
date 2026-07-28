@@ -1,6 +1,6 @@
 # 出勤彙總（Attendance Summaries）
 
-> 最後更新：2026-07-21  
+> 最後更新：2026-07-28  
 > 涵蓋 Summaries 頁面、Payroll 頁面、後端 overview 聚合、Generate 流程、slot 計薪與 seed 測試資料。
 
 本文件為 **Summaries / Payroll 月度流程** 的單一參考來源（SSOT）。資料庫欄位定義見 [database-changes.md](database-changes.md)；前端對齊總覽見 [project-handbook.md](project-handbook.md)。

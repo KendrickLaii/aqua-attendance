@@ -32,8 +32,8 @@ class UnitCreate(BaseModel):
     emergency_contact_name: str | None = Field(default=None, max_length=255)
     emergency_contact_phone: str | None = Field(default=None, max_length=50)
     photo_url: str | None = Field(default=None, max_length=500)
-    start_date: date | None = None
-    end_date: date | None = None
+    enrollment_date: date | None = None
+    exit_date: date | None = None
     whatsapp_enabled: bool = False
     remarks: str | None = None
     student_profile: StudentProfileCreate | None = None
@@ -63,8 +63,8 @@ class UnitUpdate(BaseModel):
     emergency_contact_name: str | None = Field(default=None, max_length=255)
     emergency_contact_phone: str | None = Field(default=None, max_length=50)
     photo_url: str | None = Field(default=None, max_length=500)
-    start_date: date | None = None
-    end_date: date | None = None
+    enrollment_date: date | None = None
+    exit_date: date | None = None
     whatsapp_enabled: bool | None = None
     remarks: str | None = None
 
@@ -102,8 +102,8 @@ class UnitOut(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     photo_url: str | None = None
-    start_date: date | None = None
-    end_date: date | None = None
+    enrollment_date: date | None = None
+    exit_date: date | None = None
     whatsapp_enabled: bool
     remarks: str | None = None
     created_at: datetime

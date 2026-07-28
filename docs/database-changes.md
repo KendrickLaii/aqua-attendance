@@ -49,8 +49,20 @@ erDiagram
         int qr_token_version "QR版本號"
         uuid registered_location_id FK "註冊地點"
         string photo_url "照片URL"
+        string gender "性別 實際仍在units 待搬移"
+        date date_of_birth "出生日期 實際仍在units 待搬移"
+        string phone "電話 實際仍在units 待搬移"
+        string address "地址 實際仍在units 待搬移"
+        string email "電子郵件 實際仍在units 待搬移"
+        string emergency_contact_name "緊急聯絡人 實際仍在units 待搬移"
+        string emergency_contact_phone "緊急聯絡人電話 實際仍在units 待搬移"
+        date enrollment_date "入學/到職日期 實際仍在units"
+        date exit_date "退學/離職日期 實際仍在units"
+        boolean whatsapp_enabled "通知偏好"
         string remarks "備註"
         datetime last_event_at "最後事件時間"
+        string last_event_location "最後事件地點名稱"
+        uuid last_event_location_id FK "最後事件地點ID"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
     }
@@ -63,13 +75,6 @@ erDiagram
         date enrollment_date "入學日期"
         date graduation_date "畢業日期"
         string academic_notes "學業備註"
-        string gender "性別"
-        date date_of_birth "出生日期"
-        string phone "電話"
-        string address "地址"
-        string email "電子郵件"
-        string emergency_contact_name "緊急聯絡人"
-        string emergency_contact_phone "緊急聯絡人電話"
     }
     staff_profiles {
         uuid unit_id PK "FK 員工ID"
@@ -87,13 +92,6 @@ erDiagram
         string work_schedule "工作班表"
         uuid supervisor_id FK "直屬主管 unit_id"
         string employment_notes "員工備註"
-        string gender "性別"
-        date date_of_birth "出生日期"
-        string phone "電話"
-        string address "地址"
-        string email "電子郵件"
-        string emergency_contact_name "緊急聯絡人"
-        string emergency_contact_phone "緊急聯絡人電話"
     }
     device_profiles {
         uuid unit_id PK "FK 設備ID 未來"
@@ -480,7 +478,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -492,6 +490,11 @@ ot_hours      = ot_slots * 0.25
 7. ✅ audit_logs 稽核系統
 8. ✅ employment_type 補值（025）
 9. ✅ slot-based 薪資欄位（026）
+10. ✅ products → units 重新命名（032）— 表名、欄位、外鍵、索引重新命名
+
+> **目前 Alembic 版本：032**（`032_rename_products_to_units`）
+>
+> Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 
 ---
 
@@ -698,3 +701,74 @@ class StaffStatus(str, enum.Enum):
 - 拆分後可在 schema 驗證層做 type-specific 限制（例如 student 不能設 `terminated`，staff 不能設 `graduated`）
 - 目前不拆分也沒有功能錯誤，只是防呆層面
 - 如果未來 device/goods 有自己的狀態需求，再考慮拆分
+
+---
+
+## Legacy 約束與索引名稱（2026-07-28 審計）
+
+> Migration 032 重新命名了表名和欄位名，但部分 **constraint 和 index 名稱** 仍保留舊的 `product` 前綴。這些不影響功能，但可在未來 migration 中清理。
+
+### `units` 表 legacy 名稱
+
+| 類型 | 舊名稱 | 應改名為 | 狀態 |
+|------|--------|---------|------|
+| PK constraint | `products_pkey` | `units_pkey` | ⚠️ 未改 |
+| Index | `ix_products_code` | `ix_units_code` | ⚠️ 未改 |
+
+### `unit_scan_locations` 表 legacy 名稱
+
+| 類型 | 舊名稱 | 應改名為 | 狀態 |
+|------|--------|---------|------|
+| PK constraint | `product_allowed_locations_pkey` | `unit_scan_locations_pkey` | ⚠️ 未改 |
+| FK constraint | `product_allowed_locations_product_id_fkey` | `unit_scan_locations_unit_id_fkey` | ⚠️ 未改（已有新的 `unit_scan_locations_unit_id_fkey` 並存） |
+| FK constraint | `product_allowed_locations_location_id_fkey` | `unit_scan_locations_location_id_fkey` | ⚠️ 未改（已有新的 `unit_scan_locations_location_id_fkey` 並存） |
+| Index | `product_allowed_locations_pkey` | `unit_scan_locations_pkey` | ⚠️ 未改 |
+
+### `attendance_events` 表 legacy 索引
+
+| 類型 | 舊名稱 | 現況 | 狀態 |
+|------|--------|------|------|
+| Index | `ix_attendance_events_product_recorded` | ORM 已改名為 `ix_attendance_events_unit_recorded` | ⚠️ DB 中仍有舊索引 |
+
+> **建議**：在未來的 migration 中統一重新命名這些 legacy constraint/index 名稱，避免混淆。不影響功能，但影響可維護性。
+
+---
+
+## 個人資料欄位搬移狀態（2026-07-28 審計）
+
+> **重要**：上方「§ 欄位搬移至 profiles（2026-07-27 決定）」描述的是**計畫**，尚未執行 migration。
+
+### 實際 DB 狀態
+
+| 欄位 | 實際位置 | 計畫位置 | 狀態 |
+|------|---------|---------|------|
+| `gender` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
+| `date_of_birth` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
+| `phone` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
+| `address` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
+| `email` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
+| `emergency_contact_name` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
+| `emergency_contact_phone` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
+| `enrollment_date` | `units`（保留） | 原計畫刪除，改用 profile 日期 | ❌ 未刪除（仍在 units） |
+| `exit_date` | `units`（保留） | 原計畫刪除，改用 profile 日期 | ❌ 未刪除（仍在 units） |
+
+### ORM 模型現況
+
+ORM 模型已與實際 DB 對齊：
+- `app/models/unit.py`：包含 `gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_name`、`emergency_contact_phone`、`enrollment_date`、`exit_date`
+- `app/models/student_profile.py`：**不包含**個人資料欄位（與 DB 一致）
+- `app/models/staff_profile.py`：**不包含**個人資料欄位（與 DB 一致）
+- `app/schemas/unit.py`：`UnitCreate`/`UnitUpdate`/`UnitOut` 包含 `enrollment_date`、`exit_date`（但**不包含** `gender`/`date_of_birth` — 這些欄位存在於 DB 但未暴露於 API）
+
+### 前端現況
+
+Web 前端（`units.vue`）已使用 `enrollment_date`/`exit_date` 欄位，與 API schema 一致。`gender`/`date_of_birth` 欄位目前無法透過 API 存取。
+
+### 待辦
+
+需要新增 Alembic migration（如 033）執行搬移：
+1. `staff_profiles` 新增 7 個個人資料欄位
+2. `student_profiles` 新增 7 個個人資料欄位
+3. 資料搬移：`UPDATE staff_profiles SET ... FROM units WHERE ...`
+4. `units` 移除 9 欄位（7 個人資料 + `enrollment_date` + `exit_date`）
+5. 更新 ORM 模型、schemas、routers、前端

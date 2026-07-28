@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-07-21（已審查：2026-07-21）
+> 最後更新：2026-07-28（已審查：2026-07-28）
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -182,6 +182,25 @@
 - **現有保護層**：`UnitCreate` / `UnitUpdate` 的 `Literal["staff", "student"]` 限制（schema 驗證層）
 - **建議**：在上述三處加 `_ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}` 白名單檢查（defense-in-depth）。成本低，一行代碼。應在新增 device/goods 類型時同步補齊。
 
+### #M20 個人資料欄位搬移至 profiles 未執行
+
+> **2026-07-28 新增** — Migration 032 完成了 product → unit 重新命名，但個人資料欄位搬移（2026-07-27 決定）尚未執行。
+
+- **位置**：`apps/api/app/models/unit.py`、`app/models/student_profile.py`、`app/models/staff_profile.py`
+- **問題**：`units` 表仍包含 `gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_name`、`emergency_contact_phone` 欄位。原計畫（見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles）將這些欄位搬移至 `staff_profiles` / `student_profiles`，但 migration 尚未建立。
+- **現況**：ORM 模型已與 DB 對齊（個人資料欄位仍在 `units` model 中，但 `gender`/`date_of_birth` 未暴露於 API schema）。前端使用 `enrollment_date`/`exit_date` 欄位正常運作。
+- **影響**：`units` 表未瘦身為純 supertype；未來新增 `device`/`goods` 類型時會有不適用的個人資料欄位。
+- **建議**：新增 Alembic migration（如 033）執行搬移。詳見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態。
+
+### #M21 Legacy constraint/index 名稱未清理
+
+> **2026-07-28 新增** — Migration 032 重新命名了表名和欄位名，但部分 constraint 和 index 名稱仍保留舊的 `product` 前綴。
+
+- **位置**：DB constraints 和 indexes
+- **問題**：`units` 表的 PK 仍為 `products_pkey`、`ix_products_code` 索引未改名；`unit_scan_locations` 表有舊的 `product_allowed_locations_*` constraint 與新的 `unit_scan_locations_*` constraint 並存；`attendance_events` 表有舊索引 `ix_attendance_events_product_recorded`。
+- **影響**：不影響功能，但影響可維護性和 DB 工具的可讀性。
+- **建議**：在未來的 migration 中統一重新命名。詳見 [database-changes.md](database-changes.md) § Legacy 約束與索引名稱。
+
 ---
 
 ## 5. 🟢 Low — 前端改善
@@ -263,6 +282,8 @@
 | attendance-summaries | Payroll 薪資率模型（slots + 薪資率計算 + 快照凍結） | 2026-07 |
 | 前端對齊計畫 | Batch 1–4 全部（產品多型、Summaries、Payroll、Notifications、Audit、Mobile） | 2026-07 |
 | API | `POST /api/attendance/{event_id}/void` 作廢端點 | 2026-07 |
+| 全面重構 | product → unit 重新命名（後端、前端、mobile、docs、migration 032） | 2026-07 |
+| ORM 審計 | 所有 ORM 模型與 DB schema 對齊（unit、student_profile、staff_profile、attendance、summary、notification、payroll、location、user） | 2026-07 |
 
 ---
 

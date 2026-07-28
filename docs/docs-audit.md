@@ -1,6 +1,6 @@
 # 文件審計 — 問題清單
 
-> 審計日期：2026-07-10；本次更新：2026-07-21
+> 審計日期：2026-07-10；本次更新：2026-07-28
 > 目的：列出 `docs/` 中所有過時、缺失、不一致的項目，作為後續更新依據。
 
 ---
@@ -171,3 +171,45 @@
 12. attendance-summaries.md 微調（S1、S2）— FAQ／限制已補 auto checkout 現況 ✅（其餘 S1/S2 另審）⬜
 13. ~~INDEX.md 更新文件列表~~ ✅
 14. ~~釐清 auto checkout「設計 vs 實作」~~ ✅（known-gaps #M14、database-changes、handbook、API docstring）
+
+---
+
+## 8. 全面審計補充（2026-07-28）
+
+本次審計涵蓋 product → unit 重構後的完整系統審查（ORM、routers、services、web、mobile、docs）。
+
+### 8.1 database-changes.md
+
+| # | 問題 | 狀態 |
+|---|------|------|
+| DB3 | ~~ER 圖未反映實際 DB 狀態（個人資料欄位仍在 units）~~ | ✅ 已修 — ER 圖已更新為實際 DB 狀態，標註「待搬移」欄位 |
+| DB4 | ~~Migration 歷史未包含 032~~ | ✅ 已修 — 已更新至 032 |
+| DB5 | ~~缺少 Legacy constraint/index 名稱清單~~ | ✅ 已修 — 新增 § Legacy 約束與索引名稱 |
+| DB6 | ~~缺少個人資料搬移狀態追蹤~~ | ✅ 已修 — 新增 § 個人資料欄位搬移狀態 |
+
+### 8.2 known-gaps.md
+
+| # | 問題 | 狀態 |
+|---|------|------|
+| B6 | ~~缺少 product → unit 重構記錄~~ | ✅ 已修 — 已加入已完成區 |
+| B7 | ~~缺少個人資料搬移未執行缺口~~ | ✅ 已修 — 新增 #M20 |
+| B8 | ~~缺少 legacy constraint/index 名稱缺口~~ | ✅ 已修 — 新增 #M21 |
+
+### 8.3 project-handbook.md
+
+| # | 問題 | 狀態 |
+|---|------|------|
+| F3 | Migration 編號仍為 026，應更新至 032 | 🟡 待修 |
+| F4 | §10 ER 圖可能與 database-changes.md 不一致（需同步更新） | 🟡 待修 |
+
+### 8.4 程式碼審計結果
+
+| # | 項目 | 結果 |
+|---|------|------|
+| CA1 | 後端 `apps/api/app/` product 殘留 | ✅ 零殘留 |
+| CA2 | Web `apps/web/src/` product 殘留 | ✅ 僅模板/demo 檔案（非業務代碼） |
+| CA3 | Mobile `apps/mobile/src/` product 殘留 | ✅ 零殘留 |
+| CA4 | ORM 模型 vs DB schema 對齊 | ✅ 全部對齊 |
+| CA5 | API schema 欄位名稱 | ✅ 全部使用 unit 命名 |
+| CA6 | 前端 API 呼叫欄位名稱 | ✅ 全部使用 unit 命名 |
+| CA7 | `seed.py` 欄位名稱 | ✅ 全部使用 unit 命名 |

@@ -1,0 +1,391 @@
+
+=== units ===
+  id                                       uuid                 nullable=NO  default=gen_random_uuid()
+  code                                     character varying    nullable=NO  default=None
+  full_name                                character varying    nullable=NO  default=None
+  english_name                             character varying    nullable=YES default=None
+  unit_type                                character varying    nullable=NO  default=None
+  is_active                                boolean              nullable=NO  default=true
+  status                                   character varying    nullable=NO  default='active'::character varying
+  gender                                   character varying    nullable=YES default=None
+  date_of_birth                            date                 nullable=YES default=None
+  phone                                    character varying    nullable=YES default=None
+  address                                  character varying    nullable=YES default=None
+  email                                    character varying    nullable=YES default=None
+  emergency_contact_name                   character varying    nullable=YES default=None
+  emergency_contact_phone                  character varying    nullable=YES default=None
+  whatsapp_enabled                         boolean              nullable=NO  default=false
+  remarks                                  text                 nullable=YES default=None
+  created_at                               timestamp with time zone nullable=NO  default=now()
+  updated_at                               timestamp with time zone nullable=NO  default=now()
+  attendance_status                        character varying    nullable=NO  default='checked_out'::character varying
+  qr_token_version                         integer              nullable=NO  default=1
+  last_event_at                            timestamp with time zone nullable=YES default=None
+  last_event_location                      character varying    nullable=YES default=None
+  last_event_location_id                   uuid                 nullable=YES default=None
+  registered_location_id                   uuid                 nullable=NO  default=None
+  photo_url                                character varying    nullable=YES default=None
+  enrollment_date                          date                 nullable=YES default=None
+  exit_date                                date                 nullable=YES default=None
+
+=== student_profiles ===
+  id                                       uuid                 nullable=NO  default=None
+  school_name                              character varying    nullable=YES default=None
+  grade_class                              character varying    nullable=YES default=None
+  student_id                               character varying    nullable=YES default=None
+  guardians                                json                 nullable=YES default=None
+  enrollment_date                          date                 nullable=YES default=None
+  graduation_date                          date                 nullable=YES default=None
+  academic_notes                           text                 nullable=YES default=None
+
+=== staff_profiles ===
+  id                                       uuid                 nullable=NO  default=None
+  employee_id                              character varying    nullable=YES default=None
+  department                               character varying    nullable=YES default=None
+  position                                 character varying    nullable=YES default=None
+  hire_date                                date                 nullable=YES default=None
+  termination_date                         date                 nullable=YES default=None
+  salary_grade                             character varying    nullable=YES default=None
+  work_schedule                            character varying    nullable=YES default=None
+  supervisor_id                            uuid                 nullable=YES default=None
+  employment_notes                         text                 nullable=YES default=None
+  employment_type                          character varying    nullable=YES default=None
+  pay_type                                 character varying    nullable=YES default=None
+  hourly_rate                              numeric              nullable=YES default=None
+  monthly_salary                           numeric              nullable=YES default=None
+  ot_multiplier                            numeric              nullable=YES default=1.5
+
+=== attendance_events ===
+  id                                       uuid                 nullable=NO  default=gen_random_uuid()
+  event_type                               character varying    nullable=NO  default=None
+  recorded_at                              timestamp with time zone nullable=NO  default=now()
+  qr_jti                                   character varying    nullable=YES default=None
+  client_device_id                         character varying    nullable=YES default=None
+  notes                                    text                 nullable=YES default=None
+  unit_id                                  uuid                 nullable=NO  default=None
+  recorded_by_user_id                      uuid                 nullable=YES default=None
+  location                                 character varying    nullable=YES default=None
+  location_id                              uuid                 nullable=YES default=None
+  created_at                               timestamp with time zone nullable=NO  default=now()
+  source                                   character varying    nullable=NO  default='scan'::character varying
+  voided_at                                timestamp with time zone nullable=YES default=None
+
+=== attendance_summaries ===
+  id                                       uuid                 nullable=NO  default=None
+  unit_id                                  uuid                 nullable=NO  default=None
+  summary_date                             date                 nullable=NO  default=None
+  location_id                              uuid                 nullable=NO  default=None
+  first_check_in                           timestamp with time zone nullable=YES default=None
+  last_check_out                           timestamp with time zone nullable=YES default=None
+  total_work_minutes                       integer              nullable=NO  default=None
+  total_overtime_minutes                   integer              nullable=NO  default=None
+  is_complete                              boolean              nullable=NO  default=None
+  is_holiday                               boolean              nullable=NO  default=None
+  is_weekend                               boolean              nullable=NO  default=None
+  regular_hours                            numeric              nullable=NO  default=None
+  overtime_hours                           numeric              nullable=NO  default=None
+  holiday_hours                            numeric              nullable=NO  default=None
+  attendance_notes                         character varying    nullable=YES default=None
+  calculation_method                       character varying    nullable=NO  default=None
+  created_at                               timestamp with time zone nullable=NO  default=None
+  updated_at                               timestamp with time zone nullable=NO  default=None
+  regular_slots                            integer              nullable=NO  default=0
+  ot_slots                                 integer              nullable=NO  default=0
+
+=== audit_logs ===
+  id                                       uuid                 nullable=NO  default=None
+  user_id                                  uuid                 nullable=YES default=None
+  action                                   character varying    nullable=NO  default=None
+  table_name                               character varying    nullable=NO  default=None
+  record_id                                uuid                 nullable=YES default=None
+  old_values                               json                 nullable=YES default=None
+  new_values                               json                 nullable=YES default=None
+  description                              text                 nullable=YES default=None
+  ip_address                               character varying    nullable=YES default=None
+  user_agent                               text                 nullable=YES default=None
+  session_id                               character varying    nullable=YES default=None
+  request_id                               character varying    nullable=YES default=None
+  batch_operation                          boolean              nullable=NO  default=None
+  created_at                               timestamp with time zone nullable=NO  default=None
+
+=== locations ===
+  id                                       uuid                 nullable=NO  default=None
+  code                                     character varying    nullable=YES default=None
+  name_zh                                  character varying    nullable=NO  default=None
+  name_en                                  character varying    nullable=NO  default=None
+  location_type                            character varying    nullable=YES default=None
+  region                                   character varying    nullable=YES default=None
+  business_hours                           json                 nullable=YES default=None
+  address                                  character varying    nullable=YES default=None
+  contact_person                           character varying    nullable=YES default=None
+  phone                                    character varying    nullable=YES default=None
+  email                                    character varying    nullable=YES default=None
+  notes                                    text                 nullable=YES default=None
+  details                                  json                 nullable=YES default=None
+  is_active                                boolean              nullable=NO  default=true
+  created_at                               timestamp with time zone nullable=NO  default=now()
+  updated_at                               timestamp with time zone nullable=NO  default=now()
+  icon_url                                 character varying    nullable=YES default=None
+  main_photo_url                           character varying    nullable=YES default=None
+  detail_photos                            json                 nullable=YES default=None
+
+=== notifications ===
+  id                                       uuid                 nullable=NO  default=None
+  user_id                                  uuid                 nullable=YES default=None
+  unit_id                                  uuid                 nullable=YES default=None
+  title                                    character varying    nullable=NO  default=None
+  message                                  text                 nullable=NO  default=None
+  notification_type                        character varying    nullable=NO  default=None
+  priority                                 character varying    nullable=NO  default=None
+  is_read                                  boolean              nullable=NO  default=None
+  read_at                                  timestamp with time zone nullable=YES default=None
+  action_url                               character varying    nullable=YES default=None
+  extra_data                               json                 nullable=YES default=None
+  created_at                               timestamp with time zone nullable=NO  default=None
+  expires_at                               timestamp with time zone nullable=YES default=None
+
+=== payroll_records ===
+  id                                       uuid                 nullable=NO  default=None
+  unit_id                                  uuid                 nullable=NO  default=None
+  payroll_period_start                     date                 nullable=NO  default=None
+  payroll_period_end                       date                 nullable=NO  default=None
+  total_regular_hours                      numeric              nullable=NO  default=None
+  total_overtime_hours                     numeric              nullable=NO  default=None
+  total_holiday_hours                      numeric              nullable=NO  default=None
+  total_work_days                          integer              nullable=NO  default=None
+  total_leave_days                         integer              nullable=NO  default=None
+  base_salary                              numeric              nullable=NO  default=None
+  overtime_pay                             numeric              nullable=NO  default=None
+  holiday_pay                              numeric              nullable=NO  default=None
+  allowance                                numeric              nullable=NO  default=None
+  deduction                                numeric              nullable=NO  default=None
+  bonus                                    numeric              nullable=NO  default=None
+  gross_pay                                numeric              nullable=NO  default=None
+  net_pay                                  numeric              nullable=NO  default=None
+  status                                   character varying    nullable=NO  default=None
+  calculation_date                         timestamp with time zone nullable=NO  default=None
+  approval_date                            timestamp with time zone nullable=YES default=None
+  payment_date                             timestamp with time zone nullable=YES default=None
+  payroll_notes                            text                 nullable=YES default=None
+  calculation_method                       character varying    nullable=NO  default=None
+  approved_by_user_id                      uuid                 nullable=YES default=None
+  created_at                               timestamp with time zone nullable=NO  default=None
+  updated_at                               timestamp with time zone nullable=NO  default=None
+  regular_slots                            integer              nullable=NO  default=0
+  ot_slots                                 integer              nullable=NO  default=0
+  hourly_rate_snapshot                     numeric              nullable=YES default=None
+  ot_multiplier_snapshot                   numeric              nullable=YES default=None
+  adjustment_1                             numeric              nullable=NO  default='0'::numeric
+  adjustment_2                             numeric              nullable=NO  default='0'::numeric
+  adjustment_1_remark                      text                 nullable=YES default=None
+  adjustment_2_remark                      text                 nullable=YES default=None
+
+=== refresh_tokens ===
+  jti                                      character varying    nullable=NO  default=None
+  user_id                                  uuid                 nullable=NO  default=None
+  expires_at                               timestamp with time zone nullable=NO  default=None
+  created_at                               timestamp with time zone nullable=NO  default=None
+  ip_address                               character varying    nullable=YES default=None
+
+=== users ===
+  id                                       uuid                 nullable=NO  default=gen_random_uuid()
+  username                                 character varying    nullable=NO  default=None
+  email                                    character varying    nullable=NO  default=None
+  hashed_password                          character varying    nullable=NO  default=None
+  full_name                                character varying    nullable=NO  default=''::character varying
+  role                                     character varying    nullable=NO  default='admin'::character varying
+  is_active                                boolean              nullable=NO  default=true
+  created_at                               timestamp with time zone nullable=NO  default=now()
+  updated_at                               timestamp with time zone nullable=NO  default=now()
+  last_login_at                            timestamp with time zone nullable=YES default=None
+
+=== unit_scan_locations ===
+  unit_id                                  uuid                 nullable=NO  default=None
+  location_id                              uuid                 nullable=NO  default=None
+
+=== CONSTRAINTS ===
+  alembic_version                24579_24580_1_not_null                             CHECK
+  alembic_version                alembic_version_pkc                                PRIMARY KEY
+  attendance_events              24579_24600_13_not_null                            CHECK
+  attendance_events              24579_24600_14_not_null                            CHECK
+  attendance_events              24579_24600_1_not_null                             CHECK
+  attendance_events              24579_24600_3_not_null                             CHECK
+  attendance_events              24579_24600_4_not_null                             CHECK
+  attendance_events              24579_24600_9_not_null                             CHECK
+  attendance_events              attendance_events_location_id_fkey                 FOREIGN KEY
+  attendance_events              attendance_events_pkey                             PRIMARY KEY
+  attendance_events              attendance_events_recorded_by_user_id_fkey         FOREIGN KEY
+  attendance_events              attendance_events_unit_id_fkey                     FOREIGN KEY
+  attendance_summaries           24579_49250_10_not_null                            CHECK
+  attendance_summaries           24579_49250_11_not_null                            CHECK
+  attendance_summaries           24579_49250_12_not_null                            CHECK
+  attendance_summaries           24579_49250_13_not_null                            CHECK
+  attendance_summaries           24579_49250_14_not_null                            CHECK
+  attendance_summaries           24579_49250_15_not_null                            CHECK
+  attendance_summaries           24579_49250_17_not_null                            CHECK
+  attendance_summaries           24579_49250_18_not_null                            CHECK
+  attendance_summaries           24579_49250_19_not_null                            CHECK
+  attendance_summaries           24579_49250_1_not_null                             CHECK
+  attendance_summaries           24579_49250_20_not_null                            CHECK
+  attendance_summaries           24579_49250_21_not_null                            CHECK
+  attendance_summaries           24579_49250_2_not_null                             CHECK
+  attendance_summaries           24579_49250_3_not_null                             CHECK
+  attendance_summaries           24579_49250_4_not_null                             CHECK
+  attendance_summaries           24579_49250_7_not_null                             CHECK
+  attendance_summaries           24579_49250_8_not_null                             CHECK
+  attendance_summaries           attendance_summaries_location_id_fkey              FOREIGN KEY
+  attendance_summaries           attendance_summaries_pkey                          PRIMARY KEY
+  attendance_summaries           attendance_summaries_unit_id_fkey                  FOREIGN KEY
+  attendance_summaries           uq_attendance_summaries_unit_date                  UNIQUE
+  audit_logs                     24579_49310_13_not_null                            CHECK
+  audit_logs                     24579_49310_14_not_null                            CHECK
+  audit_logs                     24579_49310_1_not_null                             CHECK
+  audit_logs                     24579_49310_3_not_null                             CHECK
+  audit_logs                     24579_49310_4_not_null                             CHECK
+  audit_logs                     audit_logs_pkey                                    PRIMARY KEY
+  audit_logs                     audit_logs_user_id_fkey                            FOREIGN KEY
+  locations                      24579_24653_15_not_null                            CHECK
+  locations                      24579_24653_16_not_null                            CHECK
+  locations                      24579_24653_17_not_null                            CHECK
+  locations                      24579_24653_1_not_null                             CHECK
+  locations                      24579_24653_3_not_null                             CHECK
+  locations                      24579_24653_4_not_null                             CHECK
+  locations                      locations_pkey                                     PRIMARY KEY
+  notifications                  24579_49270_12_not_null                            CHECK
+  notifications                  24579_49270_1_not_null                             CHECK
+  notifications                  24579_49270_4_not_null                             CHECK
+  notifications                  24579_49270_5_not_null                             CHECK
+  notifications                  24579_49270_6_not_null                             CHECK
+  notifications                  24579_49270_7_not_null                             CHECK
+  notifications                  24579_49270_8_not_null                             CHECK
+  notifications                  notifications_pkey                                 PRIMARY KEY
+  notifications                  notifications_unit_id_fkey                         FOREIGN KEY
+  notifications                  notifications_user_id_fkey                         FOREIGN KEY
+  payroll_records                24579_49289_10_not_null                            CHECK
+  payroll_records                24579_49289_11_not_null                            CHECK
+  payroll_records                24579_49289_12_not_null                            CHECK
+  payroll_records                24579_49289_13_not_null                            CHECK
+  payroll_records                24579_49289_14_not_null                            CHECK
+  payroll_records                24579_49289_15_not_null                            CHECK
+  payroll_records                24579_49289_16_not_null                            CHECK
+  payroll_records                24579_49289_17_not_null                            CHECK
+  payroll_records                24579_49289_18_not_null                            CHECK
+  payroll_records                24579_49289_19_not_null                            CHECK
+  payroll_records                24579_49289_1_not_null                             CHECK
+  payroll_records                24579_49289_23_not_null                            CHECK
+  payroll_records                24579_49289_25_not_null                            CHECK
+  payroll_records                24579_49289_26_not_null                            CHECK
+  payroll_records                24579_49289_27_not_null                            CHECK
+  payroll_records                24579_49289_28_not_null                            CHECK
+  payroll_records                24579_49289_2_not_null                             CHECK
+  payroll_records                24579_49289_31_not_null                            CHECK
+  payroll_records                24579_49289_32_not_null                            CHECK
+  payroll_records                24579_49289_3_not_null                             CHECK
+  payroll_records                24579_49289_4_not_null                             CHECK
+  payroll_records                24579_49289_5_not_null                             CHECK
+  payroll_records                24579_49289_6_not_null                             CHECK
+  payroll_records                24579_49289_7_not_null                             CHECK
+  payroll_records                24579_49289_8_not_null                             CHECK
+  payroll_records                24579_49289_9_not_null                             CHECK
+  payroll_records                payroll_records_approved_by_user_id_fkey           FOREIGN KEY
+  payroll_records                payroll_records_pkey                               PRIMARY KEY
+  payroll_records                payroll_records_unit_id_fkey                       FOREIGN KEY
+  payroll_records                uq_payroll_records_unit_period                     UNIQUE
+  refresh_tokens                 24579_40963_1_not_null                             CHECK
+  refresh_tokens                 24579_40963_2_not_null                             CHECK
+  refresh_tokens                 24579_40963_3_not_null                             CHECK
+  refresh_tokens                 24579_40963_4_not_null                             CHECK
+  refresh_tokens                 refresh_tokens_pkey                                PRIMARY KEY
+  refresh_tokens                 refresh_tokens_user_id_fkey                        FOREIGN KEY
+  staff_profiles                 24579_49217_1_not_null                             CHECK
+  staff_profiles                 staff_profiles_employee_id_key                     UNIQUE
+  staff_profiles                 staff_profiles_id_fkey                             FOREIGN KEY
+  staff_profiles                 staff_profiles_pkey                                PRIMARY KEY
+  staff_profiles                 staff_profiles_supervisor_id_fkey                  FOREIGN KEY
+  student_profiles               24579_49236_1_not_null                             CHECK
+  student_profiles               student_profiles_id_fkey                           FOREIGN KEY
+  student_profiles               student_profiles_pkey                              PRIMARY KEY
+  student_profiles               student_profiles_student_id_key                    UNIQUE
+  unit_scan_locations            24579_40974_1_not_null                             CHECK
+  unit_scan_locations            24579_40974_2_not_null                             CHECK
+  unit_scan_locations            product_allowed_locations_location_id_fkey         FOREIGN KEY
+  unit_scan_locations            product_allowed_locations_pkey                     PRIMARY KEY
+  unit_scan_locations            product_allowed_locations_product_id_fkey          FOREIGN KEY
+  unit_scan_locations            unit_scan_locations_location_id_fkey               FOREIGN KEY
+  unit_scan_locations            unit_scan_locations_unit_id_fkey                   FOREIGN KEY
+  units                          24579_24623_1_not_null                             CHECK
+  units                          24579_24623_23_not_null                            CHECK
+  units                          24579_24623_25_not_null                            CHECK
+  units                          24579_24623_26_not_null                            CHECK
+  units                          24579_24623_27_not_null                            CHECK
+  units                          24579_24623_28_not_null                            CHECK
+  units                          24579_24623_2_not_null                             CHECK
+  units                          24579_24623_33_not_null                            CHECK
+  units                          24579_24623_3_not_null                             CHECK
+  units                          24579_24623_5_not_null                             CHECK
+  units                          24579_24623_6_not_null                             CHECK
+  units                          24579_24623_7_not_null                             CHECK
+  units                          fk_units_last_event_location_id_locations          FOREIGN KEY
+  units                          fk_units_registered_location_id                    FOREIGN KEY
+  units                          products_pkey                                      PRIMARY KEY
+  users                          24579_24585_1_not_null                             CHECK
+  users                          24579_24585_2_not_null                             CHECK
+  users                          24579_24585_3_not_null                             CHECK
+  users                          24579_24585_4_not_null                             CHECK
+  users                          24579_24585_5_not_null                             CHECK
+  users                          24579_24585_6_not_null                             CHECK
+  users                          24579_24585_7_not_null                             CHECK
+  users                          24579_24585_8_not_null                             CHECK
+  users                          24579_24585_9_not_null                             CHECK
+  users                          users_pkey                                         PRIMARY KEY
+
+=== INDEXES ===
+  alembic_version_pkc                                     on alembic_version
+  attendance_events_pkey                                  on attendance_events
+  ix_attendance_events_location_id                        on attendance_events
+  ix_attendance_events_product_recorded                   on attendance_events
+  ix_attendance_events_qr_jti                             on attendance_events
+  ix_attendance_events_recorded_at                        on attendance_events
+  ix_attendance_events_unit_id                            on attendance_events
+  ix_attendance_events_voided_at                          on attendance_events
+  attendance_summaries_pkey                               on attendance_summaries
+  ix_attendance_summaries_location_id                     on attendance_summaries
+  ix_attendance_summaries_summary_date                    on attendance_summaries
+  ix_attendance_summaries_unit_id                         on attendance_summaries
+  uq_attendance_summaries_unit_date                       on attendance_summaries
+  audit_logs_pkey                                         on audit_logs
+  ix_audit_logs_action                                    on audit_logs
+  ix_audit_logs_created_at                                on audit_logs
+  ix_audit_logs_record_id                                 on audit_logs
+  ix_audit_logs_table_name                                on audit_logs
+  ix_audit_logs_user_id                                   on audit_logs
+  ix_locations_code                                       on locations
+  ix_locations_location_type                              on locations
+  ix_locations_region                                     on locations
+  locations_pkey                                          on locations
+  ix_notifications_unit_id                                on notifications
+  ix_notifications_user_id                                on notifications
+  notifications_pkey                                      on notifications
+  ix_payroll_records_payroll_period_end                   on payroll_records
+  ix_payroll_records_payroll_period_start                 on payroll_records
+  ix_payroll_records_unit_id                              on payroll_records
+  payroll_records_pkey                                    on payroll_records
+  uq_payroll_records_unit_period                          on payroll_records
+  ix_refresh_tokens_user_id                               on refresh_tokens
+  refresh_tokens_pkey                                     on refresh_tokens
+  staff_profiles_employee_id_key                          on staff_profiles
+  staff_profiles_pkey                                     on staff_profiles
+  student_profiles_pkey                                   on student_profiles
+  student_profiles_student_id_key                         on student_profiles
+  ix_unit_scan_locations_location_id                      on unit_scan_locations
+  product_allowed_locations_pkey                          on unit_scan_locations
+  ix_products_code                                        on units
+  ix_units_last_event_location_id                         on units
+  ix_units_registered_location_id                         on units
+  ix_units_unit_type                                      on units
+  products_pkey                                           on units
+  ix_users_email                                          on users
+  ix_users_username                                       on users
+  users_pkey                                              on users
+
+=== ALEMBIC VERSION: 032 ===
