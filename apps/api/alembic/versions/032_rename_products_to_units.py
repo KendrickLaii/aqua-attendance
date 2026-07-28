@@ -123,17 +123,9 @@ def upgrade() -> None:
     )
 
     # --- product_scan_locations → unit_scan_locations ---
-    op.drop_index("ix_product_scan_locations_location_id", table_name="product_scan_locations")
-    op.drop_constraint(
-        "product_scan_locations_product_id_fkey",
-        "product_scan_locations",
-        type_="foreignkey",
-    )
-    op.drop_constraint(
-        "product_scan_locations_location_id_fkey",
-        "product_scan_locations",
-        type_="foreignkey",
-    )
+    op.execute("DROP INDEX IF EXISTS ix_product_scan_locations_location_id")
+    op.execute("ALTER TABLE product_scan_locations DROP CONSTRAINT IF EXISTS product_scan_locations_product_id_fkey")
+    op.execute("ALTER TABLE product_scan_locations DROP CONSTRAINT IF EXISTS product_scan_locations_location_id_fkey")
     op.rename_table("product_scan_locations", "unit_scan_locations")
     op.alter_column("unit_scan_locations", "product_id", new_column_name="unit_id")
     op.create_foreign_key(
