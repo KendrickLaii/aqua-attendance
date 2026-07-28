@@ -16,23 +16,23 @@ export interface GuardianInfo {
 
 export interface StudentProfileOut {
   id: string
+  gender: string | null
+  date_of_birth: string | null
   school_name: string | null
   grade_class: string | null
   student_id: string | null
   guardians: Record<string, unknown> | null
-  enrollment_date: string | null
-  graduation_date: string | null
   academic_notes: string | null
 }
 
 export interface StaffProfileOut {
   id: string
+  gender: string | null
+  date_of_birth: string | null
   employee_id: string | null
   employment_type: string | null
   department: string | null
   position: string | null
-  hire_date: string | null
-  termination_date: string | null
   salary_grade: string | null
   pay_type: string | null
   hourly_rate: number | null
@@ -59,15 +59,13 @@ export interface Unit {
   scan_locations: UnitLocationRef[]
   last_event_at: string | null
   last_event_location: string | null
-  gender: string | null
-  date_of_birth: string | null
   phone: string | null
   address: string | null
   email: string | null
   emergency_contact_name: string | null
   emergency_contact_phone: string | null
   photo_url: string | null
-  enrollment_date: string | null
+  start_date: string | null
   exit_date: string | null
   whatsapp_enabled: boolean
   remarks: string | null
@@ -78,22 +76,22 @@ export interface Unit {
 }
 
 export interface StudentProfileInput {
+  gender?: string | null
+  date_of_birth?: string | null
   school_name?: string | null
   grade_class?: string | null
   student_id?: string | null
   guardians?: Record<string, unknown> | null
-  enrollment_date?: string | null
-  graduation_date?: string | null
   academic_notes?: string | null
 }
 
 export interface StaffProfileInput {
+  gender?: string | null
+  date_of_birth?: string | null
   employee_id?: string | null
   employment_type?: string | null
   department?: string | null
   position?: string | null
-  hire_date?: string | null
-  termination_date?: string | null
   salary_grade?: string | null
   pay_type?: string | null
   hourly_rate?: number | null
@@ -141,15 +139,13 @@ export async function createUnit(payload: {
   status?: string
   registered_location_id: string
   scan_location_ids: string[]
-  gender?: string | null
-  date_of_birth?: string | null
   phone?: string | null
   address?: string | null
   email?: string | null
   emergency_contact_name?: string | null
   emergency_contact_phone?: string | null
   photo_url?: string | null
-  enrollment_date?: string | null
+  start_date?: string | null
   exit_date?: string | null
   whatsapp_enabled?: boolean
   remarks?: string | null
@@ -168,15 +164,13 @@ export async function updateUnit(unitId: string, payload: {
   status?: string
   registered_location_id?: string
   scan_location_ids?: string[]
-  gender?: string | null
-  date_of_birth?: string | null
   phone?: string | null
   address?: string | null
   email?: string | null
   emergency_contact_name?: string | null
   emergency_contact_phone?: string | null
   photo_url?: string | null
-  enrollment_date?: string | null
+  start_date?: string | null
   exit_date?: string | null
   whatsapp_enabled?: boolean
   remarks?: string | null

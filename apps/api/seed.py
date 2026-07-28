@@ -72,7 +72,7 @@ SEED_UNITS = [
         "english_name": "Tanaka",
         "unit_type": "staff",
         "status": "active",
-        "enrollment_date": date(2024, 4, 1),
+        "start_date": date(2024, 4, 1),
         "allowed_codes": ["HK-CWB", "HK-MK"],
         "home_code": "HK-CWB",
         "staff_profile": {
@@ -93,7 +93,7 @@ SEED_UNITS = [
         "english_name": "Yamamoto",
         "unit_type": "staff",
         "status": "active",
-        "enrollment_date": date(2025, 1, 15),
+        "start_date": date(2025, 1, 15),
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
         "staff_profile": {
@@ -113,7 +113,7 @@ SEED_UNITS = [
         "english_name": "Taro Suzuki",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2025, 4, 1),
+        "start_date": date(2025, 4, 1),
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
         "student_profile": {
@@ -128,7 +128,7 @@ SEED_UNITS = [
         "english_name": "Hanako Yamada",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2025, 4, 1),
+        "start_date": date(2025, 4, 1),
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
         "student_profile": {
@@ -143,7 +143,7 @@ SEED_UNITS = [
         "english_name": "Nakamura",
         "unit_type": "staff",
         "status": "active",
-        "enrollment_date": date(2024, 9, 1),
+        "start_date": date(2024, 9, 1),
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
         "staff_profile": {
@@ -163,7 +163,7 @@ SEED_UNITS = [
         "english_name": "Sato",
         "unit_type": "staff",
         "status": "active",
-        "enrollment_date": date(2023, 4, 1),
+        "start_date": date(2023, 4, 1),
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
         "staff_profile": {
@@ -183,7 +183,7 @@ SEED_UNITS = [
         "english_name": "Kobayashi",
         "unit_type": "staff",
         "status": "active",
-        "enrollment_date": date(2025, 6, 1),
+        "start_date": date(2025, 6, 1),
         "allowed_codes": ["HK-CWB", "HK-MK"],
         "home_code": "HK-CWB",
         "staff_profile": {
@@ -203,7 +203,7 @@ SEED_UNITS = [
         "english_name": "Ito",
         "unit_type": "staff",
         "status": "active",
-        "enrollment_date": date(2025, 3, 1),
+        "start_date": date(2025, 3, 1),
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
         "staff_profile": {
@@ -223,7 +223,7 @@ SEED_UNITS = [
         "english_name": "Ken Watanabe",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2026, 4, 1),
+        "start_date": date(2026, 4, 1),
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
         "student_profile": {
@@ -238,7 +238,7 @@ SEED_UNITS = [
         "english_name": "Yui Takahashi",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2025, 4, 1),
+        "start_date": date(2025, 4, 1),
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
         "student_profile": {
@@ -253,7 +253,7 @@ SEED_UNITS = [
         "english_name": "Ryo Saito",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2024, 4, 1),
+        "start_date": date(2024, 4, 1),
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
         "student_profile": {
@@ -268,7 +268,7 @@ SEED_UNITS = [
         "english_name": "Mei Kato",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2026, 4, 1),
+        "start_date": date(2026, 4, 1),
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
         "student_profile": {
@@ -283,7 +283,7 @@ SEED_UNITS = [
         "english_name": "Hiro Yoshida",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2023, 4, 1),
+        "start_date": date(2023, 4, 1),
         "allowed_codes": ["HK-CWB"],
         "home_code": "HK-CWB",
         "student_profile": {
@@ -298,7 +298,7 @@ SEED_UNITS = [
         "english_name": "Aki Mori",
         "unit_type": "student",
         "status": "active",
-        "enrollment_date": date(2025, 4, 1),
+        "start_date": date(2025, 4, 1),
         "allowed_codes": ["HK-MK"],
         "home_code": "HK-MK",
         "student_profile": {

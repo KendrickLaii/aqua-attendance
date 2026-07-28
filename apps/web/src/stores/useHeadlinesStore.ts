@@ -1,5 +1,5 @@
 import type { HeadlinesProperties, Content } from '@/types/headlines'
-import type { HeadlinesFormData } from '@/components/dialogs/tax/HeadlinesDialog.vue'
+import type { HeadlinesFormData } from '@/api/headlines'
 import { getAllHeadlines, createHeadlines, updateHeadlines, deleteHeadlines } from '@/api/headlines'
 
 /**

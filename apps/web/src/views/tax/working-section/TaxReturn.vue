@@ -116,7 +116,7 @@ const isRadio = (type: string) => (type ?? '').toLowerCase() === 'radio'
 
 const navigateToCreateTaxReturnFieldSetup = () => {
   router.push({
-    name: 'tax-context-tax-return-field-setup',
+    path: '/tax/context/tax-return-field-setup',
     query: { action: 'create' },
   })
 }

@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 
 class StaffProfileCreate(BaseModel):
+    gender: str | None = Field(default=None, max_length=20)
+    date_of_birth: date | None = None
     employee_id: str | None = Field(default=None, max_length=100)
     employment_type: str | None = Field(default=None, max_length=20)
     department: str | None = Field(default=None, max_length=100)
@@ -15,13 +17,13 @@ class StaffProfileCreate(BaseModel):
     monthly_salary: float | None = Field(default=None, ge=0)
     ot_multiplier: float | None = Field(default=None, ge=0)
     work_schedule: str | None = Field(default=None, max_length=255)
-    hire_date: date | None = None
-    termination_date: date | None = None
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
 
 
 class StaffProfileUpdate(BaseModel):
+    gender: str | None = Field(default=None, max_length=20)
+    date_of_birth: date | None = None
     employee_id: str | None = Field(default=None, max_length=100)
     employment_type: str | None = Field(default=None, max_length=20)
     department: str | None = Field(default=None, max_length=100)
@@ -32,14 +34,14 @@ class StaffProfileUpdate(BaseModel):
     monthly_salary: float | None = Field(default=None, ge=0)
     ot_multiplier: float | None = Field(default=None, ge=0)
     work_schedule: str | None = Field(default=None, max_length=255)
-    hire_date: date | None = None
-    termination_date: date | None = None
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
 
 
 class StaffProfileOut(BaseModel):
     id: uuid.UUID
+    gender: str | None = None
+    date_of_birth: date | None = None
     employee_id: str | None = None
     employment_type: str | None = None
     department: str | None = None
@@ -50,8 +52,6 @@ class StaffProfileOut(BaseModel):
     monthly_salary: float | None = None
     ot_multiplier: float | None = None
     work_schedule: str | None = None
-    hire_date: date | None = None
-    termination_date: date | None = None
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
 

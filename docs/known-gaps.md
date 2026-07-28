@@ -182,15 +182,17 @@
 - **現有保護層**：`UnitCreate` / `UnitUpdate` 的 `Literal["staff", "student"]` 限制（schema 驗證層）
 - **建議**：在上述三處加 `_ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}` 白名單檢查（defense-in-depth）。成本低，一行代碼。應在新增 device/goods 類型時同步補齊。
 
-### #M20 個人資料欄位搬移至 profiles 未執行
+### #M20 個人資料欄位搬移至 profiles 已完成
 
-> **2026-07-28 新增** — Migration 032 完成了 product → unit 重新命名，但個人資料欄位搬移（2026-07-27 決定）尚未執行。
-
-- **位置**：`apps/api/app/models/unit.py`、`app/models/student_profile.py`、`app/models/staff_profile.py`
-- **問題**：`units` 表仍包含 `gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_name`、`emergency_contact_phone` 欄位。原計畫（見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles）將這些欄位搬移至 `staff_profiles` / `student_profiles`，但 migration 尚未建立。
-- **現況**：ORM 模型已與 DB 對齊（個人資料欄位仍在 `units` model 中，但 `gender`/`date_of_birth` 未暴露於 API schema）。前端使用 `enrollment_date`/`exit_date` 欄位正常運作。
-- **影響**：`units` 表未瘦身為純 supertype；未來新增 `device`/`goods` 類型時會有不適用的個人資料欄位。
-- **建議**：新增 Alembic migration（如 033）執行搬移。詳見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態。
+> **2026-07-28 已完成** — 已建立並執行 Alembic migrations `f8e65b7cf82b_align_schema_with_er_diagram` 與 `033_align_staff_student_profile_fields`：
+>
+> - `units.enrollment_date` 重新命名為 `units.start_date`（保留資料）。
+> - `staff_profiles.hire_date` / `termination_date` 搬移至 `units.start_date` / `exit_date` 後移除。
+> - `student_profiles.enrollment_date` / `graduation_date` 搬移至 `units.start_date` / `exit_date` 後移除。
+> - `student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`，並從 `units` 遷移資料後移除 `units.gender`、`units.date_of_birth`。
+> - `units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date` / `exit_date`（依新 ER 圖設計）。
+>
+> 詳見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態。
 
 ### #M21 Legacy constraint/index 名稱未清理
 

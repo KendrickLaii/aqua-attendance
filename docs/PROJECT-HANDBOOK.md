@@ -634,7 +634,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 9d. Void event 後自動重算單日 summary ⬜ — 見 [known-gaps.md](known-gaps.md) #M16
 9e. Generate 端點互斥鎖 ⬜ — 見 [known-gaps.md](known-gaps.md) #M17
 9f. `units.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
-9g. **個人資料欄位搬移至 profiles**（units 瘦身）⬜ — 見 [database-changes.md](database-changes.md) § 欄位搬移至 profiles（2026-07-27）
+9g. **個人資料欄位搬移至 profiles**（units 瘦身）✅ — 已於 2026-07-28 建立並執行 Alembic migration `f8e65b7cf82b_align_schema_with_er_diagram`；見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態。
 
 **第三階段 — 可延後（Low）**
 10. Refresh token 改 HttpOnly cookie ⬜
@@ -1261,9 +1261,14 @@ erDiagram
     users {
         uuid id PK
         string username "使用者名稱"
+        string email
+        string hashed_password
+        string full_name
         string role "admin / superadmin"
         boolean is_active
         datetime last_login_at
+        datetime created_at
+        datetime updated_at
     }
 
     refresh_tokens {
@@ -1271,6 +1276,7 @@ erDiagram
         uuid user_id FK
         string ip_address
         datetime expires_at
+        datetime created_at
     }
 
     units {
@@ -1285,15 +1291,13 @@ erDiagram
         int qr_token_version
         uuid registered_location_id FK
         string photo_url
-        string gender "待搬移至 profiles"
-        date date_of_birth "待搬移至 profiles"
-        string phone "待搬移至 profiles"
-        string address "待搬移至 profiles"
-        string email "待搬移至 profiles"
-        string emergency_contact_name "待搬移至 profiles"
-        string emergency_contact_phone "待搬移至 profiles"
-        date enrollment_date
-        date exit_date
+        string phone "電話"
+        string address "地址"
+        string email "電子郵件"
+        string emergency_contact_name "緊急聯絡人"
+        string emergency_contact_phone "緊急聯絡人電話"
+        date start_date "入學/到職日期"
+        date exit_date "退學/離職日期"
         boolean whatsapp_enabled
         string remarks
         datetime last_event_at
@@ -1304,24 +1308,24 @@ erDiagram
     }
 
     student_profiles {
-        uuid unit_id PK, FK
+        string gender "性別"
+        date date_of_birth "出生日期"
+        uuid id PK, FK
         string school_name
         string grade_class
         string student_id
         json guardians
-        date enrollment_date
-        date graduation_date
         string academic_notes
     }
 
     staff_profiles {
-        uuid unit_id PK, FK
+        uuid id PK, FK
+        string gender "性別"
+        date date_of_birth "出生日期"
         string employee_id
         string employment_type "part_time / full_time"
         string department
         string position
-        date hire_date
-        date termination_date
         string salary_grade
         string pay_type "hourly / monthly"
         numeric hourly_rate
@@ -1366,9 +1370,12 @@ erDiagram
         string source "scan / manual / auto_checkout"
         datetime recorded_at
         datetime created_at
+        string qr_jti
         uuid location_id FK
         uuid recorded_by_user_id FK
         string client_device_id
+        string location
+        string notes
         datetime voided_at
     }
 
@@ -1434,27 +1441,42 @@ erDiagram
         numeric gross_pay
         numeric net_pay
         string status "draft / calculated / approved / paid / cancelled"
-        string notes
+        datetime calculation_date
+        datetime approval_date
+        datetime payment_date
+        string payroll_notes
+        string calculation_method
         uuid approved_by_user_id FK
-        datetime approved_at
         datetime created_at
         datetime updated_at
+        numeric adjustment_1
+        numeric adjustment_2
+        string adjustment_1_remark
+        string adjustment_2_remark
     }
 
     audit_logs {
         uuid id PK
         uuid user_id FK
-        string action "CREATE / UPDATE / DELETE / EXPORT"
-        string entity_type
-        string entity_id
-        json changes
+        string action "CREATE / UPDATE / DELETE / LOGIN / ..."
+        string table_name
+        uuid record_id
+        json old_values
+        json new_values
+        string description
         string ip_address
+        string user_agent
+        string session_id
+        string request_id
+        boolean batch_operation
         datetime created_at
     }
 
     users ||--o{ refresh_tokens : has
+    users ||--o{ notifications : receives
     users ||--o{ attendance_events : "records (recorded_by_user_id)"
     users ||--o{ audit_logs : performs
+    users ||--o{ payroll_records : "approves (approved_by_user_id)"
     units ||--o| student_profiles : "has (1:1)"
     units ||--o| staff_profiles : "has (1:1)"
     units ||--o{ attendance_events : generates
@@ -1462,12 +1484,14 @@ erDiagram
     units ||--o{ payroll_records : receives
     units ||--o{ unit_scan_locations : "allowed at"
     units ||--o{ notifications : triggers
+    locations ||--o{ units : "registered_location_id"
+    locations ||--o{ units : "last_event_location_id"
     locations ||--o{ unit_scan_locations : "hosts scans"
     locations ||--o{ attendance_events : "where occurred"
     locations ||--o{ attendance_summaries : "where summarized"
-    staff_profiles ||--o| staff_profiles : "supervisor of"
+    units ||--o{ staff_profiles : "supervises (supervisor_id)"
 ```
 
 > **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–032）見 `apps/api/alembic/versions/`。
 >
-> **2026-07-28 更新**：ER 圖已更新為**實際 DB 狀態**。個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`）仍在 `units` 表中（標註「待搬移」），搬移 migration 尚未執行 — 詳見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態、[known-gaps.md](known-gaps.md) #M20。`enrollment_date`/`exit_date` 仍在 `units` 表。出勤邏輯保留在 `units`（supertype），未來新增 `device`/`goods` 時需加 `unit_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。
+> **2026-07-28 更新**：ER 圖已與 [database-changes.md](database-changes.md) § 完整 ER 圖同步。`units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`/`exit_date`；`student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`。出勤邏輯保留在 `units`（supertype），未來新增 `device`/`goods` 時需加 `unit_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。

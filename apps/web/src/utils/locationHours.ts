@@ -39,6 +39,7 @@ export interface HoursScheduleEntry {
 }
 
 const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
+type DayKey = typeof DAY_ORDER[number]
 
 export function defaultHoursSchedule(): DaySchedule[] {
   return LOCATION_DAYS.map(d => ({
@@ -180,7 +181,7 @@ function formatStructuredBusinessHours(hours: BusinessHours): string {
 
       return { day: d.key, openTime: dayHours.open, closeTime: dayHours.close }
     })
-    .filter((e): e is { day: string, openTime: string, closeTime: string } => e != null)
+    .filter((e): e is { day: DayKey, openTime: string, closeTime: string } => e != null)
 
   if (!openEntries.length)
     return ''

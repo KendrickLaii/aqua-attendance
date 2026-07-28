@@ -49,7 +49,7 @@ const form = reactive({
   emergency_contact_name: '',
   emergency_contact_phone: '',
   photo_url: '',
-  enrollment_date: '',
+  start_date: '',
   exit_date: '',
   whatsapp_enabled: true,
   remarks: '',
@@ -60,8 +60,6 @@ const form = reactive({
     school_name: '',
     grade_class: '',
     student_id: '',
-    enrollment_date: '',
-    graduation_date: '',
     academic_notes: '',
     guardians: {} as Record<string, unknown>,
   },
@@ -70,8 +68,6 @@ const form = reactive({
     employment_type: '' as '' | 'part_time' | 'full_time',
     department: '',
     position: '',
-    hire_date: '',
-    termination_date: '',
     salary_grade: '',
     pay_type: '' as '' | 'hourly' | 'monthly',
     hourly_rate: '',
@@ -304,8 +300,6 @@ watch(() => form.unit_type, type => {
     form.staff_profile.employment_type = ''
     form.staff_profile.department = ''
     form.staff_profile.position = ''
-    form.staff_profile.hire_date = ''
-    form.staff_profile.termination_date = ''
     form.staff_profile.salary_grade = ''
     form.staff_profile.pay_type = ''
     form.staff_profile.hourly_rate = ''
@@ -319,13 +313,9 @@ watch(() => form.unit_type, type => {
     form.student_profile.school_name = ''
     form.student_profile.grade_class = ''
     form.student_profile.student_id = ''
-    form.student_profile.enrollment_date = ''
-    form.student_profile.graduation_date = ''
     form.student_profile.academic_notes = ''
     form.student_profile.guardians = {}
     form.guardians = [{ name: '', relationship: '', phone: '' }]
-    form.enrollment_date = ''
-    form.exit_date = ''
   }
 })
 
@@ -358,7 +348,7 @@ function resetForm() {
     emergency_contact_name: '',
     emergency_contact_phone: '',
     photo_url: '',
-    enrollment_date: '',
+    start_date: '',
     exit_date: '',
     whatsapp_enabled: true,
     remarks: '',
@@ -368,8 +358,6 @@ function resetForm() {
       school_name: '',
       grade_class: '',
       student_id: '',
-      enrollment_date: '',
-      graduation_date: '',
       academic_notes: '',
       guardians: {},
     },
@@ -379,8 +367,6 @@ function resetForm() {
       employment_type: '',
       department: '',
       position: '',
-      hire_date: '',
-      termination_date: '',
       salary_grade: '',
       pay_type: '',
       hourly_rate: '',
@@ -413,15 +399,15 @@ function openEdit(p: Unit) {
     unit_type: p.unit_type,
     is_active: p.is_active,
     status: p.status ?? 'active',
-    gender: p.gender ?? '',
-    date_of_birth: p.date_of_birth ?? '',
+    gender: p.unit_type === 'staff' ? stp?.gender ?? '' : sp?.gender ?? '',
+    date_of_birth: p.unit_type === 'staff' ? stp?.date_of_birth ?? '' : sp?.date_of_birth ?? '',
     phone: p.phone ?? '',
     address: p.address ?? '',
     email: p.email ?? '',
     emergency_contact_name: p.emergency_contact_name ?? '',
     emergency_contact_phone: p.emergency_contact_phone ?? '',
     photo_url: p.photo_url ?? '',
-    enrollment_date: p.enrollment_date ?? '',
+    start_date: p.start_date ?? '',
     exit_date: p.exit_date ?? '',
     whatsapp_enabled: p.whatsapp_enabled,
     remarks: p.remarks ?? '',
@@ -431,8 +417,6 @@ function openEdit(p: Unit) {
       school_name: sp?.school_name ?? '',
       grade_class: sp?.grade_class ?? '',
       student_id: sp?.student_id ?? '',
-      enrollment_date: sp?.enrollment_date ?? '',
-      graduation_date: sp?.graduation_date ?? '',
       academic_notes: sp?.academic_notes ?? '',
       guardians: sp?.guardians ?? {},
     },
@@ -448,8 +432,6 @@ function openEdit(p: Unit) {
       employment_type: stp?.employment_type ?? '',
       department: stp?.department ?? '',
       position: stp?.position ?? '',
-      hire_date: stp?.hire_date ?? '',
-      termination_date: stp?.termination_date ?? '',
       salary_grade: stp?.salary_grade ?? '',
       pay_type: (stp?.pay_type ?? '') as '' | 'hourly' | 'monthly',
       hourly_rate: stp?.hourly_rate != null ? String(stp.hourly_rate) : '',
@@ -512,15 +494,13 @@ async function handleSave() {
       english_name: normalizeString(form.english_name),
       unit_type: form.unit_type,
       status: form.status,
-      gender: normalizeString(form.gender),
-      date_of_birth: normalizeString(form.date_of_birth),
       phone: normalizeString(form.phone),
       address: normalizeString(form.address),
       email: normalizeString(form.email),
       emergency_contact_name: normalizeString(form.emergency_contact_name),
       emergency_contact_phone: normalizeString(form.emergency_contact_phone),
       photo_url: normalizeString(form.photo_url),
-      enrollment_date: normalizeString(form.enrollment_date),
+      start_date: normalizeString(form.start_date),
       exit_date: normalizeString(form.exit_date),
       whatsapp_enabled: form.whatsapp_enabled,
       remarks: normalizeString(form.remarks),
@@ -544,11 +524,11 @@ async function handleSave() {
       payload = {
         ...basePayload,
         student_profile: {
+          gender: normalizeString(form.gender),
+          date_of_birth: normalizeString(form.date_of_birth),
           school_name: normalizeString(form.student_profile.school_name),
           grade_class: normalizeString(form.student_profile.grade_class),
           student_id: normalizeString(form.student_profile.student_id),
-          enrollment_date: normalizeString(form.student_profile.enrollment_date),
-          graduation_date: normalizeString(form.student_profile.graduation_date),
           academic_notes: normalizeString(form.student_profile.academic_notes),
           guardians: Object.keys(guardians).length > 0 ? guardians : null,
         },
@@ -558,12 +538,12 @@ async function handleSave() {
       payload = {
         ...basePayload,
         staff_profile: {
+          gender: normalizeString(form.gender),
+          date_of_birth: normalizeString(form.date_of_birth),
           employee_id: normalizeString(form.staff_profile.employee_id),
           employment_type: normalizeString(form.staff_profile.employment_type),
           department: normalizeString(form.staff_profile.department),
           position: normalizeString(form.staff_profile.position),
-          hire_date: normalizeString(form.staff_profile.hire_date),
-          termination_date: normalizeString(form.staff_profile.termination_date),
           salary_grade: normalizeString(form.staff_profile.salary_grade),
           pay_type: normalizeString(form.staff_profile.pay_type),
           hourly_rate: normalizeNumber(form.staff_profile.hourly_rate),
@@ -586,12 +566,12 @@ async function handleSave() {
       // Update nested profile via dedicated endpoint (PATCH /units does not handle profiles)
       if (form.unit_type === 'staff') {
         await updateStaffProfile(editingUnit.value.id, {
+          gender: normalizeString(form.gender),
+          date_of_birth: normalizeString(form.date_of_birth),
           employee_id: normalizeString(form.staff_profile.employee_id),
           employment_type: normalizeString(form.staff_profile.employment_type),
           department: normalizeString(form.staff_profile.department),
           position: normalizeString(form.staff_profile.position),
-          hire_date: normalizeString(form.staff_profile.hire_date),
-          termination_date: normalizeString(form.staff_profile.termination_date),
           salary_grade: normalizeString(form.staff_profile.salary_grade),
           pay_type: normalizeString(form.staff_profile.pay_type),
           hourly_rate: normalizeNumber(form.staff_profile.hourly_rate),
@@ -614,11 +594,11 @@ async function handleSave() {
           }
         })
         await updateStudentProfile(editingUnit.value.id, {
+          gender: normalizeString(form.gender),
+          date_of_birth: normalizeString(form.date_of_birth),
           school_name: normalizeString(form.student_profile.school_name),
           grade_class: normalizeString(form.student_profile.grade_class),
           student_id: normalizeString(form.student_profile.student_id),
-          enrollment_date: normalizeString(form.student_profile.enrollment_date),
-          graduation_date: normalizeString(form.student_profile.graduation_date),
           academic_notes: normalizeString(form.student_profile.academic_notes),
           guardians: Object.keys(guardians).length > 0 ? guardians : null,
         })
@@ -1300,19 +1280,17 @@ function rowStatusChip(p: Unit) {
             />
           </VCol>
           <VCol
-            v-if="form.unit_type === 'student'"
             cols="12"
             sm="6"
             md="3"
           >
             <VTextField
-              v-model="form.enrollment_date"
-              label="Enrollment date"
+              v-model="form.start_date"
+              label="Start date"
               type="date"
             />
           </VCol>
           <VCol
-            v-if="form.unit_type === 'student'"
             cols="12"
             sm="6"
             md="3"
@@ -1495,28 +1473,6 @@ function rowStatusChip(p: Unit) {
                 v-model="form.staff_profile.position"
                 label="Position"
                 maxlength="100"
-              />
-            </VCol>
-            <VCol
-              cols="12"
-              sm="6"
-              md="4"
-            >
-              <VTextField
-                v-model="form.staff_profile.hire_date"
-                label="Hire date"
-                type="date"
-              />
-            </VCol>
-            <VCol
-              cols="12"
-              sm="6"
-              md="4"
-            >
-              <VTextField
-                v-model="form.staff_profile.termination_date"
-                label="Termination date"
-                type="date"
               />
             </VCol>
           </VRow>

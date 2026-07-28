@@ -48,7 +48,7 @@ class Unit(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=UnitStatus.active.value)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    enrollment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     exit_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     attendance_status: Mapped[str] = mapped_column(

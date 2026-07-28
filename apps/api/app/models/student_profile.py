@@ -19,6 +19,10 @@ class StudentProfile(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), primary_key=True)
 
+    # Personal information
+    gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     # Academic information
     school_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     grade_class: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -26,10 +30,6 @@ class StudentProfile(Base):
 
     # Guardian information (structured JSON)
     guardians: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-
-    # Enrollment dates
-    enrollment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    graduation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # Notes
     academic_notes: Mapped[str | None] = mapped_column(Text, nullable=True)

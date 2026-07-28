@@ -26,9 +26,14 @@ erDiagram
     users {
         uuid id PK
         string username "使用者名稱"
+        string email "電子郵件"
+        string hashed_password "雜湊密碼"
+        string full_name "姓名"
         string role "角色 admin/superadmin"
         boolean is_active "是否啟用"
         datetime last_login_at "最後登入時間 新增"
+        datetime created_at "建立時間"
+        datetime updated_at "更新時間"
     }
     
     refresh_tokens {
@@ -36,6 +41,7 @@ erDiagram
         uuid user_id FK
         string ip_address "登入IP 新增"
         datetime expires_at "到期時間"
+        datetime created_at "建立時間"
     }
     units {
         uuid id PK
@@ -49,15 +55,13 @@ erDiagram
         int qr_token_version "QR版本號"
         uuid registered_location_id FK "註冊地點"
         string photo_url "照片URL"
-        string gender "性別 實際仍在units 待搬移"
-        date date_of_birth "出生日期 實際仍在units 待搬移"
-        string phone "電話 實際仍在units 待搬移"
-        string address "地址 實際仍在units 待搬移"
-        string email "電子郵件 實際仍在units 待搬移"
-        string emergency_contact_name "緊急聯絡人 實際仍在units 待搬移"
-        string emergency_contact_phone "緊急聯絡人電話 實際仍在units 待搬移"
-        date enrollment_date "入學/到職日期 實際仍在units"
-        date exit_date "退學/離職日期 實際仍在units"
+        string phone "電話"
+        string address "地址"
+        string email "電子郵件"
+        string emergency_contact_name "緊急聯絡人"
+        string emergency_contact_phone "緊急聯絡人電話"
+        date start_date "入學/到職日期"
+        date exit_date "退學/離職日期"
         boolean whatsapp_enabled "通知偏好"
         string remarks "備註"
         datetime last_event_at "最後事件時間"
@@ -67,23 +71,23 @@ erDiagram
         datetime updated_at "更新時間"
     }
     student_profiles {
-        uuid unit_id PK "FK 學生ID"
+        string gender "性別"
+        date date_of_birth "出生日期"
+        uuid id PK "FK 學生ID"
         string school_name "學校名稱"
         string grade_class "年級班級"
         string student_id "學號"
         json guardians "監護人JSON陣列"
-        date enrollment_date "入學日期"
-        date graduation_date "畢業日期"
         string academic_notes "學業備註"
     }
     staff_profiles {
-        uuid unit_id PK "FK 員工ID"
+        uuid id PK "FK 員工ID"
+        string gender "性別"
+        date date_of_birth "出生日期"
         string employee_id "員工編號"
         string employment_type "雇用類型 part_time/full_time"
         string department "部門"
         string position "職位"
-        date hire_date "到職日期"
-        date termination_date "離職日期"
         string salary_grade "薪資等級"
         string pay_type "薪資類型 hourly/monthly"
         numeric hourly_rate "時薪"
@@ -92,18 +96,6 @@ erDiagram
         string work_schedule "工作班表"
         uuid supervisor_id FK "直屬主管 unit_id"
         string employment_notes "員工備註"
-    }
-    device_profiles {
-        uuid unit_id PK "FK 設備ID 未來"
-        string serial_number "序號"
-        string model "型號"
-        date warranty_until "保固截止"
-    }
-    goods_profiles {
-        uuid unit_id PK "FK 貨物ID 未來"
-        string sku "SKU編碼"
-        int quantity "數量"
-        date expiry_date "有效期限"
     }
     locations {
         uuid id PK
@@ -137,9 +129,12 @@ erDiagram
         string source "來源 scan/manual/auto_checkout 新增"
         datetime recorded_at "業務發生時間"
         datetime created_at "系統記錄時間 新增"
+        string qr_jti "QR token jti"
         uuid location_id FK "發生地點"
         uuid recorded_by_user_id FK "記錄人"
         string client_device_id "掃碼裝置識別碼"
+        string location "地點名稱快照"
+        string notes "備註"
         datetime voided_at "作廢時間 新增"
     }
     notifications {
@@ -210,6 +205,10 @@ erDiagram
         uuid approved_by_user_id FK "審核人"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
+        numeric adjustment_1 "手動調整1"
+        numeric adjustment_2 "手動調整2"
+        string adjustment_1_remark "調整1備註"
+        string adjustment_2_remark "調整2備註"
     }
     audit_logs {
         uuid id PK
@@ -229,21 +228,23 @@ erDiagram
     }
 
     users ||--o{ refresh_tokens : "擁有"
+    users ||--o{ notifications : "接收"
     users ||--o{ attendance_events : "記錄"
     users ||--o{ audit_logs : "操作"
     users ||--o{ payroll_records : "審核"
     units ||--o| student_profiles : "學生檔案"
     units ||--o| staff_profiles : "員工檔案"
-    units ||--o| device_profiles : "設備檔案"
-    units ||--o| goods_profiles : "貨物檔案"
     units ||--o{ attendance_events : "產生"
     units ||--o{ unit_scan_locations : "可掃碼"
     units ||--o{ notifications : "通知"
     units ||--o{ attendance_summaries : "彙總"
     units ||--o{ payroll_records : "薪資"
     locations ||--o{ units : "註冊於"
+    locations ||--o{ units : "最後事件地點"
     locations ||--o{ attendance_events : "發生"
     locations ||--o{ unit_scan_locations : "允許掃碼"
+    locations ||--o{ attendance_summaries : "彙總地點"
+    units ||--o{ staff_profiles : "主管(supervisor_id)"
 ```
 
 ## 薪資／加班（OT）計算設計
@@ -365,11 +366,12 @@ ot_hours      = ot_slots * 0.25
 | remarks | units |
 | whatsapp_enabled | units 通知偏好欄位 |
 | created_at, updated_at | units |
-| gender, date_of_birth, phone, address, email | **→ staff_profiles + student_profiles**（2026-07-27 決定） |
-| emergency_contact_name, emergency_contact_phone | **→ staff_profiles + student_profiles**（2026-07-27 決定，修正原決定 #5） |
-| enrollment_date, exit_date | **刪除** — 改用 profile 已有欄位（enrollment_date/graduation_date for student，hire_date/termination_date for staff） |
-| employment_type, pay_type, hourly_rate, monthly_salary, ot_multiplier, employee_id, department, position, hire_date, termination_date, salary_grade, work_schedule, supervisor_id, employment_notes | staff_profiles |
-| school_name, grade_class, student_id, enrollment_date, graduation_date, academic_notes | student_profiles |
+| gender, date_of_birth | staff_profiles + student_profiles |
+| phone, address, email | units（共用聯絡資料） |
+| emergency_contact_name, emergency_contact_phone | units（共用緊急聯絡人） |
+| start_date, exit_date | units（學生入學/退學、員工到職/離職共用 lifecycle 日期） |
+| employment_type, pay_type, hourly_rate, monthly_salary, ot_multiplier, employee_id, department, position, salary_grade, work_schedule, supervisor_id, employment_notes | staff_profiles |
+| school_name, grade_class, student_id, academic_notes | student_profiles |
 | guardian1/2_*（6個欄位） | student_profiles.guardians JSON |
 
 ---
@@ -449,7 +451,7 @@ ot_hours      = ot_slots * 0.25
    - 新建 staff_profiles（完整員工資料）
 
 3. **欄位新增（5項）：** ✅ 全部完成
-   - units 新增 photo_url、enrollment_date、exit_date
+   - units 新增 photo_url、start_date、exit_date
    - status 擴展為完整 enum
    - locations.business_hours JSON 化
    - attendance_events 新增 voided_at
@@ -478,7 +480,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -491,10 +493,11 @@ ot_hours      = ot_slots * 0.25
 8. ✅ employment_type 補值（025）
 9. ✅ slot-based 薪資欄位（026）
 10. ✅ products → units 重新命名（032）— 表名、欄位、外鍵、索引重新命名
+11. ✅ profile 欄位對齊（f8e65b7cf82b + 033）— `units.start_date/exit_date`、`student_profiles.gender/date_of_birth`、`staff_profiles.gender/date_of_birth`
 
-> **目前 Alembic 版本：032**（`032_rename_products_to_units`）
+> **目前 Alembic 版本：033**（`033_align_staff_student_profile_fields`）
 >
-> Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
+> Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 
 ---
 
@@ -525,11 +528,18 @@ ot_hours      = ot_slots * 0.25
 
 ---
 
-## 欄位搬移至 profiles（2026-07-27 決定）
+> **2026-07-28 更新**：本搬移計畫已由 migration `f8e65b7cf82b_align_schema_with_er_diagram` 與 `033_align_staff_student_profile_fields` 執行完成。實際執行結果與原計畫略有調整：
+> - `units.enrollment_date` 重新命名為 `units.start_date`（未刪除）。
+> - `staff_profiles.hire_date` / `termination_date` 搬移至 `units.start_date` / `exit_date` 後移除。
+> - `student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`；資料從 `units` 遷移後移除 `units.gender` / `units.date_of_birth`。
+> - `student_profiles.enrollment_date` / `graduation_date` 搬移至 `units.start_date` / `exit_date` 後移除。
+> - `units` 保留 `phone`、`address`、`email`、`emergency_contact_*` 及 `start_date` / `exit_date`（依 2026-07-28 ER 圖設計）。
+
+## 欄位搬移至 profiles（2026-07-27 決定，2026-07-28 完成）
 
 ### 背景
 
-`units` 表目前包含大量個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`、`enrollment_date`、`exit_date`）。這些欄位只適用於 `staff` 和 `student` 類型，未來 `device`/`goods` 類型不需要。決定將個人資料欄位搬移至對應的 profile 子表，使 `units` 保持為純粹的 supertype 核心表。
+`units` 表曾包含大量個人資料欄位（`gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_*`、`enrollment_date`、`exit_date`）。目前決定是：`gender` / `date_of_birth` 屬於對應 profile 子表；`phone`、`address`、`email`、`emergency_contact_*` 與 lifecycle 日期 `start_date` / `exit_date` 保留在 `units` 作為共用資料。
 
 ### 搬移計畫
 
@@ -539,22 +549,15 @@ ot_hours      = ot_slots * 0.25
 |------|------|------|
 | `gender` | `String(20)` nullable | 性別 |
 | `date_of_birth` | `Date` nullable | 出生日期 |
-| `phone` | `String(50)` nullable | 電話 |
-| `address` | `String(500)` nullable | 地址 |
-| `email` | `String(255)` nullable | 電子郵件 |
-| `emergency_contact_name` | `String(255)` nullable | 緊急聯絡人姓名 |
-| `emergency_contact_phone` | `String(50)` nullable | 緊急聯絡人電話 |
 
-#### ✅ 刪除 `units.enrollment_date` / `units.exit_date`（改用 profile 已有欄位）
+#### ✅ lifecycle 日期保留在 `units`
 
-`units` 表上的 `enrollment_date` / `exit_date` 與 profile 表已有的欄位語意重疊：
+| units 欄位 | 說明 |
+|----------------------|--------------------------|
+| `start_date` | 學生入學 / 員工到職日期 |
+| `exit_date` | 學生退學或畢業 / 員工離職日期 |
 
-| units 欄位（刪除） | student_profiles 對應欄位 | staff_profiles 對應欄位 |
-|----------------------|--------------------------|------------------------|
-| `enrollment_date` | `enrollment_date`（已存在） | `hire_date`（已存在） |
-| `exit_date` | `graduation_date`（已存在） | `termination_date`（已存在） |
-
-> **決定**：刪除 `units.enrollment_date` / `units.exit_date`，統一使用 profile 表已有的日期欄位。前端建立/更新 unit 時，依 `unit_type` 將入學/到職日期寫入對應 profile 欄位。
+> **決定**：profile 表不再保留 student enrollment/graduation 或 staff hire/termination 日期；統一使用 `units.start_date` / `units.exit_date`。
 
 #### ❌ 不搬移 — 保留在 `units`
 
@@ -569,10 +572,10 @@ ot_hours      = ot_slots * 0.25
 
 | 檔案 | 變更 |
 |------|------|
-| `app/models/unit.py` | 移除 `gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_name`、`emergency_contact_phone`、`enrollment_date`、`exit_date` 欄位 |
-| `app/models/staff_profile.py` | 新增上述 7 個個人資料欄位 |
-| `app/models/student_profile.py` | 新增上述 7 個個人資料欄位 |
-| `app/schemas/unit.py` | 從 `UnitCreate`、`UnitUpdate`、`UnitOut` 移除個人資料欄位；`UnitOut` 改為從 profile 讀取 |
+| `app/models/unit.py` | 保留共用聯絡資料與 `start_date` / `exit_date`，移除 `gender`、`date_of_birth` |
+| `app/models/staff_profile.py` | 新增 `gender`、`date_of_birth`，移除 `hire_date`、`termination_date` |
+| `app/models/student_profile.py` | 新增 `gender`、`date_of_birth`，移除 `enrollment_date`、`graduation_date` |
+| `app/schemas/unit.py` | 使用 `start_date` / `exit_date` 暴露 lifecycle 日期 |
 | `app/schemas/staff_profile.py` | `StaffProfileCreate`、`StaffProfileUpdate`、`StaffProfileOut` 新增個人資料欄位 |
 | `app/schemas/student_profile.py` | `StudentProfileCreate`、`StudentProfileUpdate`、`StudentProfileOut` 新增個人資料欄位 |
 | `app/routers/units.py` | `create_unit` 和 `update_unit` 中將個人資料欄位轉發到 profile 子物件 |
@@ -583,15 +586,15 @@ ot_hours      = ot_slots * 0.25
 
 | 檔案 | 變更 |
 |------|------|
-| `src/pages/attendance/units.vue` | 表單 payload 將個人資料欄位放入 `student_profile` / `staff_profile` 子物件；`enrollment_date` / `exit_date` 改為依 `unit_type` 映射到 `enrollment_date`/`graduation_date`（student）或 `hire_date`/`termination_date`（staff） |
+| `src/pages/attendance/units.vue` | 表單 payload 將 `gender` / `date_of_birth` 放入對應 profile；`start_date` / `exit_date` 直接寫入 `units` |
 
 #### Migration
 
 需要新增 Alembic migration：
-1. `staff_profiles` 新增 7 欄位
-2. `student_profiles` 新增 7 欄位
-3. 資料搬移：`INSERT INTO ... SELECT ... FROM units WHERE unit_type = 'staff'`（同理 student）
-4. `units` 移除 9 欄位（7 個人資料 + `enrollment_date` + `exit_date`）
+1. `staff_profiles` 新增 `gender`、`date_of_birth`
+2. `student_profiles` 新增 `gender`、`date_of_birth`
+3. 資料搬移：profile lifecycle 日期搬到 `units.start_date` / `units.exit_date`
+4. 移除 profile 舊日期欄位與 `units.gender` / `units.date_of_birth`
 
 ### 決定 #5 修正
 
@@ -736,39 +739,34 @@ class StaffStatus(str, enum.Enum):
 
 ## 個人資料欄位搬移狀態（2026-07-28 審計）
 
-> **重要**：上方「§ 欄位搬移至 profiles（2026-07-27 決定）」描述的是**計畫**，尚未執行 migration。
+> **更新**：migration `f8e65b7cf82b` 與 `033` 已完成欄位搬移與 schema 對齊。
 
 ### 實際 DB 狀態
 
 | 欄位 | 實際位置 | 計畫位置 | 狀態 |
 |------|---------|---------|------|
-| `gender` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
-| `date_of_birth` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
-| `phone` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
-| `address` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
-| `email` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
-| `emergency_contact_name` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
-| `emergency_contact_phone` | `units` | `staff_profiles` + `student_profiles` | ❌ 未搬移 |
-| `enrollment_date` | `units`（保留） | 原計畫刪除，改用 profile 日期 | ❌ 未刪除（仍在 units） |
-| `exit_date` | `units`（保留） | 原計畫刪除，改用 profile 日期 | ❌ 未刪除（仍在 units） |
+| `gender` | `staff_profiles` + `student_profiles` | `staff_profiles` + `student_profiles` | ✅ 已搬移 |
+| `date_of_birth` | `staff_profiles` + `student_profiles` | `staff_profiles` + `student_profiles` | ✅ 已搬移 |
+| `phone` | `units` | `units` | ✅ 保留共用欄位 |
+| `address` | `units` | `units` | ✅ 保留共用欄位 |
+| `email` | `units` | `units` | ✅ 保留共用欄位 |
+| `emergency_contact_name` | `units` | `units` | ✅ 保留共用欄位 |
+| `emergency_contact_phone` | `units` | `units` | ✅ 保留共用欄位 |
+| `start_date` | `units` | `units` | ✅ lifecycle 日期 |
+| `exit_date` | `units` | `units` | ✅ lifecycle 日期 |
 
 ### ORM 模型現況
 
 ORM 模型已與實際 DB 對齊：
-- `app/models/unit.py`：包含 `gender`、`date_of_birth`、`phone`、`address`、`email`、`emergency_contact_name`、`emergency_contact_phone`、`enrollment_date`、`exit_date`
-- `app/models/student_profile.py`：**不包含**個人資料欄位（與 DB 一致）
-- `app/models/staff_profile.py`：**不包含**個人資料欄位（與 DB 一致）
-- `app/schemas/unit.py`：`UnitCreate`/`UnitUpdate`/`UnitOut` 包含 `enrollment_date`、`exit_date`（但**不包含** `gender`/`date_of_birth` — 這些欄位存在於 DB 但未暴露於 API）
+- `app/models/unit.py`：包含 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`、`exit_date`
+- `app/models/student_profile.py`：包含 `gender`、`date_of_birth`、學校、班級、學號、guardians、academic notes
+- `app/models/staff_profile.py`：包含 `gender`、`date_of_birth`、員工資料與薪資率欄位
+- `app/schemas/unit.py`：`UnitCreate` / `UnitUpdate` / `UnitOut` 使用 `start_date`、`exit_date`
 
 ### 前端現況
 
-Web 前端（`units.vue`）已使用 `enrollment_date`/`exit_date` 欄位，與 API schema 一致。`gender`/`date_of_birth` 欄位目前無法透過 API 存取。
+Web 前端（`units.vue`）已使用 `start_date` / `exit_date` 作為 lifecycle 日期；`gender` / `date_of_birth` 依 `unit_type` 寫入 `student_profile` 或 `staff_profile`。
 
 ### 待辦
 
-需要新增 Alembic migration（如 033）執行搬移：
-1. `staff_profiles` 新增 7 個個人資料欄位
-2. `student_profiles` 新增 7 個個人資料欄位
-3. 資料搬移：`UPDATE staff_profiles SET ... FROM units WHERE ...`
-4. `units` 移除 9 欄位（7 個人資料 + `enrollment_date` + `exit_date`）
-5. 更新 ORM 模型、schemas、routers、前端
+目前 schema 已對齊；後續只需在新增 `device` / `goods` 類型前補 `unit_type` 白名單檢查。

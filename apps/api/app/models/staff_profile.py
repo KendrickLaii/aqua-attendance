@@ -18,6 +18,10 @@ class StaffProfile(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), primary_key=True)
 
+    # Personal information
+    gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     # Employment information
     employee_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     employment_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -35,8 +39,6 @@ class StaffProfile(Base):
 
     # Work information
     work_schedule: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    hire_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    termination_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     supervisor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id"), nullable=True)
 
     # Notes
