@@ -8,6 +8,7 @@ from app.models.unit import Unit
 from app.schemas.auth import QRPayload
 from app.services import attendance as att_svc
 from app.services.qr import issue_qr_token
+from app.services.unit import ensure_attendance_eligible
 
 router = APIRouter(prefix="/qr", tags=["qr"])
 
@@ -30,6 +31,7 @@ async def get_qr_token(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
         raise HTTPException(status_code=404, detail="Unit not found")
     if not unit.is_active:
         raise HTTPException(status_code=400, detail="Unit is inactive")
+    ensure_attendance_eligible(unit)
     return _build_payload(unit)
 
 
@@ -46,5 +48,6 @@ async def refresh_qr_token(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
         raise HTTPException(status_code=404, detail="Unit not found")
     if not unit.is_active:
         raise HTTPException(status_code=400, detail="Unit is inactive")
+    ensure_attendance_eligible(unit)
     unit = await att_svc.rotate_unit_qr(db, unit=unit)
     return _build_payload(unit)

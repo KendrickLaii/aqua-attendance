@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-07-28。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-03。
 
 ---
 
@@ -23,12 +23,15 @@
 
 ### 1.1 系統架構
 
-AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員與學生以 **Unit** 身份存在，透過 QR 碼簽到/簽退；**管理員**（`admin` / `superadmin`）透過 Web 與 Mobile App 登入管理資料並掃描 QR。
+AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與學生（或學員）以 **Unit** 身份存在（非登入帳號），透過簽名 QR 碼進出；**管理員**（`admin` / `superadmin`）透過 Web 與 Mobile App 管理據點、人員、掃描與薪資彙總。
+
+產品品牌與介面為通用「AQUA Attendance／AQUA 出席」。資料模型仍偏教育／培訓場景（學生學校、班級、監護人等欄位；種子資料亦有補習班風格示範），但**不限單一補習班**——已支援多據點（`locations`）、據點白名單掃描與員工薪資。多組織（multi-tenant）尚未實作。
+
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Units（教職員 / 學生）                                          │
-│  每人有一個簽名 QR（JWT）— 同一個 QR 反覆簽到/簽退                │
+│  Units（staff / student）+ Locations（多據點）                 │
+│  每人有一個簽名 QR（JWT）— 掃描時需指定 location_id              │
 └───────────────────────────────┬─────────────────────────────┘
                                 │ scan
                                 ▼
@@ -40,14 +43,16 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
                            │
                     ┌──────┴───────┐
                     │  PostgreSQL  │
+                    │  (+ Redis)   │
                     └──────────────┘
 ```
 
 | 概念 | 說明 |
 |------|------|
 | **User** (`users`) | 登入帳號：`admin` 或 `superadmin` |
-| **Unit** (`units`) | 可簽到的實體：`unit_type` = `staff`、`student`、`device`、`goods` |
-| **Profile** (`student_profiles` / `staff_profiles`) | 類型專屬資料：學生（學校、監護人）/ 員工（雇用類型、薪資） |
+| **Unit** (`units`) | 可簽到的實體。目前可建立／出勤：`staff`、`student`。`device`、`goods` 為 schema／未來擴充，API 與 UI **尚未開放建立**；出勤端點有 `unit_type` 白名單 |
+| **Location** (`locations`) | 據點／分校；掃描必須帶 `location_id`，且 Unit 須在該據點的允許名單內 |
+| **Profile** (`student_profiles` / `staff_profiles`) | 類型專屬資料：學生（學校、監護人）／員工（雇用類型、薪資） |
 | **Attendance event** | `check_in`、`check_out`、`manual_correction` 或 `auto_checkout` |
 | **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 [attendance-summaries.md](attendance-summaries.md) |
 | **Payroll record** | 薪資計算結果快照（`payroll_records`） |
@@ -57,10 +62,10 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 
 | 路徑 | 說明 |
 |------|------|
-| `apps/api/` | FastAPI — 認證、Unit、Profile、QR 簽名、Attendance、薪資、稽核 |
+| `apps/api/` | FastAPI — 認證、Unit、Location、Profile、QR 簽名、Attendance、薪資、稽核 |
 | `apps/web/` | Vue 3 管理後台 (`src/pages/attendance/`)，基於 AQUA 模板 |
 | `apps/mobile/` | Expo App — QR 掃描器 + 歷史紀錄 |
-| `docker-compose.yml` | 開發：PostgreSQL + API |
+| `docker-compose.yml` | 開發：PostgreSQL + Redis + API |
 | `deploy/` | 生產：Caddy + web + api + db |
 | `docs/` | 本手冊、後端審查、資料庫設計、運維指南 |
 
@@ -69,17 +74,17 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 1. 管理員呼叫 `GET /api/qr/token/{unit_id}` → 取得簽名 JWT
 2. Payload：`{ sub: unit_id, ver: qr_token_version, jti, iat, type: "qr" }`
 3. 以 `QR_SECRET` 簽名（與 `SECRET_KEY` 分離）
-4. **無到期日** — 同一個 QR 印在識別證/鎖定畫面；每次掃描切換簽到/簽退
-5. 掃描器將 token POST 到 `/api/attendance/scan`
-6. 伺服器驗證簽名與 `ver` 是否匹配；版本過期 → "rotated"
+4. **無到期日** — 同一個 QR 印在識別證/鎖定畫面；掃描時記錄簽到或簽退
+5. 掃描器將 token 與 **`location_id`** POST 到 `/api/attendance/scan`（可選先呼叫 `/api/attendance/scan/preview`）
+6. 伺服器驗證簽名、`ver`，以及該 Unit 是否允許在此據點掃描；版本過期 → "rotated"
 
 **輪替**：`POST /api/qr/token/{unit_id}/refresh` 會增加 `qr_token_version`，使舊 QR 失效。
 
 ### 1.4 簽到/簽退切換邏輯
 
-- `attendance_status`：`checked_out` → 掃描 → `check_in`；`checked_in` → 掃描 → `check_out`
+- 請求可帶明確的 `event_type`（`check_in` / `check_out`）；未帶時依 `attendance_status` 自動切換：`checked_out` → `check_in`；`checked_in` → `check_out`
 - 若最後一次 event 在**前一日（Asia/Hong_Kong）**，下一次掃描一律從 `check_in` 開始（處理跨夜）
-- 管理員可透過 `POST /api/attendance/manual` 手動校正
+- 管理員可透過 `POST /api/attendance/manual` 手動校正；亦可 `POST /api/attendance/{id}/void` 作廢事件
 
 ### 1.5 防重複掃描（Debounce）
 
@@ -96,10 +101,13 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 | `POST /api/users` | Admin |
 | `DELETE /api/users/:id` | **Superadmin** |
 | `GET/POST/PATCH/DELETE /api/units` | Admin |
+| `GET/POST/PATCH/DELETE /api/locations` | Admin |
 | `GET/POST /api/qr/token/...` | Admin |
 | `POST /api/attendance/scan` | Admin |
+| `POST /api/attendance/scan/preview` | Admin |
 | `GET /api/attendance` | Admin |
 | `POST /api/attendance/manual` | Admin |
+| `POST /api/attendance/{id}/void` | Admin |
 | `GET /api/attendance/export/csv` | Admin |
 | `GET /api/attendance/stats` | Admin |
 | `GET /api/attendance-summaries` | Admin |
@@ -148,7 +156,8 @@ AQUA 是一款為補習班（juku）設計的時間與出勤系統。教職員�
 |------|------|
 | 預設帳號 | 使用者名稱與密碼見 `apps/api/seed.py`（**勿寫入公開文件**） |
 | 角色 | `admin`、`superadmin` |
-| 示範人員 | 例如 `STAFF-001`（staff）、`STU-001`（student） |
+| 示範據點 | 例如香港分校（`HK-CWB`、`HK-MK` 等，以 `seed.py` 為準） |
+| 示範人員 | 例如 `STAFF-001`（staff）、`STU-001`（student）；另含彙總／薪資測試資料 |
 
 **生產環境務必在 seed 後立即修改所有預設密碼；公開文件請勿列出實際密碼。**
 
@@ -609,7 +618,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-07-28 更新**：完成 product → unit 重構審計（後端、web、mobile、docs 均已對齊）。#M20 個人資料欄位搬移已完成；#M21 legacy constraint/index 名稱仍待清理。  
+> **2026-08-03 更新**：修正產品定位（非僅補習班；多據點已上線）並同步 §1 概述。後端／web／mobile 已完成 product → unit；部分周邊 README 若仍寫 `products` 以程式碼為準。  
+> **2026-07-28 更新**：完成 product → unit 重構審計。#M20 個人資料欄位搬移已完成；#M21 legacy constraint/index 名稱仍待清理。  
 > **2026-07-21 更新**：後端架構審查發現 **午休未扣除** 為新的 High 缺口（直接影響薪資），並新增 Summaries/Payroll 相依、Generate 競態、`attendance_status` 一致性等 Medium 問題 — 見 [known-gaps.md](known-gaps.md) #H6、#M15–#M18。  
 > **2026-07-17 更新**：釐清 **auto checkout 非完整自動版**（有手動 Day-end + Generate 回填，**無** 23:59 cron／無 00:00 status 重置）— 見 [known-gaps.md](known-gaps.md) #M14。  
 > **2026-07-10 更新**：Summaries / Payroll 重構完成（主從式 UI、overview 聚合、Generate upsert、薪資率計算、seed bulk 測試資料）— 見 [attendance-summaries.md](attendance-summaries.md)。多項 Medium/Low 問題已修復。  
@@ -640,7 +650,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 10. Refresh token 改 HttpOnly cookie ⬜
 11. 前端區分 admin/superadmin ⬜
 12. QR 錯誤訊息、密碼長度、mobile EAS build/release automation ⬜
-13. 出勤端點 `unit_type` 白名單檢查 ⬜ — 見 [known-gaps.md](known-gaps.md) #M19（新增 device/goods 時必須補齊）
+13. 出勤端點 `unit_type` 白名單檢查 ✅ — 見 [known-gaps.md](known-gaps.md) #M19
 
 **設計取捨（已知且接受）**
 - QR token 無過期（靠 `qr_token_version` 手動輪替）
@@ -1494,4 +1504,4 @@ erDiagram
 
 > **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–033）見 `apps/api/alembic/versions/`。
 >
-> **2026-07-28 更新**：ER 圖已與 [database-changes.md](database-changes.md) § 完整 ER 圖同步。`units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`/`exit_date`；`student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`。出勤邏輯保留在 `units`（supertype），未來新增 `device`/`goods` 時需加 `unit_type` 白名單檢查 — 詳見 [database-changes.md](database-changes.md) § 出勤邏輯架構決定、[known-gaps.md](known-gaps.md) #M19。
+> **2026-08-03 更新**：ER 圖已與 [database-changes.md](database-changes.md) § 完整 ER 圖同步。`units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`/`exit_date`；`student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`。出勤邏輯保留在 `units`（supertype）；`unit_type` 白名單（#M19）已實作——目前僅 `staff`／`student` 可出勤，`device`／`goods` 仍為未來擴充。

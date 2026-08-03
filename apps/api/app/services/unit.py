@@ -6,7 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.location import Location
-from app.models.unit import Unit
+from app.models.unit import ATTENDANCE_ELIGIBLE_TYPES, Unit
+
+
+def ensure_attendance_eligible(unit: Unit) -> None:
+    """Reject units whose type cannot participate in attendance / QR flow."""
+    if unit.unit_type not in ATTENDANCE_ELIGIBLE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unit type '{unit.unit_type}' does not support attendance",
+        )
 
 
 async def fetch_active_locations(

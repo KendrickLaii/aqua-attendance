@@ -27,7 +27,7 @@ from app.routers import (
 app = FastAPI(
     title="AQUA Attendance API",
     version="2.0.0",
-    description="Time & Attendance system for cram school (juku) — unit-based tracking",
+    description="Multi-location QR time & attendance — unit-based tracking for staff and students",
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

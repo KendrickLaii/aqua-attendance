@@ -50,8 +50,10 @@ npm run dev
 |------|------|
 | `/attendance/login` | 登入 |
 | `/attendance/dashboard` | 儀表板 |
-| `/attendance/products` | Product CRUD |
+| `/attendance/units` | Unit CRUD |
+| `/attendance/locations` | 據點／分校 CRUD |
 | `/attendance/qr-codes` | QR 取得 / 輪替 / 預覽 |
+| `/attendance/scanner` | Web 掃描（token + location） |
 | `/attendance/log` | 事件紀錄、手動校正、CSV 匯出 |
 | `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) |
 | `/attendance/payroll` | 月度薪資（總覽 → 每日彙總明細、審核、Generate）— 見 [ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) |

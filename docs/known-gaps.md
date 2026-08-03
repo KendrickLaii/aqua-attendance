@@ -170,17 +170,18 @@
 - **問題**：scan 的 check_in/check_out 推斷依賴 `units.attendance_status`。void、manual correction、隔夜未簽退後，此欄位可能與實際 events 不一致（雖有 `recompute_unit_attendance_status` 但不是所有路徑都會觸發）。
 - **建議**：確保所有寫入/作廢 events 的路徑都呼叫 recompute，或改用「查最近一筆非作廢 event」來決定下一個動作。
 
-### #M19 出勤端點無 `unit_type` 白名單檢查
+### #M19 出勤端點無 `unit_type` 白名單檢查 ✅ 已修
 
-> **2026-07-27 新增** — 目前無實際風險（schema 層已限制），但未來新增 `device`/`goods` 類型時必須補齊。
+> **2026-08-03 已完成** — 已在掃碼／手動補登／QR 發放路徑加入 `ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}` defense-in-depth 檢查。
 
 - **位置**：
-  - `apps/api/app/routers/attendance.py:_resolve_unit_for_scan`（掃碼）
-  - `apps/api/app/routers/attendance.py:create_manual_correction`（手動補登）
-  - `apps/api/app/routers/qr.py:get_qr_token` / `refresh_qr_token`（QR 發放）
-- **問題**：出勤相關端點只檢查 `is_active`，不檢查 `unit_type`。目前 `UnitCreate.unit_type` 使用 `Literal["staff", "student"]`（`app/schemas/unit.py:24`），API 無法建立 device/goods 類型，所以無實際風險。但一旦放寬 `Literal` 限制新增 device/goods 類型，這些端點會允許 device/goods 掃碼出勤和發放 QR。
-- **現有保護層**：`UnitCreate` / `UnitUpdate` 的 `Literal["staff", "student"]` 限制（schema 驗證層）
-- **建議**：在上述三處加 `_ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}` 白名單檢查（defense-in-depth）。成本低，一行代碼。應在新增 device/goods 類型時同步補齊。
+  - `apps/api/app/models/unit.py`：`ATTENDANCE_ELIGIBLE_TYPES`
+  - `apps/api/app/services/unit.py`：`ensure_attendance_eligible`
+  - `apps/api/app/routers/attendance.py:_resolve_unit_for_scan`、`create_manual_correction`
+  - `apps/api/app/routers/qr.py:get_qr_token` / `refresh_qr_token`
+- **行為**：非 `staff`/`student` 的 unit 回傳 `400 Unit type '...' does not support attendance`
+- **測試**：`tests/test_unit_type_whitelist.py`
+- **備註**：schema 層 `Literal["staff", "student"]` 仍是第一道防線；未來若放寬建立 device/goods，只需維持／擴充此白名單。
 
 ### #M20 個人資料欄位搬移至 profiles 已完成
 

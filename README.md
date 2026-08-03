@@ -1,13 +1,15 @@
 # AQUA Time & Attendance System
 
-Check-in / check-out for a cram school (juku). **Staff and students are not login accounts** — they are **products** with a printed or on-screen QR code. **Admins** (and **superadmins**) log into the web app and mobile app to manage data and scan QRs.
+Multi-location QR check-in / check-out. **Staff and students are not login accounts** — they are **units** with a printed or on-screen QR code. **Admins** (and **superadmins**) log into the web app and mobile app to manage locations, people, scans, summaries, and payroll.
+
+Branding is generic (“AQUA Attendance”). The data model still fits education / training sites (student school fields, guardians; seed data has tutoring-style samples), but the product is **not limited to a single cram school (juku)** — multi-branch `locations` and staff payroll are supported. Multi-organization (multi-tenant) is not implemented yet.
 
 ## How it works
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Products (staff / students)                                     │
-│  Each has a signed QR (JWT) — same code for every check-in/out   │
+│  Units (staff / students) + Locations (branches)                  │
+│  Each unit has a signed QR (JWT); scans require a location_id     │
 └───────────────────────────────┬─────────────────────────────────┘
                                 │ scan
                                 ▼
@@ -19,24 +21,26 @@ Check-in / check-out for a cram school (juku). **Staff and students are not logi
                            │
                     ┌──────┴───────┐
                     │  PostgreSQL  │
+                    │  (+ Redis)   │
                     └──────────────┘
 ```
 
 | Concept | Description |
 |---------|-------------|
 | **User** (`users` table) | Someone who logs in: `admin` or `superadmin` only |
-| **Product** (`products` table) | Person or entity that checks in: `product_type` = `staff`, `student`, `device`, or `goods` |
+| **Unit** (`units` table) | Person that checks in. Creatable / attendance-eligible today: `staff`, `student`. `device` / `goods` are reserved for future use |
+| **Location** (`locations`) | Branch / site; scans require `location_id` and unit whitelist |
 | **Profile** (`student_profiles` / `staff_profiles`) | Type-specific data: student (school, guardians) / staff (employment, pay) |
-| **Attendance event** | A `check_in`, `check_out`, `manual_correction`, or `auto_checkout` row for a product |
+| **Attendance event** | A `check_in`, `check_out`, `manual_correction`, or `auto_checkout` row for a unit |
 
 ## Repository layout
 
 | Path | Description |
 |------|-------------|
-| `apps/api/` | FastAPI — auth, products, QR signing, attendance |
+| `apps/api/` | FastAPI — auth, units, locations, QR signing, attendance |
 | `apps/web/` | Vue 3 admin UI (`src/pages/attendance/`) on AQUA template |
 | `apps/mobile/` | Expo app — QR scanner + history (see mobile README for entry-point note) |
-| `docker-compose.yml` | Dev: PostgreSQL + API |
+| `docker-compose.yml` | Dev: PostgreSQL + Redis + API |
 | `deploy/` | Production: Caddy + web + api + db (see `docs/PROJECT-HANDBOOK.md`) |
 | `docs/` | Unified handbook, deploy guide, ops manual, CI/CD explainer |
 
@@ -64,12 +68,12 @@ Closing terminals 2–3 stops API/web only. The DB container keeps running until
 | Task | When |
 |------|------|
 | `alembic upgrade head` | After pulling new migrations |
-| `python seed.py` | Optional — (re)load sample users/products |
+| `python seed.py` | Optional — (re)load sample users/units/locations |
 | `npm install` / `pip install -r requirements.txt` | After pulling dependency changes |
 
 **URLs:** API http://localhost:8000/docs · Web http://localhost:5173/attendance/login (Vite may use 5174+ if 5173 is busy)
 
-**Alternative — API in Docker too:** from repo root, `docker compose up -d` (runs db + api; migrations on container start). You still run `npm run dev` separately for the web app.
+**Alternative — API in Docker too:** from repo root, `docker compose up -d` (runs db + redis + api; migrations on container start). You still run `npm run dev` separately for the web app.
 
 **Inspect the DB (DBeaver, etc.):** only terminal 1 is needed — connect to `127.0.0.1:5432`, database/user/password `attendance` / `attendance` (defaults from `docker-compose.yml`).
 
@@ -124,7 +128,7 @@ After `python seed.py`:
 
 預設帳號與密碼見 `apps/api/seed.py`（執行 `python seed.py` 後）。角色包含 `admin`、`superadmin`。**勿將預設密碼寫入公開文件；生產環境請立即修改。**
 
-### Sample products (QR issued from web)
+### Sample units (QR issued from web)
 
 | Code | Name | Type |
 |------|------|------|
@@ -133,8 +137,10 @@ After `python seed.py`:
 | STU-001 | Suzuki Taro | student |
 | STU-002 | Yamada Hanako | student |
 
-**Get a QR:** log in as `admin` → **QR Codes** or **Product Management** → fetch token → print or display.  
-**Scan:** mobile **Scan** tab or web **Scanner** (paste token) while logged in as admin/superadmin.
+Seed also creates sample **locations** (e.g. HK branches) plus attendance summary / payroll test data.
+
+**Get a QR:** log in as `admin` → **QR Codes** or **Unit Management** → fetch token → print or display.  
+**Scan:** mobile **Scan** tab or web **Scanner** (paste token) while logged in as admin/superadmin — a location must be selected.
 
 Change all seed passwords before any shared or production use.
 
@@ -148,13 +154,14 @@ Change all seed passwords before any shared or production use.
 | `DATABASE_URL_SYNC` | `postgresql+psycopg://...` | Sync URL for Alembic |
 | `SECRET_KEY` | (required in prod) | JWT auth signing |
 | `QR_SECRET` | (required in prod) | QR token signing (separate from auth) |
-| `SCAN_DEBOUNCE_SECONDS` | `3` | Same product: duplicate scan within window returns existing event |
+| `SCAN_DEBOUNCE_SECONDS` | `3` | Same unit: duplicate scan within window returns existing event |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token TTL |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `CORS_ORIGINS` | localhost dev URLs | Comma-separated allowed origins |
 | `ENV` | `development` | `production` enforces key length validation; `development` enables SQL echo |
 | `LOGIN_RATE_LIMIT` | `5/minute` | Per-IP login attempts |
 | `SCAN_RATE_LIMIT` | `30/minute` | Per-IP QR scan attempts |
+| `REDIS_URL` | `redis://redis:6379/0` | Shared rate-limit store (multi-replica) |
 
 ### Web (`apps/web/.env`)
 
@@ -174,9 +181,10 @@ See [deploy/.env.example](deploy/.env.example) and [docs/PROJECT-HANDBOOK.md](do
 
 ## Security design (summary)
 
-- **QR tokens** are signed JWTs with `QR_SECRET` (not `SECRET_KEY`), no expiry, versioned via `qr_token_version`. Scanning toggles `check_in` / `check_out`.
+- **QR tokens** are signed JWTs with `QR_SECRET` (not `SECRET_KEY`), no expiry, versioned via `qr_token_version`. Scans record `check_in` / `check_out` (explicit `event_type` or toggle).
+- **Locations**: scan requires `location_id`; unit must be allowed at that location.
 - **Debounce**: duplicate scans within `SCAN_DEBOUNCE_SECONDS` return the existing event.
-- **Roles**: `admin` or `superadmin`. All product/attendance endpoints require admin; only `DELETE /api/users/:id` requires superadmin.
+- **Roles**: `admin` or `superadmin`. Unit/attendance endpoints require admin; only `DELETE /api/users/:id` requires superadmin.
 
 Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 
@@ -186,10 +194,11 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 |-------|--------|------|
 | Auth | `/api/auth/login`, `/refresh`, `/me` | None / Bearer |
 | Users | `/api/users` (CRUD) | Admin; `DELETE` = Superadmin |
-| Products | `/api/products` (CRUD) | Admin |
+| Units | `/api/units` (CRUD) | Admin |
+| Locations | `/api/locations` (CRUD) | Admin |
 | Profiles | `/api/student-profiles/:id`, `/staff-profiles/:id` | Admin |
-| QR | `/api/qr/token/:product_id` (get, refresh) | Admin |
-| Attendance | `/api/attendance/scan`, `/manual`, `/export/csv`, `/void` | Admin |
+| QR | `/api/qr/token/:unit_id` (get, refresh) | Admin |
+| Attendance | `/api/attendance/scan`, `/scan/preview`, `/manual`, `/export/csv`, `/{id}/void` | Admin |
 | Summaries | `/api/attendance-summaries` (list, overview, `POST /generate`) | Admin |
 | Payroll | `/api/payroll-records` (CRUD, `POST /generate`, confirm) | Admin |
 | Notifications | `/api/notifications` (CRUD, mark read) | Admin |
@@ -206,8 +215,10 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/login` | Public | Login |
 | `/attendance` | Public | Redirect to dashboard or login |
 | `/attendance/dashboard` | Logged in | Today's stats |
-| `/attendance/products` | Admin | Product CRUD |
+| `/attendance/units` | Admin | Unit CRUD |
+| `/attendance/locations` | Admin | Location / branch CRUD |
 | `/attendance/qr-codes` | Logged in | Browse/fetch/rotate QRs |
+| `/attendance/scanner` | Logged in | Web scanner (token + location) |
 | `/attendance/log` | Logged in | Event log, manual correction, CSV export |
 | `/attendance/summaries` | Admin | Monthly attendance summaries (overview → detail, Generate) |
 | `/attendance/payroll` | Admin | Payroll records, approve, generate from summaries |
@@ -215,7 +226,7 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/audit-logs` | Superadmin | Audit log query |
 | `/attendance/users` | Admin (CASL) | User CRUD |
 
-Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos (not used in production nav).
+Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos / legacy tax UI (not used in production nav).
 
 ## Tests
 
@@ -253,14 +264,14 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 
 - [ ] Password reset / email verification
 - [ ] Push notifications
-- [ ] Multi-location / multi-organization
+- [ ] Multi-organization (multi-tenant) — **multi-location is done**
 - [ ] Offline mode
 - [ ] Biometric auth on mobile
 - [ ] Advanced analytics
 - [ ] Class scheduling integration
 - [ ] Parent portal
 - [ ] Geofencing
-- [ ] Bulk CSV import for products
+- [ ] Bulk CSV import for units
 - [ ] E2E tests (Playwright / Detox)
 - [ ] Mobile CI and EAS build docs
 - [ ] WebSocket live feed
@@ -275,5 +286,6 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 - [x] Disable public registration (use User Management)
 - [x] Scan and attendance list restricted to admin/superadmin
 - [x] CSV export auth on web (Bearer blob download)
+- [x] Multi-location (branches, scan whitelist, location required on scan)
 - [ ] Fix mobile Expo entry point
 - [ ] HttpOnly session cookies

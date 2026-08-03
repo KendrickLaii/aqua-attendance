@@ -30,6 +30,7 @@ from app.schemas.attendance import (
 from app.services import attendance as att_svc
 from app.services import audit_log as audit_svc
 from app.services.qr import verify_qr_token
+from app.services.unit import ensure_attendance_eligible
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -133,6 +134,7 @@ async def _resolve_unit_for_scan(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
     if not unit.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unit is inactive")
+    ensure_attendance_eligible(unit)
 
     if payload.get("ver") != unit.qr_token_version:
         raise HTTPException(
@@ -261,6 +263,7 @@ async def create_manual_correction(
     unit = result.scalar_one_or_none()
     if not unit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+    ensure_attendance_eligible(unit)
     location_id, location_name = await _resolve_location(db, body.location_id, body.location)
 
     event = await att_svc.manual_correction(

@@ -631,24 +631,22 @@ ot_hours      = ot_slots * 0.25
 
 `UnitCreate.unit_type` 使用 `Literal["staff", "student"]`（`app/schemas/unit.py:24`），目前透過 API 無法建立 device/goods 類型。白名單事實上已存在於 schema 驗證層。
 
-#### 4. 只需一行檢查即可防護未來
+#### 4. 白名單檢查已補上（defense-in-depth）
 
-在 `_resolve_unit_for_scan`（`app/routers/attendance.py:134`）加 `unit_type` 白名單：
+共用常數與 helper：
 
 ```python
-_ATTENDANCE_ELIGIBLE_TYPES = {"staff", "student"}
+# app/models/unit.py
+ATTENDANCE_ELIGIBLE_TYPES = frozenset({"staff", "student"})
 
-if unit.unit_type not in _ATTENDANCE_ELIGIBLE_TYPES:
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Unit type '{unit.unit_type}' does not support attendance",
-    )
+# app/services/unit.py
+ensure_attendance_eligible(unit)  # raises 400 when type not eligible
 ```
 
-同時需要在以下端點加白名單：
-- `_resolve_unit_for_scan`（掃碼）
-- `create_manual_correction`（手動補登，`app/routers/attendance.py:257`）
-- QR token 發放端點（`app/routers/qr.py:31`）
+已接線端點：
+- `_resolve_unit_for_scan`（掃碼／preview）
+- `create_manual_correction`（手動補登）
+- `get_qr_token` / `refresh_qr_token`（QR 發放）
 
 ### 保留在 units 的出勤欄位
 
@@ -664,7 +662,7 @@ if unit.unit_type not in _ATTENDANCE_ELIGIBLE_TYPES:
 
 ### 未來擴充
 
-如果未來新增需要出勤的 unit_type（例如 `contractor`），只需加進 `_ATTENDANCE_ELIGIBLE_TYPES` 即可。如果用搬移方案，就需要新建 `contractor_profiles` 表 + 修改所有出勤 FK。
+如果未來新增需要出勤的 unit_type（例如 `contractor`），只需加進 `ATTENDANCE_ELIGIBLE_TYPES` 即可。如果用搬移方案，就需要新建 `contractor_profiles` 表 + 修改所有出勤 FK。
 
 ---
 
@@ -769,4 +767,4 @@ Web 前端（`units.vue`）已使用 `start_date` / `exit_date` 作為 lifecycle
 
 ### 待辦
 
-目前 schema 已對齊；後續只需在新增 `device` / `goods` 類型前補 `unit_type` 白名單檢查。
+目前 schema 已對齊；`unit_type` 白名單檢查已補上。未來新增 `device` / `goods` 時，維持 `ATTENDANCE_ELIGIBLE_TYPES` 不含這些類型即可。

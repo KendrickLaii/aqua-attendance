@@ -1,6 +1,6 @@
 # AQUA Attendance — API
 
-FastAPI 後端：登入使用者、Product（教職員/學生）、Profile（staff_profiles / student_profiles）、簽名 QR token、出勤事件、場地管理、通知、薪資、稽核。
+FastAPI 後端：登入使用者、Unit（教職員/學生）、Profile（staff_profiles / student_profiles）、簽名 QR token、出勤事件、據點（locations）、通知、薪資、稽核。
 
 ## 日常開發
 
@@ -12,8 +12,8 @@ FastAPI 後端：登入使用者、Product（教職員/學生）、Profile（sta
 | 啟動 API | `python -m uvicorn app.main:app --reload`（從 `apps/api`）| 每次開發 |
 | 啟動 API（手機連線）| `python -m uvicorn app.main:app --reload --host 0.0.0.0` | Expo Go 使用 LAN IP 時 |
 | 跑 migration | `python -m alembic upgrade head` | 拉取新 migration 後 |
-| 種子資料 | `python seed.py` | 選用 — 範例 users / products / profiles；完整 seed 含 **彙總測試資料** |
-| 僅彙總 seed | `python seed.py --summaries` | 選用 — 2026-05 固定 + 2026-06/07 bulk（需已有 products） |
+| 種子資料 | `python seed.py` | 選用 — 範例 users / units / profiles；完整 seed 含 **彙總測試資料** |
+| 僅彙總 seed | `python seed.py --summaries` | 選用 — 2026-05 固定 + 2026-06/07 bulk（需已有 units） |
 
 API 預設連線到 `localhost:5432`（`config.py` / `.env.example`）。DBeaver 使用相同 host/port/credentials — 只需 DB container 運行即可。
 
@@ -40,16 +40,16 @@ python -m uvicorn app.main:app --reload
 ## 種子資料
 
 ```bash
-python seed.py              # users + locations + products + profiles + summaries
+python seed.py              # users + locations + units + profiles + summaries
 python seed.py --users-only # 僅 users
-python seed.py --summaries  # 僅 attendance_summaries（需已有 products）
+python seed.py --summaries  # 僅 attendance_summaries（需已有 units）
 ```
 
 產生：
 
 - Users：帳密見 `seed.py`（角色 `admin`、`superadmin`）。**勿將預設密碼寫入公開文件；生產環境請立即修改。**
 - Locations：`HK-CWB` / `HK-MK`（結構化 `business_hours`，平日 09:00–18:00，供 OT 判斷）
-- Products + Profiles：
+- Units + Profiles：
   - Staff 含薪資欄位 `pay_type` / `hourly_rate` / `monthly_salary` / `ot_multiplier`（供 Payroll Generate）
     - full_time（如 `STAFF-001`）：`monthly` + 時薪（供 OT）
     - part_time（如 `STAFF-002`）：`hourly`
@@ -69,19 +69,19 @@ app/
   config.py         # 從 .env 載入設定
   database.py       # Async SQLAlchemy engine
   deps.py           # get_db、CurrentUser、AdminOnly、SuperAdminOnly
-  models/           # User、Product、StaffProfile、StudentProfile、AttendanceEvent、
+  models/           # User、Unit、StaffProfile、StudentProfile、AttendanceEvent、
                     # Location、RefreshToken、Notification、AttendanceSummary、
                     # PayrollRecord、AuditLog
   schemas/          # Pydantic request/response models
-  routers/          # auth、users、products、locations、qr、attendance、
+  routers/          # auth、users、units、locations、qr、attendance、
                     # student-profiles、staff-profiles、notifications、
                     # attendance-summaries、payroll-records、audit-logs、auto-checkout
-  services/         # auth、qr、attendance、product、overtime、auto_checkout、
+  services/         # auth、qr、attendance、unit、overtime、auto_checkout、
                     # summary_generator、payroll_generator
   utils/            # 搜尋輔助（safe ILIKE）
 alembic/            # Migrations（使用 DATABASE_URL_SYNC）
 tests/              # pytest（SQLite in-memory）
-seed.py             # 預設 users + products
+seed.py             # 預設 users + units + locations
 ```
 
 ## Migrations

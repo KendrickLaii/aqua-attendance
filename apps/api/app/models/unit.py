@@ -35,6 +35,11 @@ class UnitStatus(str, enum.Enum):
     suspended = "suspended"
 
 
+# Types that may receive QR tokens and create attendance events.
+# device/goods (future) must stay out of this set.
+ATTENDANCE_ELIGIBLE_TYPES = frozenset({"staff", "student"})
+
+
 class Unit(Base):
     """A managed entity (staff member, student, etc.) that can check in/out."""
 
