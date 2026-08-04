@@ -30,6 +30,11 @@ export default [
     to: 'attendance-payroll',
   },
   {
+    title: 'Courses',
+    icon: { icon: 'ri-book-open-line' },
+    to: 'attendance-courses',
+  },
+  {
     title: 'Notifications',
     icon: { icon: 'ri-notification-3-line' },
     to: 'attendance-notifications',

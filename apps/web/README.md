@@ -30,14 +30,14 @@ npm install
 npm run dev
 ```
 
-開啟：http://localhost:5173/attendance/login
+開啟：<http://localhost:5173/attendance/login>
 
 預設登入帳密見 `apps/api/seed.py`（API 執行 `python seed.py` 後）。**勿將預設密碼寫入公開文件。**
 
 ## 環境變數
 
 | 變數 | 必填 | 說明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `VITE_ATTENDANCE_API_URL` | 使用真實 API 時必填 | 例如 `http://localhost:8000/api` |
 
 選用的模板變數（`VITE_MAPBOX_ACCESS_TOKEN` 等）與 attendance 頁面無關。
@@ -47,7 +47,7 @@ npm run dev
 ## Attendance 頁面
 
 | 路由 | 用途 |
-|------|------|
+| ------ | ------ |
 | `/attendance/login` | 登入 |
 | `/attendance/dashboard` | 儀表板 |
 | `/attendance/units` | Unit CRUD |
@@ -60,13 +60,14 @@ npm run dev
 | `/attendance/notifications` | 通知中心 |
 | `/attendance/audit-logs` | 稽核查詢（superadmin） |
 | `/attendance/users` | User CRUD（admin） |
+| `/attendance/courses` | 課程管理（SPU/SKU + 學生報名） |
 
 導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。
 
 ## API 客戶端
 
 - `src/utils/attendanceApi.ts` — `ofetch`，Bearer token，401 自動 refresh
-- `src/api/attendance/` — 型別化的 endpoint
+- `src/api/attendance/` — 型別化的 endpoint（`courses.ts` 為新課程 API）
 - `src/stores/useAttendanceAuthStore.ts` — session + cookie
 
 Token 儲存在 cookie（`attendanceAccessToken`）。相關注意事項請見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md)。

@@ -1,12 +1,13 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-04（全專案逐項複核 + §9.3 文件評分卡重新評分）。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-04（新增 §1.9 課程資料模型、§10 ER 圖納入 course_spus / course_skus / course_enrollments，並修正全篇表格分隔線 MD060 格式）。
 
 ---
 
 ## 目錄
 
 1. [專案概述](#1-專案概述)
+   - [1.9 課程資料模型](#19-課程資料模型)
 2. [本地開發與快速開始](#2-本地開發與快速開始)
 3. [生產部署](#3-生產部署)
 4. [CI/CD 說明](#4-cicd-說明)
@@ -28,7 +29,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 產品品牌與介面為通用「AQUA Attendance／AQUA 出席」。資料模型仍偏教育／培訓場景（學生學校、班級、監護人等欄位；種子資料亦有補習班風格示範），但**不限單一補習班**——已支援多據點（`locations`）、據點白名單掃描與員工薪資。多組織（multi-tenant）尚未實作。
 
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │  Units（staff / student）+ Locations（多據點）                 │
 │  每人有一個簽名 QR（JWT）— 掃描時需指定 location_id              │
@@ -48,7 +49,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 ```
 
 | 概念 | 說明 |
-|------|------|
+| ------ | ------ |
 | **User** (`users`) | 登入帳號：`admin` 或 `superadmin` |
 | **Unit** (`units`) | 可簽到的實體。目前可建立／出勤：`staff`、`student`。`device`、`goods` 為 schema／未來擴充，API 與 UI **尚未開放建立**；出勤端點有 `unit_type` 白名單 |
 | **Location** (`locations`) | 據點／分校；掃描必須帶 `location_id`，且 Unit 須在該據點的允許名單內 |
@@ -57,12 +58,15 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 [attendance-summaries.md](attendance-summaries.md) |
 | **Payroll record** | 薪資計算結果快照（`payroll_records`） |
 | **Audit log** | 資料異動稽核記錄（`audit_logs`） |
+| **Course SPU** | 課程科目（`course_spus`）。課程家族的「概念層」，例如「小學數學」 |
+| **Course SKU** | 可報名的具體開班／場次（`course_skus`），隸屬於一個 SPU，例如「小學數學 P3 週二班」 |
+| **Course enrollment** | 學生 unit 與 SKU 的報名記錄（`course_enrollments`）；同一學生同一 SKU 僅能一筆 |
 
 ### 1.2 倉庫結構
 
 | 路徑 | 說明 |
-|------|------|
-| `apps/api/` | FastAPI — 認證、Unit、Location、Profile、QR 簽名、Attendance、薪資、稽核 |
+| ------ | ------ |
+| `apps/api/` | FastAPI — 認證、Unit、Location、Profile、QR 簽名、Attendance、薪資、稽核、課程資料 |
 | `apps/web/` | Vue 3 管理後台 (`src/pages/attendance/`)，基於 AQUA 模板 |
 | `apps/mobile/` | Expo App — QR 掃描器 + 歷史紀錄 |
 | `docker-compose.yml` | 開發：PostgreSQL + Redis + API |
@@ -93,7 +97,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 ### 1.6 API 授權
 
 | Endpoint | 所需權限 |
-|----------|----------|
+| ---------- | ---------- |
 | `POST /api/auth/register` | 無（一律 **403** — 使用 User Management） |
 | `POST /api/auth/login`, `/refresh` | 無 |
 | `GET /api/auth/me` | Bearer |
@@ -121,6 +125,9 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `GET /api/auto-checkout/status` | Admin |
 | `GET/POST/PATCH /api/staff-profiles` | Admin |
 | `GET/POST/PATCH /api/student-profiles` | Admin |
+| `GET/POST/PATCH/DELETE /api/course-spus` | Admin |
+| `GET/POST/PATCH/DELETE /api/course-skus` | Admin |
+| `GET/POST/PATCH/DELETE /api/course-enrollments` | Admin |
 | `GET /api/health` | 無 |
 
 ### 1.7 環境變數
@@ -128,7 +135,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 **API** (`apps/api/.env`)
 
 | 變數 | 預設 | 說明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `DATABASE_URL` | `postgresql+asyncpg://...` | Async 連線 |
 | `DATABASE_URL_SYNC` | `postgresql+psycopg://...` | Alembic 同步連線 |
 | `SECRET_KEY` | （生產必填） | JWT 簽名 |
@@ -153,13 +160,40 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 執行 `python seed.py` 後會建立預設帳號與示範人員。
 
 | 欄位 | 說明 |
-|------|------|
+| ------ | ------ |
 | 預設帳號 | 使用者名稱與密碼見 `apps/api/seed.py`（**勿寫入公開文件**） |
 | 角色 | `admin`、`superadmin` |
 | 示範據點 | 例如香港分校（`HK-CWB`、`HK-MK` 等，以 `seed.py` 為準） |
 | 示範人員 | 例如 `STAFF-001`（staff）、`STU-001`（student）；另含彙總／薪資測試資料 |
 
 **生產環境務必在 seed 後立即修改所有預設密碼；公開文件請勿列出實際密碼。**
+
+### 1.9 課程資料模型
+
+課程資料採用 **SPU / SKU** 兩層結構，類似商品目錄：
+
+| 層級 | 資料表 | 說明 |
+| ------ | ------ | ------ |
+| SPU | `course_spus` | 課程科目／課程家族（例如「小學數學」）。只有靜態描述，不含開班細節。 |
+| SKU | `course_skus` | 具體可報名場次（例如「小學數學 P3 週二班」）。包含年級、時間、地點、容量、價格等變動屬性。 |
+| Enrollment | `course_enrollments` | 學生 unit 與 SKU 的報名記錄；支援 `active`/`completed`/`cancelled` 狀態與起訖日期。 |
+
+#### 關鍵業務規則
+
+- SPU 下可有多個 SKU；SKU 屬於唯一 SPU。
+- SKU 可選掛載到 `locations`（`location_id`）。
+- 只有 `unit_type == student` 的 unit 能被報名；`staff`/`device`/`goods` 會回傳 422。
+- 同一學生（`unit_id`）與同一 SKU（`sku_id`）只允許一筆記錄；重複報名會回傳 409。
+- 刪除 SPU 時，若底下仍有 SKU，會因 `ondelete="RESTRICT"` 回傳 409；刪除 SKU 時若仍有報名記錄，同樣回傳 409。
+- 刪除學生 unit 會 cascade 刪除其報名記錄；刪除 SKU 會限制於已有報名（`RESTRICT`）。
+
+#### 對應前端
+
+Web 管理後台於 `/attendance/courses` 提供：
+
+- 左側 SPU 清單：新增、編輯、刪除、搜尋。
+- 右側 SKU 清單：依選中 SPU 篩選，可新增/編輯/刪除 SKU。
+- 報名區：搜尋學生 → 選擇 SKU → 報名；可將報名設為 completed/cancelled 或直接刪除。
 
 ---
 
@@ -170,14 +204,14 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 PostgreSQL 跑在 Docker；API 與 Web 在本地機器（hot reload）。
 
 | Terminal | 目錄 | 指令 | 時機 |
-|----------|------|------|------|
+| ---------- | ------ | ------ | ------ |
 | 1 | repo root | `docker compose up -d db` | 重開機後或 DB 未執行時 |
 | 2 | `apps/api` | `python -m uvicorn app.main:app --reload` | 每次開發 |
 | 3 | `apps/web` | `npm run dev` | 每次開發 |
 
 關閉 Terminal 2–3 只會停止 API/Web。DB container 持續運行直到 `docker compose down`。資料透過 Docker volume 持久化。
 
-**網址**：API http://localhost:8000/docs · Web http://localhost:5173/attendance/login
+**網址**：API <http://localhost:8000/docs> · Web <http://localhost:5173/attendance/login>
 
 ### 2.2 首次設定 — 完整堆疊
 
@@ -209,7 +243,7 @@ npx expo start
 ### 2.3 常用指令
 
 | 任務 | 指令 |
-|------|------|
+| ------ | ------ |
 | 跑 migration | `alembic upgrade head` |
 | 重載種子資料 | `python seed.py` |
 | 安裝新依賴 | `npm install` / `pip install -r requirements.txt` |
@@ -282,6 +316,7 @@ cd ~/aqua-attendance/deploy
 ```
 
 從 repo 複製以下檔案到伺服器：
+
 - `docker-compose.prod.yml`
 - `Caddyfile`
 - `.env.example` → `.env`
@@ -319,7 +354,7 @@ Windows 無 OpenSSL：使用 WSL/Git Bash，或 PowerShell：
 ### 3.7 編輯 deploy/.env
 
 | 變數 | 設定值 |
-|------|--------|
+| ------ | -------- |
 | `APP_DOMAIN` | App 主機名 |
 | `API_DOMAIN` | API 主機名 |
 | `WEB_IMAGE` / `API_IMAGE` | `ghcr.io/<user>/aqua-attendance/web:main` 等 |
@@ -400,7 +435,7 @@ cd deploy
 ### 3.13 輔助腳本
 
 | 腳本 | 用途 |
-|------|------|
+| ------ | ------ |
 | `first-boot.sh` | 檢查 Docker、pull image、up -d |
 | `update.sh` | Pull 最新 image 並重啟 |
 | `reset-db.sh` | 清空 DB、migration、seed |
@@ -427,7 +462,7 @@ cd deploy
 ```
 
 | 階段 | 功能 | 工具 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 1. Code | 開發功能 | Cursor / VS Code |
 | 2. CI | 自動測試 | GitHub Actions (`ci.yml`) |
 | 3. Build | 建立 Docker image | GitHub Actions (`docker-publish.yml`) |
@@ -663,12 +698,12 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ### 5.2 各領域評分
 
 | 領域 | 分數 | 說明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Backend Security | **8.5/10** | JWT rotation、RBAC、QR 金鑰分離扎實；rate limit 已改用 Redis（多副本安全）；扣分在 QR 無過期 |
 | Frontend Architecture | **7/10** | Pinia + CASL 整合合理；Summaries/Payroll 主從式 UI 完善；扣分在非 HttpOnly token、CASL 時序脆弱、模板死代碼 |
 | Mobile UX/Reliability | **6.5/10** | Token refresh + 401 retry 完整；History filters 已實作；扣分在無離線、無 EAS build/release automation、Phase 3/4 待辦 |
 | Documentation | **8/10** | README/DEPLOY/backup 齊全；Summaries/Payroll 文件完整（attendance-summaries.md）；扣分在缺 logging/監控文件 |
-| Test Coverage | **6/10** | 後端 71 個測試涵蓋核心；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 主要仍只有 typecheck |
+| Test Coverage | **6/10** | 後端 80 個測試涵蓋核心（含 `test_courses.py` 9 項）；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 主要仍只有 typecheck |
 
 > **最關鍵三件事**：`recorded_at` 索引 ✅、Web/Mobile refresh 單飛 ✅、多副本 rate limit 儲存 ✅。
 
@@ -707,7 +742,7 @@ docker compose -f docker-compose.prod.yml logs -n 200 api
 ```
 
 | 日誌訊息 | 原因 | 處理 |
-|----------|------|------|
+| ---------- | ------ | ------ |
 | `SECRET_KEY must be at least 32 characters...` | `ENV=production` 但密鑰是佔位符或太短 | 在 `.env` 設真實值：`openssl rand -hex 32`，然後 `docker compose ... up -d api` |
 | `Can't connect to ...:5432` | DB 尚未就緒或連線字串錯 | 見 §6.3 |
 | `alembic ... Target database is not up to date` | Migration 報錯 | 見 §6.4 |
@@ -756,7 +791,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 ```
 
 | 情境 | 處理 |
-|------|------|
+| ------ | ------ |
 | `current` 落後於 `heads` | 跑 `alembic upgrade head` |
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
@@ -793,7 +828,7 @@ cd deploy
 ### 6.6 認證 / 登入相關
 
 | 症狀 | 可能原因 | 處理 |
-|------|----------|------|
+| ------ | ---------- | ------ |
 | 全部使用者一直被登出 | refresh token 失效、不同裝置重登入撤銷舊 session，或前端 refresh 流程異常 | 先檢查 `/auth/refresh` 回應與 `refresh_tokens`；單一使用者重登入會撤銷舊 refresh token 屬預期行為 |
 | 登入後馬上 401 | access token 30 分過期 + refresh 失敗；或前後端時鐘偏移 | 確認主機時間 `date -u`，NTP 同步 |
 | 手機登入後 Web 被踢 | 設計上 `login` 撤銷該用戶所有 refresh token（單一 session） | 預期行為 |
@@ -836,7 +871,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 caddy
 ```
 
 | 症狀 | 處理 |
-|------|------|
+| ------ | ------ |
 | 憑證取得失敗 | 確認 `APP_DOMAIN`/`API_DOMAIN` DNS 已指向本機 IP、80/443 對外開放；Caddy 需 80 做 ACME |
 | 502 Bad Gateway | 後端 `web`/`api` 未健康；見 §6.1/§6.2 |
 | 改了 Caddyfile 沒生效 | `docker compose ... up -d --force-recreate caddy` |
@@ -878,7 +913,7 @@ docker compose -f docker-compose.prod.yml down
 **Phase 1 — 基礎修復** ✅ Done
 
 | ID | 任務 | 檔案 | API | 狀態 |
-|----|------|------|-----|------|
+| ---- | ------ | ------ | ----- | ------ |
 | M1.1 | Scan tab：`admin` + `superadmin`（非 `staff`） | `AppNavigator.tsx` | `GET /auth/me` → `role` | ✅ |
 | M1.2 | `User.role` type = `admin \| superadmin` | `services/auth.ts` | — | ✅ |
 | M1.3 | Logout 呼叫 `POST /auth/logout` | `services/auth.ts`, `App.tsx` | `/auth/logout` | ✅ |
@@ -889,7 +924,7 @@ docker compose -f docker-compose.prod.yml down
 **Phase 2 — 與 Web 掃描對齊** ✅ Done
 
 | ID | 任務 | 檔案 | API | 狀態 |
-|----|------|------|-----|------|
+| ---- | ------ | ------ | ----- | ------ |
 | M2.1 | `listLocations` client | `services/locations.ts` | `GET /locations?is_active=true` | ✅ |
 | M2.2 | Scan：location picker + 持久化 | `ScannerScreen.tsx` | `POST /attendance/scan` + `location_id` | ✅ |
 | M2.3 | Scan：簽到/簽退 + 持久化 | `ScannerScreen.tsx` | `event_type` on scan | ✅ |
@@ -900,7 +935,7 @@ docker compose -f docker-compose.prod.yml down
 **Phase 3 — 體驗與功能（部分 Done）**
 
 | ID | 任務 | 優先級 | 狀態 |
-|----|------|--------|------|
+| ---- | ------ | -------- | ------ |
 | M3.1 | History：date filter + pagination | P2 | ✅ Done |
 | M3.2 | History：pull-to-refresh error toast | P3 | ✅ Done |
 | M3.3 | My QR tab：改為「說明」 | P3 | ✅ Done |
@@ -915,7 +950,7 @@ docker compose -f docker-compose.prod.yml down
 **Phase 4 — 上線前**
 
 | ID | 任務 | 負責人 | 狀態 |
-|----|------|--------|------|
+| ---- | ------ | -------- | ------ |
 | M4.1 | Production `EXPO_PUBLIC_API_URL` in EAS secrets | DevOps | ⬜ |
 | M4.2 | EAS build profile（preview / production） | DevOps | ⬜ |
 | M4.3 | API `alembic upgrade head` on server | DevOps | ⬜ |
@@ -948,7 +983,7 @@ apps/mobile/
 ### 7.3 API ↔ Mobile endpoint 對照表
 
 | 功能 | Method | Path | Auth |
-|------|--------|------|------|
+| ------ | -------- | ------ | ------ |
 | Login | POST | `/auth/login` | Public |
 | Logout | POST | `/auth/logout` | Public（body: refresh_token） |
 | Refresh | POST | `/auth/refresh` | Public |
@@ -961,7 +996,7 @@ apps/mobile/
 ### 7.4 Web 與 Mobile 功能對照
 
 | 功能 | Web（`attendance/`） | Mobile |
-|------|---------------------|--------|
+| ------ | --------------------- | -------- |
 | Login | ✅ | ✅ |
 | Logout revokes refresh | ✅ | ✅ |
 | Scan 簽到/簽退切換 | ✅ | ✅ |
@@ -1011,7 +1046,7 @@ eas build --platform ios --profile preview
 #### 發布前手動測試矩陣
 
 | # | 測試案例 | admin | superadmin | 預期結果 |
-|---|----------|-------|------------|----------|
+| --- | ---------- | ------- | ------------ | ---------- |
 | 1 | Login | ✅ | ✅ | Tabs: My QR, Scan, History |
 | 2 | Scan + location + 簽到 | ✅ | ✅ | 201 event，modal 顯示 location |
 | 3 | Scan 簽退（same unit） | ✅ | ✅ | Second event，status OUT |
@@ -1066,7 +1101,7 @@ Ship checklist for `main` → GHCR → Lightsail（`deploy/update.sh`）。
 #### Web（attendance admin）
 
 | 區域 | 變更 |
-|------|------|
+| ------ | ------ |
 | P1 | Login `?to=` redirect；`formatApiError` on load errors |
 | P1 | Dashboard today event total via `X-Total-Count` |
 | P2 | UserProfile attendance menu；Web Scanner（QR dialog entry only） |
@@ -1082,7 +1117,7 @@ Ship checklist for `main` → GHCR → Lightsail（`deploy/update.sh`）。
 #### API
 
 | 區域 | 變更 |
-|------|------|
+| ------ | ------ |
 | New | `GET /api/attendance/stats` — aggregate day counts for dashboard |
 | Enhancement | `X-Total-Count` + `attendance_status` filter on units list |
 | New | Unit `employment_type`（`part_time` \| `full_time`）；list filter `?employment_type=` |
@@ -1130,7 +1165,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 #### API
 
 | 區域 | 變更 |
-|------|------|
+| ------ | ------ |
 | Critical | StaffProfile 多重外鍵歧義修復（`foreign_keys` 明確指定） |
 | Critical | profile 關係 `uselist=False`（一對一映射修正） |
 | Migration | `employment_type` 從 `units` 遷移至 `staff_profiles`（`e350a1e954db`） |
@@ -1148,7 +1183,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 #### Web
 
 | 區域 | 變更 |
-|------|------|
+| ------ | ------ |
 | New | Notifications 頁面 |
 | New | Audit Logs 頁面（superadmin） |
 | Enhancement | Staff/Student profile 編輯整合進 Unit 頁面 |
@@ -1162,7 +1197,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 #### API
 
 | 區域 | 變更 |
-|------|------|
+| ------ | ------ |
 | New | `POST /api/attendance-summaries/generate` — 從 events 計算並 upsert 每日彙總 |
 | New | `GET /api/attendance-summaries/overview` — unit × 月份聚合（含工時、天數） |
 | New | `POST /api/payroll-records/generate` — 從 summaries 聚合薪資記錄 |
@@ -1175,7 +1210,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 #### Web
 
 | 區域 | 變更 |
-|------|------|
+| ------ | ------ |
 | New | `/attendance/summaries` — 主從式頁面（總覽 → 每日明細） |
 | New | `/attendance/payroll` — 主從式頁面（月度薪資 → 明細） |
 | Enhancement | Summaries：月份切換、Type 篩選（預設 Staff）、Generate、統計卡 |
@@ -1186,7 +1221,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 #### Seed 資料
 
 | 資料集 | 月份 | 說明 |
-|--------|------|------|
+| -------- | ------ | ------ |
 | `SEED_SUMMARIES` | 2026-05 | 固定少數列 |
 | `build_bulk_summary_rows` | 2026-06、2026-07 | 大量隨機模式（`calculation_method = "seed"`） |
 
@@ -1199,7 +1234,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 目前 Locations 僅儲存 **image URL**，admin UI **不**上傳檔案到伺服器。
 
 | 欄位 | 用途 |
-|------|------|
+| ------ | ------ |
 | `icon_url` | 列表 / map pin 小圖示 |
 | `main_photo_url` | 封面 / hero image |
 | `detail_photos` | Gallery array：`[{ "url", "caption", "sort_order" }]` |
@@ -1213,7 +1248,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 **延後 — admin file upload（未實作）**
 
 | 項目 | 計劃 |
-|------|------|
+| ------ | ------ |
 | Admin upload | Location Management 改用 file picker（非貼 URL） |
 | Storage（dev） | 可選 local `uploads/locations/{id}/` + static serve |
 | Storage（prod） | S3 or Cloudflare R2 + signed URLs |
@@ -1222,7 +1257,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 ### 9.2 技術債追蹤（精簡版）
 
 | 區域 | 項目 | 狀態 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Web | ~~Dual cookies~~ | ✅ Done — unified to `accessToken`/`refreshToken`/`userData` |
 | Web | Template bloat | Deferred — AQUA demo tree 仍保留 |
 | Web | ~~Summaries 主從式重構~~ | ✅ Done — overview 聚合 + 每日明細 + Generate |
@@ -1235,28 +1270,30 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | API | ~~python-jose~~ | ✅ Done — migrated to `PyJWT` 2.10.1 |
 | API | ~~Rate limiting~~ | ✅ Done — `slowapi` on login/scan（Redis backend） |
 | API | ~~Summaries/Payroll endpoints~~ | ✅ Done — generate + overview + 薪資率計算 |
-| API | RBAC tests | 71 個後端測試；無 full permission matrix |
+| API | RBAC tests | 80 個後端測試（含 `test_courses.py` 9 項）；無 full permission matrix |
 | API | 結構化 logging | 待實作 |
 | Data | Location photo upload | v1 URL-only；upload + S3/R2 later |
+| API / Web | 課程資料（SPU/SKU/Enrollment） | Done — `course_spus`、`course_skus`、`course_enrollments` 模型、Router、Migration 034、Web 管理頁面 |
 
 ### 9.3 文件評分卡（2026-08-04 複核）
 
-> 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→71）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
+> 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→80）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
 
 | 項目 | 評分 | 說明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | README 清晰度 | 9/10 | Root `README.md` 架構圖、概念表、repo 結構、seed data、API/Web/Mobile 三份 env var 表齊全並與程式碼一致；扣分在部分表格為示例而非完整枚舉 |
 | 部署文件 | 8/10 | 本手冊 §3 覆蓋 Docker 安裝、GHCR 登入、密鑰生成、`deploy/` 五個腳本（`first-boot.sh`/`update.sh`/`reset-db.sh`/`backup.sh`/`restore.sh`）皆存在且行為與描述一致；扣分在未提及 `deploy/README.md` 與備份腳本在 §9.3 之外才被提及 |
-| API Docs | 7/10 | OpenAPI (`/docs`) 自動生成 ✅，§1.6 授權表與 13 個實際 router 完全對應；扣分在仍缺 API 版本策略說明（無 `/api/v1` 或 header 版本化機制） |
+| API Docs | 7/10 | OpenAPI (`/docs`) 自動生成 ✅，§1.6 授權表與 16 個實際 router（含新 courses 三組）完全對應；扣分在仍缺 API 版本策略說明（無 `/api/v1` 或 header 版本化機制） |
 | 操作手冊 | 7.5/10 | §6 運維手冊（健康檢查、容器起不來、DB 連線、migration、backup/restore、認證問題、磁碟/日誌、TLS、SOP）覆蓋完整且與 `deploy/` 腳本內容一致；扣分在仍缺可觀測性（結構化 logging／監控／告警）文件，因為該功能本身也尚未實作 |
 | 內部一致性（新增） | 7/10 | 各章節資料（migration 數、測試數、環境變數、known-gaps 狀態）與程式碼實測值基本吻合；主要落差為 §9.3 末尾「統合來源」清單列出多份已不存在的獨立檔案（`DEPLOY.md`、`RUNBOOK.md` 等，已於本次複核加註說明），以及本手冊（2026-08-03）略新於 `known-gaps.md`/`docs-audit.md`/`attendance-summaries.md`（2026-07-28），需留意後續是否同步 |
 
 **本次複核逐項驗證結果（摘要）**：
 
 | 驗證項目 | 結果 |
-|----------|------|
-| Alembic migration 最新為 `033` | ✅ 屬實（33 個檔案，含歷史分支合併造成的編號跳號＋hash 檔名，§6.4 已有說明） |
-| 後端測試數量「66 個」 | ❌ 實測 **71 個** `test_*` 函式（11 個檔案）；已於 §5.2、§9.2 修正為 71 |
+| ---------- | ------ |
+| Alembic migration 最新為 `034` | ✅ 屬實（34 個檔案，含歷史分支合併造成的編號跳號＋hash 檔名，§6.4 已有說明） |
+| 後端測試數量「66 個」 | ❌ 實測 **80 個** `test_*` 函式（12 個檔案，含 `test_courses.py`）；已於 §5.2、§9.2 修正為 80 |
+| 課程資料模型（SPU/SKU/Enrollment） | ✅ 屬實。`course_spus`、`course_skus`、`course_enrollments` 模型與 router 存在；Migration `034` 已實測 upgrade；Web 課程管理頁 `/attendance/courses` 存在 |
 | Rate limit 用 slowapi + Redis backend | ✅ 屬實（`app/limiter.py`、`requirements.txt`） |
 | JWT 用 PyJWT（非 python-jose） | ✅ 屬實（`requirements.txt: pyjwt==2.10.1`） |
 | `SECRET_KEY`/`QR_SECRET` production 強制檢查（≥32 字元、拒絕佔位符） | ✅ 屬實（`app/config.py: validate_production_secrets`） |
@@ -1275,7 +1312,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 **Docs 待補**：
 
 | 項目 | 對應評分 | 建議 |
-|------|----------|------|
+| ------ | ---------- | ------ |
 | API 版本策略 | API Docs 7/10 | 在 README/本手冊說明 API 版本化策略（目前無版本化機制，應先决定是否需要） |
 | 故障排查 runbook | 操作手冊 7.5/10 | ✅ Done — 本手冊 §6 已涵蓋且與 `deploy/` 腳本一致 |
 | 可觀測性文件 | 操作手冊 7.5/10 | logging/監控（見 known-gaps #M3）導入後補日誌查看與告警設定說明 |
@@ -1510,6 +1547,47 @@ erDiagram
         datetime created_at
     }
 
+    course_spus {
+        uuid id PK
+        string code "唯一科目編碼"
+        string name_zh
+        string name_en
+        string subject
+        text description
+        boolean is_active
+        datetime created_at
+        datetime updated_at
+    }
+
+    course_skus {
+        uuid id PK
+        uuid spu_id FK
+        string code "唯一場次編碼"
+        string name_zh
+        string name_en
+        string level
+        string schedule_note
+        uuid location_id FK
+        int capacity
+        numeric price
+        boolean is_active
+        datetime created_at
+        datetime updated_at
+    }
+
+    course_enrollments {
+        uuid id PK
+        uuid unit_id FK
+        uuid sku_id FK
+        string status "active / completed / cancelled"
+        date enrolled_at
+        date start_date
+        date end_date
+        text notes
+        datetime created_at
+        datetime updated_at
+    }
+
     users ||--o{ refresh_tokens : has
     users ||--o{ notifications : receives
     users ||--o{ attendance_events : "records (recorded_by_user_id)"
@@ -1528,8 +1606,12 @@ erDiagram
     locations ||--o{ attendance_events : "where occurred"
     locations ||--o{ attendance_summaries : "where summarized"
     units ||--o{ staff_profiles : "supervises (supervisor_id)"
+    course_spus ||--o{ course_skus : "has"
+    locations ||--o{ course_skus : "hosts"
+    course_skus ||--o{ course_enrollments : "enrolled"
+    units ||--o{ course_enrollments : "enrolls"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–033）見 `apps/api/alembic/versions/`。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史（001–034）見 `apps/api/alembic/versions/`。
 >
-> **2026-08-03 更新**：ER 圖已與 [database-changes.md](database-changes.md) § 完整 ER 圖同步。`units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`/`exit_date`；`student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`。出勤邏輯保留在 `units`（supertype）；`unit_type` 白名單（#M19）已實作——目前僅 `staff`／`student` 可出勤，`device`／`goods` 仍為未來擴充。
+> **2026-08-04 更新**：ER 圖已與 [database-changes.md](database-changes.md) § 完整 ER 圖同步，並新增 `course_spus`、`course_skus`、`course_enrollments` 三張表（Migration `034`）。`units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`/`exit_date`；`student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`。出勤邏輯保留在 `units`（supertype）；`unit_type` 白名單（#M19）已實作——目前僅 `staff`／`student` 可出勤，`device`／`goods` 仍為未來擴充。

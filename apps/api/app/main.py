@@ -14,6 +14,9 @@ from app.routers import (
     audit_logs,
     auth,
     auto_checkout,
+    course_enrollments,
+    course_skus,
+    course_spus,
     locations,
     notifications,
     payroll_records,
@@ -54,6 +57,9 @@ app.include_router(attendance_summaries.router, prefix="/api")
 app.include_router(payroll_records.router, prefix="/api")
 app.include_router(audit_logs.router, prefix="/api")
 app.include_router(auto_checkout.router, prefix="/api")
+app.include_router(course_spus.router, prefix="/api")
+app.include_router(course_skus.router, prefix="/api")
+app.include_router(course_enrollments.router, prefix="/api")
 
 
 @app.get("/api/health")

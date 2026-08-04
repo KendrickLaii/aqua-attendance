@@ -5,7 +5,7 @@
 ## 已確認的決定 (Decisions Log)
 
 | # | 決定 | 結果 |
-|---|---|---|
+| --- | --- | --- |
 | 1 | units 多型拆表（CTI） | ✅ 核心 `units` + `student_profiles` / `staff_profiles` 子表 |
 | 2 | 監護人 guardians | ✅ 不建表 → `student_profiles.guardians` JSON 陣列 |
 | 3 | grade_class | ✅ 留在 `student_profiles`（不建 groups 表） |
@@ -18,6 +18,7 @@
 | 10 | 個人資料欄位搬移至 profiles | ✅ **決定搬移**（2026-07-27）— 見下方「§ 欄位搬移至 profiles（2026-07-27）」 |
 | 11 | 出勤邏輯保留在 units | ✅ **決定保留**（2026-07-27）— 見下方「§ 出勤邏輯架構決定（2026-07-27）」 |
 | 12 | `status` enum 拆分 | 🔄 **可選**（2026-07-27）— 見下方「§ status enum 拆分分析（2026-07-27）」 |
+| 13 | 課程資料 SPU/SKU/Enrollment | ✅ 新增 `course_spus`/`course_skus`/`course_enrollments`（2026-08-04）— 見下方「§ 課程資料模型」 |
 
 ## 完整 ER 圖 (Mermaid)
 
@@ -226,6 +227,44 @@ erDiagram
         boolean batch_operation "批次操作"
         datetime created_at "操作時間"
     }
+    course_spus {
+        uuid id PK
+        string code "唯一科目編碼"
+        string name_zh "科目中文名"
+        string name_en "科目英文名"
+        string subject "學科分類"
+        text description "說明"
+        boolean is_active "是否啟用"
+        datetime created_at "建立時間"
+        datetime updated_at "更新時間"
+    }
+    course_skus {
+        uuid id PK
+        uuid spu_id FK "所屬科目"
+        string code "唯一場次編碼"
+        string name_zh "場次中文名"
+        string name_en "場次英文名"
+        string level "年級/程度"
+        string schedule_note "上課時間說明"
+        uuid location_id FK "上課地點"
+        int capacity "容量"
+        numeric price "價格"
+        boolean is_active "是否啟用"
+        datetime created_at "建立時間"
+        datetime updated_at "更新時間"
+    }
+    course_enrollments {
+        uuid id PK
+        uuid unit_id FK "學生 unit"
+        uuid sku_id FK "報名場次"
+        string status "狀態 active/completed/cancelled"
+        date enrolled_at "報名日期"
+        date start_date "開始日期"
+        date end_date "結束日期"
+        text notes "備註"
+        datetime created_at "建立時間"
+        datetime updated_at "更新時間"
+    }
 
     users ||--o{ refresh_tokens : "擁有"
     users ||--o{ notifications : "接收"
@@ -245,14 +284,30 @@ erDiagram
     locations ||--o{ unit_scan_locations : "允許掃碼"
     locations ||--o{ attendance_summaries : "彙總地點"
     units ||--o{ staff_profiles : "主管(supervisor_id)"
+    course_spus ||--o{ course_skus : "擁有"
+    locations ||--o{ course_skus : "上課地點"
+    course_skus ||--o{ course_enrollments : "報名"
+    units ||--o{ course_enrollments : "學生報名"
 ```
+
+## 課程資料模型（2026-08-04）
+
+### 設計決策
+
+| # | 決定 | 原因 |
+| --- | --- | --- |
+| 1 | SPU/SKU 兩層結構 | SPU 表達「課程科目」概念（如「小學數學」），SKU 表達「可報名場次」變動屬性（年級、時間、容量、價格），避免同一科目重複儲存描述。 |
+| 2 | SKU 掛載 `locations`（可選） | 開班場次通常需要上課地點；設為可選以支援線上或未決地點。 |
+| 3 | 報名記錄使用 `unit_id` 而非 `student_profile.id` | 與系統其他部分一致（通知、出勤、薪資皆以 `units` 為核心實體），並由 `unit_type == student` 檢查確保只有學生可報名。 |
+| 4 | 唯一約束 `(unit_id, sku_id)` | 防止同一學生同一場次重複報名；狀態變化透過 `status` 欄位（active/completed/cancelled）處理。 |
+| 5 | SPU/SKU 刪除採 `RESTRICT` | 避免誤刪已被報名的開班或仍有 SKU 的科目；刪除前須先清掉下層資料。 |
 
 ## 薪資／加班（OT）計算設計
 
 ### 確認的決定
 
 | # | 決定 |
-|---|---|
+| --- | --- |
 | 時間精度 | **15分鐘時間槽，四捨五入**（<7.5min歸前槽，>=7.5min歸後槽） |
 | OT判斷 | **以 `location.business_hours.close` 判斷**，超過關門時間 = OT |
 | standard_hours_per_day | **不要**，OT 完全由 business_hours 決定 |
@@ -265,7 +320,7 @@ erDiagram
 > 設計上的「23:59 兜底」已有**共用邏輯**與**手動／Generate 路徑**，但**沒有排程會在 23:59 自動執行**。詳見 [known-gaps.md](known-gaps.md) **#M14**。  
 >
 > | 能力 | 狀態 |
-> |------|------|
+> | ------ | ------ |
 > | 日界事件形狀（23:59、`source=auto_checkout`） | ✅ `services/auto_checkout.py` |
 > | 手動觸發 `POST /api/auto-checkout/run`（Dashboard Day-end） | ✅ |
 > | Generate 對過去日缺簽退補日界 out | ✅ |
@@ -308,7 +363,7 @@ ot_hours      = ot_slots * 0.25
 ### 打卡校驗規則
 
 | 規則 | 做法 |
-|---|---|
+| --- | --- |
 | 當天首次簽到 | 當天最早 `check_in`（四捨五入後） |
 | 當天末次簽退 | 當天最晚 `check_out`（四捨五入後） |
 | 每日重置 | **設計意圖**：00:00 將 `attendance_status` 重設為 `checked_out`（僅 UI／狀態顯示，不改打卡規則）。**現況：無此 job**；隔夜可能仍顯示 `checked_in` |
@@ -351,7 +406,7 @@ ot_hours      = ot_slots * 0.25
 > **2026-07-27 更新**：個人資料欄位決定搬移至 profiles，出勤欄位保留在 units。詳見下方「§ 欄位搬移至 profiles（2026-07-27 決定）」。
 
 | 現有 units 欄位 | 去向 |
-|---|---|
+| --- | --- |
 | id, code, unit_type | units（核心） |
 | full_name | units |
 | english_name | units |
@@ -381,7 +436,7 @@ ot_hours      = ot_slots * 0.25
 ### ✅ 快速優先（高影響低風險）- 已完成
 
 | # | 變更 | 狀態 |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `attendance_events` 新增 `created_at` | ✅ 完成 |
 | 2 | `attendance_events` 新增 `location_id` 索引 | ✅ 完成 |
 | 3 | `attendance_events` 拆分 `event_type` + `source` | ✅ 完成 |
@@ -392,7 +447,7 @@ ot_hours      = ot_slots * 0.25
 ### ✅ 多型重構（大型）- 已完成
 
 | # | 變更 | 狀態 |
-|---|---|---|
+| --- | --- | --- |
 | A1 | `units` 瘦身為通用核心 | ✅ 完成 |
 | A2 | 新建 `student_profiles`（含 guardians JSON） | ✅ 完成 |
 | A3 | 新建 `staff_profiles`（含 employment_type 與薪資率欄位） | ✅ 完成 |
@@ -400,7 +455,7 @@ ot_hours      = ot_slots * 0.25
 ### ✅ 欄位新增 - 已完成
 
 | # | 變更 | 狀態 |
-|---|---|---|
+| --- | --- | --- |
 | 7 | `units` 新增 `photo_url` | ✅ 完成 |
 | 8 | `units` 新增 `start_date`、`exit_date` | ✅ 完成 |
 | 9 | `status` 擴展為 enum（active/inactive/graduated/terminated/suspended）並保留 `is_active` | ✅ 完成 |
@@ -410,22 +465,25 @@ ot_hours      = ot_slots * 0.25
 ### ✅ 新建資料表 - 已完成
 
 | # | 資料表 | 說明 | 狀態 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | N6 | `notifications` | 通知發送記錄（**已確認**） | ✅ 完成 |
 | N7 | `attendance_summaries` | 預先彙總考勤（每日一行，含 slots） | ✅ 完成 |
 | N8 | `payroll_records` | 薪資計算記錄（含 slots + rate 快照） | ✅ 完成 |
 | 19 | `audit_logs` | 資料異動稽核（**已實作**） | ✅ 完成 |
+| 20 | `course_spus` | 課程科目（SPU） | ✅ 完成 |
+| 21 | `course_skus` | 課程開班場次（SKU） | ✅ 完成 |
+| 22 | `course_enrollments` | 學生與場次報名記錄 | ✅ 完成 |
 
 ### 🔄 未來擴充 - 預留設計
 
 | # | 資料表 | 說明 | 狀態 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | A5 | `device_profiles`、`goods_profiles` | 未來擴充類型（預留設計） | 🔄 暫緩 |
 
 ### ✅ 已捨棄（決定不做）
 
 | 項目 | 原因 |
-|---|---|
+| --- | --- |
 | `guardians` 獨立資料表 | ✅ → JSON 存入 `student_profiles.guardians` |
 | `holidays` 假期表 | ✅ 現階段不需要 |
 | `leave_requests` 請假表 | ✅ 現階段不需要 |
@@ -456,11 +514,14 @@ ot_hours      = ot_slots * 0.25
    - locations.business_hours JSON 化
    - attendance_events 新增 voided_at
 
-4. **新建資料表（4項）：** ✅ 全部完成
+4. **新建資料表（7項）：** ✅ 全部完成
    - notifications（站內通知系統）
    - attendance_summaries（每日出勤彙總，slot 為計薪來源）
    - payroll_records（薪資計算記錄，凍結 slots 與 rate 快照）
    - audit_logs（稽核追蹤）
+   - course_spus（課程科目 SPU）
+   - course_skus（課程開班場次 SKU）
+   - course_enrollments（學生報名記錄）
 
 5. **Slot-based 薪資（2026-07-08）：** ✅ 完成
    - `attendance_summaries` 新增 `regular_slots` / `ot_slots`
@@ -476,11 +537,12 @@ ot_hours      = ot_slots * 0.25
 - ✅ **完整薪資系統** - 出勤快照 + 薪資記錄 + 審核流程
 - ✅ **通知系統** - 多目標、優先級管理、閱讀狀態
 - ✅ **全面稽核追蹤** - 所有操作完整記錄、IP、User Agent
+- ✅ **課程資料管理** - SPU/SKU 兩層課程目錄 + 學生報名記錄
 
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -494,8 +556,9 @@ ot_hours      = ot_slots * 0.25
 9. ✅ slot-based 薪資欄位（026）
 10. ✅ products → units 重新命名（032）— 表名、欄位、外鍵、索引重新命名
 11. ✅ profile 欄位對齊（f8e65b7cf82b + 033）— `units.start_date/exit_date`、`student_profiles.gender/date_of_birth`、`staff_profiles.gender/date_of_birth`
+12. ✅ 課程資料模型（034）— 新建 `course_spus`、`course_skus`、`course_enrollments`
 
-> **目前 Alembic 版本：033**（`033_align_staff_student_profile_fields`）
+> **目前 Alembic 版本：034**（`034_create_course_catalog`）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 
@@ -518,7 +581,7 @@ ot_hours      = ot_slots * 0.25
 ## 概念釐清（事件 vs 彙總 vs 稽核）
 
 | 資料表 | 記錄內容 | 比喻 |
-|---|---|---|
+| --- | --- | --- |
 | `attendance_events` | 每次個別打卡記錄 | 銀行交易明細(每一筆都永久保留，不能改，只能作廢) |
 | `attendance_summaries` | 預計算的日／月彙總 | 月結單 |
 | `payroll_records` | 薪資計算結果快照 | 工資單 |
@@ -529,6 +592,7 @@ ot_hours      = ot_slots * 0.25
 ---
 
 > **2026-07-28 更新**：本搬移計畫已由 migration `f8e65b7cf82b_align_schema_with_er_diagram` 與 `033_align_staff_student_profile_fields` 執行完成。實際執行結果與原計畫略有調整：
+>
 > - `units.enrollment_date` 重新命名為 `units.start_date`（未刪除）。
 > - `staff_profiles.hire_date` / `termination_date` 搬移至 `units.start_date` / `exit_date` 後移除。
 > - `student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`；資料從 `units` 遷移後移除 `units.gender` / `units.date_of_birth`。
@@ -546,14 +610,14 @@ ot_hours      = ot_slots * 0.25
 #### ✅ 搬移到 `staff_profiles` 和 `student_profiles`（兩表都加）
 
 | 欄位 | 類型 | 說明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `gender` | `String(20)` nullable | 性別 |
 | `date_of_birth` | `Date` nullable | 出生日期 |
 
 #### ✅ lifecycle 日期保留在 `units`
 
 | units 欄位 | 說明 |
-|----------------------|--------------------------|
+| ---------------------- | -------------------------- |
 | `start_date` | 學生入學 / 員工到職日期 |
 | `exit_date` | 學生退學或畢業 / 員工離職日期 |
 
@@ -562,7 +626,7 @@ ot_hours      = ot_slots * 0.25
 #### ❌ 不搬移 — 保留在 `units`
 
 | 欄位 | 原因 |
-|------|------|
+| ------ | ------ |
 | `code` | 核心業務識別碼，被 attendance、summaries、payroll、CSV 匯出、audit log 等廣泛使用。搬移後每個查詢都需 JOIN profile 表，且唯一性約束需跨兩表保證，大幅增加複雜度。 |
 | `registered_location_id` | 出勤摘要生成（`summary_generator.py`）用作 fallback `location_id`；unit 建立流程需要先設定此 FK。搬移後需額外 JOIN profile 表，且建立流程更複雜（需先 flush unit 再設定 profile FK）。 |
 
@@ -571,7 +635,7 @@ ot_hours      = ot_slots * 0.25
 #### 後端（apps/api/）
 
 | 檔案 | 變更 |
-|------|------|
+| ------ | ------ |
 | `app/models/unit.py` | 保留共用聯絡資料與 `start_date` / `exit_date`，移除 `gender`、`date_of_birth` |
 | `app/models/staff_profile.py` | 新增 `gender`、`date_of_birth`，移除 `hire_date`、`termination_date` |
 | `app/models/student_profile.py` | 新增 `gender`、`date_of_birth`，移除 `enrollment_date`、`graduation_date` |
@@ -585,12 +649,13 @@ ot_hours      = ot_slots * 0.25
 #### 前端（apps/web/）
 
 | 檔案 | 變更 |
-|------|------|
+| ------ | ------ |
 | `src/pages/attendance/units.vue` | 表單 payload 將 `gender` / `date_of_birth` 放入對應 profile；`start_date` / `exit_date` 直接寫入 `units` |
 
 #### Migration
 
 已由 Alembic migrations `f8e65b7cf82b_align_schema_with_er_diagram` 與 `033_align_staff_student_profile_fields` 執行：
+
 1. `staff_profiles` 新增 `gender`、`date_of_birth`
 2. `student_profiles` 新增 `gender`、`date_of_birth`
 3. 資料搬移：profile lifecycle 日期搬到 `units.start_date` / `units.exit_date`
@@ -618,7 +683,7 @@ ot_hours      = ot_slots * 0.25
 `attendance_events.unit_id` 目前是簡單的 FK → `units.id`。如果改為指向 profiles：
 
 | 選項 | 問題 |
-|------|------|
+| ------ | ------ |
 | 兩張出勤表（`staff_attendance_events` + `student_attendance_events`） | 所有邏輯複製兩份，summary/payroll 也要拆兩份 |
 | Polymorphic FK（`profile_id` + `profile_type`） | 無法用標準 FK constraint，破壞 referential integrity |
 | Union table（`attendance_subjects`） | 多一層 indirection，所有查詢多一個 JOIN |
@@ -644,6 +709,7 @@ ensure_attendance_eligible(unit)  # raises 400 when type not eligible
 ```
 
 已接線端點：
+
 - `_resolve_unit_for_scan`（掃碼／preview）
 - `create_manual_correction`（手動補登）
 - `get_qr_token` / `refresh_qr_token`（QR 發放）
@@ -651,7 +717,7 @@ ensure_attendance_eligible(unit)  # raises 400 when type not eligible
 ### 保留在 units 的出勤欄位
 
 | 欄位 | 保留原因 |
-|------|---------|
+| ------ | --------- |
 | `attendance_status` | toggle 邏輯核心，每次掃碼都要讀寫 |
 | `qr_token_version` | QR 驗證邏輯直接讀取，不需 JOIN |
 | `last_event_at` | 跨日判斷用，與 `attendance_status` 配合 |
@@ -673,7 +739,7 @@ ensure_attendance_eligible(unit)  # raises 400 when type not eligible
 `UnitStatus` enum（`app/models/unit.py:30-35`）混合了學生和員工的狀態：
 
 | 狀態 | 適用對象 |
-|------|---------|
+| ------ | --------- |
 | `active` | 學生 + 員工 |
 | `inactive` | 學生 + 員工 |
 | `graduated` | **僅學生** |
@@ -712,14 +778,14 @@ class StaffStatus(str, enum.Enum):
 ### `units` 表 legacy 名稱
 
 | 類型 | 舊名稱 | 應改名為 | 狀態 |
-|------|--------|---------|------|
+| ------ | -------- | --------- | ------ |
 | PK constraint | `products_pkey` | `units_pkey` | ⚠️ 未改 |
 | Index | `ix_products_code` | `ix_units_code` | ⚠️ 未改 |
 
 ### `unit_scan_locations` 表 legacy 名稱
 
 | 類型 | 舊名稱 | 應改名為 | 狀態 |
-|------|--------|---------|------|
+| ------ | -------- | --------- | ------ |
 | PK constraint | `product_allowed_locations_pkey` | `unit_scan_locations_pkey` | ⚠️ 未改 |
 | FK constraint | `product_allowed_locations_product_id_fkey` | `unit_scan_locations_unit_id_fkey` | ⚠️ 未改（已有新的 `unit_scan_locations_unit_id_fkey` 並存） |
 | FK constraint | `product_allowed_locations_location_id_fkey` | `unit_scan_locations_location_id_fkey` | ⚠️ 未改（已有新的 `unit_scan_locations_location_id_fkey` 並存） |
@@ -728,7 +794,7 @@ class StaffStatus(str, enum.Enum):
 ### `attendance_events` 表 legacy 索引
 
 | 類型 | 舊名稱 | 現況 | 狀態 |
-|------|--------|------|------|
+| ------ | -------- | ------ | ------ |
 | Index | `ix_attendance_events_product_recorded` | ORM 已改名為 `ix_attendance_events_unit_recorded` | ⚠️ DB 中仍有舊索引 |
 
 > **建議**：在未來的 migration 中統一重新命名這些 legacy constraint/index 名稱，避免混淆。不影響功能，但影響可維護性。
@@ -742,7 +808,7 @@ class StaffStatus(str, enum.Enum):
 ### 實際 DB 狀態
 
 | 欄位 | 實際位置 | 計畫位置 | 狀態 |
-|------|---------|---------|------|
+| ------ | --------- | --------- | ------ |
 | `gender` | `staff_profiles` + `student_profiles` | `staff_profiles` + `student_profiles` | ✅ 已搬移 |
 | `date_of_birth` | `staff_profiles` + `student_profiles` | `staff_profiles` + `student_profiles` | ✅ 已搬移 |
 | `phone` | `units` | `units` | ✅ 保留共用欄位 |
@@ -756,6 +822,7 @@ class StaffStatus(str, enum.Enum):
 ### ORM 模型現況
 
 ORM 模型已與實際 DB 對齊：
+
 - `app/models/unit.py`：包含 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`、`exit_date`
 - `app/models/student_profile.py`：包含 `gender`、`date_of_birth`、學校、班級、學號、guardians、academic notes
 - `app/models/staff_profile.py`：包含 `gender`、`date_of_birth`、員工資料與薪資率欄位

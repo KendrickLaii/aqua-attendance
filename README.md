@@ -26,18 +26,21 @@ Branding is generic (“AQUA Attendance”). The data model still fits education
 ```
 
 | Concept | Description |
-|---------|-------------|
+| --------- | ------------- |
 | **User** (`users` table) | Someone who logs in: `admin` or `superadmin` only |
 | **Unit** (`units` table) | Person that checks in. Creatable / attendance-eligible today: `staff`, `student`. `device` / `goods` are reserved for future use |
 | **Location** (`locations`) | Branch / site; scans require `location_id` and unit whitelist |
 | **Profile** (`student_profiles` / `staff_profiles`) | Type-specific data: student (school, guardians) / staff (employment, pay) |
 | **Attendance event** | A `check_in`, `check_out`, `manual_correction`, or `auto_checkout` row for a unit |
+| **Course SPU** (`course_spus`) | Course subject / curriculum family, e.g. “Primary Math” |
+| **Course SKU** (`course_skus`) | A concrete, enrollable class offering under an SPU, e.g. “Primary Math P3 Tue 18:00” |
+| **Course enrollment** (`course_enrollments`) | Links a student unit to a course SKU (active / completed / cancelled) |
 
 ## Repository layout
 
 | Path | Description |
-|------|-------------|
-| `apps/api/` | FastAPI — auth, units, locations, QR signing, attendance |
+| ------ | ------------- |
+| `apps/api/` | FastAPI — auth, units, locations, QR signing, attendance, course catalog |
 | `apps/web/` | Vue 3 admin UI (`src/pages/attendance/`) on AQUA template |
 | `apps/mobile/` | Expo app — QR scanner + history (see mobile README for entry-point note) |
 | `docker-compose.yml` | Dev: PostgreSQL + Redis + API |
@@ -58,7 +61,7 @@ Branding is generic (“AQUA Attendance”). The data model still fits education
 ```
 
 | Terminal | Directory | Command | When |
-|----------|-----------|---------|------|
+| ---------- | ----------- | --------- | ------ |
 | 1 | repo root | `docker compose up -d db` | After reboot or if DB is not running (`docker compose ps db`) |
 | 2 | `apps/api` | `python -m uvicorn app.main:app --reload` | Every dev session |
 | 3 | `apps/web` | `npm run dev` | Every dev session |
@@ -66,7 +69,7 @@ Branding is generic (“AQUA Attendance”). The data model still fits education
 Closing terminals 2–3 stops API/web only. The DB container keeps running until you stop Docker or run `docker compose down`. Data persists in the Docker volume across restarts.
 
 | Task | When |
-|------|------|
+| ------ | ------ |
 | `alembic upgrade head` | After pulling new migrations |
 | `python seed.py` | Optional — (re)load sample users/units/locations |
 | `npm install` / `pip install -r requirements.txt` | After pulling dependency changes |
@@ -131,7 +134,7 @@ After `python seed.py`:
 ### Sample units (QR issued from web)
 
 | Code | Name | Type |
-|------|------|------|
+| ------ | ------ | ------ |
 | STAFF-001 | Tanaka Sensei | staff |
 | STAFF-002 | Yamamoto Sensei | staff |
 | STU-001 | Suzuki Taro | student |
@@ -149,7 +152,7 @@ Change all seed passwords before any shared or production use.
 ### API (`apps/api/.env`)
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `DATABASE_URL` | `postgresql+asyncpg://...` | Async app connection |
 | `DATABASE_URL_SYNC` | `postgresql+psycopg://...` | Sync URL for Alembic |
 | `SECRET_KEY` | (required in prod) | JWT auth signing |
@@ -166,13 +169,13 @@ Change all seed passwords before any shared or production use.
 ### Web (`apps/web/.env`)
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `VITE_ATTENDANCE_API_URL` | `http://localhost:8000/api` | API base URL (baked at **build** time for prod images) |
 
 ### Mobile (`apps/mobile/.env`)
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `EXPO_PUBLIC_API_URL` | `http://localhost:8000/api` | API base URL; use LAN IP on real devices |
 
 ### Production server (`deploy/.env`)
@@ -191,7 +194,7 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 ## API endpoints (overview)
 
 | Group | Routes | Auth |
-|-------|--------|------|
+| ------- | -------- | ------ |
 | Auth | `/api/auth/login`, `/refresh`, `/me` | None / Bearer |
 | Users | `/api/users` (CRUD) | Admin; `DELETE` = Superadmin |
 | Units | `/api/units` (CRUD) | Admin |
@@ -211,7 +214,7 @@ Full OpenAPI: http://localhost:8000/docs
 ## Web routes (attendance)
 
 | Path | Access | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | `/attendance/login` | Public | Login |
 | `/attendance` | Public | Redirect to dashboard or login |
 | `/attendance/dashboard` | Logged in | Today's stats |
@@ -252,7 +255,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 ## Documentation
 
 | Doc | Purpose |
-|-----|---------|
+| ----- | --------- |
 | [docs/INDEX.md](docs/INDEX.md) | **Docs entry point** — find the right doc by role |
 | [docs/ATTENDANCE_SUMMARIES.md](docs/ATTENDANCE_SUMMARIES.md) | **Summaries & payroll** — monthly flow, API, UI, seed, FAQ |
 | [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — deploy, CI/CD, ops, known gaps, mobile release |

@@ -1,0 +1,169 @@
+import uuid
+
+import pytest
+from httpx import AsyncClient
+
+
+def _auth(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def spu_payload() -> dict:
+    return {
+        "code": f"MATH-{uuid.uuid4().hex[:6]}",
+        "name_zh": "小學數學",
+        "name_en": "Primary Math",
+        "subject": "math",
+    }
+
+
+async def _create_spu(client: AsyncClient, admin_token: str, payload: dict) -> dict:
+    resp = await client.post("/api/course-spus", json=payload, headers=_auth(admin_token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def _create_sku(client: AsyncClient, admin_token: str, spu_id: str, **overrides) -> dict:
+    payload = {
+        "spu_id": spu_id,
+        "code": f"MATH-P3-{uuid.uuid4().hex[:6]}",
+        "name_zh": "小學數學 P3 週二班",
+        "level": "P3",
+        "schedule_note": "週二 18:00-19:30",
+        "price": 800,
+        "capacity": 12,
+        **overrides,
+    }
+    resp = await client.post("/api/course-skus", json=payload, headers=_auth(admin_token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_create_course_spu(client: AsyncClient, admin_token: str, spu_payload: dict) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    assert spu["code"] == spu_payload["code"]
+    assert spu["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_duplicate_spu_code_rejected(client: AsyncClient, admin_token: str, spu_payload: dict) -> None:
+    await _create_spu(client, admin_token, spu_payload)
+    resp = await client.post("/api/course-spus", json=spu_payload, headers=_auth(admin_token))
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_sku_under_spu_with_location(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], location_id=sample_location["id"])
+    assert sku["spu_id"] == spu["id"]
+    assert sku["location_id"] == sample_location["id"]
+
+    listed = await client.get(f"/api/course-skus?spu_id={spu['id']}", headers=_auth(admin_token))
+    assert listed.status_code == 200
+    assert any(row["id"] == sku["id"] for row in listed.json())
+
+
+@pytest.mark.asyncio
+async def test_create_sku_with_unknown_spu_rejected(client: AsyncClient, admin_token: str) -> None:
+    resp = await client.post(
+        "/api/course-skus",
+        json={"spu_id": str(uuid.uuid4()), "code": "X", "name_zh": "X"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_enroll_student_in_sku(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["unit_id"] == sample_unit["id"]
+    assert body["sku_id"] == sku["id"]
+    assert body["status"] == "active"
+
+    listed = await client.get(f"/api/course-enrollments?unit_id={sample_unit['id']}", headers=_auth(admin_token))
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_enrollment_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    body = {"unit_id": sample_unit["id"], "sku_id": sku["id"]}
+
+    first = await client.post("/api/course-enrollments", json=body, headers=_auth(admin_token))
+    assert first.status_code == 201
+    second = await client.post("/api/course-enrollments", json=body, headers=_auth(admin_token))
+    assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_only_student_units_can_enroll(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_location: dict
+) -> None:
+    staff_resp = await client.post(
+        "/api/units",
+        json={
+            "code": f"STAFF-{uuid.uuid4().hex[:6]}",
+            "full_name": "Test Staff",
+            "unit_type": "staff",
+            "registered_location_id": sample_location["id"],
+            "scan_location_ids": [sample_location["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert staff_resp.status_code == 201
+    staff_unit = staff_resp.json()
+
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": staff_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_cannot_delete_spu_with_skus(client: AsyncClient, admin_token: str, spu_payload: dict) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    await _create_sku(client, admin_token, spu["id"])
+
+    resp = await client.delete(f"/api/course-spus/{spu['id']}", headers=_auth(admin_token))
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_cannot_delete_sku_with_enrollments(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+
+    resp = await client.delete(f"/api/course-skus/{sku['id']}", headers=_auth(admin_token))
+    assert resp.status_code == 409

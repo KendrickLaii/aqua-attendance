@@ -120,3 +120,4 @@ class Unit(Base):
     notifications = relationship("Notification", back_populates="unit", cascade="all, delete-orphan")
     attendance_summaries = relationship("AttendanceSummary", back_populates="unit", cascade="all, delete-orphan")
     payroll_records = relationship("PayrollRecord", back_populates="unit", cascade="all, delete-orphan")
+    course_enrollments = relationship("CourseEnrollment", back_populates="unit", cascade="all, delete-orphan")

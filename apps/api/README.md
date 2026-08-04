@@ -7,10 +7,10 @@ FastAPI 後端：登入使用者、Unit（教職員/學生）、Profile（staff_
 推薦模式：**Postgres 跑在 Docker**，**API 在本機**。
 
 | 步驟 | 指令 | 時機 |
-|------|------|------|
-| 啟動 DB | `docker compose up -d db`（從 repo root）| 重開機後，或 `docker compose ps db` 未運行時 |
-| 啟動 API | `python -m uvicorn app.main:app --reload`（從 `apps/api`）| 每次開發 |
-| 啟動 API（手機連線）| `python -m uvicorn app.main:app --reload --host 0.0.0.0` | Expo Go 使用 LAN IP 時 |
+| ------ | ------ | ------ |
+| 啟動 DB | `docker compose up -d db`（從 repo root） | 重開機後，或 `docker compose ps db` 未運行時 |
+| 啟動 API | `python -m uvicorn app.main:app --reload`（從 `apps/api`） | 每次開發 |
+| 啟動 API（手機連線） | `python -m uvicorn app.main:app --reload --host 0.0.0.0` | Expo Go 使用 LAN IP 時 |
 | 跑 migration | `python -m alembic upgrade head` | 拉取新 migration 後 |
 | 種子資料 | `python seed.py` | 選用 — 範例 users / units / profiles；完整 seed 含 **彙總測試資料** |
 | 僅彙總 seed | `python seed.py --summaries` | 選用 — 2026-05 固定 + 2026-06/07 bulk（需已有 units） |
@@ -34,8 +34,8 @@ python seed.py
 python -m uvicorn app.main:app --reload
 ```
 
-- Swagger：http://localhost:8000/docs
-- Health：http://localhost:8000/api/health（含 DB 連線檢查）
+- Swagger：<http://localhost:8000/docs>
+- Health：<http://localhost:8000/api/health>（含 DB 連線檢查）
 
 ## 種子資料
 
@@ -63,7 +63,7 @@ python seed.py --summaries  # 僅 attendance_summaries（需已有 units）
 
 ## 目錄結構
 
-```
+```text
 app/
   main.py           # FastAPI app、CORS、routers、/api/health
   config.py         # 從 .env 載入設定
@@ -71,11 +71,12 @@ app/
   deps.py           # get_db、CurrentUser、AdminOnly、SuperAdminOnly
   models/           # User、Unit、StaffProfile、StudentProfile、AttendanceEvent、
                     # Location、RefreshToken、Notification、AttendanceSummary、
-                    # PayrollRecord、AuditLog
+                    # PayrollRecord、AuditLog、CourseSpu、CourseSku、CourseEnrollment
   schemas/          # Pydantic request/response models
   routers/          # auth、users、units、locations、qr、attendance、
                     # student-profiles、staff-profiles、notifications、
-                    # attendance-summaries、payroll-records、audit-logs、auto-checkout
+                    # attendance-summaries、payroll-records、audit-logs、auto-checkout、
+                    # course-spus、course-skus、course-enrollments
   services/         # auth、qr、attendance、unit、overtime、auto_checkout、
                     # summary_generator、payroll_generator
   utils/            # 搜尋輔助（safe ILIKE）
