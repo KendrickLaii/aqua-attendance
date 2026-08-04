@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-03。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-04（全專案逐項複核 + §9.3 文件評分卡重新評分）。
 
 ---
 
@@ -668,7 +668,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 | Frontend Architecture | **7/10** | Pinia + CASL 整合合理；Summaries/Payroll 主從式 UI 完善；扣分在非 HttpOnly token、CASL 時序脆弱、模板死代碼 |
 | Mobile UX/Reliability | **6.5/10** | Token refresh + 401 retry 完整；History filters 已實作；扣分在無離線、無 EAS build/release automation、Phase 3/4 待辦 |
 | Documentation | **8/10** | README/DEPLOY/backup 齊全；Summaries/Payroll 文件完整（attendance-summaries.md）；扣分在缺 logging/監控文件 |
-| Test Coverage | **6/10** | 後端 66 個測試涵蓋核心；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 主要仍只有 typecheck |
+| Test Coverage | **6/10** | 後端 71 個測試涵蓋核心；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 主要仍只有 typecheck |
 
 > **最關鍵三件事**：`recorded_at` 索引 ✅、Web/Mobile refresh 單飛 ✅、多副本 rate limit 儲存 ✅。
 
@@ -1235,30 +1235,58 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | API | ~~python-jose~~ | ✅ Done — migrated to `PyJWT` 2.10.1 |
 | API | ~~Rate limiting~~ | ✅ Done — `slowapi` on login/scan（Redis backend） |
 | API | ~~Summaries/Payroll endpoints~~ | ✅ Done — generate + overview + 薪資率計算 |
-| API | RBAC tests | 66 個後端測試；無 full permission matrix |
+| API | RBAC tests | 71 個後端測試；無 full permission matrix |
 | API | 結構化 logging | 待實作 |
 | Data | Location photo upload | v1 URL-only；upload + S3/R2 later |
 
-### 9.3 文件評分卡（2026-07）
+### 9.3 文件評分卡（2026-08-04 複核）
+
+> 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→71）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
 
 | 項目 | 評分 | 說明 |
 |------|------|------|
-| README 清晰度 | 9/10 | Root README 非常詳細，架構圖、seed data、env var 表齊全 |
-| 部署文件 | 8/10 | DEPLOY.md 覆蓋從 Docker 安裝到域名配置的完整流程 |
-| API Docs | 7/10 | OpenAPI 自動生成 ✅，但缺少版本策略說明 |
-| 操作手冊 | 7/10 | backup/restore 腳本 + §6 運維手冊（故障排查 runbook） |
+| README 清晰度 | 9/10 | Root `README.md` 架構圖、概念表、repo 結構、seed data、API/Web/Mobile 三份 env var 表齊全並與程式碼一致；扣分在部分表格為示例而非完整枚舉 |
+| 部署文件 | 8/10 | 本手冊 §3 覆蓋 Docker 安裝、GHCR 登入、密鑰生成、`deploy/` 五個腳本（`first-boot.sh`/`update.sh`/`reset-db.sh`/`backup.sh`/`restore.sh`）皆存在且行為與描述一致；扣分在未提及 `deploy/README.md` 與備份腳本在 §9.3 之外才被提及 |
+| API Docs | 7/10 | OpenAPI (`/docs`) 自動生成 ✅，§1.6 授權表與 13 個實際 router 完全對應；扣分在仍缺 API 版本策略說明（無 `/api/v1` 或 header 版本化機制） |
+| 操作手冊 | 7.5/10 | §6 運維手冊（健康檢查、容器起不來、DB 連線、migration、backup/restore、認證問題、磁碟/日誌、TLS、SOP）覆蓋完整且與 `deploy/` 腳本內容一致；扣分在仍缺可觀測性（結構化 logging／監控／告警）文件，因為該功能本身也尚未實作 |
+| 內部一致性（新增） | 7/10 | 各章節資料（migration 數、測試數、環境變數、known-gaps 狀態）與程式碼實測值基本吻合；主要落差為 §9.3 末尾「統合來源」清單列出多份已不存在的獨立檔案（`DEPLOY.md`、`RUNBOOK.md` 等，已於本次複核加註說明），以及本手冊（2026-08-03）略新於 `known-gaps.md`/`docs-audit.md`/`attendance-summaries.md`（2026-07-28），需留意後續是否同步 |
+
+**本次複核逐項驗證結果（摘要）**：
+
+| 驗證項目 | 結果 |
+|----------|------|
+| Alembic migration 最新為 `033` | ✅ 屬實（33 個檔案，含歷史分支合併造成的編號跳號＋hash 檔名，§6.4 已有說明） |
+| 後端測試數量「66 個」 | ❌ 實測 **71 個** `test_*` 函式（11 個檔案）；已於 §5.2、§9.2 修正為 71 |
+| Rate limit 用 slowapi + Redis backend | ✅ 屬實（`app/limiter.py`、`requirements.txt`） |
+| JWT 用 PyJWT（非 python-jose） | ✅ 屬實（`requirements.txt: pyjwt==2.10.1`） |
+| `SECRET_KEY`/`QR_SECRET` production 強制檢查（≥32 字元、拒絕佔位符） | ✅ 屬實（`app/config.py: validate_production_secrets`） |
+| 午休扣除未實作（#H6） | ✅ 屬實，仍為 Open High（`overtime.py:calculate_workday` 未扣除；`lunch_minutes` 參數存在但未使用） |
+| Scan 用 `SELECT FOR UPDATE` 防競態 | ✅ 屬實（`routers/attendance.py`，僅 PostgreSQL） |
+| Auto-checkout 僅手動端點、無 23:59 cron | ✅ 屬實，程式碼註解明確標註「not implemented」 |
+| Generate 端點無互斥鎖（#M17） | ✅ 屬實，未找到任何 lock/mutex 機制 |
+| Dockerfile 無 `USER`／`HEALTHCHECK`（#M2） | ✅ 屬實 |
+| 結構化 logging 待實作 | ⚠️ 部分：`audit_logs.request_id` 欄位與 service 已存在，但**無 middleware 自動產生/掛載 request ID**，整體仍無 structlog/JSON logging；文件結論方向正確 |
+| Web：CASL、Pinia、single-flight refresh、非 HttpOnly cookie | ✅ 全部屬實（逐行核對 `attendanceApi.ts`、`useCookie.ts`、`useAttendanceAuthStore.ts`） |
+| Web：前端未區分 admin/superadmin | ⚠️ 部分：CASL 權限規則兩者相同（`manage: all`），但 Users 頁面 UI 已有差異（僅 superadmin 可見「Super Admin」選項、可刪除使用者、Audit Logs 頁限 superadmin）；建議措辭改為「CASL 權限規則未區分，UI 層有局部區分」 |
+| Web 無 vitest/jest，僅 `vue-tsc` typecheck | ✅ 屬實 |
+| Mobile：History 篩選/分頁、My QR 為說明頁、token 存 `expo-secure-store`、無 EAS build automation | ✅ 全部屬實 |
+| CI（`ci.yml`）跑 API pytest／Web build／Mobile typecheck；`docker-publish.yml` 建置並推送 GHCR image，且以 build-arg 帶入 `VITE_ATTENDANCE_API_URL` | ✅ 全部屬實 |
 
 **Docs 待補**：
 
 | 項目 | 對應評分 | 建議 |
 |------|----------|------|
-| API 版本策略 | API Docs 7/10 | 在 DEPLOY/README 說明 API 版本化策略 |
-| 故障排查 runbook | 操作手冊 7/10 | ✅ Done — 本手冊 §6 已涵蓋 |
-| 可觀測性文件 | 操作手冊 5/10 | logging/監控導入後補日誌查看與告警設定說明 |
+| API 版本策略 | API Docs 7/10 | 在 README/本手冊說明 API 版本化策略（目前無版本化機制，應先决定是否需要） |
+| 故障排查 runbook | 操作手冊 7.5/10 | ✅ Done — 本手冊 §6 已涵蓋且與 `deploy/` 腳本一致 |
+| 可觀測性文件 | 操作手冊 7.5/10 | logging/監控（見 known-gaps #M3）導入後補日誌查看與告警設定說明 |
+| 文件間日期同步 | 內部一致性 7/10 | `known-gaps.md`/`docs-audit.md`/`attendance-summaries.md` 落後本手冊約 6 天，建議每次更新本手冊時同步勾稽來源文件的「最後更新」日期 |
+| 「統合來源」清單 | 內部一致性 7/10 | ✅ Done（2026-08-04）— 已加註哪些來源檔案已不存在，避免誤導讀者尋找已刪除的獨立文件 |
 
 ---
 
-> 本手冊統合來源：`README.md`、`docs/INDEX.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/known-gaps.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/known-gaps.md`、`docs/database-changes.md`、`docs/project-handbook.md`、`docs/attendance-summaries.md`、`docs/docs-audit.md`。
+> 本手冊統合來源（歷史上）：`README.md`、`docs/index.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/known-gaps.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/database-changes.md`、`docs/attendance-summaries.md`、`docs/docs-audit.md`。
+>
+> **2026-08-04 校對備註**：上述獨立檔案中，`DEPLOY.md`、`CICD-EXPLAINED.md`、`CODE-REVIEW-2026-06.md`、`RUNBOOK.md`、`RELEASE-2026-05.md`、`MOBILE-SPRINT.md`、`MOBILE-RELEASE-CHECKLIST.md`、`LOCATIONS.md` 內容已完全併入本手冊對應章節（§2–§9），檔案本身已不存在於 `docs/`。目前 `docs/` 實際僅存：`project-handbook.md`、`known-gaps.md`、`docs-audit.md`、`attendance-summaries.md`、`database-changes.md`、`index.md`。上面清單保留作為「歷史沿革」紀錄，避免誤解為目前仍有 12 份並存文件。
 
 ---
 
