@@ -33,6 +33,8 @@ const refreshing = ref(false)
 const loadError = ref('')
 const dialogOpen = ref(false)
 const editingUnit = ref<Unit | null>(null)
+const correctionDialog = ref(false)
+const correctionTarget = ref<Unit | null>(null)
 
 const form = reactive({
   code: '',
@@ -656,6 +658,11 @@ function openQR(p: Unit) {
   qrDialogsRef.value?.openQR(p)
 }
 
+function openManualCorrection(p: Unit) {
+  correctionTarget.value = p
+  correctionDialog.value = true
+}
+
 function typeColor(type: string) {
   return type === 'staff' ? 'info' : 'success'
 }
@@ -985,6 +992,17 @@ function rowStatusChip(p: Unit) {
                     @click="openQR(p)"
                   >
                     <VIcon icon="ri-qr-code-line" />
+                  </VBtn>
+                  <VBtn
+                    icon
+                    size="small"
+                    variant="text"
+                    color="info"
+                    title="Manual"
+                    :aria-label="`Manual correction for ${p.full_name}`"
+                    @click="openManualCorrection(p)"
+                  >
+                    <VIcon icon="ri-edit-box-line" />
                   </VBtn>
                   <VBtn
                     icon
@@ -1581,6 +1599,12 @@ function rowStatusChip(p: Unit) {
     <UnitQrDialogs
       ref="qrDialogsRef"
       @rotated="loadUnits(true)"
+    />
+
+    <ManualCorrectionDialog
+      v-model="correctionDialog"
+      :unit="correctionTarget"
+      @saved="loadUnits(true)"
     />
   </VContainer>
 </template>

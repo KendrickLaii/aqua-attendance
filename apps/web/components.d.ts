@@ -383,6 +383,7 @@ declare module 'vue' {
     LocationExtraTab: typeof import('./src/components/attendance/locations/LocationExtraTab.vue')['default']
     LocationHoursEditor: typeof import('./src/components/attendance/locations/LocationHoursEditor.vue')['default']
     LocationPhotosTab: typeof import('./src/components/attendance/locations/LocationPhotosTab.vue')['default']
+    ManualCorrectionDialog: typeof import('./src/components/attendance/ManualCorrectionDialog.vue')['default']
     MoreBtn: typeof import('./src/@core/components/MoreBtn.vue')['default']
     Notifications: typeof import('./src/@core/components/Notifications.vue')['default']
     PaymentProvidersDialog: typeof import('./src/components/dialogs/PaymentProvidersDialog.vue')['default']

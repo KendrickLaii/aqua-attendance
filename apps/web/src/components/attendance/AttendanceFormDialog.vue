@@ -2,6 +2,7 @@
 const ATTENDANCE_FORM_FIELD_DEFAULTS = {
   VTextField: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
   VSelect: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+  VAutocomplete: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
   VTextarea: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
   VSwitch: { density: 'compact', hideDetails: true },
 } as const

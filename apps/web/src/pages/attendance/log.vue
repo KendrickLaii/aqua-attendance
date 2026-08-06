@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { createManualCorrection, exportAttendanceCSV, getAttendanceDayStats, listAttendanceWithTotal, voidAttendanceEvent } from '@/api/attendance/events'
+import { exportAttendanceCSV, getAttendanceDayStats, listAttendanceWithTotal, voidAttendanceEvent } from '@/api/attendance/events'
 import type { AttendanceDayStats, AttendanceEvent } from '@/api/attendance/events'
 import { listUnits } from '@/api/attendance/units'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import type { Unit } from '@/api/attendance/units'
-import { dateTimeLocalToIso, eventSourceColor, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
+import { eventSourceColor, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
 
 const UNIT_PAGE_SIZE = 200
 const { authStore, ensureAccess } = useAttendanceAdminGate()
+
 const {
   page,
   pageSize,
@@ -26,7 +26,6 @@ const todayKey = getTodayRangeIso().dateKey
 const events = ref<AttendanceEvent[]>([])
 const dayStats = ref<AttendanceDayStats | null>(null)
 const units = ref<Unit[]>([])
-const locations = ref<LocationItem[]>([])
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
@@ -41,19 +40,8 @@ const filters = reactive({
   include_voided: false,
 })
 
-
 const correctionDialog = ref(false)
 
-const correctionForm = reactive({
-  unit_id: '',
-  event_type: 'check_in',
-  recorded_at: '',
-  location_id: '',
-  notes: '',
-})
-
-const correcting = ref(false)
-const correctionError = ref('')
 const exporting = ref(false)
 const exportError = ref('')
 const voidingId = ref<string | null>(null)
@@ -187,12 +175,6 @@ onMounted(async () => {
   catch (e) {
     console.error('Failed to load units for log filters', e)
   }
-  try {
-    locations.value = await listLocations({ is_active: true, page_size: 200 })
-  }
-  catch (e) {
-    console.error('Failed to load locations for manual correction', e)
-  }
   await loadEvents()
   filtersReady.value = true
 })
@@ -228,6 +210,7 @@ async function loadEvents(isRefresh = false, shouldResetPage = false) {
   loadError.value = ''
   try {
     const range = filterDateRange()
+
     const listParams = {
       unit_id: filters.unit_id || undefined,
       unit_type: filters.unit_type || undefined,
@@ -239,6 +222,7 @@ async function loadEvents(isRefresh = false, shouldResetPage = false) {
       page: page.value,
       page_size: pageSize.value,
     }
+
     const [result, stats] = await Promise.all([
       listAttendanceWithTotal(listParams),
       getAttendanceDayStats({
@@ -282,7 +266,6 @@ function applyDatePreset(preset: DatePreset) {
     filters.date_from = ''
     filters.date_to = ''
   }
-
 }
 
 function onManualDateChange() {
@@ -318,20 +301,7 @@ function eventTypeLabel(type: string) {
 }
 
 function openCorrectionDialog() {
-  correctionError.value = ''
-  Object.assign(correctionForm, {
-    unit_id: '',
-    event_type: 'check_in',
-    recorded_at: '',
-    location_id: '',
-    notes: '',
-  })
   correctionDialog.value = true
-}
-
-function closeCorrectionDialog() {
-  correctionDialog.value = false
-  correctionError.value = ''
 }
 
 async function handleExport() {
@@ -363,33 +333,6 @@ async function handleExport() {
   }
   finally {
     exporting.value = false
-  }
-}
-
-async function handleCorrection() {
-  if (!correctionForm.unit_id) {
-    correctionError.value = 'Please select a unit'
-
-    return
-  }
-  correcting.value = true
-  correctionError.value = ''
-  try {
-    await createManualCorrection({
-      unit_id: correctionForm.unit_id,
-      event_type: correctionForm.event_type,
-      recorded_at: dateTimeLocalToIso(correctionForm.recorded_at),
-      location_id: correctionForm.location_id || undefined,
-      notes: correctionForm.notes || undefined,
-    })
-    closeCorrectionDialog()
-    await loadEvents(true)
-  }
-  catch (e: unknown) {
-    correctionError.value = formatApiError(e, 'Could not save correction')
-  }
-  finally {
-    correcting.value = false
   }
 }
 
@@ -762,61 +705,11 @@ async function confirmVoid() {
       </div>
     </VCard>
 
-    <AttendanceFormDialog
+    <ManualCorrectionDialog
       v-model="correctionDialog"
-      title="Manual Correction"
-      icon="ri-edit-box-line"
-      :saving="correcting"
-      :error="correctionError"
-      @save="handleCorrection"
-      @cancel="closeCorrectionDialog"
-      @clear-error="correctionError = ''"
-    >
-      <VForm @submit.prevent="handleCorrection">
-            <VSelect
-              v-model="correctionForm.unit_id"
-              :items="units.map(u => ({ title: `${u.full_name} (${u.code})`, value: u.id }))"
-              label="Unit *"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
-            />
-            <VSelect
-              v-model="correctionForm.event_type"
-              :items="eventTypeOptions.filter(o => o.value !== '')"
-              label="Event Type"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
-            />
-            <VTextField
-              v-model="correctionForm.recorded_at"
-              label="Date & time"
-              type="datetime-local"
-              density="compact"
-              variant="outlined"
-              hint="Leave blank to use the current time"
-              persistent-hint
-              class="mb-3"
-            />
-            <VSelect
-              v-model="correctionForm.location_id"
-              :items="[{ title: '— no location —', value: '' }, ...locations.map(l => ({ title: `${l.name_zh}${l.name_en ? ` / ${l.name_en}` : ''}`, value: l.id }))]"
-              label="Location"
-              prepend-inner-icon="ri-map-pin-line"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
-            />
-            <VTextarea
-              v-model="correctionForm.notes"
-              label="Notes"
-              rows="2"
-              density="compact"
-              variant="outlined"
-            />
-      </VForm>
-    </AttendanceFormDialog>
+      :unit-catalog="units"
+      @saved="loadEvents(true)"
+    />
 
     <VDialog
       v-model="voidConfirmDialog"

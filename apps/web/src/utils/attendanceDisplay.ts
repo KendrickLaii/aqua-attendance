@@ -113,12 +113,13 @@ export function getDateRangeIso(
   return result
 }
 
-/** Convert a `datetime-local` input value (wall-clock in the attendance timezone) to a UTC ISO string. */
+/** Convert a `datetime-local` or flatpickr (`Y-m-d H:i`) wall-clock value in the attendance timezone to a UTC ISO string. */
 export function dateTimeLocalToIso(value: string, timeZone = ATTENDANCE_TIMEZONE): string | undefined {
   if (!value?.trim())
     return undefined
 
-  const [datePart, timePart] = value.split('T')
+  const normalized = value.trim().replace(' ', 'T')
+  const [datePart, timePart] = normalized.split('T')
   const [year, month, day] = datePart.split('-').map(Number)
   const [hour, minute] = (timePart ?? '00:00').split(':').map(Number)
 
