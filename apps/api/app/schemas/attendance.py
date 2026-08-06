@@ -88,13 +88,11 @@ class ManualCorrectionRequest(BaseModel):
     location: str | None = Field(default=None, max_length=255)
     notes: str | None = None
 
-    @field_validator("recorded_at", mode="before")
+    @field_validator("recorded_at", mode="after")
     @classmethod
-    def ensure_utc(cls, v: object) -> datetime | None:
+    def ensure_utc(cls, v: datetime | None) -> datetime | None:
         if v is None:
             return None
-        if not isinstance(v, datetime):
-            raise ValueError("recorded_at must be a datetime")
         if v.tzinfo is None:
             return v.replace(tzinfo=timezone.utc)
         return v.astimezone(timezone.utc)

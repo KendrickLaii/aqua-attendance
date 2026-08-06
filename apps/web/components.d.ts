@@ -397,6 +397,7 @@ declare module 'vue' {
     ShareProjectDialog: typeof import('./src/components/dialogs/ShareProjectDialog.vue')['default']
     Shortcuts: typeof import('./src/@core/components/Shortcuts.vue')['default']
     StatCards: typeof import('./src/components/attendance/StatCards.vue')['default']
+    SummaryDateCell: typeof import('./src/components/attendance/SummaryDateCell.vue')['default']
     TablePagination: typeof import('./src/@core/components/TablePagination.vue')['default']
     TaxReturnFieldSetupDialog: typeof import('./src/components/dialogs/tax/TaxReturnFieldSetupDialog.vue')['default']
     TheCustomizer: typeof import('./src/@core/components/TheCustomizer.vue')['default']

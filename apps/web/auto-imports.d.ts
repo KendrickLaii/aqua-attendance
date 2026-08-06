@@ -61,6 +61,7 @@ declare global {
   const createUnrefFn: typeof import('@vueuse/core')['createUnrefFn']
   const createUrl: typeof import('./src/@core/composable/createUrl')['createUrl']
   const customRef: typeof import('vue')['customRef']
+  const dateTimeLocalToIso: typeof import('./src/utils/attendanceDisplay')['dateTimeLocalToIso']
   const debouncedRef: typeof import('@vueuse/core')['debouncedRef']
   const debouncedWatch: typeof import('@vueuse/core')['debouncedWatch']
   const defaultDetailPhotoRows: typeof import('./src/utils/locationPhotos')['defaultDetailPhotoRows']
@@ -96,6 +97,7 @@ declare global {
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
   const formatPayrollGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
+  const formatSummaryDateWithWeekday: typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']
   const formatSummaryGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']
   const formatValue: typeof import('./src/utils/review-format')['formatValue']
   const getActivePinia: typeof import('pinia')['getActivePinia']
@@ -103,6 +105,7 @@ declare global {
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
   const getDateRangeIso: typeof import('./src/utils/attendanceDisplay')['getDateRangeIso']
+  const getSummaryDateParts: typeof import('./src/utils/attendanceDisplay')['getSummaryDateParts']
   const getTodayRangeIso: typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
@@ -445,6 +448,7 @@ declare global {
   const watchTriggerable: typeof import('@vueuse/core')['watchTriggerable']
   const watchWithFilter: typeof import('@vueuse/core')['watchWithFilter']
   const whenever: typeof import('@vueuse/core')['whenever']
+  const zonedTimeToUtc: typeof import('./src/utils/attendanceDisplay')['zonedTimeToUtc']
 }
 // for type re-export
 declare global {
@@ -510,6 +514,7 @@ declare module 'vue' {
     readonly createUnrefFn: UnwrapRef<typeof import('@vueuse/core')['createUnrefFn']>
     readonly createUrl: UnwrapRef<typeof import('./src/@core/composable/createUrl')['createUrl']>
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
+    readonly dateTimeLocalToIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['dateTimeLocalToIso']>
     readonly debouncedRef: UnwrapRef<typeof import('@vueuse/core')['debouncedRef']>
     readonly debouncedWatch: UnwrapRef<typeof import('@vueuse/core')['debouncedWatch']>
     readonly defaultDetailPhotoRows: UnwrapRef<typeof import('./src/utils/locationPhotos')['defaultDetailPhotoRows']>
@@ -543,6 +548,7 @@ declare module 'vue' {
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
     readonly formatPayrollGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']>
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
+    readonly formatSummaryDateWithWeekday: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']>
     readonly formatSummaryGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']>
     readonly formatValue: UnwrapRef<typeof import('./src/utils/review-format')['formatValue']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
@@ -550,6 +556,7 @@ declare module 'vue' {
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getDateRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getDateRangeIso']>
+    readonly getSummaryDateParts: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getSummaryDateParts']>
     readonly getTodayRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
@@ -886,5 +893,6 @@ declare module 'vue' {
     readonly watchTriggerable: UnwrapRef<typeof import('@vueuse/core')['watchTriggerable']>
     readonly watchWithFilter: UnwrapRef<typeof import('@vueuse/core')['watchWithFilter']>
     readonly whenever: UnwrapRef<typeof import('@vueuse/core')['whenever']>
+    readonly zonedTimeToUtc: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['zonedTimeToUtc']>
   }
 }

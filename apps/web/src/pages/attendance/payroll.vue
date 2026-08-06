@@ -6,6 +6,7 @@ import type { AttendanceSummary } from '@/api/attendance/summaries'
 import { listUnits } from '@/api/attendance/units'
 import type { Unit } from '@/api/attendance/units'
 import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
+import SummaryDateCell from '@/components/attendance/SummaryDateCell.vue'
 import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatPayrollGenerateMessage } from '@/utils/formatGenerateResult'
@@ -315,6 +316,47 @@ function onCardAdjChange(record: PayrollRecord) {
   })
 }
 
+/** Display-only currency formatting for adj inputs; record values stay numeric. */
+type AdjField = 'adjustment_1' | 'adjustment_2'
+const focusedAdjKey = ref<string | null>(null)
+const focusedAdjRaw = ref('')
+
+function adjFocusKey(record: PayrollRecord, field: AdjField) {
+  return `${record.id}:${field}`
+}
+
+function parseCurrencyInput(display: string | number | null | undefined) {
+  const s = String(display ?? '').replace(/,/g, '').trim()
+  if (s === '' || s === '-' || s === '.' || s === '-.')
+    return 0
+  const n = Number(s)
+  return Number.isFinite(n) ? n : 0
+}
+
+function adjDisplayValue(record: PayrollRecord, field: AdjField) {
+  if (focusedAdjKey.value === adjFocusKey(record, field))
+    return focusedAdjRaw.value
+  return formatCurrency(record[field])
+}
+
+function onAdjFocus(record: PayrollRecord, field: AdjField) {
+  focusedAdjKey.value = adjFocusKey(record, field)
+  const n = Number(record[field])
+  focusedAdjRaw.value = Number.isFinite(n) ? String(n) : '0'
+}
+
+function onAdjInput(record: PayrollRecord, field: AdjField, v: string | number | null) {
+  focusedAdjRaw.value = v == null ? '' : String(v)
+  record[field] = parseCurrencyInput(focusedAdjRaw.value)
+  onCardAdjChange(record)
+}
+
+function onAdjBlur(record: PayrollRecord, field: AdjField) {
+  record[field] = parseCurrencyInput(focusedAdjRaw.value)
+  focusedAdjKey.value = null
+  focusedAdjRaw.value = ''
+}
+
 function backToOverview() {
   selectedRecord.value = null
   summaries.value = []
@@ -521,6 +563,19 @@ function statusColor(s: AttendanceSummary) {
     return 'info'
 
   return s.is_complete ? 'success' : 'warning'
+}
+
+function summaryStatusIcon(s: AttendanceSummary) {
+  if (s.is_holiday)
+    return 'ri-calendar-event-line'
+  if (s.is_weekend)
+    return 'ri-calendar-2-line'
+  if (isAutoCheckoutSummaryDay(s))
+    return 'ri-alarm-warning-line'
+  if (!s.is_complete)
+    return 'ri-error-warning-line'
+
+  return 'ri-checkbox-circle-line'
 }
 
 function statusIcon(status: string) {
@@ -1074,13 +1129,15 @@ function formatCurrency(n: number | null | undefined) {
                           @update:model-value="onCardAdjChange(record)"
                         />
                         <VTextField
-                          v-model.number="record.adjustment_1"
+                          :model-value="adjDisplayValue(record, 'adjustment_1')"
                           class="invoice-adj-amount"
-                          type="number"
                           density="compact"
                           variant="underlined"
                           hide-details
-                          @update:model-value="onCardAdjChange(record)"
+                          inputmode="decimal"
+                          @focus="onAdjFocus(record, 'adjustment_1')"
+                          @blur="onAdjBlur(record, 'adjustment_1')"
+                          @update:model-value="(v) => onAdjInput(record, 'adjustment_1', v)"
                         />
                       </div>
                       <div class="invoice-line total">
@@ -1098,13 +1155,15 @@ function formatCurrency(n: number | null | undefined) {
                           @update:model-value="onCardAdjChange(record)"
                         />
                         <VTextField
-                          v-model.number="record.adjustment_2"
+                          :model-value="adjDisplayValue(record, 'adjustment_2')"
                           class="invoice-adj-amount"
-                          type="number"
                           density="compact"
                           variant="underlined"
                           hide-details
-                          @update:model-value="onCardAdjChange(record)"
+                          inputmode="decimal"
+                          @focus="onAdjFocus(record, 'adjustment_2')"
+                          @blur="onAdjBlur(record, 'adjustment_2')"
+                          @update:model-value="(v) => onAdjInput(record, 'adjustment_2', v)"
                         />
                       </div>
                       <div class="invoice-line grand">
@@ -1517,24 +1576,28 @@ function formatCurrency(n: number | null | undefined) {
           <VChip
             :color="statusColorMap[selectedRecord.status] ?? 'grey'"
             label
+            :prepend-icon="statusIcon(selectedRecord.status)"
           >
             {{ selectedRecord.status }}
           </VChip>
           <VChip
             color="success"
             label
+            prepend-icon="ri-time-line"
           >
             {{ formatHours(selectedRecord.total_regular_hours) }} regular
           </VChip>
           <VChip
             color="info"
             label
+            prepend-icon="ri-flashlight-line"
           >
             {{ formatHours(selectedRecord.total_overtime_hours) }} OT
           </VChip>
           <VChip
             color="primary"
             label
+            prepend-icon="ri-wallet-3-line"
           >
             Net {{ formatCurrency(selectedRecord.net_pay) }}
           </VChip>
@@ -1573,6 +1636,17 @@ function formatCurrency(n: number | null | undefined) {
             sm="3"
           >
             <div class="text-caption text-medium-emphasis">
+              Gross pay
+            </div>
+            <div class="text-h6 font-weight-bold">
+              {{ formatCurrency(selectedRecord.gross_pay) }}
+            </div>
+          </VCol>
+          <VCol
+            cols="12"
+            sm="3"
+          >
+            <div class="text-caption text-medium-emphasis">
               Adjustment 2
             </div>
             <div class="text-h6 font-weight-bold">
@@ -1583,17 +1657,6 @@ function formatCurrency(n: number | null | undefined) {
             </div>
             <div class="text-caption text-medium-emphasis mt-1">
               Gross + Adj2 = Net
-            </div>
-          </VCol>
-          <VCol
-            cols="12"
-            sm="3"
-          >
-            <div class="text-caption text-medium-emphasis">
-              Gross pay
-            </div>
-            <div class="text-h6 font-weight-bold">
-              {{ formatCurrency(selectedRecord.gross_pay) }}
             </div>
           </VCol>
           <VCol
@@ -1620,20 +1683,86 @@ function formatCurrency(n: number | null | undefined) {
         >
           <thead>
             <tr>
-              <th>Date</th>
-              <th>First In</th>
-              <th>Last Out</th>
-              <th class="text-end">
-                Regular
+              <th>
+                <span class="th-label">
+                  <VIcon
+                    icon="ri-calendar-event-line"
+                    size="14"
+                  />
+                  Date
+                </span>
+              </th>
+              <th>
+                <span
+                  class="th-label"
+                  title="First check-in"
+                >
+                  <VIcon
+                    icon="ri-login-box-line"
+                    size="14"
+                  />
+                  First In
+                </span>
+              </th>
+              <th>
+                <span
+                  class="th-label"
+                  title="Last check-out"
+                >
+                  <VIcon
+                    icon="ri-logout-box-line"
+                    size="14"
+                  />
+                  Last Out
+                </span>
               </th>
               <th class="text-end">
-                Reg slots
+                <span
+                  class="th-label"
+                  title="Regular hours"
+                >
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                  />
+                  Regular
+                </span>
               </th>
               <th class="text-end">
-                OT
+                <span
+                  class="th-label"
+                  title="Regular 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  Reg slots
+                </span>
               </th>
               <th class="text-end">
-                OT slots
+                <span
+                  class="th-label"
+                  title="Overtime hours"
+                >
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                  />
+                  OT
+                </span>
+              </th>
+              <th class="text-end">
+                <span
+                  class="th-label"
+                  title="Overtime 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  OT slots
+                </span>
               </th>
               <th>Status</th>
             </tr>
@@ -1643,12 +1772,22 @@ function formatCurrency(n: number | null | undefined) {
               v-for="s in summaries"
               :key="s.id"
             >
-              <td>{{ s.summary_date }}</td>
+              <td>
+                <SummaryDateCell :date="s.summary_date" />
+              </td>
               <td>
                 <span
                   v-if="s.first_check_in"
-                  class="text-caption"
-                >{{ formatAttendanceDateTime(s.first_check_in) }}</span>
+                  class="cell-metric"
+                  title="First check-in"
+                >
+                  <VIcon
+                    icon="ri-login-box-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  <span class="text-caption">{{ formatAttendanceDateTime(s.first_check_in) }}</span>
+                </span>
                 <span
                   v-else
                   class="text-medium-emphasis"
@@ -1657,24 +1796,70 @@ function formatCurrency(n: number | null | undefined) {
               <td>
                 <span
                   v-if="s.last_check_out"
-                  class="text-caption"
-                >{{ formatAttendanceDateTime(s.last_check_out) }}</span>
+                  class="cell-metric"
+                  title="Last check-out"
+                >
+                  <VIcon
+                    icon="ri-logout-box-line"
+                    size="14"
+                    class="text-info"
+                  />
+                  <span class="text-caption">{{ formatAttendanceDateTime(s.last_check_out) }}</span>
+                </span>
                 <span
                   v-else
                   class="text-medium-emphasis"
                 >—</span>
               </td>
               <td class="text-end">
-                {{ formatHours(s.regular_hours) }}
-              </td>
-              <td class="text-end text-medium-emphasis">
-                {{ s.regular_slots }}
+                <span
+                  class="cell-metric"
+                  title="Regular hours"
+                >
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  {{ formatHours(s.regular_hours) }}
+                </span>
               </td>
               <td class="text-end">
-                {{ formatHours(s.overtime_hours) }}
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Regular 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  {{ s.regular_slots }}
+                </span>
               </td>
-              <td class="text-end text-medium-emphasis">
-                {{ s.ot_slots }}
+              <td class="text-end">
+                <span
+                  class="cell-metric"
+                  title="Overtime hours"
+                >
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                    class="text-info"
+                  />
+                  {{ formatHours(s.overtime_hours) }}
+                </span>
+              </td>
+              <td class="text-end">
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Overtime 15-min slots"
+                >
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  {{ s.ot_slots }}
+                </span>
               </td>
               <td>
                 <div class="d-flex flex-wrap align-center gap-1">
@@ -1682,6 +1867,7 @@ function formatCurrency(n: number | null | undefined) {
                     :color="statusColor(s)"
                     size="small"
                     label
+                    :prepend-icon="summaryStatusIcon(s)"
                   >
                     {{ statusLabel(s) }}
                   </VChip>
@@ -1700,16 +1886,54 @@ function formatCurrency(n: number | null | undefined) {
               <td />
               <td />
               <td class="text-end">
-                {{ formatHours(detailTotals.regular) }}
-              </td>
-              <td class="text-end text-medium-emphasis">
-                {{ detailTotals.regularSlots }}
+                <span
+                  class="cell-metric"
+                  title="Regular hours total"
+                >
+                  <VIcon
+                    icon="ri-time-line"
+                    size="14"
+                    class="text-success"
+                  />
+                  {{ formatHours(detailTotals.regular) }}
+                </span>
               </td>
               <td class="text-end">
-                {{ formatHours(detailTotals.overtime) }}
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Regular slots total"
+                >
+                  <VIcon
+                    icon="ri-grid-line"
+                    size="14"
+                  />
+                  {{ detailTotals.regularSlots }}
+                </span>
               </td>
-              <td class="text-end text-medium-emphasis">
-                {{ detailTotals.otSlots }}
+              <td class="text-end">
+                <span
+                  class="cell-metric"
+                  title="Overtime hours total"
+                >
+                  <VIcon
+                    icon="ri-flashlight-line"
+                    size="14"
+                    class="text-info"
+                  />
+                  {{ formatHours(detailTotals.overtime) }}
+                </span>
+              </td>
+              <td class="text-end">
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  title="Overtime slots total"
+                >
+                  <VIcon
+                    icon="ri-apps-2-line"
+                    size="14"
+                  />
+                  {{ detailTotals.otSlots }}
+                </span>
               </td>
               <td />
             </tr>
@@ -1863,25 +2087,12 @@ function formatCurrency(n: number | null | undefined) {
 }
 
 .invoice-adj-amount {
-  flex: 0 0 96px;
-  max-inline-size: 96px;
+  flex: 0 0 112px;
+  max-inline-size: 112px;
 }
 
 .invoice-adj-amount :deep(input) {
   text-align: end;
-}
-
-/* Hide browser number spinners on adjustment amount fields */
-.invoice-adj-amount :deep(input[type='number']) {
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-.invoice-adj-amount :deep(input[type='number']::-webkit-outer-spin-button),
-.invoice-adj-amount :deep(input[type='number']::-webkit-inner-spin-button) {
-  margin: 0;
-  appearance: none;
-  -webkit-appearance: none;
 }
 
 .invoice-line.total {

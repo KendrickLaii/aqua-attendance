@@ -36,7 +36,7 @@ function getZonedParts(date: Date, timeZone: string): ZonedParts {
 }
 
 /** Convert a wall-clock time in `timeZone` to a UTC Date. */
-function zonedTimeToUtc(
+export function zonedTimeToUtc(
   year: number,
   month: number,
   day: number,
@@ -113,6 +113,18 @@ export function getDateRangeIso(
   return result
 }
 
+/** Convert a `datetime-local` input value (wall-clock in the attendance timezone) to a UTC ISO string. */
+export function dateTimeLocalToIso(value: string, timeZone = ATTENDANCE_TIMEZONE): string | undefined {
+  if (!value?.trim())
+    return undefined
+
+  const [datePart, timePart] = value.split('T')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hour, minute] = (timePart ?? '00:00').split(':').map(Number)
+
+  return zonedTimeToUtc(year, month, day, hour, minute, 0, 0, timeZone).toISOString()
+}
+
 export function formatAttendanceDateLabel(
   date = new Date(),
   timeZone = ATTENDANCE_TIMEZONE,
@@ -125,6 +137,43 @@ export function formatAttendanceDateLabel(
     month: 'long',
     day: 'numeric',
   }).format(date)
+}
+
+/** Parts for summary date cells: weekday badge + YYYY-MM-DD. */
+export function getSummaryDateParts(
+  dateKey: string | null | undefined,
+  timeZone = ATTENDANCE_TIMEZONE,
+): { dateKey: string; weekday: string; isWeekend: boolean } | null {
+  if (!dateKey)
+    return null
+
+  const [year, month, day] = dateKey.split('-').map(Number)
+  if (!year || !month || !day)
+    return null
+
+  const noon = zonedTimeToUtc(year, month, day, 12, 0, 0, 0, timeZone)
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+  }).format(noon).toUpperCase()
+
+  return {
+    dateKey,
+    weekday,
+    isWeekend: weekday === 'SAT' || weekday === 'SUN',
+  }
+}
+
+/** Format a YYYY-MM-DD summary date with weekday, e.g. `2026-07-02 · THU`. */
+export function formatSummaryDateWithWeekday(
+  dateKey: string | null | undefined,
+  timeZone = ATTENDANCE_TIMEZONE,
+): string {
+  const parts = getSummaryDateParts(dateKey, timeZone)
+  if (!parts)
+    return dateKey || '—'
+
+  return `${parts.dateKey} · ${parts.weekday}`
 }
 
 export function formatAttendanceDateTime(iso: string | null | undefined): string {

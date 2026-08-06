@@ -4,7 +4,7 @@ import type { AttendanceDayStats, AttendanceEvent } from '@/api/attendance/event
 import { listUnits } from '@/api/attendance/units'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import type { Unit } from '@/api/attendance/units'
-import { eventSourceColor, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
+import { dateTimeLocalToIso, eventSourceColor, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 definePage({ meta: {} })
@@ -46,7 +46,8 @@ const correctionDialog = ref(false)
 
 const correctionForm = reactive({
   unit_id: '',
-  event_type: 'manual_correction',
+  event_type: 'check_in',
+  recorded_at: '',
   location_id: '',
   notes: '',
 })
@@ -69,7 +70,6 @@ const eventTypeOptions = [
   { title: 'All Events', value: '' },
   { title: 'Check In', value: 'check_in' },
   { title: 'Check Out', value: 'check_out' },
-  { title: 'Manual Correction', value: 'manual_correction' },
 ]
 
 const sourceOptions = [
@@ -167,10 +167,19 @@ const unitSelectItems = computed(() => [
 const unitsCapped = computed(() => units.value.length >= UNIT_PAGE_SIZE)
 
 const filtersReady = ref(false)
+const route = useRoute()
 
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
+
+  const unitFromQuery = typeof route.query.unit_id === 'string' ? route.query.unit_id : ''
+  if (unitFromQuery) {
+    filters.unit_id = unitFromQuery
+    activeDatePreset.value = 'all'
+    filters.date_from = ''
+    filters.date_to = ''
+  }
 
   try {
     units.value = await listUnits({ page_size: UNIT_PAGE_SIZE })
@@ -312,7 +321,8 @@ function openCorrectionDialog() {
   correctionError.value = ''
   Object.assign(correctionForm, {
     unit_id: '',
-    event_type: 'manual_correction',
+    event_type: 'check_in',
+    recorded_at: '',
     location_id: '',
     notes: '',
   })
@@ -368,6 +378,7 @@ async function handleCorrection() {
     await createManualCorrection({
       unit_id: correctionForm.unit_id,
       event_type: correctionForm.event_type,
+      recorded_at: dateTimeLocalToIso(correctionForm.recorded_at),
       location_id: correctionForm.location_id || undefined,
       notes: correctionForm.notes || undefined,
     })
@@ -776,6 +787,16 @@ async function confirmVoid() {
               label="Event Type"
               density="compact"
               variant="outlined"
+              class="mb-3"
+            />
+            <VTextField
+              v-model="correctionForm.recorded_at"
+              label="Date & time"
+              type="datetime-local"
+              density="compact"
+              variant="outlined"
+              hint="Leave blank to use the current time"
+              persistent-hint
               class="mb-3"
             />
             <VSelect

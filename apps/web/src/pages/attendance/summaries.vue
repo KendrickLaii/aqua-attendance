@@ -2,13 +2,14 @@
 import { generateSummaries, getSummaryOverviewStats, listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
 import type { AttendanceSummary, SummaryOverviewItem, SummaryOverviewStats } from '@/api/attendance/summaries'
 import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
+import SummaryDateCell from '@/components/attendance/SummaryDateCell.vue'
 import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatSummaryGenerateMessage } from '@/utils/formatGenerateResult'
 
 definePage({ meta: {} })
 
-type DetailStatus = 'all' | 'complete' | 'incomplete' | 'weekend'
+type DetailStatus = 'all' | 'complete' | 'needs_review' | 'incomplete' | 'weekend'
 
 const DETAIL_PAGE_SIZE = 100
 const {
@@ -23,6 +24,7 @@ const {
 
 const { ensureAccess } = useAttendanceAdminGate()
 const { yearMonth, monthDateRange, monthLabel, changeMonth, toCurrentMonth } = useYearMonth()
+const router = useRouter()
 
 const overviewItems = ref<SummaryOverviewItem[]>([])
 const overviewStats = ref<SummaryOverviewStats | null>(null)
@@ -53,6 +55,7 @@ const typeOptions = [
 const statusOptions: { title: string; value: DetailStatus }[] = [
   { title: 'All', value: 'all' },
   { title: 'Complete', value: 'complete' },
+  { title: 'Needs review', value: 'needs_review' },
   { title: 'Incomplete', value: 'incomplete' },
   { title: 'Weekend', value: 'weekend' },
 ]
@@ -73,11 +76,36 @@ const pageSubtitle = computed(() => {
 
 const overviewCaption = computed(() => overviewListCaption(overviewItems.value.length, 'unit'))
 
-const visibleSummaries = computed(() => {
-  if (detailStatus.value !== 'weekend')
-    return summaries.value
+function needsManualReview(s: AttendanceSummary) {
+  return !s.is_complete || isAutoCheckoutSummaryDay(s)
+}
 
-  return summaries.value.filter(s => s.is_weekend)
+function isMissingCheckIn(s: AttendanceSummary) {
+  return !s.first_check_in && !!s.last_check_out
+}
+
+function reviewHint(s: AttendanceSummary) {
+  if (isMissingCheckIn(s))
+    return 'Add check-in on Log'
+  if (!s.is_complete)
+    return 'Add check-out on Log'
+  if (isAutoCheckoutSummaryDay(s))
+    return 'Replace 23:59 out on Log'
+
+  return 'Fix on Log'
+}
+
+const visibleSummaries = computed(() => {
+  if (detailStatus.value === 'weekend')
+    return summaries.value.filter(s => s.is_weekend)
+  if (detailStatus.value === 'complete')
+    return summaries.value.filter(s => s.is_complete && !isAutoCheckoutSummaryDay(s))
+  if (detailStatus.value === 'needs_review')
+    return summaries.value.filter(s => needsManualReview(s))
+  if (detailStatus.value === 'incomplete')
+    return summaries.value.filter(s => !s.is_complete)
+
+  return summaries.value
 })
 
 const detailTotals = computed(() => {
@@ -86,8 +114,58 @@ const detailTotals = computed(() => {
   const regularSlots = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.regular_slots), 0)
   const otSlots = visibleSummaries.value.reduce((sum, s) => sum + safeNumber(s.ot_slots), 0)
   const autoCheckoutDays = visibleSummaries.value.filter(s => isAutoCheckoutSummaryDay(s)).length
+  const incompleteDays = visibleSummaries.value.filter(s => !s.is_complete).length
+  const needsReviewDays = visibleSummaries.value.filter(s => needsManualReview(s)).length
 
-  return { regular, overtime, regularSlots, otSlots, days: visibleSummaries.value.length, autoCheckoutDays }
+  return {
+    regular,
+    overtime,
+    regularSlots,
+    otSlots,
+    days: visibleSummaries.value.length,
+    autoCheckoutDays,
+    incompleteDays,
+    needsReviewDays,
+    /** Unreliable while incomplete / auto-checkout days are in the visible set */
+    reliable: needsReviewDays === 0,
+  }
+})
+
+function formatDayHours(s: AttendanceSummary, hours: number) {
+  if (!s.is_complete)
+    return '—'
+
+  return formatHours(hours)
+}
+
+function formatDaySlots(s: AttendanceSummary, slots: number) {
+  if (!s.is_complete)
+    return '—'
+
+  return String(slots)
+}
+
+function formatTotalHours(hours: number) {
+  if (!detailTotals.value.reliable)
+    return '—'
+
+  return formatHours(hours)
+}
+
+function formatTotalSlots(slots: number) {
+  if (!detailTotals.value.reliable)
+    return '—'
+
+  return String(slots)
+}
+
+const needsReviewReminder = computed(() => {
+  // Count from the loaded month set (not the active filter) so the banner stays useful.
+  const autoCheckout = summaries.value.filter(s => isAutoCheckoutSummaryDay(s)).length
+  const incomplete = summaries.value.filter(s => !s.is_complete).length
+  const total = summaries.value.filter(s => needsManualReview(s)).length
+
+  return { autoCheckout, incomplete, total }
 })
 
 const statCards = computed(() => {
@@ -287,8 +365,8 @@ function onOverviewPageSizeChange() {
 }
 
 function detailStatusQueryValue() {
-  if (detailStatus.value === 'complete')
-    return true
+  // Complete / Needs review / Weekend are refined client-side (auto-checkout vs real out).
+  // Incomplete still uses API is_complete=false for a tighter payload.
   if (detailStatus.value === 'incomplete')
     return false
 
@@ -308,8 +386,14 @@ function statusLabel(s: AttendanceSummary) {
     return 'Holiday'
   if (s.is_weekend)
     return 'Weekend'
+  if (isMissingCheckIn(s))
+    return 'Incomplete'
+  if (isAutoCheckoutSummaryDay(s))
+    return 'Needs review'
+  if (!s.is_complete)
+    return 'Incomplete'
 
-  return s.is_complete ? 'Complete' : 'Incomplete'
+  return 'Complete'
 }
 
 function statusIcon(s: AttendanceSummary) {
@@ -317,14 +401,20 @@ function statusIcon(s: AttendanceSummary) {
     return 'ri-calendar-event-line'
   if (s.is_weekend)
     return 'ri-calendar-2-line'
+  if (isAutoCheckoutSummaryDay(s))
+    return 'ri-alarm-warning-line'
+  if (!s.is_complete)
+    return 'ri-error-warning-line'
 
-  return s.is_complete ? 'ri-checkbox-circle-line' : 'ri-error-warning-line'
+  return 'ri-checkbox-circle-line'
 }
 
 function statusFilterIcon(status: DetailStatus) {
   switch (status) {
     case 'complete':
       return 'ri-checkbox-circle-line'
+    case 'needs_review':
+      return 'ri-alarm-warning-line'
     case 'incomplete':
       return 'ri-error-warning-line'
     case 'weekend':
@@ -337,8 +427,24 @@ function statusFilterIcon(status: DetailStatus) {
 function statusColor(s: AttendanceSummary) {
   if (s.is_holiday || s.is_weekend)
     return 'info'
+  if (needsManualReview(s))
+    return 'warning'
 
-  return s.is_complete ? 'success' : 'warning'
+  return 'success'
+}
+
+function openAttendanceLogForUnit() {
+  const unitId = selectedUnit.value?.unit_id
+  if (!unitId) {
+    router.push({ path: '/attendance/log' })
+
+    return
+  }
+
+  router.push({
+    path: '/attendance/log',
+    query: { unit_id: unitId },
+  })
 }
 
 function formatHours(h: number) {
@@ -779,7 +885,7 @@ function safeNumber(value: number) {
             label
             prepend-icon="ri-time-line"
           >
-            {{ formatHours(detailTotals.regular) }} regular · {{ detailTotals.regularSlots }} slots
+            {{ formatTotalHours(detailTotals.regular) }} regular · {{ formatTotalSlots(detailTotals.regularSlots) }} slots
           </VChip>
           <VChip
             color="info"
@@ -787,7 +893,7 @@ function safeNumber(value: number) {
             label
             prepend-icon="ri-flashlight-line"
           >
-            {{ formatHours(detailTotals.overtime) }} OT · {{ detailTotals.otSlots }} slots
+            {{ formatTotalHours(detailTotals.overtime) }} OT · {{ formatTotalSlots(detailTotals.otSlots) }} slots
           </VChip>
           <VChip
             v-if="detailTotals.autoCheckoutDays > 0"
@@ -799,8 +905,65 @@ function safeNumber(value: number) {
           >
             {{ detailTotals.autoCheckoutDays }} auto checkout
           </VChip>
+          <VChip
+            v-if="detailTotals.needsReviewDays > 0"
+            color="warning"
+            variant="tonal"
+            label
+            prepend-icon="ri-alarm-warning-line"
+            title="Incomplete or auto-closed days that need a real check-out"
+          >
+            {{ detailTotals.needsReviewDays }} need review
+          </VChip>
         </div>
       </VCardTitle>
+      <VCardText
+        v-if="needsReviewReminder.total > 0"
+        class="pb-0"
+      >
+        <VAlert
+          type="warning"
+          variant="tonal"
+          density="compact"
+          class="mb-2"
+        >
+          <div class="d-flex flex-wrap align-center justify-space-between gap-2">
+            <div>
+              <strong>{{ needsReviewReminder.total }}</strong> Incomplete record{{ needsReviewReminder.total === 1 ? '' : 's' }}.
+              <!-- <span
+                v-if="needsReviewReminder.autoCheckout || needsReviewReminder.incomplete"
+                class="text-medium-emphasis"
+              >
+                (
+                <template v-if="needsReviewReminder.autoCheckout">{{ needsReviewReminder.autoCheckout }} auto checkout</template>
+                <template v-if="needsReviewReminder.autoCheckout && needsReviewReminder.incomplete"> · </template>
+                <template v-if="needsReviewReminder.incomplete">{{ needsReviewReminder.incomplete }} incomplete</template>
+                ).
+              </span> -->
+              Make sure all data are complete and generate again
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <VBtn
+                size="small"
+                variant="tonal"
+                color="warning"
+                prepend-icon="ri-filter-line"
+                @click="detailStatus = 'needs_review'"
+              >
+              Show incomplete only
+              </VBtn>
+              <VBtn
+                size="small"
+                color="warning"
+                prepend-icon="ri-edit-box-line"
+                @click="openAttendanceLogForUnit"
+              >
+                Attendance Log
+              </VBtn>
+            </div>
+          </div>
+        </VAlert>
+      </VCardText>
       <VCardText class="pb-0">
         <VChipGroup
           v-model="detailStatus"
@@ -917,7 +1080,9 @@ function safeNumber(value: number) {
               v-for="s in visibleSummaries"
               :key="s.id"
             >
-              <td>{{ s.summary_date }}</td>
+              <td>
+                <SummaryDateCell :date="s.summary_date" />
+              </td>
               <td>
                 <span
                   v-if="s.first_check_in"
@@ -964,7 +1129,7 @@ function safeNumber(value: number) {
                     size="14"
                     class="text-success"
                   />
-                  {{ formatHours(s.regular_hours) }}
+                  {{ formatDayHours(s, s.regular_hours) }}
                 </span>
               </td>
               <td class="text-end">
@@ -976,7 +1141,7 @@ function safeNumber(value: number) {
                     icon="ri-grid-line"
                     size="14"
                   />
-                  {{ s.regular_slots }}
+                  {{ formatDaySlots(s, s.regular_slots) }}
                 </span>
               </td>
               <td class="text-end">
@@ -989,7 +1154,7 @@ function safeNumber(value: number) {
                     size="14"
                     class="text-info"
                   />
-                  {{ formatHours(s.overtime_hours) }}
+                  {{ formatDayHours(s, s.overtime_hours) }}
                 </span>
               </td>
               <td class="text-end">
@@ -1001,7 +1166,7 @@ function safeNumber(value: number) {
                     icon="ri-apps-2-line"
                     size="14"
                   />
-                  {{ s.ot_slots }}
+                  {{ formatDaySlots(s, s.ot_slots) }}
                 </span>
               </td>
               <td>
@@ -1014,10 +1179,17 @@ function safeNumber(value: number) {
                   >
                     {{ statusLabel(s) }}
                   </VChip>
-                  <AutoCheckoutChip
+                  <!-- <AutoCheckoutChip
                     :notes="s.attendance_notes"
                     :last-check-out="s.last_check_out"
                   />
+                  <span
+                    v-if="needsManualReview(s)"
+                    class="text-caption text-warning"
+                    :title="s.attendance_notes || 'Add or replace the missing check-in/out with Manual correction on Attendance Log, then Generate summaries again'"
+                  >
+                    {{ reviewHint(s) }}
+                  </span> -->
                 </div>
               </td>
             </tr>
@@ -1029,41 +1201,53 @@ function safeNumber(value: number) {
               <td />
               <td />
               <td class="text-end">
-                <span class="cell-metric">
+                <span
+                  class="cell-metric"
+                  :title="detailTotals.reliable ? 'Regular hours total' : 'Total hidden while incomplete / needs-review days are present'"
+                >
                   <VIcon
                     icon="ri-time-line"
                     size="14"
                     class="text-success"
                   />
-                  {{ formatHours(detailTotals.regular) }}
+                  {{ formatTotalHours(detailTotals.regular) }}
                 </span>
               </td>
               <td class="text-end">
-                <span class="cell-metric text-medium-emphasis">
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  :title="detailTotals.reliable ? 'Regular slots total' : 'Total hidden while incomplete / needs-review days are present'"
+                >
                   <VIcon
                     icon="ri-grid-line"
                     size="14"
                   />
-                  {{ detailTotals.regularSlots }}
+                  {{ formatTotalSlots(detailTotals.regularSlots) }}
                 </span>
               </td>
               <td class="text-end">
-                <span class="cell-metric">
+                <span
+                  class="cell-metric"
+                  :title="detailTotals.reliable ? 'Overtime hours total' : 'Total hidden while incomplete / needs-review days are present'"
+                >
                   <VIcon
                     icon="ri-flashlight-line"
                     size="14"
                     class="text-info"
                   />
-                  {{ formatHours(detailTotals.overtime) }}
+                  {{ formatTotalHours(detailTotals.overtime) }}
                 </span>
               </td>
               <td class="text-end">
-                <span class="cell-metric text-medium-emphasis">
+                <span
+                  class="cell-metric text-medium-emphasis"
+                  :title="detailTotals.reliable ? 'Overtime slots total' : 'Total hidden while incomplete / needs-review days are present'"
+                >
                   <VIcon
                     icon="ri-apps-2-line"
                     size="14"
                   />
-                  {{ detailTotals.otSlots }}
+                  {{ formatTotalSlots(detailTotals.otSlots) }}
                 </span>
               </td>
               <td />
@@ -1073,7 +1257,9 @@ function safeNumber(value: number) {
                 colspan="8"
                 class="text-center text-medium-emphasis py-6"
               >
-                No daily records match this status filter.
+                {{ detailStatus === 'needs_review'
+                  ? 'No days need review for this month.'
+                  : 'No daily records match this status filter.' }}
               </td>
             </tr>
           </tbody>

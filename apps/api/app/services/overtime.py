@@ -133,7 +133,7 @@ def calculate_workday(
             close_dt += timedelta(days=1)
 
         standard_minutes = max(0, _minutes_between(rounded_in, close_dt))
-        standard_slots = standard_minutes // _SLOT_MINUTES
+        standard_slots = min(standard_minutes // _SLOT_MINUTES, total_slots)
         standard_hours = standard_slots / _SLOTS_PER_HOUR
 
         ot_slots = max(0, total_slots - standard_slots)

@@ -5,10 +5,14 @@ unit and inserts / updates `attendance_summaries` rows.
 
 Forgotten check-outs on past days are closed at the day boundary (23:59)
 with an ``auto_checkout`` event — same helper as the Auto Checkout job —
-so Incomplete is reserved for days that are still open (e.g. today).
+so Incomplete is reserved for days that still lack a usable pair
+(e.g. today still open, or check-out without check-in).
 
-Orphan cleanup deletes month rows with no usable check-in events, except
-rows with ``calculation_method=seed`` (demo data from ``seed.py --summaries``).
+Checkout-only days are kept as Incomplete (0 hours) so admins can see them
+and add a Manual correction check-in to complete the day.
+
+Orphan cleanup deletes month rows with no attendance events for that day,
+except rows with ``calculation_method=seed`` (demo data from ``seed.py --summaries``).
 """
 
 import calendar
@@ -80,14 +84,8 @@ async def generate_monthly_summaries(
         check_ins = [e for e in day_events if e.event_type == EventType.check_in.value]
         check_outs = [e for e in day_events if e.event_type == EventType.check_out.value]
 
-        if not check_ins:
-            continue  # No check-in → cannot calculate workday
-
-        first_check_in = min(e.recorded_at for e in check_ins)
-        last_out_event = (
-            max(check_outs, key=lambda e: e.recorded_at) if check_outs else None
-        )
-        last_check_out = last_out_event.recorded_at if last_out_event else None
+        if not check_ins and not check_outs:
+            continue
 
         # Determine location (prefer first event's location, fallback to unit's registered)
         first_event = day_events[0]
@@ -101,42 +99,51 @@ async def generate_monthly_summaries(
             continue  # summaries require a location_id
 
         notes: str | None = None
+        work_result = None
+        is_complete = False
+        first_check_in = None
+        last_out_event = (
+            max(check_outs, key=lambda e: e.recorded_at) if check_outs else None
+        )
+        last_check_out = last_out_event.recorded_at if last_out_event else None
 
-        # Past days with check-in but no check-out → day-boundary auto checkout
-        if last_check_out is None and event_date < today:
-            last_check_out = day_boundary_at(event_date)
-            db.add(
-                make_day_boundary_checkout_event(
-                    unit_id=unit_id,
-                    checkout_time=last_check_out,
-                    location_id=location_id,
-                    location=first_event.location
-                    or (location.code if location and location.code else "auto"),
-                )
-            )
-            notes = "Closed by day-boundary auto checkout (23:59)"
-            auto_checkout_count += 1
-            units_to_recompute.add(unit_id)
-        elif (
-            last_out_event is not None
-            and last_out_event.source == EventSource.auto_checkout.value
-        ):
-            # Day-end (or prior Generate) already wrote the event — still mark the day
-            notes = (last_out_event.notes or "").strip() or DAY_BOUNDARY_NOTE
-
-        # Calculate work hours
-        if last_check_out:
-            work_result = calculate_workday(
-                first_check_in=first_check_in,
-                last_check_out=last_check_out,
-                location=location,
-                target_date=event_date,
-            )
-            is_complete = True
+        if not check_ins:
+            # Checkout-only: keep the day visible so admins can add a check-in
+            notes = "Missing check-in — add Manual correction to complete the day"
         else:
-            # Still open (typically today before check-out / auto-checkout)
-            work_result = None
-            is_complete = False
+            first_check_in = min(e.recorded_at for e in check_ins)
+
+            # Past days with check-in but no check-out → day-boundary auto checkout
+            if last_check_out is None and event_date < today:
+                last_check_out = day_boundary_at(event_date)
+                db.add(
+                    make_day_boundary_checkout_event(
+                        unit_id=unit_id,
+                        checkout_time=last_check_out,
+                        location_id=location_id,
+                        location=first_event.location
+                        or (location.code if location and location.code else "auto"),
+                    )
+                )
+                notes = "Closed by day-boundary auto checkout (23:59)"
+                auto_checkout_count += 1
+                units_to_recompute.add(unit_id)
+            elif (
+                last_out_event is not None
+                and last_out_event.source == EventSource.auto_checkout.value
+            ):
+                # Day-end (or prior Generate) already wrote the event — still mark the day
+                notes = (last_out_event.notes or "").strip() or DAY_BOUNDARY_NOTE
+
+            # Calculate work hours when both sides exist
+            if last_check_out:
+                work_result = calculate_workday(
+                    first_check_in=first_check_in,
+                    last_check_out=last_check_out,
+                    location=location,
+                    target_date=event_date,
+                )
+                is_complete = True
 
         # Build values
         total_minutes = int(work_result.total_hours * 60) if work_result else 0

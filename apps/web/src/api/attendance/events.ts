@@ -6,7 +6,7 @@ export interface AttendanceEvent {
   unit_code: string | null
   unit_name: string | null
   unit_type: string | null
-  event_type: 'check_in' | 'check_out' | 'manual_correction'
+  event_type: 'check_in' | 'check_out'
   source: string
   recorded_at: string
   created_at: string
