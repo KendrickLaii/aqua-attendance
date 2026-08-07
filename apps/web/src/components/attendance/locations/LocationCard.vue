@@ -20,13 +20,12 @@ const emit = defineEmits<{
     :class="{ 'location-card--inactive': !location.is_active }"
   >
     <div class="location-card__cover">
-      <VImg
+      <img
         v-if="cardCoverUrl(location)"
         :src="cardCoverUrl(location) || ''"
-        height="128"
-        cover
+        alt=""
         class="location-card__cover-img"
-      />
+      >
       <div
         v-else
         class="location-card__cover-placeholder"
@@ -179,6 +178,11 @@ const emit = defineEmits<{
   }
 
   &__cover-img {
+    display: block;
+    width: 100%;
+    height: 128px;
+    object-fit: contain;
+    object-position: center;
     background: rgb(var(--v-theme-surface-variant));
   }
 
