@@ -29,7 +29,11 @@ from app.models.attendance_summary import AttendanceSummary
 from app.models.unit import Unit
 from app.services.attendance import recompute_unit_attendance_status
 from app.attendance_tz import ATTENDANCE_TZ, attendance_date, attendance_today, day_boundary_at
-from app.services.auto_checkout import DAY_BOUNDARY_NOTE, make_day_boundary_checkout_event
+from app.services.auto_checkout import (
+    DAY_BOUNDARY_NOTE,
+    is_auto_checkout_enabled,
+    make_day_boundary_checkout_event,
+)
 
 from app.services.overtime import calculate_workday
 
@@ -114,7 +118,12 @@ async def generate_monthly_summaries(
             first_check_in = min(e.recorded_at for e in check_ins)
 
             # Past days with check-in but no check-out → day-boundary auto checkout
-            if last_check_out is None and event_date < today:
+            # (gated by AUTO_CHECKOUT_ENABLED; prefer Manual correction when off)
+            if (
+                is_auto_checkout_enabled()
+                and last_check_out is None
+                and event_date < today
+            ):
                 last_check_out = day_boundary_at(event_date)
                 db.add(
                     make_day_boundary_checkout_event(
@@ -134,6 +143,8 @@ async def generate_monthly_summaries(
             ):
                 # Day-end (or prior Generate) already wrote the event — still mark the day
                 notes = (last_out_event.notes or "").strip() or DAY_BOUNDARY_NOTE
+            elif last_check_out is None and event_date < today:
+                notes = "Missing check-out — add Manual correction to complete the day"
 
             # Calculate work hours when both sides exist
             if last_check_out:

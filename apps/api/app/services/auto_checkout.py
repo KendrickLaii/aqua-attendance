@@ -9,13 +9,14 @@ Rules (from DATABASE_CHANGES.md):
 **Status (not a complete automated system):**
 - Shared helper + manual ``POST /api/auto-checkout/run`` + Generate backfill for past days: yes
 - Nightly 23:59 cron / worker and 00:00 status reset: **not implemented** (see docs/known-gaps.md #M14)
+- Runtime gate: ``settings.AUTO_CHECKOUT_ENABLED`` (default **false** — prefer Manual correction)
 
 Both the Dashboard Day-end action and summary generate use
 ``make_day_boundary_checkout_event`` so event shape and status updates stay aligned.
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from app.attendance_tz import (
     attendance_today,
     day_boundary_at,
 )
+from app.config import settings
 from app.models.attendance import AttendanceEvent, EventSource, EventType
 from app.models.unit import AttendanceStatus, Unit
 from app.services.attendance import recompute_unit_attendance_status
@@ -38,10 +40,16 @@ __all__ = [
     "auto_checkout_for_date",
     "day_boundary_at",
     "get_still_checked_in_count",
+    "is_auto_checkout_enabled",
     "make_day_boundary_checkout_event",
 ]
 
 DAY_BOUNDARY_NOTE = "Auto checkout at day boundary (23:59)"
+
+
+def is_auto_checkout_enabled() -> bool:
+    """Runtime switch — code stays in place when disabled."""
+    return bool(settings.AUTO_CHECKOUT_ENABLED)
 
 
 def make_day_boundary_checkout_event(
@@ -64,6 +72,54 @@ def make_day_boundary_checkout_event(
     )
 
 
+def _attendance_day_bounds(target_date: date) -> tuple[datetime, datetime]:
+    start = datetime.combine(target_date, time.min, tzinfo=ATTENDANCE_TZ)
+    end = datetime.combine(target_date, time.max, tzinfo=ATTENDANCE_TZ)
+    return start, end
+
+
+async def _unit_ids_with_open_check_in(
+    db: AsyncSession,
+    target_date: date,
+    candidate_unit_ids: list[uuid.UUID],
+) -> set[uuid.UUID]:
+    """Units with a non-voided check-in on ``target_date`` and no non-voided check-out that day.
+
+    Ignores voided check-ins so Day-end cannot close a day whose only check-in
+    was voided.
+    """
+    if not candidate_unit_ids:
+        return set()
+
+    start, end = _attendance_day_bounds(target_date)
+    result = await db.execute(
+        select(AttendanceEvent)
+        .where(AttendanceEvent.unit_id.in_(candidate_unit_ids))
+        .where(AttendanceEvent.recorded_at >= start)
+        .where(AttendanceEvent.recorded_at <= end)
+        .where(AttendanceEvent.voided_at.is_(None))
+        .where(
+            AttendanceEvent.event_type.in_(
+                [EventType.check_in.value, EventType.check_out.value]
+            )
+        )
+    )
+    events = list(result.scalars().all())
+
+    by_unit: dict[uuid.UUID, list[AttendanceEvent]] = {}
+    for event in events:
+        by_unit.setdefault(event.unit_id, []).append(event)
+
+    open_ids: set[uuid.UUID] = set()
+    for unit_id, day_events in by_unit.items():
+        has_in = any(e.event_type == EventType.check_in.value for e in day_events)
+        has_out = any(e.event_type == EventType.check_out.value for e in day_events)
+        if has_in and not has_out:
+            open_ids.add(unit_id)
+
+    return open_ids
+
+
 async def auto_checkout_for_date(
     db: AsyncSession,
     target_date: date | None = None,
@@ -83,6 +139,9 @@ async def auto_checkout_for_date(
     Returns:
         list of created auto-checkout events
     """
+    if not is_auto_checkout_enabled():
+        return []
+
     if target_date is None:
         target_date = attendance_today()
 
@@ -99,6 +158,18 @@ async def auto_checkout_for_date(
 
     result = await db.execute(query)
     units = list(result.scalars().all())
+    if not units:
+        return []
+
+    # Only close units that still have a real (non-voided) open check-in that day.
+    open_ids = await _unit_ids_with_open_check_in(
+        db,
+        target_date,
+        [unit.id for unit in units],
+    )
+    units = [unit for unit in units if unit.id in open_ids]
+    if not units:
+        return []
 
     checkout_time = day_boundary_at(target_date)
     created_events: list[AttendanceEvent] = []

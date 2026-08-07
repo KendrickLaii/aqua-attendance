@@ -1,13 +1,13 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.attendance_tz import is_same_attendance_day
+from app.attendance_tz import ATTENDANCE_TZ, attendance_date, is_same_attendance_day
 from app.config import settings
-from app.models.attendance import AttendanceEvent, EventType
+from app.models.attendance import AttendanceEvent, EventSource, EventType
 from app.models.unit import AttendanceStatus, Unit
 
 
@@ -349,6 +349,45 @@ async def recompute_unit_attendance_status(
     unit.last_event_location = latest.location
 
 
+async def _void_orphan_auto_checkouts_for_day(
+    db: AsyncSession,
+    *,
+    unit_id: uuid.UUID,
+    day: date,
+    now: datetime,
+) -> None:
+    """Void same-day auto_checkout outs when no non-voided check-in remains.
+
+    Prevents day-boundary outs from surviving after their check-in was voided.
+    """
+    start = datetime.combine(day, time.min, tzinfo=ATTENDANCE_TZ)
+    end = datetime.combine(day, time.max, tzinfo=ATTENDANCE_TZ)
+
+    remaining_in = await db.execute(
+        select(AttendanceEvent.id)
+        .where(AttendanceEvent.unit_id == unit_id)
+        .where(AttendanceEvent.recorded_at >= start)
+        .where(AttendanceEvent.recorded_at <= end)
+        .where(AttendanceEvent.voided_at.is_(None))
+        .where(AttendanceEvent.event_type == EventType.check_in.value)
+        .limit(1)
+    )
+    if remaining_in.scalar_one_or_none() is not None:
+        return
+
+    result = await db.execute(
+        select(AttendanceEvent)
+        .where(AttendanceEvent.unit_id == unit_id)
+        .where(AttendanceEvent.recorded_at >= start)
+        .where(AttendanceEvent.recorded_at <= end)
+        .where(AttendanceEvent.voided_at.is_(None))
+        .where(AttendanceEvent.event_type == EventType.check_out.value)
+        .where(AttendanceEvent.source == EventSource.auto_checkout.value)
+    )
+    for orphan in result.scalars().all():
+        orphan.voided_at = now
+
+
 async def void_event(
     db: AsyncSession,
     *,
@@ -358,7 +397,17 @@ async def void_event(
     if event.voided_at is not None:
         return event
 
-    event.voided_at = _now()
+    now = _now()
+    event.voided_at = now
+
+    # If the only real check-in for that day is voided, drop orphan 23:59 auto outs.
+    if event.event_type == EventType.check_in.value:
+        await _void_orphan_auto_checkouts_for_day(
+            db,
+            unit_id=event.unit_id,
+            day=attendance_date(event.recorded_at),
+            now=now,
+        )
 
     unit = event.unit
     if unit is None:

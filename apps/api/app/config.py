@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # which bumps Unit.qr_token_version.  Same token toggles check-in/out.
     SCAN_DEBOUNCE_SECONDS: int = 3
 
+    # Day-boundary auto-checkout (Dashboard Day-end + Generate backfill).
+    # Disabled while Manual correction is the preferred way to close days.
+    # Set True to re-enable later without restoring deleted code.
+    AUTO_CHECKOUT_ENABLED: bool = False
+
     CSV_EXPORT_MAX_ROWS: int = 50_000
     CSV_EXPORT_PAGE_SIZE: int = 5_000
 

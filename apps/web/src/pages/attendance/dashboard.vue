@@ -31,6 +31,7 @@ const loadError = ref('')
 const todayLabel = ref(formatAttendanceDateLabel())
 const todayEventTotal = ref(0)
 const stillCheckedInCount = ref(0)
+const autoCheckoutEnabled = ref(false)
 const autoCheckoutLoading = ref(false)
 const autoCheckoutResult = ref('')
 
@@ -232,7 +233,7 @@ async function loadDashboard(isRefresh = false) {
       listAttendanceWithTotal({ date_from: range.date_from, date_to: range.date_to, page_size: RECENT_EVENTS_LIMIT }),
       getAttendanceDayStats({ date_from: range.date_from, date_to: range.date_to }),
       listUnits({ is_active: true, page_size: 200 }),
-      getAutoCheckoutStatus().catch(() => ({ still_checked_in_count: 0 })),
+      getAutoCheckoutStatus().catch(() => ({ still_checked_in_count: 0, enabled: false })),
     ])
 
     const events = eventsResult.items
@@ -248,6 +249,7 @@ async function loadDashboard(isRefresh = false) {
     todayCheckOutsStudent.value = dayStats.check_outs_student
     todayCheckOutsStaff.value = dayStats.check_outs_staff
     stillCheckedInCount.value = checkoutStatus.still_checked_in_count
+    autoCheckoutEnabled.value = checkoutStatus.enabled === true
   }
   catch (e) {
     console.error('Failed to load dashboard', e)
@@ -308,6 +310,9 @@ function typeLabel(type: string) {
 }
 
 async function openAutoCheckoutDialog() {
+  if (!autoCheckoutEnabled.value)
+    return
+
   autoCheckoutDialog.value = true
   autoCheckoutDialogError.value = ''
   autoCheckoutCandidatesLoading.value = true
@@ -400,7 +405,10 @@ async function confirmAutoCheckout() {
           color="warning"
           prepend-icon="ri-time-line"
           :loading="autoCheckoutLoading"
-          title="Day-end tool: closes open check-ins at 23:59. Do not use while staff are still working."
+          :disabled="!autoCheckoutEnabled"
+          :title="autoCheckoutEnabled
+            ? 'Day-end tool: closes open check-ins at 23:59. Do not use while staff are still working.'
+            : 'Auto-checkout is disabled. Use Manual correction on Log or Units instead.'"
           @click="openAutoCheckoutDialog"
         >
           Day-end checkout
@@ -494,7 +502,10 @@ async function confirmAutoCheckout() {
             <div class="text-body-2">
               During location hours this usually means people are still working.
               After closing (e.g. past 18:00) they may be OT or overdue.
-              Overnight names can be a missed-checkout reminder — only run day-end checkout when you mean to close the day.
+              Overnight names can be a missed-checkout reminder —
+              {{ autoCheckoutEnabled
+                ? 'only run day-end checkout when you mean to close the day.'
+                : 'use Manual correction to close the day (auto-checkout is disabled).' }}
             </div>
           </div>
           <VBtn
@@ -503,6 +514,10 @@ async function confirmAutoCheckout() {
             color="warning"
             prepend-icon="ri-time-line"
             :loading="autoCheckoutLoading"
+            :disabled="!autoCheckoutEnabled"
+            :title="autoCheckoutEnabled
+              ? undefined
+              : 'Auto-checkout is disabled. Use Manual correction instead.'"
             @click="openAutoCheckoutDialog"
           >
             Review list

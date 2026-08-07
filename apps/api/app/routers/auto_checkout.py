@@ -6,7 +6,11 @@ from pydantic import BaseModel
 
 from app.attendance_tz import attendance_today
 from app.deps import AdminOnly, DB
-from app.services.auto_checkout import auto_checkout_for_date, get_still_checked_in_count
+from app.services.auto_checkout import (
+    auto_checkout_for_date,
+    get_still_checked_in_count,
+    is_auto_checkout_enabled,
+)
 
 router = APIRouter(prefix="/auto-checkout", tags=["auto-checkout"])
 
@@ -37,16 +41,31 @@ async def trigger_auto_checkout(
     """
     from app.services.summary_generator import generate_monthly_summaries
 
+    target = payload.target_date or attendance_today()
+
+    if not is_auto_checkout_enabled():
+        return {
+            "target_date": str(target),
+            "created_events": 0,
+            "summaries_created": 0,
+            "summaries_updated": 0,
+            "disabled": True,
+            "message": (
+                "Auto-checkout is disabled. "
+                "Use Manual correction on Attendance Log or Units to close days."
+            ),
+        }
+
     events = await auto_checkout_for_date(
         db, target_date=payload.target_date, unit_ids=payload.unit_ids
     )
-    target = payload.target_date or attendance_today()
     summaries = await generate_monthly_summaries(db, year=target.year, month=target.month)
     return {
         "target_date": str(target),
         "created_events": len(events),
         "summaries_created": summaries["created"],
         "summaries_updated": summaries["updated"],
+        "disabled": False,
         "message": (
             f"Auto-checkout created {len(events)} events; "
             f"summaries {summaries['created']} created / {summaries['updated']} updated"
@@ -58,4 +77,7 @@ async def trigger_auto_checkout(
 async def auto_checkout_status(_admin: AdminOnly, db: DB) -> dict:
     """Return the number of units still checked in (pending auto-checkout)."""
     count = await get_still_checked_in_count(db)
-    return {"still_checked_in_count": count}
+    return {
+        "still_checked_in_count": count,
+        "enabled": is_auto_checkout_enabled(),
+    }
