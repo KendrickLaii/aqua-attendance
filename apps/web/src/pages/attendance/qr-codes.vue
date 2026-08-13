@@ -3,6 +3,7 @@ import { listUnits } from '@/api/attendance/units'
 import type { Unit } from '@/api/attendance/units'
 import UnitQrDialogs from '@/components/attendance/UnitQrDialogs.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { openUnitQrPrintPlaceholder, printUnitQrs } from '@/utils/printUnitQrs'
 
 definePage({ meta: {} })
@@ -24,6 +25,8 @@ const qrDialogsRef = ref<InstanceType<typeof UnitQrDialogs> | null>(null)
 const selectedIds = ref<Set<string>>(new Set())
 const printing = ref(false)
 const printError = ref('')
+
+useAutoClearAlerts(loadError, printError)
 
 const typeOptions = [
   { title: 'Student', value: 'student' },

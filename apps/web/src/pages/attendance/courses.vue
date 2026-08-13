@@ -16,9 +16,10 @@ import {
   updateCourseSku,
   updateCourseSpu,
 } from '@/api/attendance/courses'
-import { listLocations, type LocationItem } from '@/api/attendance/locations'
-import { listUnits, type Unit } from '@/api/attendance/units'
+import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import { type Unit, listUnits } from '@/api/attendance/units'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
@@ -26,6 +27,8 @@ const { ensureAccess } = useAttendanceAdminGate()
 
 const loading = ref(true)
 const loadError = ref('')
+
+useAutoClearAlerts(loadError)
 
 const spus = ref<CourseSpu[]>([])
 const skus = ref<CourseSku[]>([])
@@ -100,6 +103,7 @@ function openEditSpu(spu: CourseSpu) {
 async function saveSpu() {
   spuSaving.value = true
   spuSaveError.value = ''
+
   const payload = {
     code: spuForm.code.trim(),
     name_zh: spuForm.name_zh.trim(),
@@ -108,6 +112,7 @@ async function saveSpu() {
     description: spuForm.description.trim() || null,
     is_active: spuForm.is_active,
   }
+
   try {
     if (editingSpu.value)
       await updateCourseSpu(editingSpu.value.id, payload)
@@ -125,18 +130,64 @@ async function saveSpu() {
   }
 }
 
-async function removeSpu(spu: CourseSpu) {
-  if (!confirm(`Delete course "${spu.name_zh}"? This only works if it has no class offerings.`))
+const deleteConfirmOpen = ref(false)
+const deleteConfirmLoading = ref(false)
+const deleteConfirmError = ref('')
+
+interface CourseDeleteTarget {
+  kind: 'spu' | 'sku' | 'enrollment'
+  title: string
+  detail: string
+  run: () => Promise<void>
+}
+
+const deleteTarget = ref<CourseDeleteTarget | null>(null)
+
+function closeDeleteConfirm() {
+  if (deleteConfirmLoading.value)
     return
+  deleteConfirmOpen.value = false
+  deleteConfirmError.value = ''
+  deleteTarget.value = null
+}
+
+function openDeleteConfirm(target: NonNullable<typeof deleteTarget.value>) {
+  deleteTarget.value = target
+  deleteConfirmError.value = ''
+  deleteConfirmOpen.value = true
+}
+
+async function confirmCourseDelete() {
+  if (!deleteTarget.value)
+    return
+
+  deleteConfirmLoading.value = true
+  deleteConfirmError.value = ''
   try {
-    await deleteCourseSpu(spu.id)
-    if (selectedSpuId.value === spu.id)
-      selectedSpuId.value = null
-    await loadAll()
+    await deleteTarget.value.run()
+    deleteConfirmOpen.value = false
+    deleteTarget.value = null
   }
   catch (e) {
-    loadError.value = formatApiError(e, 'Could not delete course. It may still have class offerings — set it inactive instead.')
+    deleteConfirmError.value = formatApiError(e, 'Could not delete this item.')
   }
+  finally {
+    deleteConfirmLoading.value = false
+  }
+}
+
+function removeSpu(spu: CourseSpu) {
+  openDeleteConfirm({
+    kind: 'spu',
+    title: `Delete ${spu.name_zh}?`,
+    detail: `Delete course "${spu.name_zh}"? This only works if it has no class offerings.`,
+    run: async () => {
+      await deleteCourseSpu(spu.id)
+      if (selectedSpuId.value === spu.id)
+        selectedSpuId.value = null
+      await loadAll()
+    },
+  })
 }
 
 // ---------------- SKU dialog ----------------
@@ -145,6 +196,7 @@ const skuDialogOpen = ref(false)
 const skuSaving = ref(false)
 const skuSaveError = ref('')
 const editingSku = ref<CourseSku | null>(null)
+
 const skuForm = reactive({
   code: '',
   name_zh: '',
@@ -162,8 +214,15 @@ function openCreateSku() {
     return
   editingSku.value = null
   Object.assign(skuForm, {
-    code: '', name_zh: '', name_en: '', level: '', schedule_note: '',
-    location_id: null, capacity: null, price: null, is_active: true,
+    code: '',
+    name_zh: '',
+    name_en: '',
+    level: '',
+    schedule_note: '',
+    location_id: null,
+    capacity: null,
+    price: null,
+    is_active: true,
   })
   skuSaveError.value = ''
   skuDialogOpen.value = true
@@ -191,6 +250,7 @@ async function saveSku() {
     return
   skuSaving.value = true
   skuSaveError.value = ''
+
   const payload = {
     spu_id: selectedSpuId.value,
     code: skuForm.code.trim(),
@@ -203,6 +263,7 @@ async function saveSku() {
     price: skuForm.price,
     is_active: skuForm.is_active,
   }
+
   try {
     if (editingSku.value)
       await updateCourseSku(editingSku.value.id, payload)
@@ -220,16 +281,16 @@ async function saveSku() {
   }
 }
 
-async function removeSku(sku: CourseSku) {
-  if (!confirm(`Delete class "${sku.name_zh}"? This only works if no student is enrolled.`))
-    return
-  try {
-    await deleteCourseSku(sku.id)
-    await loadAll()
-  }
-  catch (e) {
-    loadError.value = formatApiError(e, 'Could not delete class. It may still have enrolled students — set it inactive instead.')
-  }
+function removeSku(sku: CourseSku) {
+  openDeleteConfirm({
+    kind: 'sku',
+    title: `Delete ${sku.name_zh}?`,
+    detail: `Delete class "${sku.name_zh}"? This only works if no student is enrolled.`,
+    run: async () => {
+      await deleteCourseSku(sku.id)
+      await loadAll()
+    },
+  })
 }
 
 // ---------------- Enrollments ----------------
@@ -278,6 +339,7 @@ watch(selectedStudentId, async id => {
   enrollmentsLoading.value = true
   try {
     const result = await listCourseEnrollmentsWithTotal({ unit_id: id, page_size: 100 })
+
     enrollments.value = result.items
   }
   catch (e) {
@@ -293,6 +355,7 @@ function skuLabel(skuId: string): string {
   if (!sku)
     return skuId
   const spuName = spus.value.find(s => s.id === sku.spu_id)?.name_zh
+
   return spuName ? `${spuName} · ${sku.name_zh}` : sku.name_zh
 }
 
@@ -303,6 +366,7 @@ async function enrollStudent() {
   enrollError.value = ''
   try {
     const created = await createCourseEnrollment({ unit_id: selectedStudentId.value, sku_id: enrollSkuId.value })
+
     enrollments.value = [created, ...enrollments.value]
     enrollSkuId.value = null
   }
@@ -326,16 +390,16 @@ async function cancelEnrollment(enrollment: CourseEnrollment) {
   }
 }
 
-async function removeEnrollment(enrollment: CourseEnrollment) {
-  if (!confirm('Remove this enrollment record?'))
-    return
-  try {
-    await deleteCourseEnrollment(enrollment.id)
-    enrollments.value = enrollments.value.filter(e => e.id !== enrollment.id)
-  }
-  catch (e) {
-    enrollError.value = formatApiError(e, 'Could not remove enrollment.')
-  }
+function removeEnrollment(enrollment: CourseEnrollment) {
+  openDeleteConfirm({
+    kind: 'enrollment',
+    title: 'Remove enrollment?',
+    detail: 'Remove this enrollment record?',
+    run: async () => {
+      await deleteCourseEnrollment(enrollment.id)
+      enrollments.value = enrollments.value.filter(e => e.id !== enrollment.id)
+    },
+  })
 }
 
 const enrollmentStatusColor: Record<string, string> = {
@@ -957,5 +1021,17 @@ const enrollmentStatusColor: Record<string, string> = {
         </VCardActions>
       </VCard>
     </VDialog>
+
+    <AttendanceConfirmDialog
+      v-model="deleteConfirmOpen"
+      :title="deleteTarget?.title || 'Confirm delete'"
+      :loading="deleteConfirmLoading"
+      :error="deleteConfirmError"
+      @confirm="confirmCourseDelete"
+      @cancel="closeDeleteConfirm"
+      @clear-error="deleteConfirmError = ''"
+    >
+      {{ deleteTarget?.detail }}
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>

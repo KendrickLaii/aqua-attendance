@@ -259,6 +259,7 @@ declare global {
   const useAttendanceAdminGate: typeof import('./src/composables/useAttendanceAdminGate')['useAttendanceAdminGate']
   const useAttendanceCaslSync: typeof import('./src/composables/useAttendanceCaslSync')['useAttendanceCaslSync']
   const useAttrs: typeof import('vue')['useAttrs']
+  const useAutoClearAlerts: typeof import('./src/composables/useAutoClearAlert')['useAutoClearAlerts']
   const useAverage: typeof import('@vueuse/math')['useAverage']
   const useBase64: typeof import('@vueuse/core')['useBase64']
   const useBattery: typeof import('@vueuse/core')['useBattery']
@@ -706,6 +707,7 @@ declare module 'vue' {
     readonly useAttendanceAdminGate: UnwrapRef<typeof import('./src/composables/useAttendanceAdminGate')['useAttendanceAdminGate']>
     readonly useAttendanceCaslSync: UnwrapRef<typeof import('./src/composables/useAttendanceCaslSync')['useAttendanceCaslSync']>
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
+    readonly useAutoClearAlerts: UnwrapRef<typeof import('./src/composables/useAutoClearAlert')['useAutoClearAlerts']>
     readonly useAverage: UnwrapRef<typeof import('@vueuse/math')['useAverage']>
     readonly useBase64: UnwrapRef<typeof import('@vueuse/core')['useBase64']>
     readonly useBattery: UnwrapRef<typeof import('@vueuse/core')['useBattery']>

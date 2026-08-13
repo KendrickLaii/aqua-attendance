@@ -6,8 +6,9 @@ import type { Unit } from '@/api/attendance/units'
 import { type BusinessHours, listLocations } from '@/api/attendance/locations'
 import { getAutoCheckoutStatus, triggerAutoCheckout } from '@/api/attendance/autoCheckout'
 import type { AttendanceEvent } from '@/api/attendance/events'
-import { formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso, ATTENDANCE_TIMEZONE } from '@/utils/attendanceDisplay'
+import { ATTENDANCE_TIMEZONE, formatAttendanceDateLabel, formatAttendanceTime, getTodayRangeIso } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
@@ -35,15 +36,19 @@ const autoCheckoutEnabled = ref(false)
 const autoCheckoutLoading = ref(false)
 const autoCheckoutResult = ref('')
 
+useAutoClearAlerts(loadError, autoCheckoutResult)
+
 const autoCheckoutDialog = ref(false)
 const autoCheckoutCandidates = ref<Unit[]>([])
 const autoCheckoutSelectedIds = ref<string[]>([])
 const autoCheckoutCandidatesLoading = ref(false)
 const autoCheckoutDialogError = ref('')
+
 /** location_id → today's close "HH:MM" (null = closed / unknown) */
 const locationCloseById = ref<Record<string, string | null>>({})
 
 type OnSiteKind = 'on_site_today' | 'past_closing' | 'possible_missed'
+
 const allCandidatesSelected = computed(() =>
   autoCheckoutCandidates.value.length > 0
   && autoCheckoutSelectedIds.value.length === autoCheckoutCandidates.value.length)
@@ -147,6 +152,7 @@ function isLastEventToday(lastEventAt: string | null | undefined): boolean {
     return false
 
   const today = getTodayRangeIso().dateKey
+
   const eventDay = new Intl.DateTimeFormat('en-CA', {
     timeZone: ATTENDANCE_TIMEZONE,
     year: 'numeric',
@@ -173,6 +179,7 @@ function parseCloseFromBusinessHours(hours: BusinessHours | string | null | unde
     return null
 
   const close = day.close
+
   return typeof close === 'string' && /^\d{1,2}:\d{2}$/.test(close) ? close : null
 }
 
@@ -183,6 +190,7 @@ function currentMinutesInTz(now = new Date()): number {
     minute: '2-digit',
     hour12: false,
   }).formatToParts(now)
+
   const hour = Number(parts.find(p => p.type === 'hour')?.value ?? 0) % 24
   const minute = Number(parts.find(p => p.type === 'minute')?.value ?? 0)
 
@@ -331,6 +339,7 @@ async function openAutoCheckoutDialog() {
     locationCloseById.value = closeMap
 
     autoCheckoutCandidates.value = units
+
     // Default-select overnight missed + past-closing; leave in-hours people unchecked.
     autoCheckoutSelectedIds.value = units.filter(shouldDefaultSelect).map(u => u.id)
   }
@@ -350,6 +359,7 @@ async function confirmAutoCheckout() {
   autoCheckoutResult.value = ''
   try {
     const result = await triggerAutoCheckout({ unitIds: [...autoCheckoutSelectedIds.value] })
+
     autoCheckoutResult.value = result.message
     autoCheckoutDialog.value = false
     await loadDashboard(true)

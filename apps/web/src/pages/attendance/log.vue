@@ -5,6 +5,7 @@ import { listUnits } from '@/api/attendance/units'
 import type { Unit } from '@/api/attendance/units'
 import { eventSourceColor, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso, shiftDateKey } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
@@ -44,6 +45,9 @@ const correctionDialog = ref(false)
 
 const exporting = ref(false)
 const exportError = ref('')
+
+useAutoClearAlerts(loadError, exportError)
+
 const voidingId = ref<string | null>(null)
 const voidError = ref('')
 const voidConfirmDialog = ref(false)
@@ -481,17 +485,19 @@ async function confirmVoid() {
           />
         </VCol>
       </VRow>
-      <!-- <VAlert
+      <!--
+        <VAlert
         v-if="activeDatePreset === 'today'"
         type="info"
         variant="tonal"
         density="compact"
         class="mb-3"
-      >
+        >
         Day-end checkout is stored at <strong>23:59</strong>. Older runs used UTC, so they may fall on
         <strong>tomorrow morning</strong> in Hong Kong and will not appear under Today.
         Use <strong>All time</strong> (or extend To to tomorrow) and Source = <strong>Auto checkout</strong> to find them.
-      </VAlert> -->
+        </VAlert>
+      -->
       <div class="d-flex flex-wrap align-center gap-2 mb-3">
         <span class="text-caption text-medium-emphasis me-1">Quick range:</span>
         <VBtn
@@ -663,7 +669,10 @@ async function confirmVoid() {
               <td :class="{ 'text-medium-emphasis': evt.voided_at }">
                 {{ evt.location || '—' }}
               </td>
-              <td class="col-notes" :class="{ 'text-medium-emphasis': evt.voided_at }">
+              <td
+                class="col-notes"
+                :class="{ 'text-medium-emphasis': evt.voided_at }"
+              >
                 {{ evt.notes || '—' }}
               </td>
               <td class="col-actions">

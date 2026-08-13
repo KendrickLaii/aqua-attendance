@@ -10,6 +10,7 @@ import {
 import { createUser, deleteUser, listUsersWithTotal, updateUser } from '@/api/attendance/users'
 import type { AttendanceUser } from '@/api/attendance/auth'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
 
@@ -18,7 +19,6 @@ const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
 const { authStore, ensureAccess } = useAttendanceAdminGate()
-const router = useRouter()
 
 const users = ref<AttendanceUser[]>([])
 const totalCount = ref(0)
@@ -26,6 +26,9 @@ const page = ref(1)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
+
+useAutoClearAlerts(loadError)
+
 const dialogOpen = ref(false)
 const editingUser = ref<AttendanceUser | null>(null)
 
@@ -517,71 +520,71 @@ function canDeleteUser(u: AttendanceUser) {
         ref="userFormRef"
         @submit.prevent="handleSave"
       >
-            <VTextField
-              v-model="form.username"
-              label="Username *"
-              :disabled="!!editingUser"
-              maxlength="100"
-              :rules="usernameRules"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
+        <VTextField
+          v-model="form.username"
+          label="Username *"
+          :disabled="!!editingUser"
+          maxlength="100"
+          :rules="usernameRules"
+          density="compact"
+          variant="outlined"
+          class="mb-3"
+        />
+        <VTextField
+          v-model="form.full_name"
+          label="Full name *"
+          maxlength="255"
+          :rules="fullNameRules"
+          density="compact"
+          variant="outlined"
+          class="mb-3"
+        />
+        <VTextField
+          v-model="form.email"
+          label="Email *"
+          type="email"
+          maxlength="255"
+          :rules="emailRules"
+          density="compact"
+          variant="outlined"
+          class="mb-3"
+        />
+        <VTextField
+          v-model="form.password"
+          :label="editingUser ? 'New Password (leave blank to keep current)' : 'Password *'"
+          :type="showPassword ? 'text' : 'password'"
+          autocomplete="new-password"
+          maxlength="128"
+          :rules="editingUser ? (form.password ? editPasswordRules : []) : createPasswordRules"
+          density="compact"
+          variant="outlined"
+          class="mb-3"
+        >
+          <template #append-inner>
+            <VIcon
+              :icon="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"
+              style="cursor: pointer"
+              @click="showPassword = !showPassword"
             />
-            <VTextField
-              v-model="form.full_name"
-              label="Full name *"
-              maxlength="255"
-              :rules="fullNameRules"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
-            />
-            <VTextField
-              v-model="form.email"
-              label="Email *"
-              type="email"
-              maxlength="255"
-              :rules="emailRules"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
-            />
-            <VTextField
-              v-model="form.password"
-              :label="editingUser ? 'New Password (leave blank to keep current)' : 'Password *'"
-              :type="showPassword ? 'text' : 'password'"
-              autocomplete="new-password"
-              maxlength="128"
-              :rules="editingUser ? (form.password ? editPasswordRules : []) : createPasswordRules"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
-            >
-              <template #append-inner>
-                <VIcon
-                  :icon="showPassword ? 'ri-eye-off-line' : 'ri-eye-line'"
-                  style="cursor: pointer"
-                  @click="showPassword = !showPassword"
-                />
-              </template>
-            </VTextField>
-            <VSelect
-              v-model="form.role"
-              :items="roleSelectItems"
-              label="Role"
-              density="compact"
-              variant="outlined"
-              class="mb-3"
-            />
-            <VSwitch
-              v-if="editingUser"
-              v-model="form.is_active"
-              label="Login access enabled"
-              color="success"
-              inset
-              class="mb-1"
-            />
-          </VForm>
+          </template>
+        </VTextField>
+        <VSelect
+          v-model="form.role"
+          :items="roleSelectItems"
+          label="Role"
+          density="compact"
+          variant="outlined"
+          class="mb-3"
+        />
+        <VSwitch
+          v-if="editingUser"
+          v-model="form.is_active"
+          label="Login access enabled"
+          color="success"
+          inset
+          class="mb-1"
+        />
+      </VForm>
     </AttendanceFormDialog>
 
     <AttendanceConfirmDialog

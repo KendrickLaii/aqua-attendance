@@ -3,6 +3,7 @@ import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listNotificationsWithTotal, markNotificationRead, markNotificationUnread } from '@/api/attendance/notifications'
 import type { Notification } from '@/api/attendance/notifications'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
@@ -18,6 +19,8 @@ const unreadCount = ref(0)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
+
+useAutoClearAlerts(loadError)
 
 const filterRead = ref('')
 const page = ref(1)
@@ -122,7 +125,7 @@ async function markAllAsRead() {
     return
   try {
     await Promise.all(unread.map(n => markNotificationRead(n.id)))
-    notifications.value.forEach((n) => {
+    notifications.value.forEach(n => {
       if (!n.is_read) {
         n.is_read = true
         n.read_at = new Date().toISOString()

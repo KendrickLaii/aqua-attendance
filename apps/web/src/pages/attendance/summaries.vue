@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { generateSummaries, getSummaryOverviewStats, listSummariesWithTotal, listSummaryOverview } from '@/api/attendance/summaries'
 import type { AttendanceSummary, SummaryOverviewItem, SummaryOverviewStats } from '@/api/attendance/summaries'
-import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
 import SummaryDateCell from '@/components/attendance/SummaryDateCell.vue'
 import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { formatSummaryGenerateMessage } from '@/utils/formatGenerateResult'
 
 definePage({ meta: {} })
@@ -12,6 +12,7 @@ definePage({ meta: {} })
 type DetailStatus = 'all' | 'complete' | 'needs_review' | 'incomplete' | 'weekend'
 
 const DETAIL_PAGE_SIZE = 100
+
 const {
   page: overviewPage,
   pageSize: overviewPageSize,
@@ -38,6 +39,8 @@ const loadError = ref('')
 const generating = ref(false)
 const generateError = ref('')
 const generateSuccess = ref<{ title: string; detail?: string } | null>(null)
+
+useAutoClearAlerts(generateSuccess, generateError, loadError)
 
 const filterUnitType = ref('staff')
 const searchQuery = ref('')
@@ -84,17 +87,6 @@ function isMissingCheckIn(s: AttendanceSummary) {
   return !s.first_check_in && !!s.last_check_out
 }
 
-function reviewHint(s: AttendanceSummary) {
-  if (isMissingCheckIn(s))
-    return 'Add check-in on Log'
-  if (!s.is_complete)
-    return 'Add check-out on Log'
-  if (isAutoCheckoutSummaryDay(s))
-    return 'Replace 23:59 out on Log'
-
-  return 'Fix on Log'
-}
-
 const visibleSummaries = computed(() => {
   if (detailStatus.value === 'weekend')
     return summaries.value.filter(s => s.is_weekend)
@@ -126,6 +118,7 @@ const detailTotals = computed(() => {
     autoCheckoutDays,
     incompleteDays,
     needsReviewDays,
+
     /** Unreliable while incomplete / auto-checkout days are in the visible set */
     reliable: needsReviewDays === 0,
   }
@@ -260,6 +253,7 @@ async function loadOverview(isRefresh = false) {
       unit_type: filterUnitType.value || undefined,
       search: (searchQuery.value || '').trim() || undefined,
     }
+
     const [result, stats] = await Promise.all([
       listSummaryOverview({
         ...overviewParams,
@@ -409,19 +403,16 @@ function statusIcon(s: AttendanceSummary) {
   return 'ri-checkbox-circle-line'
 }
 
+const statusFilterIconMap: Record<DetailStatus, string> = {
+  all: 'ri-list-check',
+  complete: 'ri-checkbox-circle-line',
+  needs_review: 'ri-alarm-warning-line',
+  incomplete: 'ri-error-warning-line',
+  weekend: 'ri-calendar-2-line',
+}
+
 function statusFilterIcon(status: DetailStatus) {
-  switch (status) {
-    case 'complete':
-      return 'ri-checkbox-circle-line'
-    case 'needs_review':
-      return 'ri-alarm-warning-line'
-    case 'incomplete':
-      return 'ri-error-warning-line'
-    case 'weekend':
-      return 'ri-calendar-2-line'
-    default:
-      return 'ri-list-check'
-  }
+  return statusFilterIconMap[status] ?? 'ri-list-check'
 }
 
 function statusColor(s: AttendanceSummary) {
@@ -930,16 +921,18 @@ function safeNumber(value: number) {
           <div class="d-flex flex-wrap align-center justify-space-between gap-2">
             <div>
               <strong>{{ needsReviewReminder.total }}</strong> Incomplete record{{ needsReviewReminder.total === 1 ? '' : 's' }}.
-              <!-- <span
+              <!--
+                <span
                 v-if="needsReviewReminder.autoCheckout || needsReviewReminder.incomplete"
                 class="text-medium-emphasis"
-              >
+                >
                 (
                 <template v-if="needsReviewReminder.autoCheckout">{{ needsReviewReminder.autoCheckout }} auto checkout</template>
                 <template v-if="needsReviewReminder.autoCheckout && needsReviewReminder.incomplete"> · </template>
                 <template v-if="needsReviewReminder.incomplete">{{ needsReviewReminder.incomplete }} incomplete</template>
                 ).
-              </span> -->
+                </span>
+              -->
               Make sure all data are complete and generate again
             </div>
             <div class="d-flex flex-wrap gap-2">
@@ -950,7 +943,7 @@ function safeNumber(value: number) {
                 prepend-icon="ri-filter-line"
                 @click="detailStatus = 'needs_review'"
               >
-              Show incomplete only
+                Show incomplete only
               </VBtn>
               <VBtn
                 size="small"
@@ -1179,17 +1172,19 @@ function safeNumber(value: number) {
                   >
                     {{ statusLabel(s) }}
                   </VChip>
-                  <!-- <AutoCheckoutChip
+                  <!--
+                    <AutoCheckoutChip
                     :notes="s.attendance_notes"
                     :last-check-out="s.last_check_out"
-                  />
-                  <span
+                    />
+                    <span
                     v-if="needsManualReview(s)"
                     class="text-caption text-warning"
                     :title="s.attendance_notes || 'Add or replace the missing check-in/out with Manual correction on Attendance Log, then Generate summaries again'"
-                  >
+                    >
                     {{ reviewHint(s) }}
-                  </span> -->
+                    </span>
+                  -->
                 </div>
               </td>
             </tr>

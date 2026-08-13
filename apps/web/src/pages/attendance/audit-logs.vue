@@ -3,6 +3,7 @@ import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listAuditLogsWithTotal } from '@/api/attendance/auditLogs'
 import type { AuditLog } from '@/api/attendance/auditLogs'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
@@ -17,6 +18,8 @@ const totalCount = ref(0)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
+
+useAutoClearAlerts(loadError)
 
 const filterAction = ref('')
 const filterTable = ref('')
@@ -385,7 +388,10 @@ function closeDetailDialog() {
                 variant="outlined"
                 class="pa-2"
               >
-                <pre class="text-caption" style="margin: 0; white-space: pre-wrap; word-break: break-word;">{{ JSON.stringify(selectedLog.old_values, null, 2) }}</pre>
+                <pre
+                  class="text-caption"
+                  style="margin: 0; white-space: pre-wrap; word-break: break-word;"
+                >{{ JSON.stringify(selectedLog.old_values, null, 2) }}</pre>
               </VCard>
             </VCol>
           </VRow>
@@ -398,7 +404,10 @@ function closeDetailDialog() {
                 variant="outlined"
                 class="pa-2"
               >
-                <pre class="text-caption" style="margin: 0; white-space: pre-wrap; word-break: break-word;">{{ JSON.stringify(selectedLog.new_values, null, 2) }}</pre>
+                <pre
+                  class="text-caption"
+                  style="margin: 0; white-space: pre-wrap; word-break: break-word;"
+                >{{ JSON.stringify(selectedLog.new_values, null, 2) }}</pre>
               </VCard>
             </VCol>
           </VRow>

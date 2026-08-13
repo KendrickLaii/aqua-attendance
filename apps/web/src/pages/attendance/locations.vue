@@ -20,6 +20,7 @@ import {
   defaultDetailPhotoRows,
   detailPhotosToRows,
 } from '@/utils/locationPhotos'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
@@ -36,6 +37,9 @@ const page = ref(1)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
+
+useAutoClearAlerts(loadError)
+
 const search = ref('')
 const showInactive = ref(false)
 

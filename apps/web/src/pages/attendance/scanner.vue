@@ -1,6 +1,4 @@
 <script setup lang="ts">
-
-
 import { scanQR } from '@/api/attendance/events'
 
 import type { AttendanceEvent } from '@/api/attendance/events'
@@ -11,40 +9,27 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 import { formatAttendanceDateTime } from '@/utils/attendanceDisplay'
 import { SCAN_ENTRY_SESSION_KEY, SCAN_TOKEN_SESSION_KEY } from '@/utils/attendanceSession'
-
-
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
-
-
-const { authStore, ensureAccess } = useAttendanceAdminGate()
+const { ensureAccess } = useAttendanceAdminGate()
 
 const router = useRouter()
-
-
 
 const SCAN_LOCATION_KEY = 'attendance-scan-location-id'
 
 const SCAN_EVENT_TYPE_KEY = 'attendance-scan-event-type'
 
-
-
 function readStoredEventType(): 'check_in' | 'check_out' {
-
   if (typeof localStorage === 'undefined')
 
     return 'check_in'
 
   const stored = localStorage.getItem(SCAN_EVENT_TYPE_KEY)
 
-
-
   return stored === 'check_out' ? 'check_out' : 'check_in'
-
 }
-
-
 
 const manualInput = ref('')
 
@@ -56,8 +41,6 @@ const locationsLoadError = ref('')
 
 const selectedEventType = ref<'check_in' | 'check_out'>(readStoredEventType())
 
-
-
 const selectedLocationId = ref(
 
   typeof localStorage !== 'undefined'
@@ -68,95 +51,71 @@ const selectedLocationId = ref(
 
 )
 
-
-
 const scanning = ref(false)
 
 const result = ref<AttendanceEvent | null>(null)
 
 const error = ref('')
 
+useAutoClearAlerts(locationsLoadError, error)
+
 const showResult = ref(false)
 
 const tokenFromQrPage = ref(false)
 
 async function loadLocations() {
-
   locationsLoading.value = true
 
   locationsLoadError.value = ''
 
   try {
-
     locations.value = await listLocations({ is_active: true, page_size: 200 })
-
   }
 
   catch (e) {
-
     console.error('Failed to load locations', e)
 
     locationsLoadError.value = formatApiError(e, 'Failed to load locations. Please try again.')
-
   }
 
   finally {
-
     locationsLoading.value = false
-
   }
-
 }
-
-
 
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
 
   if (typeof sessionStorage === 'undefined' || !sessionStorage.getItem(SCAN_ENTRY_SESSION_KEY)) {
-
     router.replace({ name: 'attendance-dashboard' })
 
-
-
     return
-
   }
 
   sessionStorage.removeItem(SCAN_ENTRY_SESSION_KEY)
 
   if (typeof sessionStorage !== 'undefined') {
-
     const pending = sessionStorage.getItem(SCAN_TOKEN_SESSION_KEY)
 
     if (pending) {
-
       manualInput.value = pending
 
       tokenFromQrPage.value = true
 
       sessionStorage.removeItem(SCAN_TOKEN_SESSION_KEY)
-
     }
-
   }
 
   await loadLocations()
-
 })
 
-
-
 async function handleScan(qrToken?: string) {
-
   const token = typeof qrToken === 'string' ? qrToken : manualInput.value.trim()
 
   if (!token)
 
     return
-
-
 
   scanning.value = true
 
@@ -164,21 +123,14 @@ async function handleScan(qrToken?: string) {
 
   result.value = null
 
-
-
   try {
-
     const locationId = selectedLocationId.value || undefined
 
     if (typeof localStorage !== 'undefined') {
-
       localStorage.setItem(SCAN_LOCATION_KEY, selectedLocationId.value || '')
 
       localStorage.setItem(SCAN_EVENT_TYPE_KEY, selectedEventType.value)
-
     }
-
-
 
     const evt = await scanQR({
 
@@ -192,8 +144,6 @@ async function handleScan(qrToken?: string) {
 
     })
 
-
-
     result.value = evt
 
     showResult.value = true
@@ -201,29 +151,20 @@ async function handleScan(qrToken?: string) {
     manualInput.value = ''
 
     tokenFromQrPage.value = false
-
   }
 
   catch (e: unknown) {
-
     error.value = formatApiError(e, 'Scan failed — QR may be expired or invalid.')
 
     showResult.value = true
-
   }
 
   finally {
-
     scanning.value = false
-
   }
-
 }
 
-
-
 function eventColor(type: string) {
-
   if (type === 'check_in')
 
     return 'success'
@@ -232,60 +173,39 @@ function eventColor(type: string) {
 
     return 'warning'
 
-
-
   return 'info'
-
 }
 
-
-
 function resetResult() {
-
   showResult.value = false
 
   result.value = null
 
   error.value = ''
-
 }
-
 </script>
 
-
-
 <template>
-
   <VContainer style="max-width: 640px">
-
     <VRow
 
       class="mb-2"
 
       align="center"
-
     >
-
       <VCol
 
         cols="12"
 
         sm="8"
-
       >
-
         <div class="text-h5 font-weight-medium">
-
           Web Scanner
-
         </div>
 
         <div class="text-body-2 text-medium-emphasis">
-
           Paste a QR token to check in or out via web
-
         </div>
-
       </VCol>
 
       <VCol
@@ -295,9 +215,7 @@ function resetResult() {
         sm="4"
 
         class="d-flex flex-wrap justify-sm-end gap-2"
-
       >
-
         <VBtn
 
           variant="tonal"
@@ -309,11 +227,8 @@ function resetResult() {
           :loading="locationsLoading"
 
           @click="loadLocations"
-
         >
-
           Refresh
-
         </VBtn>
 
         <VBtn
@@ -323,18 +238,11 @@ function resetResult() {
           :to="{ name: 'attendance-dashboard' }"
 
           prepend-icon="ri-dashboard-line"
-
         >
-
           Dashboard
-
         </VBtn>
-
       </VCol>
-
     </VRow>
-
-
 
     <VAlert
 
@@ -349,13 +257,10 @@ function resetResult() {
       closable
 
       @click:close="locationsLoadError = ''"
-
     >
-
       {{ locationsLoadError }}
 
       <template #append>
-
         <VBtn
 
           variant="text"
@@ -363,29 +268,19 @@ function resetResult() {
           size="small"
 
           @click="loadLocations"
-
         >
-
           Retry
-
         </VBtn>
-
       </template>
-
     </VAlert>
-
-
 
     <VCard
 
       class="mb-6"
 
       variant="outlined"
-
     >
-
       <VCardText class="text-center py-10">
-
         <VIcon
 
           icon="ri-camera-line"
@@ -395,26 +290,17 @@ function resetResult() {
           color="grey"
 
           class="mb-4"
-
         />
 
         <div class="text-body-1 text-medium-emphasis mb-2">
-
           Camera scanner available in mobile app
-
         </div>
 
         <div class="text-body-2 text-medium-emphasis">
-
           Paste a QR token below to scan via web
-
         </div>
-
       </VCardText>
-
     </VCard>
-
-
 
     <VAlert
 
@@ -429,27 +315,17 @@ function resetResult() {
       class="mb-4"
 
       icon="ri-information-line"
-
     >
-
       QR token loaded — choose Check In or Check Out, then press Process Scan.
-
     </VAlert>
 
-
-
     <VCard class="mb-6">
-
       <VCardTitle>Manual Token Input</VCardTitle>
 
       <VCardText>
-
         <VForm @submit.prevent="() => handleScan()">
-
           <div class="text-body-2 text-medium-emphasis mb-2">
-
             Action
-
           </div>
 
           <VBtnToggle
@@ -463,19 +339,14 @@ function resetResult() {
             class="mb-3 d-flex w-100"
 
             color="primary"
-
           >
-
             <VBtn
 
               value="check_in"
 
               class="flex-grow-1"
-
             >
-
               Check In
-
             </VBtn>
 
             <VBtn
@@ -483,13 +354,9 @@ function resetResult() {
               value="check_out"
 
               class="flex-grow-1"
-
             >
-
               Check Out
-
             </VBtn>
-
           </VBtnToggle>
 
           <VSelect
@@ -513,7 +380,6 @@ function resetResult() {
             :disabled="locationsLoading && locations.length === 0"
 
             class="mb-3"
-
           />
 
           <VTextarea
@@ -527,7 +393,6 @@ function resetResult() {
             rows="3"
 
             class="mb-3"
-
           />
 
           <VBtn
@@ -541,20 +406,12 @@ function resetResult() {
             :loading="scanning"
 
             prepend-icon="ri-qr-scan-2-line"
-
           >
-
             Process Scan
-
           </VBtn>
-
         </VForm>
-
       </VCardText>
-
     </VCard>
-
-
 
     <AttendanceInfoDialog
       v-model="showResult"
@@ -629,8 +486,5 @@ function resetResult() {
         </div>
       </template>
     </AttendanceInfoDialog>
-
   </VContainer>
-
 </template>
-

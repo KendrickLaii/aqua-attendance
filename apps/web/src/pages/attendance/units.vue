@@ -4,7 +4,7 @@ import {
   maxCharsRule,
   requiredValidator,
 } from '@core/utils/validators'
-import { createUnit, deleteUnit, listUnitsWithTotal, updateUnit, updateStaffProfile, updateStudentProfile } from '@/api/attendance/units'
+import { createUnit, deleteUnit, listUnitsWithTotal, updateStaffProfile, updateStudentProfile, updateUnit } from '@/api/attendance/units'
 import type { Unit } from '@/api/attendance/units'
 import { listLocations } from '@/api/attendance/locations'
 import type { LocationItem } from '@/api/attendance/locations'
@@ -13,6 +13,7 @@ import AppToastStack from '@/components/AppToastStack.vue'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useToast } from '@/composables/useToast'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
@@ -20,9 +21,8 @@ const pageSize = ref(40)
 const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
-const { authStore, ensureAccess } = useAttendanceAdminGate()
+const { ensureAccess } = useAttendanceAdminGate()
 const { show: showToast } = useToast()
-const router = useRouter()
 
 const units = ref<Unit[]>([])
 const locations = ref<LocationItem[]>([])
@@ -31,6 +31,9 @@ const page = ref(1)
 const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
+
+useAutoClearAlerts(loadError)
+
 const dialogOpen = ref(false)
 const editingUnit = ref<Unit | null>(null)
 const correctionDialog = ref(false)
@@ -57,6 +60,7 @@ const form = reactive({
   remarks: '',
   registered_location_id: '' as string,
   scan_location_ids: [] as string[],
+
   // Nested profiles (sent in create/update payload)
   student_profile: {
     school_name: '',
@@ -238,6 +242,7 @@ async function loadUnits(isRefresh = false, resetPage = false) {
     })
 
     let items = result.items
+
     // Frontend-only employment filter (no longer supported by backend query)
     if (filterEmployment.value) {
       items = items.filter(
@@ -321,11 +326,11 @@ watch(() => form.unit_type, type => {
   }
 })
 
-watch(() => form.is_active, (val) => {
+watch(() => form.is_active, val => {
   form.status = val ? 'active' : 'inactive'
 })
 
-watch(() => form.status, (val) => {
+watch(() => form.status, val => {
   form.is_active = val !== 'inactive'
 })
 
@@ -392,8 +397,10 @@ function openCreate() {
 function openEdit(p: Unit) {
   saveError.value = null
   editingUnit.value = p
+
   const sp = p.student_profile
   const stp = p.staff_profile
+
   Object.assign(form, {
     code: p.code,
     full_name: p.full_name,
@@ -424,10 +431,10 @@ function openEdit(p: Unit) {
     },
     guardians: sp?.guardians
       ? Object.values(sp.guardians).map((g: any) => ({
-          name: String(g?.name ?? ''),
-          relationship: String(g?.relationship ?? ''),
-          phone: String(g?.phone ?? ''),
-        })).filter(g => g.name)
+        name: String(g?.name ?? ''),
+        relationship: String(g?.relationship ?? ''),
+        phone: String(g?.phone ?? ''),
+      })).filter(g => g.name)
       : [],
     staff_profile: {
       employee_id: stp?.employee_id ?? '',
@@ -514,6 +521,7 @@ async function handleSave() {
 
     if (form.unit_type === 'student') {
       const guardians: Record<string, unknown> = {}
+
       form.guardians.forEach((g, idx) => {
         if (g.name.trim()) {
           guardians[`guardian${idx + 1}`] = {
@@ -558,9 +566,7 @@ async function handleSave() {
       }
     }
 
-    const finalPayload = editingUnit.value
-      ? { ...payload, is_active: form.is_active }
-      : { ...payload, is_active: form.is_active }
+    const finalPayload = { ...payload, is_active: form.is_active }
 
     if (editingUnit.value) {
       await updateUnit(editingUnit.value.id, finalPayload)
@@ -586,6 +592,7 @@ async function handleSave() {
       }
       else if (form.unit_type === 'student') {
         const guardians: Record<string, unknown> = {}
+
         form.guardians.forEach((g, idx) => {
           if (g.name.trim()) {
             guardians[`guardian${idx + 1}`] = {
@@ -1389,7 +1396,7 @@ function rowStatusChip(p: Unit) {
                     :disabled="form.guardians.length <= 1"
                     @click="form.guardians.splice(idx, 1)"
                   >
-                    <VIcon>tabler-trash</VIcon>
+                    <VIcon>ri-delete-bin-line</VIcon>
                   </VBtn>
                 </div>
               </VCol>
@@ -1432,7 +1439,7 @@ function rowStatusChip(p: Unit) {
               <VBtn
                 size="small"
                 variant="text"
-                prepend-icon="tabler-plus"
+                prepend-icon="ri-add-line"
                 @click="form.guardians.push({ name: '', relationship: '', phone: '' })"
               >
                 Add guardian

@@ -3,6 +3,7 @@ import { useAbility } from '@casl/vue'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { attendanceRoleToCaslRules } from '@/utils/attendanceCasl'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({
   meta: {
@@ -21,8 +22,11 @@ const showPassword = ref(false)
 const loading = ref(false)
 const error = ref('')
 
+useAutoClearAlerts(error)
+
 function resolvePostLoginTarget(): string | { name: 'attendance-dashboard' } {
   const raw = route.query.to
+
   const target = typeof raw === 'string'
     ? raw.trim()
     : Array.isArray(raw)
@@ -46,6 +50,7 @@ async function handleLogin() {
     await authStore.login({ username: form.username.trim(), password: form.password })
 
     const userAbilityRules = attendanceRoleToCaslRules(authStore.user?.role)
+
     ability.update(userAbilityRules)
 
     await router.push(resolvePostLoginTarget())
@@ -60,17 +65,34 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="d-flex align-center justify-center" style="min-height: 100vh; background: rgb(var(--v-theme-background))">
-    <VCard class="pa-6" max-width="440" width="100%">
+  <div
+    class="d-flex align-center justify-center"
+    style="min-height: 100vh; background: rgb(var(--v-theme-background))"
+  >
+    <VCard
+      class="pa-6"
+      max-width="440"
+      width="100%"
+    >
       <VCardTitle class="text-h5 text-center mb-2">
-        <VIcon icon="ri-time-line" class="me-2" />
+        <VIcon
+          icon="ri-time-line"
+          class="me-2"
+        />
         AQUA Attendance
       </VCardTitle>
       <VCardSubtitle class="text-center mb-4">
         Sign in to continue
       </VCardSubtitle>
 
-      <VAlert v-if="error" type="error" variant="tonal" class="mb-4" closable @click:close="error = ''">
+      <VAlert
+        v-if="error"
+        type="error"
+        variant="tonal"
+        class="mb-4"
+        closable
+        @click:close="error = ''"
+      >
         {{ error }}
       </VAlert>
 
@@ -99,7 +121,13 @@ async function handleLogin() {
             />
           </template>
         </VTextField>
-        <VBtn type="submit" block color="primary" :loading="loading" size="large">
+        <VBtn
+          type="submit"
+          block
+          color="primary"
+          :loading="loading"
+          size="large"
+        >
           Sign In
         </VBtn>
       </VForm>
