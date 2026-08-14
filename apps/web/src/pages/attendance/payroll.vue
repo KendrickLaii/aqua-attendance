@@ -1302,9 +1302,9 @@ function formatCurrency(n: number | null | undefined) {
                     <VBtn
                       v-if="record.status === 'draft' || record.status === 'calculated'"
                       size="small"
-                      variant="flat"
-                      color="warning"
-                      prepend-icon="ri-error-warning-line"
+                      variant="tonal"
+                      color="success"
+                      prepend-icon="ri-checkbox-circle-line"
                       @click="openApproveDialog(record)"
                     >
                       Approve
@@ -1312,9 +1312,9 @@ function formatCurrency(n: number | null | undefined) {
                     <VBtn
                       v-if="record.status === 'approved'"
                       size="small"
-                      variant="flat"
-                      color="warning"
-                      prepend-icon="ri-error-warning-line"
+                      variant="tonal"
+                      color="primary"
+                      prepend-icon="ri-money-dollar-circle-line"
                       @click="openPayDialog(record)"
                     >
                       Pay
@@ -1605,9 +1605,9 @@ function formatCurrency(n: number | null | undefined) {
                     <VBtn
                       v-if="r.status === 'draft' || r.status === 'calculated'"
                       size="small"
-                      variant="flat"
-                      color="warning"
-                      prepend-icon="ri-error-warning-line"
+                      variant="tonal"
+                      color="success"
+                      prepend-icon="ri-checkbox-circle-line"
                       @click.stop="openApproveDialog(r)"
                     >
                       Approve
@@ -1615,9 +1615,9 @@ function formatCurrency(n: number | null | undefined) {
                     <VBtn
                       v-if="r.status === 'approved'"
                       size="small"
-                      variant="flat"
-                      color="warning"
-                      prepend-icon="ri-error-warning-line"
+                      variant="tonal"
+                      color="primary"
+                      prepend-icon="ri-money-dollar-circle-line"
                       @click.stop="openPayDialog(r)"
                     >
                       Pay
@@ -2082,7 +2082,7 @@ function formatCurrency(n: number | null | undefined) {
       v-model="approveDialog"
       title="Approve payroll slip?"
       confirm-label="Approve"
-      confirm-color="warning"
+      confirm-color="success"
       :loading="approving"
       @confirm="confirmApprove"
       @cancel="closeApproveDialog"
@@ -2100,7 +2100,7 @@ function formatCurrency(n: number | null | undefined) {
       v-model="payDialog"
       title="Mark payroll as paid?"
       confirm-label="Pay"
-      confirm-color="warning"
+      confirm-color="primary"
       :loading="paying"
       @confirm="confirmPay"
       @cancel="closePayDialog"
