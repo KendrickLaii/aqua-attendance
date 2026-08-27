@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+BillingUnit = Literal["monthly", "per_session"]
 
 
 class CourseSkuCreate(BaseModel):
@@ -14,6 +17,7 @@ class CourseSkuCreate(BaseModel):
     location_id: uuid.UUID | None = None
     capacity: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
+    billing_unit: BillingUnit = "monthly"
     is_active: bool = True
 
 
@@ -27,6 +31,7 @@ class CourseSkuUpdate(BaseModel):
     location_id: uuid.UUID | None = None
     capacity: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
+    billing_unit: BillingUnit | None = None
     is_active: bool | None = None
 
 
@@ -41,6 +46,7 @@ class CourseSkuOut(BaseModel):
     location_id: uuid.UUID | None = None
     capacity: int | None = None
     price: float | None = None
+    billing_unit: BillingUnit
     is_active: bool
     created_at: datetime
     updated_at: datetime

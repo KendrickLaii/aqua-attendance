@@ -12,9 +12,10 @@ from app.models.audit_log import AuditLog
 from app.models.course_spu import CourseSpu
 from app.models.course_sku import CourseSku
 from app.models.course_enrollment import CourseEnrollment
+from app.models.tuition_invoice import TuitionInvoice
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
     "Notification", "AttendanceSummary", "PayrollRecord", "AuditLog",
-    "CourseSpu", "CourseSku", "CourseEnrollment",
+    "CourseSpu", "CourseSku", "CourseEnrollment", "TuitionInvoice",
 ]

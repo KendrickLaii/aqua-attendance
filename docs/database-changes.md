@@ -19,6 +19,7 @@
 | 11 | 出勤邏輯保留在 units | ✅ **決定保留**（2026-07-27）— 見下方「§ 出勤邏輯架構決定（2026-07-27）」 |
 | 12 | `status` enum 拆分 | 🔄 **可選**（2026-07-27）— 見下方「§ status enum 拆分分析（2026-07-27）」 |
 | 13 | 課程資料 SPU/SKU/Enrollment | ✅ 新增 `course_spus`/`course_skus`/`course_enrollments`（2026-08-04）— 見下方「§ 課程資料模型」 |
+| 14 | 學費發票（與 Vuexy `/apps/invoice` 無關） | ✅ 新增 `tuition_invoices`/`tuition_invoice_lines`（2026-08-27）— 計價在 SKU；按月從有效報名產生草稿 — 見下方「§ 學費發票」 |
 
 ## 完整 ER 圖 (Mermaid)
 
@@ -249,6 +250,7 @@ erDiagram
         uuid location_id FK "上課地點"
         int capacity "容量"
         numeric price "價格"
+        string billing_unit "monthly月費 / per_session堂費"
         boolean is_active "是否啟用"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
@@ -264,6 +266,30 @@ erDiagram
         text notes "備註"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
+    }
+    tuition_invoices {
+        uuid id PK
+        uuid unit_id FK "學生 unit"
+        date period_start "帳單期起（該月1日）"
+        date period_end "帳單期迄（該月末日）"
+        string status "draft/issued/paid/void"
+        numeric total "行項目加總"
+        text notes "備註"
+        datetime created_at "建立時間"
+        datetime updated_at "更新時間"
+    }
+    tuition_invoice_lines {
+        uuid id PK
+        uuid invoice_id FK "所屬發票"
+        uuid enrollment_id FK "報名（可空）"
+        uuid sku_id FK "班次（可空）"
+        string sku_code "快照班次代碼"
+        string name_zh "快照中文名"
+        string billing_unit "快照 monthly/per_session"
+        numeric unit_price "快照單價"
+        numeric quantity "數量（堂費暫為1）"
+        numeric amount "unit_price × quantity"
+        datetime created_at "建立時間"
     }
 
     users ||--o{ refresh_tokens : "擁有"
@@ -288,6 +314,10 @@ erDiagram
     locations ||--o{ course_skus : "上課地點"
     course_skus ||--o{ course_enrollments : "報名"
     units ||--o{ course_enrollments : "學生報名"
+    units ||--o{ tuition_invoices : "學費發票"
+    tuition_invoices ||--o{ tuition_invoice_lines : "行項目"
+    course_enrollments ||--o{ tuition_invoice_lines : "來源報名"
+    course_skus ||--o{ tuition_invoice_lines : "來源班次"
 ```
 
 ## 課程資料模型（2026-08-04）
@@ -301,6 +331,41 @@ erDiagram
 | 3 | 報名記錄使用 `unit_id` 而非 `student_profile.id` | 與系統其他部分一致（通知、出勤、薪資皆以 `units` 為核心實體），並由 `unit_type == student` 檢查確保只有學生可報名。 |
 | 4 | 唯一約束 `(unit_id, sku_id)` | 防止同一學生同一場次重複報名；狀態變化透過 `status` 欄位（active/completed/cancelled）處理。 |
 | 5 | SPU/SKU 刪除採 `RESTRICT` | 避免誤刪已被報名的開班或仍有 SKU 的科目；刪除前須先清掉下層資料。 |
+| 6 | SKU `billing_unit` 掛在班次 | 一班一種收法：`monthly`（月費）或 `per_session`（堂費）。功課輔導與 A1/F5 共用這兩個選項。價錢在 SKU，不在報名列。 |
+| 7 | 報名起迄日參與出賬 | Generate 只收 `status=active` 且與該月日期視窗重疊的報名（`start_date`/`end_date` 可空＝無界）。 |
+
+## 學費發票（2026-08-27）
+
+學費帳單是獨立實體，**不是** Vuexy 模板 `/apps/invoice`（該路由為假資料）。流程對齊 staff payroll：選月份 → Generate → 再 Issue / Mark paid。
+
+### 設計決策
+
+| # | 決定 | 原因 |
+| --- | --- | --- |
+| 1 | 計價在 SKU，出賬時快照到行項目 | 之後改 A1 學費不可改寫已出賬月份。行項目寫入 `sku_code`、`name_zh`、`billing_unit`、`unit_price`、`quantity`、`amount`。 |
+| 2 | 一學生一月一張發票 | 唯一約束 `(unit_id, period_start, period_end)`。同一學生該月多班次合併為多行。 |
+| 3 | 草稿可重產、已出賬跳過 | `draft` 重跑 Generate 會替換行項目並重算 `total`；`issued`/`paid` 跳過。`void` 不自動重生。 |
+| 4 | 堂費 `quantity` 暫為 1 | `schedule_note` 為自由文字；校園打卡不是課堂節數。真實堂數待補課表或課堂出勤後再算。 |
+| 5 | `price` 為空則跳過該報名 | 未定價班次不進發票，避免產生 $0 或錯誤行。 |
+
+### Generate 規則（`POST /api/tuition-invoices/generate?year=&month=`）
+
+- 帳單期 = 該月 1 日～末日。
+- 納入：`course_enrollments.status == active`，且起迄日與該月重疊。
+- 排除：`cancelled`／`completed`、完全落在該月之外、SKU `price` 為空。
+- 月費與堂費目前都是 `quantity = 1`、`amount = unit_price`。
+- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`。已 `paid` 不可再改。
+
+### 尚未實作（刻意延後）
+
+| 項目 | 現況 | 追蹤 |
+| --- | --- | --- |
+| 堂費按該月實際堂數 | `quantity = 1`；`schedule_note` 不可算堂 | [known-gaps.md](known-gaps.md) **#M23** |
+| 同一學生同一 SKU 可跨學年再報 | 唯一約束永久；重報 409 | **#M22** |
+| 發票發送給家長 | 無 WhatsApp／電郵／PDF 發送 API | **#M24** |
+| 把 Vuexy `/apps/invoice` 當真實帳單 | 不做（假資料） | **D5** |
+
+優先順序：堂費數堂 → 唯一約束 → 發送。
 
 ## 薪資／加班（OT）計算設計
 
@@ -473,6 +538,8 @@ ot_hours      = ot_slots * 0.25
 | 20 | `course_spus` | 課程科目（SPU） | ✅ 完成 |
 | 21 | `course_skus` | 課程開班場次（SKU） | ✅ 完成 |
 | 22 | `course_enrollments` | 學生與場次報名記錄 | ✅ 完成 |
+| 23 | `tuition_invoices` | 學生每月學費發票（一 unit 一帳單期一張） | ✅ 完成 |
+| 24 | `tuition_invoice_lines` | 發票行項目（快照 SKU 價錢與 billing_unit） | ✅ 完成 |
 
 ### 🔄 未來擴充 - 預留設計
 
@@ -514,7 +581,7 @@ ot_hours      = ot_slots * 0.25
    - locations.business_hours JSON 化
    - attendance_events 新增 voided_at
 
-4. **新建資料表（7項）：** ✅ 全部完成
+4. **新建資料表（9項）：** ✅ 全部完成
    - notifications（站內通知系統）
    - attendance_summaries（每日出勤彙總，slot 為計薪來源）
    - payroll_records（薪資計算記錄，凍結 slots 與 rate 快照）
@@ -522,6 +589,8 @@ ot_hours      = ot_slots * 0.25
    - course_spus（課程科目 SPU）
    - course_skus（課程開班場次 SKU）
    - course_enrollments（學生報名記錄）
+   - tuition_invoices（學生每月學費發票）
+   - tuition_invoice_lines（發票行項目快照）
 
 5. **Slot-based 薪資（2026-07-08）：** ✅ 完成
    - `attendance_summaries` 新增 `regular_slots` / `ot_slots`
@@ -537,12 +606,13 @@ ot_hours      = ot_slots * 0.25
 - ✅ **完整薪資系統** - 出勤快照 + 薪資記錄 + 審核流程
 - ✅ **通知系統** - 多目標、優先級管理、閱讀狀態
 - ✅ **全面稽核追蹤** - 所有操作完整記錄、IP、User Agent
-- ✅ **課程資料管理** - SPU/SKU 兩層課程目錄 + 學生報名記錄
+- ✅ **課程資料管理** - SPU/SKU 兩層課程目錄 + 學生報名記錄（SKU 含 `billing_unit`）
+- ✅ **學費發票** - 按月從有效報名產生草稿；行項目快照價錢；`draft` → `issued` → `paid`
 
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -557,8 +627,10 @@ ot_hours      = ot_slots * 0.25
 10. ✅ products → units 重新命名（032）— 表名、欄位、外鍵、索引重新命名
 11. ✅ profile 欄位對齊（f8e65b7cf82b + 033）— `units.start_date/exit_date`、`student_profiles.gender/date_of_birth`、`staff_profiles.gender/date_of_birth`
 12. ✅ 課程資料模型（034）— 新建 `course_spus`、`course_skus`、`course_enrollments`
+13. ✅ SKU 計價單位（035）— `course_skus.billing_unit`：`monthly`（月費）或 `per_session`（堂費），一班一種收法，既有資料預設月費
+14. ✅ 學費發票（036）— `tuition_invoices` + `tuition_invoice_lines`；按月從有效報名產生草稿，行項目快照 SKU 價錢與 billing_unit
 
-> **目前 Alembic 版本：034**（`034_create_course_catalog`）
+> **目前 Alembic 版本：036**（`036_add_tuition_invoices`）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

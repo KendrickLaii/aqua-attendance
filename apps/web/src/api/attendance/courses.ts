@@ -23,6 +23,8 @@ export interface CourseSpuPayload {
   is_active?: boolean
 }
 
+export type BillingUnit = 'monthly' | 'per_session'
+
 /** SKU — a concrete, enrollable class offering under a CourseSpu. */
 export interface CourseSku {
   id: string
@@ -35,6 +37,7 @@ export interface CourseSku {
   location_id: string | null
   capacity: number | null
   price: number | null
+  billing_unit: BillingUnit
   is_active: boolean
   created_at: string
   updated_at: string
@@ -50,6 +53,7 @@ export interface CourseSkuPayload {
   location_id?: string | null
   capacity?: number | null
   price?: number | null
+  billing_unit?: BillingUnit
   is_active?: boolean
 }
 

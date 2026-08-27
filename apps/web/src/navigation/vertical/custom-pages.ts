@@ -35,6 +35,11 @@ export default [
     to: 'attendance-courses',
   },
   {
+    title: 'Invoices',
+    icon: { icon: 'ri-bill-line' },
+    to: 'attendance-invoices',
+  },
+  {
     title: 'Notifications',
     icon: { icon: 'ri-notification-3-line' },
     to: 'attendance-notifications',

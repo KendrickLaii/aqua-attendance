@@ -69,6 +69,59 @@ async def test_create_sku_under_spu_with_location(
 
 
 @pytest.mark.asyncio
+async def test_create_sku_defaults_billing_unit_to_monthly(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    assert sku["billing_unit"] == "monthly"
+
+
+@pytest.mark.asyncio
+async def test_create_sku_with_per_session_billing_unit(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session")
+    assert sku["billing_unit"] == "per_session"
+
+
+@pytest.mark.asyncio
+async def test_create_sku_rejects_invalid_billing_unit(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    resp = await client.post(
+        "/api/course-skus",
+        json={
+            "spu_id": spu["id"],
+            "code": f"MATH-P3-{uuid.uuid4().hex[:6]}",
+            "name_zh": "小學數學 P3 週二班",
+            "billing_unit": "term",
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_sku_billing_unit(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    assert sku["billing_unit"] == "monthly"
+
+    resp = await client.patch(
+        f"/api/course-skus/{sku['id']}",
+        json={"billing_unit": "per_session"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["billing_unit"] == "per_session"
+
+
+@pytest.mark.asyncio
 async def test_create_sku_with_unknown_spu_rejected(client: AsyncClient, admin_token: str) -> None:
     resp = await client.post(
         "/api/course-skus",
@@ -99,6 +152,54 @@ async def test_enroll_student_in_sku(
     listed = await client.get(f"/api/course-enrollments?unit_id={sample_unit['id']}", headers=_auth(admin_token))
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_enroll_with_term_dates_and_list_by_sku(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "start_date": "2026-06-01",
+            "end_date": "2026-08-31",
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["start_date"] == "2026-06-01"
+    assert body["end_date"] == "2026-08-31"
+
+    listed = await client.get(f"/api/course-enrollments?sku_id={sku['id']}", headers=_auth(admin_token))
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["unit_id"] == sample_unit["id"]
+
+
+@pytest.mark.asyncio
+async def test_enrollment_rejects_end_before_start(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "start_date": "2026-06-30",
+            "end_date": "2026-06-01",
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

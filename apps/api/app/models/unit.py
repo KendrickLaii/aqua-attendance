@@ -121,3 +121,4 @@ class Unit(Base):
     attendance_summaries = relationship("AttendanceSummary", back_populates="unit", cascade="all, delete-orphan")
     payroll_records = relationship("PayrollRecord", back_populates="unit", cascade="all, delete-orphan")
     course_enrollments = relationship("CourseEnrollment", back_populates="unit", cascade="all, delete-orphan")
+    tuition_invoices = relationship("TuitionInvoice", back_populates="unit", cascade="all, delete-orphan")

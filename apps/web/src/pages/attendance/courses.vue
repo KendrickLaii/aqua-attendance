@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  type BillingUnit,
   type CourseEnrollment,
   type CourseSku,
   type CourseSpu,
@@ -17,7 +18,7 @@ import {
   updateCourseSpu,
 } from '@/api/attendance/courses'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
-import { type Unit, listUnits } from '@/api/attendance/units'
+import { type Unit, getUnit, listUnits } from '@/api/attendance/units'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
@@ -40,10 +41,19 @@ const skusForSelectedSpu = computed(() => skus.value.filter(k => k.spu_id === se
 
 const locationName = (id: string | null) => locations.value.find(l => l.id === id)?.name_en ?? '—'
 
+const billingUnitOptions: { title: string; value: BillingUnit }[] = [
+  { title: 'Monthly (月費)', value: 'monthly' },
+  { title: 'Per session (堂費)', value: 'per_session' },
+]
+
+function billingUnitLabel(unit: BillingUnit): string {
+  return unit === 'per_session' ? '堂費' : '月費'
+}
+
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
-  await loadAll()
+  await Promise.all([loadAll(), loadStudentOptions()])
 })
 
 async function loadAll() {
@@ -206,6 +216,7 @@ const skuForm = reactive({
   location_id: null as string | null,
   capacity: null as number | null,
   price: null as number | null,
+  billing_unit: 'monthly' as BillingUnit,
   is_active: true,
 })
 
@@ -222,6 +233,7 @@ function openCreateSku() {
     location_id: null,
     capacity: null,
     price: null,
+    billing_unit: 'monthly' as BillingUnit,
     is_active: true,
   })
   skuSaveError.value = ''
@@ -239,6 +251,7 @@ function openEditSku(sku: CourseSku) {
     location_id: sku.location_id,
     capacity: sku.capacity,
     price: sku.price,
+    billing_unit: sku.billing_unit,
     is_active: sku.is_active,
   })
   skuSaveError.value = ''
@@ -261,6 +274,7 @@ async function saveSku() {
     location_id: skuForm.location_id,
     capacity: skuForm.capacity,
     price: skuForm.price,
+    billing_unit: skuForm.billing_unit,
     is_active: skuForm.is_active,
   }
 
@@ -293,82 +307,173 @@ function removeSku(sku: CourseSku) {
   })
 }
 
-// ---------------- Enrollments ----------------
+// ---------------- Enrollments (class roster) ----------------
 
 const studentSearch = ref('')
 const studentOptions = ref<Unit[]>([])
+const studentById = reactive<Record<string, Unit>>({})
 const studentSearchLoading = ref(false)
+let studentSearchRequestId = 0
 const selectedStudentId = ref<string | null>(null)
-const enrollSkuId = ref<string | null>(null)
+const rosterSkuId = ref<string | null>(null)
+const enrollStartDate = ref('')
+const enrollEndDate = ref('')
 const enrolling = ref(false)
 const enrollError = ref('')
 
 const enrollments = ref<CourseEnrollment[]>([])
 const enrollmentsLoading = ref(false)
+let rosterRequestId = 0
 
-const activeSkuOptions = computed(() =>
-  skus.value
-    .filter(k => k.is_active)
-    .map(k => ({ ...k, spuName: spus.value.find(s => s.id === k.spu_id)?.name_zh ?? '' })),
-)
+const rosterSku = computed(() => skus.value.find(k => k.id === rosterSkuId.value) ?? null)
+const activeRosterCount = computed(() => enrollments.value.filter(e => e.status === 'active').length)
 
-const searchDebounce = useDebounceFn(async () => {
-  if (!studentSearch.value.trim()) {
-    studentOptions.value = []
-
-    return
-  }
-  studentSearchLoading.value = true
-  try {
-    studentOptions.value = await listUnits({ unit_type: 'student', search: studentSearch.value.trim(), page_size: 20 })
-  }
-  catch (e) {
-    console.error('Failed to search students', e)
-  }
-  finally {
-    studentSearchLoading.value = false
-  }
-}, 300)
-
-watch(studentSearch, () => searchDebounce())
-
-watch(selectedStudentId, async id => {
-  enrollments.value = []
-  if (!id)
-    return
-  enrollmentsLoading.value = true
-  try {
-    const result = await listCourseEnrollmentsWithTotal({ unit_id: id, page_size: 100 })
-
-    enrollments.value = result.items
-  }
-  catch (e) {
-    console.error('Failed to load enrollments', e)
-  }
-  finally {
-    enrollmentsLoading.value = false
-  }
-})
-
-function skuLabel(skuId: string): string {
-  const sku = skus.value.find(k => k.id === skuId)
-  if (!sku)
-    return skuId
-  const spuName = spus.value.find(s => s.id === sku.spu_id)?.name_zh
-
-  return spuName ? `${spuName} · ${sku.name_zh}` : sku.name_zh
+function cacheStudents(units: Unit[]) {
+  for (const unit of units)
+    studentById[unit.id] = unit
 }
 
-async function enrollStudent() {
-  if (!selectedStudentId.value || !enrollSkuId.value)
+function studentLabel(unitId: string): string {
+  return studentById[unitId]?.full_name ?? '…'
+}
+
+function studentCode(unitId: string): string {
+  return studentById[unitId]?.code ?? ''
+}
+
+function emptyToNull(value: string): string | null {
+  const trimmed = value.trim()
+
+  return trimmed || null
+}
+
+async function ensureStudentNames(items: CourseEnrollment[]) {
+  const missingIds = [...new Set(items.map(e => e.unit_id).filter(id => !studentById[id]))]
+  if (missingIds.length === 0)
     return
+
+  const loaded = await Promise.all(missingIds.map(async id => {
+    try {
+      return await getUnit(id)
+    }
+    catch (e) {
+      console.error('Failed to load student for roster', e)
+
+      return null
+    }
+  }))
+
+  cacheStudents(loaded.filter((u): u is Unit => u != null))
+}
+
+async function loadRoster(skuId: string | null) {
+  const requestId = ++rosterRequestId
+
+  enrollments.value = []
+  if (!skuId)
+    return
+
+  enrollmentsLoading.value = true
+  try {
+    const result = await listCourseEnrollmentsWithTotal({ sku_id: skuId, page_size: 200 })
+    if (requestId !== rosterRequestId)
+      return
+    enrollments.value = result.items
+    await ensureStudentNames(result.items)
+  }
+  catch (e) {
+    console.error('Failed to load roster', e)
+    if (requestId === rosterRequestId)
+      enrollError.value = formatApiError(e, 'Could not load class roster.')
+  }
+  finally {
+    if (requestId === rosterRequestId)
+      enrollmentsLoading.value = false
+  }
+}
+
+async function loadStudentOptions(search?: string) {
+  const requestId = ++studentSearchRequestId
+
+  studentSearchLoading.value = true
+  try {
+    const students = await listUnits({
+      unit_type: 'student',
+      is_active: true,
+      search: search || undefined,
+      page_size: 20,
+    })
+
+    if (requestId === studentSearchRequestId) {
+      studentOptions.value = students
+      cacheStudents(students)
+    }
+  }
+  catch (e) {
+    console.error('Failed to load students', e)
+  }
+  finally {
+    if (requestId === studentSearchRequestId)
+      studentSearchLoading.value = false
+  }
+}
+
+const searchDebounce = useDebounceFn(() => loadStudentOptions(studentSearch.value.trim()), 300)
+
+watch(studentSearch, value => {
+  if (value.trim())
+    searchDebounce()
+  else if (!selectedStudentId.value)
+    loadStudentOptions()
+})
+
+watch(skusForSelectedSpu, list => {
+  if (list.length === 0) {
+    rosterSkuId.value = null
+
+    return
+  }
+  if (!list.some(k => k.id === rosterSkuId.value))
+    rosterSkuId.value = list[0].id
+})
+
+watch(rosterSkuId, id => {
+  enrollError.value = ''
+  loadRoster(id)
+})
+
+async function enrollStudent() {
+  if (!selectedStudentId.value || !rosterSkuId.value)
+    return
+
+  const startDate = emptyToNull(enrollStartDate.value)
+  const endDate = emptyToNull(enrollEndDate.value)
+  if (startDate && endDate && endDate < startDate) {
+    enrollError.value = 'End date must be on or after start date.'
+
+    return
+  }
+
   enrolling.value = true
   enrollError.value = ''
   try {
-    const created = await createCourseEnrollment({ unit_id: selectedStudentId.value, sku_id: enrollSkuId.value })
+    const created = await createCourseEnrollment({
+      unit_id: selectedStudentId.value,
+      sku_id: rosterSkuId.value,
+      start_date: startDate,
+      end_date: endDate,
+    })
 
     enrollments.value = [created, ...enrollments.value]
-    enrollSkuId.value = null
+
+    const picked = studentOptions.value.find(u => u.id === selectedStudentId.value)
+    if (picked)
+      cacheStudents([picked])
+
+    selectedStudentId.value = null
+    studentSearch.value = ''
+    enrollStartDate.value = ''
+    enrollEndDate.value = ''
   }
   catch (e) {
     enrollError.value = formatApiError(e, 'Could not enroll student.')
@@ -420,7 +525,8 @@ const enrollmentStatusColor: Record<string, string> = {
           Course Management
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          Courses (SPU) group class offerings (SKU); students enroll in a SKU.
+          Pick a class to see its roster. Billing is on the SKU (月費 or 堂費).
+          Same student cannot re-enroll the same class code later without deleting the old row.
         </div>
       </VCol>
       <VCol
@@ -587,6 +693,7 @@ const enrollmentStatusColor: Record<string, string> = {
                   <th>Level</th>
                   <th>Schedule</th>
                   <th>Location</th>
+                  <th>Billing</th>
                   <th class="text-end">
                     Price
                   </th>
@@ -597,6 +704,9 @@ const enrollmentStatusColor: Record<string, string> = {
                 <tr
                   v-for="sku in skusForSelectedSpu"
                   :key="sku.id"
+                  :class="{ 'bg-primary-lighten-5': sku.id === rosterSkuId }"
+                  style="cursor: pointer;"
+                  @click="rosterSkuId = sku.id"
                 >
                   <td>{{ sku.code }}</td>
                   <td>
@@ -613,6 +723,7 @@ const enrollmentStatusColor: Record<string, string> = {
                   <td>{{ sku.level ?? '—' }}</td>
                   <td>{{ sku.schedule_note ?? '—' }}</td>
                   <td>{{ locationName(sku.location_id) }}</td>
+                  <td>{{ billingUnitLabel(sku.billing_unit ?? 'monthly') }}</td>
                   <td class="text-end">
                     {{ sku.price != null ? sku.price : '—' }}
                   </td>
@@ -621,7 +732,7 @@ const enrollmentStatusColor: Record<string, string> = {
                       icon
                       size="x-small"
                       variant="text"
-                      @click="openEditSku(sku)"
+                      @click.stop="openEditSku(sku)"
                     >
                       <VIcon
                         icon="ri-edit-line"
@@ -633,7 +744,7 @@ const enrollmentStatusColor: Record<string, string> = {
                       size="x-small"
                       variant="text"
                       color="error"
-                      @click="removeSku(sku)"
+                      @click.stop="removeSku(sku)"
                     >
                       <VIcon
                         icon="ri-delete-bin-line"
@@ -644,7 +755,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 </tr>
                 <tr v-if="selectedSpuId && skusForSelectedSpu.length === 0">
                   <td
-                    colspan="7"
+                    colspan="8"
                     class="text-center text-medium-emphasis py-6"
                   >
                     No class offerings yet for this course.
@@ -652,7 +763,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 </tr>
                 <tr v-if="!selectedSpuId">
                   <td
-                    colspan="7"
+                    colspan="8"
                     class="text-center text-medium-emphasis py-6"
                   >
                     Select a course on the left to see its class offerings.
@@ -664,15 +775,68 @@ const enrollmentStatusColor: Record<string, string> = {
         </VCol>
       </VRow>
 
-      <!-- Enrollments -->
+      <!-- Class roster -->
       <VRow class="mt-4">
         <VCol cols="12">
-          <VCard title="Student Enrollments">
+          <VCard>
+            <VCardItem>
+              <VCardTitle>
+                Class roster
+                <span class="text-body-2 text-medium-emphasis ms-1">班次名冊</span>
+              </VCardTitle>
+              <VCardSubtitle>
+                <template v-if="rosterSku">
+                  {{ rosterSku.code }} · {{ rosterSku.name_zh }}
+                  <span v-if="rosterSku.schedule_note"> · {{ rosterSku.schedule_note }}</span>
+                  <span class="ms-1">· {{ billingUnitLabel(rosterSku.billing_unit ?? 'monthly') }}</span>
+                </template>
+                <template v-else>
+                  Click a class offering above, or pick one here.
+                </template>
+              </VCardSubtitle>
+              <template #append>
+                <VChip
+                  v-if="rosterSku"
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                >
+                  {{ activeRosterCount }}{{ rosterSku.capacity != null ? ` / ${rosterSku.capacity}` : '' }} enrolled
+                </VChip>
+              </template>
+            </VCardItem>
             <VCardText>
-              <VRow align="center">
+              <VRow align="end">
                 <VCol
                   cols="12"
-                  md="5"
+                  md="3"
+                >
+                  <VSelect
+                    v-model="rosterSkuId"
+                    :items="skusForSelectedSpu"
+                    item-title="name_zh"
+                    item-value="id"
+                    label="Class"
+                    placeholder="Select a class"
+                    density="compact"
+                    hide-details
+                    :disabled="skusForSelectedSpu.length === 0"
+                  >
+                    <template #item="{ props: itemProps, item }">
+                      <VListItem
+                        v-bind="itemProps"
+                        :title="`${item.raw.code} · ${item.raw.name_zh}`"
+                        :subtitle="item.raw.schedule_note || billingUnitLabel(item.raw.billing_unit ?? 'monthly')"
+                      />
+                    </template>
+                    <template #selection="{ item }">
+                      {{ item.raw.code }} · {{ item.raw.name_zh }}
+                    </template>
+                  </VSelect>
+                </VCol>
+                <VCol
+                  cols="12"
+                  md="3"
                 >
                   <VAutocomplete
                     v-model="selectedStudentId"
@@ -681,12 +845,14 @@ const enrollmentStatusColor: Record<string, string> = {
                     :loading="studentSearchLoading"
                     item-title="full_name"
                     item-value="id"
-                    label="Find student"
-                    placeholder="Type a student's name or code..."
+                    label="Add student"
+                    placeholder="Name or code"
                     prepend-inner-icon="ri-search-line"
                     density="compact"
                     hide-details
                     clearable
+                    no-filter
+                    :disabled="!rosterSkuId"
                   >
                     <template #item="{ props: itemProps, item }">
                       <VListItem
@@ -697,29 +863,30 @@ const enrollmentStatusColor: Record<string, string> = {
                   </VAutocomplete>
                 </VCol>
                 <VCol
-                  cols="12"
-                  md="5"
+                  cols="6"
+                  md="2"
                 >
-                  <VSelect
-                    v-model="enrollSkuId"
-                    :items="activeSkuOptions"
-                    item-value="id"
-                    label="Enroll in class"
+                  <VTextField
+                    v-model="enrollStartDate"
+                    label="Start"
+                    type="date"
                     density="compact"
                     hide-details
-                    :disabled="!selectedStudentId"
-                  >
-                    <template #item="{ props: itemProps, item }">
-                      <VListItem
-                        v-bind="itemProps"
-                        :title="item.raw.name_zh"
-                        :subtitle="item.raw.spuName"
-                      />
-                    </template>
-                    <template #selection="{ item }">
-                      {{ item.raw.name_zh }}
-                    </template>
-                  </VSelect>
+                    :disabled="!rosterSkuId"
+                  />
+                </VCol>
+                <VCol
+                  cols="6"
+                  md="2"
+                >
+                  <VTextField
+                    v-model="enrollEndDate"
+                    label="End"
+                    type="date"
+                    density="compact"
+                    hide-details
+                    :disabled="!rosterSkuId"
+                  />
                 </VCol>
                 <VCol
                   cols="12"
@@ -729,7 +896,7 @@ const enrollmentStatusColor: Record<string, string> = {
                     color="primary"
                     block
                     :loading="enrolling"
-                    :disabled="!selectedStudentId || !enrollSkuId"
+                    :disabled="!selectedStudentId || !rosterSkuId"
                     @click="enrollStudent"
                   >
                     Enroll
@@ -750,10 +917,10 @@ const enrollmentStatusColor: Record<string, string> = {
               </VAlert>
 
               <div
-                v-if="!selectedStudentId"
+                v-if="!rosterSkuId"
                 class="text-center text-medium-emphasis py-8"
               >
-                Search and pick a student above to view or manage their course enrollments.
+                Select a class to see who is enrolled and add students with a start and end date.
               </div>
 
               <VProgressLinear
@@ -770,8 +937,10 @@ const enrollmentStatusColor: Record<string, string> = {
               >
                 <thead>
                   <tr>
-                    <th>Class</th>
+                    <th>Student</th>
                     <th>Status</th>
+                    <th>Start</th>
+                    <th>End</th>
                     <th>Enrolled</th>
                     <th />
                   </tr>
@@ -781,7 +950,12 @@ const enrollmentStatusColor: Record<string, string> = {
                     v-for="e in enrollments"
                     :key="e.id"
                   >
-                    <td>{{ skuLabel(e.sku_id) }}</td>
+                    <td>
+                      {{ studentLabel(e.unit_id) }}
+                      <div class="text-caption text-medium-emphasis">
+                        {{ studentCode(e.unit_id) }}
+                      </div>
+                    </td>
                     <td>
                       <VChip
                         size="x-small"
@@ -790,6 +964,8 @@ const enrollmentStatusColor: Record<string, string> = {
                         {{ e.status }}
                       </VChip>
                     </td>
+                    <td>{{ e.start_date ?? '—' }}</td>
+                    <td>{{ e.end_date ?? '—' }}</td>
                     <td>{{ e.enrolled_at }}</td>
                     <td class="text-end">
                       <VBtn
@@ -816,10 +992,10 @@ const enrollmentStatusColor: Record<string, string> = {
                   </tr>
                   <tr v-if="enrollments.length === 0">
                     <td
-                      colspan="4"
+                      colspan="6"
                       class="text-center text-medium-emphasis py-6"
                     >
-                      No enrollments yet for this student.
+                      No students in this class yet. Search a name and set start / end dates to enroll.
                     </td>
                   </tr>
                 </tbody>
@@ -977,7 +1153,17 @@ const enrollmentStatusColor: Record<string, string> = {
                 clearable
               />
             </VCol>
-            <VCol cols="3">
+            <VCol cols="4">
+              <VSelect
+                v-model="skuForm.billing_unit"
+                :items="billingUnitOptions"
+                item-title="title"
+                item-value="value"
+                label="Billing"
+                density="compact"
+              />
+            </VCol>
+            <VCol cols="4">
               <VTextField
                 v-model.number="skuForm.capacity"
                 label="Capacity"
@@ -985,10 +1171,10 @@ const enrollmentStatusColor: Record<string, string> = {
                 density="compact"
               />
             </VCol>
-            <VCol cols="3">
+            <VCol cols="4">
               <VTextField
                 v-model.number="skuForm.price"
-                label="Price"
+                :label="skuForm.billing_unit === 'per_session' ? 'Price (per session)' : 'Price (monthly)'"
                 type="number"
                 density="compact"
               />

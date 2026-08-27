@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-07-28（已審查：2026-07-28）
+> 最後更新：2026-08-27（已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口）
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -14,6 +14,21 @@
 | 🟡 Medium | 上線前應補 |
 | 🟢 Low | 可延後 |
 | ⚠️ 設計取捨 | 已知但刻意接受的 trade-off |
+
+---
+
+## 學費／課程 — 刻意尚未做（2026-08-27）
+
+> 計價在 SKU、班次名冊、按月 Generate 發票**已做**。下面三項是當時明確延後的，不是漏寫。細節見 #M22–#M24。
+
+| # | 尚未做 | 現況 | 影響 |
+|---|--------|------|------|
+| **#M23** | 堂費按實際堂數計價 | Generate 時 `quantity` **永遠是 1**（月費、堂費都一樣） | 功課輔導（幾乎每日）與 A1（每週一堂）帳單金額不正確 |
+| **#M22** | 下學年重報同一班號 | `(unit_id, sku_id)` **永久唯一**；取消後再報仍 409 | 不能保留舊報名又開新學年 A1 |
+| **#M24** | 把帳單發給家長 | 只有後台 `draft` → `issued` → `paid` | 沒有 WhatsApp／電郵／列印發送 |
+| — | Vuexy `/apps/invoice` | AQUA 模板假資料 | **不是**學費系統（見 **D5**） |
+
+建議下一件產品工作：**#M23 堂費數堂** → 然後 **#M22 唯一約束** → 然後 **#M24 發送**。
 
 ---
 
@@ -160,8 +175,8 @@
 
 ### #M17 Generate 端點無互斥鎖
 
-- **位置**：`apps/api/app/routers/attendance_summaries.py`、`routers/payroll_records.py`
-- **問題**：Summaries / Payroll generate 都是「select 再 upsert」；兩個 admin 同時按會競態，可能噴 `IntegrityError` 或重複計算。
+- **位置**：`apps/api/app/routers/attendance_summaries.py`、`routers/payroll_records.py`、`routers/tuition_invoices.py`
+- **問題**：Summaries / Payroll / 學費發票 generate 都是「select 再 upsert」；兩個 admin 同時按會競態，可能噴 `IntegrityError` 或重複計算。
 - **建議**：改用 PostgreSQL `INSERT ... ON CONFLICT DO UPDATE`，或以 Redis/advisory lock 互斥。單一塾使用下機率低，但修法便宜。
 
 ### #M18 `units.attendance_status` 非正規化狀態可能與 events 不一致
@@ -203,6 +218,32 @@
 - **問題**：`units` 表的 PK 仍為 `products_pkey`、`ix_products_code` 索引未改名；`unit_scan_locations` 表有舊的 `product_allowed_locations_*` constraint 與新的 `unit_scan_locations_*` constraint 並存；`attendance_events` 表有舊索引 `ix_attendance_events_product_recorded`。
 - **影響**：不影響功能，但影響可維護性和 DB 工具的可讀性。
 - **建議**：在未來的 migration 中統一重新命名。詳見 [database-changes.md](database-changes.md) § Legacy 約束與索引名稱。
+
+### #M22 同一學生同一 SKU 永久唯一（無法下學年重報）
+
+> **2026-08-27 新增** — 刻意延後。月費可靠 `start_date` / `end_date` 出賬，不必立刻改約束。
+
+- **位置**：`course_enrollments` 唯一約束 `uq_course_enrollment_unit_sku`
+- **問題**：同一學生不能再次報名同一班次（例如下學年 A1）。取消後重報仍 409，除非刪除舊列。
+- **影響**：新學期無法保留歷史報名又再開同一 SKU。
+- **建議**：改為「同一學生同一 SKU 僅一筆 `active`」，或加入學期／學年維度。
+
+### #M23 堂費發票數量固定為 1
+
+> **2026-08-27 新增** — 刻意延後。`schedule_note` 為自由文字；校園打卡不是課堂節數。
+
+- **位置**：`apps/api/app/services/tuition_invoice_generator.py` `_line_from_enrollment`
+- **問題**：`billing_unit=per_session` 時 `quantity` 仍為 1，無法反映功課輔導（幾乎每日）與 A1（每週一堂）的堂數差。
+- **影響**：堂費班的月帳單金額不正確，直到有課表或課堂出勤。
+- **建議**：結構化課表或課堂 session 後，Generate 按該月實際堂數寫 `quantity`。
+
+### #M24 學費發票未接 WhatsApp／對外發送
+
+> **2026-08-27 新增** — 刻意延後。
+
+- **位置**：Web `/attendance/invoices`；無發送 API
+- **問題**：發票只存在管理後台（draft → issued → paid）。沒有把帳單推給家長的管道。
+- **建議**：在 issued 之後接既有通知／WhatsApp 流程，不要把 Vuexy `/apps/invoice` 當發送層。
 
 ---
 
@@ -264,6 +305,7 @@
 | D2 | 登入撤銷所有 refresh token | `login` 呼叫 `revoke_all_refresh_tokens_for_user` → 單一 session，手機登入會踢掉 Web。 |
 | D3 | Mobile 無離線處理 | 所有網路失敗直接顯示 "Cannot reach API"。除非有實際斷網需求，否則不優先。 |
 | D4 | Weekend 篩選為前端 | 明細層 Weekend chip 為前端篩選已載入列；Complete/Incomplete 走 API `is_complete`。 |
+| D5 | 學費與 Vuexy invoice 模板分離 | 真實帳單是 `tuition_invoices`。`/apps/invoice` 仍為 AQUA 假資料，不應當產品功能。 |
 
 ---
 

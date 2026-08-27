@@ -1,6 +1,6 @@
 # 文件審計 — 問題清單
 
-> 審計日期：2026-07-10；本次更新：2026-07-28
+> 審計日期：2026-07-10；本次更新：2026-08-27
 > 目的：列出 `docs/` 中所有過時、缺失、不一致的項目，作為後續更新依據。
 
 ---
@@ -26,6 +26,7 @@
 | A4 | ~~缺少 audit-logs 端點~~ | ✅ 已修 |
 | A5 | ~~缺少 auto-checkout 端點~~ | ✅ 已修（**僅手動 API**；排程仍缺 → known-gaps #M14） |
 | A6 | ~~缺少 staff-profiles / student-profiles 端點~~ | ✅ 已修 |
+| A7 | ~~缺少 course / tuition-invoices 端點~~ | ✅ 已修（2026-08-27）— §1.6 含 course-spus/skus/enrollments 與 tuition-invoices |
 
 ### 1.3 §1.7 環境變數（L107–121）
 
@@ -183,7 +184,7 @@
 | # | 問題 | 狀態 |
 |---|------|------|
 | DB3 | ~~ER 圖未反映實際 DB 狀態~~ | ✅ 已修 — ER 圖已更新為 2026-07-28 實際 DB 狀態 |
-| DB4 | ~~Migration 歷史未包含 032~~ | ✅ 已修 — 已更新至 032 |
+| DB4 | ~~Migration 歷史未包含 032~~ | ✅ 已修 — 已更新至 032；2026-08-27 再更新至 **036**（035 `billing_unit`、036 學費發票） |
 | DB5 | ~~缺少 Legacy constraint/index 名稱清單~~ | ✅ 已修 — 新增 § Legacy 約束與索引名稱 |
 | DB6 | ~~缺少個人資料搬移狀態追蹤~~ | ✅ 已修 — 新增 § 個人資料欄位搬移狀態；migration `f8e65b7cf82b` 已於 2026-07-28 執行完畢 |
 
@@ -201,6 +202,8 @@
 |---|------|------|
 | F3 | Migration 編號仍為 026，應更新至 032 | ✅ 已修 — 已更新至 032，並補上 `f8e65b7cf82b` 個人資料欄位調整 migration |
 | F4 | §10 ER 圖可能與 database-changes.md 不一致（需同步更新） | ✅ 已修 — 兩份文件 ER 圖已同步，且與實際 DB 一致 |
+| F5 | 手冊／README 仍寫 Alembic head `034`、課程頁為學生優先、無學費發票 | ✅ 已修（2026-08-27）— head **036**；§1.9 班次名冊；§1.10 學費發票；ER 含 `tuition_invoices` |
+| F6 | 本地 `alembic upgrade head` 在 Windows PATH 上經常失敗 | ✅ 已修（2026-08-27）— 手冊／README／API README 改為 `python -m alembic upgrade head` |
 
 ### 8.4 程式碼審計結果
 

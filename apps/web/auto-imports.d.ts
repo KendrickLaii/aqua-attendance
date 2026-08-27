@@ -35,6 +35,9 @@ declare global {
   const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
   const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
+  const canApprovePayroll: typeof import('./src/utils/payrollDisplay')['canApprovePayroll']
+  const canEditPayrollAdjustments: typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']
+  const canPayPayroll: typeof import('./src/utils/payrollDisplay')['canPayPayroll']
   const cardCoverUrl: typeof import('./src/utils/locationHours')['cardCoverUrl']
   const clearAttendanceSessionCookies: typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']
   const computed: typeof import('vue')['computed']
@@ -95,7 +98,9 @@ declare global {
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
+  const formatPayrollCurrency: typeof import('./src/utils/payrollDisplay')['formatPayrollCurrency']
   const formatPayrollGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']
+  const formatPayrollHours: typeof import('./src/utils/payrollDisplay')['formatPayrollHours']
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
   const formatSummaryDateWithWeekday: typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']
   const formatSummaryGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']
@@ -177,6 +182,10 @@ declare global {
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
+  const payrollReviewFilterChips: typeof import('./src/utils/payrollDisplay')['payrollReviewFilterChips']
+  const payrollStatusColorMap: typeof import('./src/utils/payrollDisplay')['payrollStatusColorMap']
+  const payrollStatusIcon: typeof import('./src/utils/payrollDisplay')['payrollStatusIcon']
+  const payrollStatusOptions: typeof import('./src/utils/payrollDisplay')['payrollStatusOptions']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const printProductQrs: typeof import('./src/utils/printProductQrs')['printProductQrs']
   const printUnitQrs: typeof import('./src/utils/printUnitQrs')['printUnitQrs']
@@ -206,6 +215,7 @@ declare global {
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
+  const safePayrollNumber: typeof import('./src/utils/payrollDisplay')['safePayrollNumber']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
   const shallowReactive: typeof import('vue')['shallowReactive']
@@ -489,6 +499,9 @@ declare module 'vue' {
     readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
     readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
+    readonly canApprovePayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canApprovePayroll']>
+    readonly canEditPayrollAdjustments: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']>
+    readonly canPayPayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canPayPayroll']>
     readonly cardCoverUrl: UnwrapRef<typeof import('./src/utils/locationHours')['cardCoverUrl']>
     readonly clearAttendanceSessionCookies: UnwrapRef<typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
@@ -547,7 +560,9 @@ declare module 'vue' {
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
+    readonly formatPayrollCurrency: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollCurrency']>
     readonly formatPayrollGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']>
+    readonly formatPayrollHours: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollHours']>
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
     readonly formatSummaryDateWithWeekday: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']>
     readonly formatSummaryGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']>
@@ -627,6 +642,10 @@ declare module 'vue' {
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
+    readonly payrollReviewFilterChips: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollReviewFilterChips']>
+    readonly payrollStatusColorMap: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollStatusColorMap']>
+    readonly payrollStatusIcon: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollStatusIcon']>
+    readonly payrollStatusOptions: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollStatusOptions']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly printUnitQrs: UnwrapRef<typeof import('./src/utils/printUnitQrs')['printUnitQrs']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
@@ -654,6 +673,7 @@ declare module 'vue' {
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>
+    readonly safePayrollNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['safePayrollNumber']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>

@@ -55,19 +55,20 @@ npm run dev
 | `/attendance/qr-codes` | QR 取得 / 輪替 / 預覽 |
 | `/attendance/scanner` | Web 掃描（token + location） |
 | `/attendance/log` | 事件紀錄、手動校正、CSV 匯出 |
-| `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) |
-| `/attendance/payroll` | 月度薪資（總覽 → 每日彙總明細、審核、Generate）— 見 [ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) |
+| `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [attendance-summaries.md](../../docs/attendance-summaries.md) |
+| `/attendance/payroll` | 月度薪資（總覽 → 每日彙總明細、審核、Generate）— 見 [attendance-summaries.md](../../docs/attendance-summaries.md) |
 | `/attendance/notifications` | 通知中心 |
 | `/attendance/audit-logs` | 稽核查詢（superadmin） |
 | `/attendance/users` | User CRUD（admin） |
-| `/attendance/courses` | 課程管理（SPU/SKU + 學生報名） |
+| `/attendance/courses` | 課程管理（班次名冊 + 報名起迄日；SKU 含月費／堂費） |
+| `/attendance/invoices` | 學費發票（選月份 Generate → Issue / Mark paid / Void） |
 
 導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。
 
 ## API 客戶端
 
 - `src/utils/attendanceApi.ts` — `ofetch`，Bearer token，401 自動 refresh
-- `src/api/attendance/` — 型別化的 endpoint（`courses.ts` 為新課程 API）
+- `src/api/attendance/` — 型別化的 endpoint（`courses.ts`、`tuitionInvoices.ts`）
 - `src/stores/useAttendanceAuthStore.ts` — session + cookie
 
 Token 儲存在 cookie（`attendanceAccessToken`）。相關注意事項請見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md)。
@@ -89,5 +90,5 @@ Docker 生產 image：`prod.Dockerfile`（nginx 服務 `dist/`）。
 ## 更多文件
 
 - 根目錄 [README.md](../../README.md)
-- [docs/ATTENDANCE_SUMMARIES.md](../../docs/ATTENDANCE_SUMMARIES.md) — 彙總 / Payroll 月度流程
-- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 生產部署與運維手冊
+- [docs/attendance-summaries.md](../../docs/attendance-summaries.md) — 彙總 / Payroll 月度流程
+- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 生產部署、課程與學費發票
