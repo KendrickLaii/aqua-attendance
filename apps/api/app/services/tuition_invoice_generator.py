@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -115,5 +116,19 @@ async def generate_monthly_tuition_invoices(
             invoice.lines.append(line)
         updated += 1
 
-    await db.commit()
-    return {"created": created, "updated": updated, "skipped": skipped}
+    deleted = 0
+    for unit_id, invoice in existing_by_unit.items():
+        if unit_id in by_unit:
+            continue
+        if invoice.status in _LOCKED or invoice.status == TuitionInvoiceStatus.void.value:
+            skipped += 1
+            continue
+        await db.delete(invoice)
+        deleted += 1
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise
+    return {"created": created, "updated": updated, "skipped": skipped, "deleted": deleted}

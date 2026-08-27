@@ -344,7 +344,7 @@ erDiagram
 | --- | --- | --- |
 | 1 | 計價在 SKU，出賬時快照到行項目 | 之後改 A1 學費不可改寫已出賬月份。行項目寫入 `sku_code`、`name_zh`、`billing_unit`、`unit_price`、`quantity`、`amount`。 |
 | 2 | 一學生一月一張發票 | 唯一約束 `(unit_id, period_start, period_end)`。同一學生該月多班次合併為多行。 |
-| 3 | 草稿可重產、已出賬跳過 | `draft` 重跑 Generate 會替換行項目並重算 `total`；`issued`/`paid` 跳過。`void` 不自動重生。 |
+| 3 | 草稿可重產、已出賬跳過 | `draft` 重跑 Generate 會替換行項目並重算 `total`；`issued`/`paid` 跳過。`void` 不能用 PATCH 改回 draft。該生該月**仍有有效報名**時，再 Generate 會把 `void` **復活成 `draft`**（唯一約束佔住該月，不能另開一張）。沒有有效報名的 `void` 保留；沒有有效報名的 `draft` 會刪除。 |
 | 4 | 堂費 `quantity` 暫為 1 | `schedule_note` 為自由文字；校園打卡不是課堂節數。真實堂數待補課表或課堂出勤後再算。 |
 | 5 | `price` 為空則跳過該報名 | 未定價班次不進發票，避免產生 $0 或錯誤行。 |
 
@@ -354,7 +354,7 @@ erDiagram
 - 納入：`course_enrollments.status == active`，且起迄日與該月重疊。
 - 排除：`cancelled`／`completed`、完全落在該月之外、SKU `price` 為空。
 - 月費與堂費目前都是 `quantity = 1`、`amount = unit_price`。
-- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`。已 `paid` 不可再改。
+- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`。已 `paid` 不可再改。`void` 只能靠 Generate 在仍有報名時回收成 draft。
 
 ### 尚未實作（刻意延後）
 

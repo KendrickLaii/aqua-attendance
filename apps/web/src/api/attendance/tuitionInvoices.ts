@@ -36,6 +36,7 @@ export interface TuitionInvoiceGenerateResult {
   created: number
   updated: number
   skipped: number
+  deleted?: number
 }
 
 export async function listTuitionInvoicesWithTotal(params?: {
@@ -46,6 +47,34 @@ export async function listTuitionInvoicesWithTotal(params?: {
   page_size?: number
 }): Promise<AttendanceListResult<TuitionInvoice>> {
   return await fetchAttendanceListWithTotal<TuitionInvoice>('/tuition-invoices', params)
+}
+
+export async function listAllTuitionInvoices(params: {
+  year: number
+  month: number
+  status?: string
+}): Promise<AttendanceListResult<TuitionInvoice>> {
+  const pageSize = 200
+  const first = await listTuitionInvoicesWithTotal({
+    ...params,
+    page: 1,
+    page_size: pageSize,
+  })
+  const items = [...first.items]
+  const total = first.total
+  let page = 2
+  while (items.length < total) {
+    const next = await listTuitionInvoicesWithTotal({
+      ...params,
+      page,
+      page_size: pageSize,
+    })
+    if (next.items.length === 0)
+      break
+    items.push(...next.items)
+    page += 1
+  }
+  return { items, total }
 }
 
 export async function generateTuitionInvoices(

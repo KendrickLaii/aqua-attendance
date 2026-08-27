@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
   generateTuitionInvoices,
-  listTuitionInvoicesWithTotal,
+  listAllTuitionInvoices,
   updateTuitionInvoice,
   type TuitionInvoice,
 } from '@/api/attendance/tuitionInvoices'
@@ -27,6 +27,8 @@ const generateError = ref('')
 const generateSuccess = ref('')
 const expandedId = ref<string | null>(null)
 const statusUpdatingId = ref<string | null>(null)
+const voidTarget = ref<TuitionInvoice | null>(null)
+const voidConfirmOpen = ref(false)
 
 useAutoClearAlerts(loadError)
 useAutoClearAlerts(generateError)
@@ -53,10 +55,9 @@ async function loadInvoices() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await listTuitionInvoicesWithTotal({
+    const result = await listAllTuitionInvoices({
       year: parsedYearMonth.value.year,
       month: parsedYearMonth.value.month,
-      page_size: 200,
     })
 
     invoices.value = result.items
@@ -82,7 +83,7 @@ async function generate() {
       parsedYearMonth.value.month,
     )
 
-    generateSuccess.value = `Created ${result.created}, updated ${result.updated}, skipped ${result.skipped}.`
+    generateSuccess.value = `Created ${result.created}, updated ${result.updated}, skipped ${result.skipped}, deleted ${result.deleted ?? 0}.`
     await loadInvoices()
   }
   catch (e) {
@@ -101,6 +102,8 @@ async function setStatus(invoice: TuitionInvoice, status: 'issued' | 'paid' | 'v
     const idx = invoices.value.findIndex(row => row.id === invoice.id)
     if (idx !== -1)
       invoices.value[idx] = updated
+    voidConfirmOpen.value = false
+    voidTarget.value = null
   }
   catch (e) {
     generateError.value = formatApiError(e, 'Could not update invoice.')
@@ -110,11 +113,26 @@ async function setStatus(invoice: TuitionInvoice, status: 'issued' | 'paid' | 'v
   }
 }
 
+function askVoid(invoice: TuitionInvoice) {
+  voidTarget.value = invoice
+  voidConfirmOpen.value = true
+}
+
+async function confirmVoid() {
+  if (!voidTarget.value)
+    return
+  await setStatus(voidTarget.value, 'void')
+}
+
 function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
-const monthTotal = computed(() => invoices.value.reduce((sum, row) => sum + Number(row.total), 0))
+const monthTotal = computed(() =>
+  invoices.value
+    .filter(row => row.status !== 'void')
+    .reduce((sum, row) => sum + Number(row.total), 0),
+)
 
 onMounted(async () => {
   if (!(await ensureAccess()))
@@ -143,7 +161,7 @@ watch(yearMonth, () => {
         </div>
         <div class="text-body-2 text-medium-emphasis">
           {{ monthLabel }} · {{ invoices.length }} bill{{ invoices.length === 1 ? '' : 's' }}
-          · total {{ formatAmount(monthTotal) }}
+          · total {{ formatAmount(monthTotal) }} (excluding void)
         </div>
       </VCol>
       <VCol
@@ -222,7 +240,8 @@ watch(yearMonth, () => {
       <VCardText>
         <div class="text-body-2 text-medium-emphasis mb-4">
           Generate builds one draft per student whose class dates overlap this month.
-          Monthly classes bill the SKU price once. Not yet: per-session class counts (qty is always 1),
+          Monthly classes bill the SKU price once. Voided bills stay void until you Generate
+          again (revives to draft if still enrolled). Not yet: per-session class counts (qty is always 1),
           sending bills on WhatsApp, or Vuexy <code>/apps/invoice</code> (demo only).
         </div>
 
@@ -298,6 +317,16 @@ watch(yearMonth, () => {
                   >
                     Mark paid
                   </VBtn>
+                  <VBtn
+                    v-if="invoice.status === 'draft' || invoice.status === 'issued'"
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    :loading="statusUpdatingId === invoice.id"
+                    @click="askVoid(invoice)"
+                  >
+                    Void
+                  </VBtn>
                 </td>
               </tr>
               <tr v-if="expandedId === invoice.id">
@@ -352,5 +381,18 @@ watch(yearMonth, () => {
         </VTable>
       </VCardText>
     </VCard>
+
+    <AttendanceConfirmDialog
+      v-model="voidConfirmOpen"
+      title="Void this invoice?"
+      confirm-label="Void"
+      confirm-color="error"
+      :loading="statusUpdatingId === voidTarget?.id"
+      @confirm="confirmVoid"
+      @cancel="voidTarget = null"
+    >
+      {{ voidTarget?.unit_name ?? voidTarget?.unit_code }} will be marked void.
+      Generate will restore it to draft if the student is still enrolled this month.
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>

@@ -176,7 +176,7 @@
 ### #M17 Generate 端點無互斥鎖
 
 - **位置**：`apps/api/app/routers/attendance_summaries.py`、`routers/payroll_records.py`、`routers/tuition_invoices.py`
-- **問題**：Summaries / Payroll / 學費發票 generate 都是「select 再 upsert」；兩個 admin 同時按會競態，可能噴 `IntegrityError` 或重複計算。
+- **問題**：Summaries / Payroll / 學費發票 generate 都是「select 再 upsert」；兩個 admin 同時按會競態。學費發票撞唯一約束時現回 **409**（不再是未處理 500）；Summaries／Payroll 仍可能 500。
 - **建議**：改用 PostgreSQL `INSERT ... ON CONFLICT DO UPDATE`，或以 Redis/advisory lock 互斥。單一塾使用下機率低，但修法便宜。
 
 ### #M18 `units.attendance_status` 非正規化狀態可能與 events 不一致

@@ -4,6 +4,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB
@@ -85,7 +86,14 @@ async def generate_tuition_invoices(
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
 
-    result = await generate_monthly_tuition_invoices(db, year=year, month=month)
+    try:
+        result = await generate_monthly_tuition_invoices(db, year=year, month=month)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Invoice already exists for this student and period",
+        )
     await audit_log_svc.log_audit(
         db,
         user_id=admin.id,
@@ -93,7 +101,8 @@ async def generate_tuition_invoices(
         table_name="tuition_invoices",
         description=(
             f"Generated tuition invoices for {year}-{month:02d}: "
-            f"{result['created']} created, {result['updated']} updated, {result['skipped']} skipped"
+            f"{result['created']} created, {result['updated']} updated, "
+            f"{result['skipped']} skipped, {result['deleted']} deleted"
         ),
     )
     return TuitionInvoiceGenerateResult(**result)

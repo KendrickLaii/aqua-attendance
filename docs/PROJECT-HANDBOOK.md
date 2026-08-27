@@ -213,7 +213,9 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 #### 產生規則
 
 - `POST /api/tuition-invoices/generate?year=&month=`：納入該月與 **active** 報名日期視窗重疊的列；跳過 cancelled、完全落在該月外、SKU `price` 為空。
-- 已 `issued`／`paid` 的該月發票跳過；`draft` 可重產（替換行項目）。
+- 已 `issued`／`paid` 的該月發票跳過；`draft` 可重產（替換行項目）。沒有有效報名的 `draft` 會刪除。
+- `void`：PATCH 不能改回 draft。再 Generate 時，若仍有重疊的 active 報名則復活成 draft；若已無有效報名則保持 void。
+- 兩人同時 Generate 撞唯一約束回 **409**（不是 500）。
 - **堂費數量目前固定為 1**（沒有課表節數或課堂出勤）。見 [known-gaps.md](known-gaps.md) **#M23**。
 - Web：`/attendance/invoices`（選月份 → Generate → Issue / Mark paid / Void）。
 

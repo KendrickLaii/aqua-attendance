@@ -46,3 +46,4 @@ class TuitionInvoiceGenerateResult(BaseModel):
     created: int
     updated: int
     skipped: int
+    deleted: int = 0
