@@ -90,9 +90,9 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
             secureTextEntry
           />
           <Button label={t('login.signIn')} onPress={handleLogin} loading={loading} />
-          <Text style={styles.apiHint} selectable>
+          {/* <Text style={styles.apiHint} selectable>
             API: {API_URL}
-          </Text>
+          </Text> */}
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>
