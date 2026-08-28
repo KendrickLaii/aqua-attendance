@@ -8,9 +8,17 @@ import { createUnit, deleteUnit, listUnitsWithTotal, updateStaffProfile, updateS
 import type { Unit } from '@/api/attendance/units'
 import { listLocations } from '@/api/attendance/locations'
 import type { LocationItem } from '@/api/attendance/locations'
+import { type CourseEnrollment, type CourseSku, listAllCourseEnrollments, listCourseSkus } from '@/api/attendance/courses'
 import UnitQrDialogs from '@/components/attendance/UnitQrDialogs.vue'
 import AppToastStack from '@/components/AppToastStack.vue'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
+import {
+  billingUnitShortLabel,
+  buildUnitEnrollmentRows,
+  enrollmentStatusColor,
+  formatEnrollmentRange,
+  type UnitEnrollmentRow,
+} from '@/utils/courseEnrollmentDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useToast } from '@/composables/useToast'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -99,6 +107,11 @@ const deleteConfirmOpen = ref(false)
 const deleteTarget = ref<Unit | null>(null)
 const deleting = ref(false)
 const deleteError = ref('')
+
+const unitEnrollmentRows = ref<UnitEnrollmentRow<CourseEnrollment, CourseSku>[]>([])
+const unitEnrollmentsLoading = ref(false)
+const unitEnrollmentsError = ref('')
+let unitEnrollmentsRequestId = 0
 
 const statusOptions = [
   { title: 'Active', value: 'active' },
@@ -390,6 +403,7 @@ function openCreate() {
   saveError.value = null
   editingUnit.value = null
   resetForm()
+  void loadStudentEnrollments(null)
   dialogOpen.value = true
   nextTick(() => unitFormRef.value?.resetValidation())
 }
@@ -451,8 +465,41 @@ function openEdit(p: Unit) {
       employment_notes: stp?.employment_notes ?? '',
     },
   })
+  void loadStudentEnrollments(p.unit_type === 'student' ? p.id : null)
   dialogOpen.value = true
   nextTick(() => unitFormRef.value?.resetValidation())
+}
+
+async function loadStudentEnrollments(unitId: string | null) {
+  const requestId = ++unitEnrollmentsRequestId
+
+  unitEnrollmentRows.value = []
+  unitEnrollmentsError.value = ''
+  if (!unitId) {
+    unitEnrollmentsLoading.value = false
+
+    return
+  }
+
+  unitEnrollmentsLoading.value = true
+  try {
+    const [enrollments, skuList] = await Promise.all([
+      listAllCourseEnrollments({ unit_id: unitId }),
+      listCourseSkus(),
+    ])
+    if (requestId !== unitEnrollmentsRequestId)
+      return
+    unitEnrollmentRows.value = buildUnitEnrollmentRows(enrollments, skuList)
+  }
+  catch (e) {
+    console.error('Failed to load student enrollments', e)
+    if (requestId === unitEnrollmentsRequestId)
+      unitEnrollmentsError.value = formatApiError(e, 'Could not load enrolled classes.')
+  }
+  finally {
+    if (requestId === unitEnrollmentsRequestId)
+      unitEnrollmentsLoading.value = false
+  }
 }
 
 function normalizeString(value: string): string | null {
@@ -1448,6 +1495,85 @@ function rowStatusChip(p: Unit) {
           </VRow>
         </template>
 
+        <template v-if="form.unit_type === 'student'">
+          <h4 class="text-subtitle-2 text-medium-emphasis mb-1 mt-4">
+            Enrolled classes
+          </h4>
+          <p class="text-caption text-medium-emphasis mb-2">
+            Read-only. Enroll, change dates, or cancel on Courses.
+          </p>
+          <div
+            v-if="!editingUnit"
+            class="text-body-2 text-medium-emphasis"
+          >
+            Save this student first, then enroll from Courses.
+          </div>
+          <div
+            v-else-if="unitEnrollmentsLoading"
+            class="text-body-2 text-medium-emphasis"
+          >
+            Loading classes…
+          </div>
+          <p
+            v-else-if="unitEnrollmentsError"
+            class="text-caption text-error mb-0"
+          >
+            {{ unitEnrollmentsError }}
+          </p>
+          <div
+            v-else-if="unitEnrollmentRows.length === 0"
+            class="d-flex align-center flex-wrap ga-2"
+          >
+            <span class="text-body-2 text-medium-emphasis">Not enrolled in any class.</span>
+            <VBtn
+              type="button"
+              size="small"
+              variant="text"
+              color="primary"
+              :to="{ name: 'attendance-courses' }"
+            >
+              Open Courses
+            </VBtn>
+          </div>
+          <div
+            v-else
+            class="unit-enrollment-list"
+          >
+            <div
+              v-for="row in unitEnrollmentRows"
+              :key="row.enrollment.id"
+              class="unit-enrollment-row"
+            >
+              <div class="unit-enrollment-copy">
+                <div class="d-flex align-center flex-wrap ga-2">
+                  <span class="font-weight-medium">{{ row.sku?.name_zh ?? 'Unknown class' }}</span>
+                  <VChip
+                    size="x-small"
+                    :color="enrollmentStatusColor[row.enrollment.status] ?? 'grey'"
+                  >
+                    {{ row.enrollment.status }}
+                  </VChip>
+                </div>
+                <div class="text-caption text-medium-emphasis">
+                  {{ row.sku ? `${row.sku.code} · ${billingUnitShortLabel(row.sku.billing_unit)}` : row.enrollment.sku_id }}
+                  · {{ formatEnrollmentRange(row.enrollment.start_date, row.enrollment.end_date) }}
+                </div>
+              </div>
+              <VBtn
+                v-if="row.sku"
+                type="button"
+                size="small"
+                variant="text"
+                color="primary"
+                append-icon="ri-arrow-right-s-line"
+                :to="{ name: 'attendance-courses', query: { sku: row.sku.id } }"
+              >
+                Roster
+              </VBtn>
+            </div>
+          </div>
+        </template>
+
         <template v-if="form.unit_type === 'staff'">
           <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
             Staff profile
@@ -1623,6 +1749,26 @@ function rowStatusChip(p: Unit) {
 
 .unit-row-inactive {
   opacity: 0.55;
+}
+
+.unit-enrollment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.unit-enrollment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+}
+
+.unit-enrollment-copy {
+  min-width: 0;
 }
 
 .units-table-scroll {

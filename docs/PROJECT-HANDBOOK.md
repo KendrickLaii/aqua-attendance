@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-28（§1.9 SKU `meeting_weekdays`、§1.10 堂費按上課日計堂；Alembic head **037**。本地 migration 請用 `python -m alembic upgrade head`）。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-28（§1.9 SKU `meeting_weekdays`、§1.10 堂費按上課日計堂、§1.11 ERP 路線；Alembic head **037**。本地 migration 請用 `python -m alembic upgrade head`）。
 
 ---
 
@@ -9,6 +9,7 @@
 1. [專案概述](#1-專案概述)
    - [1.9 課程資料模型](#19-課程資料模型)
    - [1.10 學費發票](#110-學費發票)
+   - [1.11 以後做成 ERP](#111-以後做成-erp)
 2. [本地開發與快速開始](#2-本地開發與快速開始)
 3. [生產部署](#3-生產部署)
 4. [CI/CD 說明](#4-cicd-說明)
@@ -227,8 +228,13 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 | 下學年重報同一 SKU | `(unit_id, sku_id)` 永久唯一，409 | **#M22** |
 | WhatsApp／對外發送發票 | 僅後台狀態流 | **#M24** |
 | Vuexy `/apps/invoice` | 模板假資料，不要當產品 | **D5** |
+| 以後 ERP／家具庫存 | 不進課程 SKU；見路線圖 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
 
 完整 schema 見 [database-changes.md](database-changes.md) § 學費發票。
+
+### 1.11 以後做成 ERP
+
+現在是出勤 + 教育營運，不是完整 ERP。以後若要家具庫存、採購、資產：新開物料主檔與庫存流水，**不要**把家具寫進 `course_skus` 或讓學費 Generate 重算那些行。`units` 的 `goods` 類型是掃碼身份，不是倉庫結存。階段與禁做清單見 **[erp-roadmap.md](erp-roadmap.md)**。
 
 ---
 
@@ -688,7 +694,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-08-28 更新**：SKU `meeting_weekdays` 已上線（Migration 037）；堂費 Generate 按上課日∩出勤計堂。剩餘產品缺口見 [known-gaps.md](known-gaps.md) #M22–#M24（下學年重報、公眾假期日曆、WhatsApp）。  
+> **2026-08-28 更新**：SKU `meeting_weekdays` 已上線（Migration 037）；堂費 Generate 按上課日∩出勤計堂。剩餘產品缺口見 [known-gaps.md](known-gaps.md) #M22–#M24。以後 ERP／庫存見 [erp-roadmap.md](erp-roadmap.md)（#F1）。  
 > **2026-08-27 更新**：SKU `billing_unit` 與學費發票已上線（Migration 035／036）。  
 > **2026-08-03 更新**：修正產品定位（非僅補習班；多據點已上線）並同步 §1 概述。後端／web／mobile 已完成 product → unit；部分周邊 README 若仍寫 `products` 以程式碼為準。  
 > **2026-07-28 更新**：完成 product → unit 重構審計。#M20 個人資料欄位搬移已完成；#M21 legacy constraint/index 名稱仍待清理。  

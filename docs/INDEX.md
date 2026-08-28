@@ -28,7 +28,8 @@
 | [../apps/mobile/README.md](../apps/mobile/README.md) | 開發 | Expo 啟動、QR Scanner 設定、實體裝置 LAN IP 設定、entry-point 限制 | Mobile 變更時 |
 | [../REVIEW-PROMPT.md](../REVIEW-PROMPT.md) | 流程 | 合併前檢查清單與 Code Review 提示 | 流程調整時 |
 | [../deploy/README.md](../deploy/README.md) | 部署 | 生產主機目錄結構、輔助腳本說明（`first-boot.sh`、`update.sh`、`reset-db.sh`） | 部署腳本變更時 |
-| [known-gaps.md](known-gaps.md) | 審查 | FastAPI 後端審查與修復計畫 — 架構評價、已修問題、待補缺口（文首有學費／課程「尚未做」表） | 後端重大變更時 |
+| [known-gaps.md](known-gaps.md) | 審查 | FastAPI 後端審查與修復計畫 — 架構評價、已修問題、待補缺口（文首有學費「尚未做」與 **#F1 ERP 路線**） | 後端重大變更時 |
+| [erp-roadmap.md](erp-roadmap.md) | 規劃 | 以後做成 ERP：物料／庫存／採購與學費月結如何分開（尚未開工） | 方向變更時 |
 | [attendance-summaries.md](attendance-summaries.md) | 功能 | 出勤彙總與薪資月度流程 — API、UI、Generate、seed、FAQ（學費發票為獨立流程，見 handbook §1.10） | Summaries/Payroll 變更時 |
 | [database-changes.md](database-changes.md) | 設計 | 資料庫設計 Single Source of Truth — ER 圖、欄位搬遷、OT 計算、課程 SPU/SKU/Enrollment、學費發票 | Schema 變更時 |
 | [project-handbook.md](project-handbook.md) | 計畫 | 前端對齊計畫（Web + Mobile）— 型別、表單、新頁面、權限 | 前後端對齊時 |
@@ -48,6 +49,7 @@
 | `/api/health` 回 503 | §6.3 |
 | Migration 失敗 / 版本不對 | §6.4 |
 | 學費／課程還缺什麼 | [known-gaps.md](known-gaps.md) 文首「尚未做」表（#M22–#M24） |
+| 以後 ERP／家具怎麼接 | [erp-roadmap.md](erp-roadmap.md) |
 | 如何備份 / 還原資料庫 | §6.5 |
 | 登入後馬上 401 / 被登出 | §6.6 |
 | 磁碟滿 / Docker 日誌膨脹 | §6.7 |

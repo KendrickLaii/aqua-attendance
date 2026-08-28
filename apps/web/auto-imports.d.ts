@@ -32,9 +32,11 @@ declare global {
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
+  const billingUnitShortLabel: typeof import('./src/utils/courseEnrollmentDisplay')['billingUnitShortLabel']
   const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
   const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
+  const buildUnitEnrollmentRows: typeof import('./src/utils/courseEnrollmentDisplay')['buildUnitEnrollmentRows']
   const canApprovePayroll: typeof import('./src/utils/payrollDisplay')['canApprovePayroll']
   const canEditPayrollAdjustments: typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']
   const canPayPayroll: typeof import('./src/utils/payrollDisplay')['canPayPayroll']
@@ -78,6 +80,7 @@ declare global {
   const eagerComputed: typeof import('@vueuse/core')['eagerComputed']
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
+  const enrollmentStatusColor: typeof import('./src/utils/courseEnrollmentDisplay')['enrollmentStatusColor']
   const entriesOf: typeof import('./src/utils/review-format')['entriesOf']
   const eventSourceColor: typeof import('./src/utils/attendanceDisplay')['eventSourceColor']
   const eventSourceLabel: typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']
@@ -95,6 +98,7 @@ declare global {
   const formatCardBusinessHours: typeof import('./src/utils/locationHours')['formatCardBusinessHours']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
+  const formatEnrollmentRange: typeof import('./src/utils/courseEnrollmentDisplay')['formatEnrollmentRange']
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
@@ -186,6 +190,7 @@ declare global {
   const payrollStatusColorMap: typeof import('./src/utils/payrollDisplay')['payrollStatusColorMap']
   const payrollStatusIcon: typeof import('./src/utils/payrollDisplay')['payrollStatusIcon']
   const payrollStatusOptions: typeof import('./src/utils/payrollDisplay')['payrollStatusOptions']
+  const pickCourseSelectionForSku: typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const printProductQrs: typeof import('./src/utils/printProductQrs')['printProductQrs']
   const printUnitQrs: typeof import('./src/utils/printUnitQrs')['printUnitQrs']
@@ -223,6 +228,7 @@ declare global {
   const shallowRef: typeof import('vue')['shallowRef']
   const shiftDateKey: typeof import('./src/utils/attendanceDisplay')['shiftDateKey']
   const showCardIcon: typeof import('./src/utils/locationHours')['showCardIcon']
+  const skuIdFromRouteQuery: typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const syncRef: typeof import('@vueuse/core')['syncRef']
   const syncRefs: typeof import('@vueuse/core')['syncRefs']
@@ -496,9 +502,11 @@ declare module 'vue' {
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
+    readonly billingUnitShortLabel: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['billingUnitShortLabel']>
     readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
     readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
+    readonly buildUnitEnrollmentRows: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['buildUnitEnrollmentRows']>
     readonly canApprovePayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canApprovePayroll']>
     readonly canEditPayrollAdjustments: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']>
     readonly canPayPayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canPayPayroll']>
@@ -541,6 +549,7 @@ declare module 'vue' {
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
+    readonly enrollmentStatusColor: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['enrollmentStatusColor']>
     readonly entriesOf: UnwrapRef<typeof import('./src/utils/review-format')['entriesOf']>
     readonly eventSourceColor: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceColor']>
     readonly eventSourceLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']>
@@ -557,6 +566,7 @@ declare module 'vue' {
     readonly formatCardBusinessHours: UnwrapRef<typeof import('./src/utils/locationHours')['formatCardBusinessHours']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
+    readonly formatEnrollmentRange: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['formatEnrollmentRange']>
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
@@ -646,6 +656,7 @@ declare module 'vue' {
     readonly payrollStatusColorMap: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollStatusColorMap']>
     readonly payrollStatusIcon: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollStatusIcon']>
     readonly payrollStatusOptions: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollStatusOptions']>
+    readonly pickCourseSelectionForSku: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly printUnitQrs: UnwrapRef<typeof import('./src/utils/printUnitQrs')['printUnitQrs']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
@@ -681,6 +692,7 @@ declare module 'vue' {
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly shiftDateKey: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['shiftDateKey']>
     readonly showCardIcon: UnwrapRef<typeof import('./src/utils/locationHours')['showCardIcon']>
+    readonly skuIdFromRouteQuery: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>

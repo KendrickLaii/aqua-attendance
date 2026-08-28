@@ -20,12 +20,14 @@ import {
 } from '@/api/attendance/courses'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { type Unit, getUnit, listUnits } from '@/api/attendance/units'
+import { pickCourseSelectionForSku, skuIdFromRouteQuery } from '@/utils/courseEnrollmentDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const route = useRoute()
 
 const loading = ref(true)
 const loadError = ref('')
@@ -80,6 +82,7 @@ onMounted(async () => {
   if (!(await ensureAccess()))
     return
   await Promise.all([loadAll(), loadStudentOptions()])
+  applySkuFromRoute()
 })
 
 async function loadAll() {
@@ -547,6 +550,20 @@ watch(rosterSkuId, id => {
   enrollError.value = ''
   rosterEditingId.value = null
   loadRoster(id)
+})
+
+function applySkuFromRoute() {
+  const selection = pickCourseSelectionForSku(skus.value, skuIdFromRouteQuery(route.query))
+  if (!selection)
+    return
+  selectedSpuId.value = selection.spuId
+  rosterSkuId.value = selection.skuId
+}
+
+watch(() => route.query.sku, () => {
+  if (skus.value.length === 0)
+    return
+  applySkuFromRoute()
 })
 
 async function enrollStudent() {
