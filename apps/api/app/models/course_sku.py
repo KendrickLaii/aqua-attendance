@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -12,7 +12,8 @@ class CourseSku(Base):
 
     Belongs to one CourseSpu (subject). Carries the variable attributes a
     student actually picks: level, schedule, location, capacity, price,
-    and billing_unit (monthly 月費 or per_session 堂費).
+    billing_unit (monthly 月費 or per_session 堂費), and meeting_weekdays
+    (used to count 堂費 sessions in a billing month).
     """
 
     __tablename__ = "course_skus"
@@ -33,6 +34,9 @@ class CourseSku(Base):
     price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     billing_unit: Mapped[str] = mapped_column(
         String(20), nullable=False, default="monthly", server_default="monthly"
+    )
+    meeting_weekdays: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

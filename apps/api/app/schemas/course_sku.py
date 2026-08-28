@@ -1,10 +1,23 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 BillingUnit = Literal["monthly", "per_session"]
+Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _normalize_weekdays(days: list[Weekday]) -> list[Weekday]:
+    seen: set[str] = set()
+    out: list[Weekday] = []
+    for day in days:
+        if day not in seen:
+            seen.add(day)
+            out.append(day)
+    return out
 
 
 class CourseSkuCreate(BaseModel):
@@ -18,7 +31,19 @@ class CourseSkuCreate(BaseModel):
     capacity: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
     billing_unit: BillingUnit = "monthly"
+    meeting_weekdays: list[Weekday] = Field(default_factory=list)
     is_active: bool = True
+
+    @field_validator("meeting_weekdays")
+    @classmethod
+    def unique_weekdays(cls, value: list[Weekday]) -> list[Weekday]:
+        return _normalize_weekdays(value)
+
+    @model_validator(mode="after")
+    def per_session_needs_class_days(self) -> CourseSkuCreate:
+        if self.billing_unit == "per_session" and not self.meeting_weekdays:
+            raise ValueError("per_session classes need at least one class day")
+        return self
 
 
 class CourseSkuUpdate(BaseModel):
@@ -32,7 +57,15 @@ class CourseSkuUpdate(BaseModel):
     capacity: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
     billing_unit: BillingUnit | None = None
+    meeting_weekdays: list[Weekday] | None = None
     is_active: bool | None = None
+
+    @field_validator("meeting_weekdays")
+    @classmethod
+    def unique_weekdays(cls, value: list[Weekday] | None) -> list[Weekday] | None:
+        if value is None:
+            return value
+        return _normalize_weekdays(value)
 
 
 class CourseSkuOut(BaseModel):
@@ -47,6 +80,7 @@ class CourseSkuOut(BaseModel):
     capacity: int | None = None
     price: float | None = None
     billing_unit: BillingUnit
+    meeting_weekdays: list[Weekday] = Field(default_factory=list)
     is_active: bool
     created_at: datetime
     updated_at: datetime

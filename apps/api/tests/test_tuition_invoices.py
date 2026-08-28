@@ -1,11 +1,42 @@
 import uuid
+from datetime import date
+from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient
 
+from app.services.tuition_invoice_generator import _line_from_enrollment, count_scheduled_sessions
+
+
+def test_count_scheduled_sessions_june_2026_weekdays() -> None:
+    assert (
+        count_scheduled_sessions(
+            ["monday", "tuesday", "wednesday", "thursday", "friday"],
+            period_start=date(2026, 6, 1),
+            period_end=date(2026, 6, 30),
+            enroll_start=date(2026, 6, 1),
+            enroll_end=date(2026, 6, 30),
+        )
+        == 22
+    )
+
 
 def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_count_scheduled_sessions_empty_weekdays_inverted_window_is_zero() -> None:
+    assert (
+        count_scheduled_sessions(
+            [],
+            period_start=date(2026, 6, 1),
+            period_end=date(2026, 6, 30),
+            enroll_start=date(2026, 6, 20),
+            enroll_end=date(2026, 6, 10),
+        )
+        == 0
+    )
 
 
 async def _create_spu(client: AsyncClient, admin_token: str) -> dict:
@@ -46,6 +77,27 @@ async def _enroll(
 ) -> dict:
     payload = {"unit_id": unit_id, "sku_id": sku_id, **overrides}
     resp = await client.post("/api/course-enrollments", json=payload, headers=_auth(admin_token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def _check_in(
+    client: AsyncClient,
+    admin_token: str,
+    unit_id: str,
+    location_id: str,
+    recorded_at: str,
+) -> dict:
+    resp = await client.post(
+        "/api/attendance/manual",
+        json={
+            "unit_id": unit_id,
+            "event_type": "check_in",
+            "location_id": location_id,
+            "recorded_at": recorded_at,
+        },
+        headers=_auth(admin_token),
+    )
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -153,12 +205,42 @@ async def test_generate_skips_cancelled_enrollment(
     assert resp.json()["created"] == 0
 
 
+def test_legacy_per_session_empty_weekdays_quantity_one() -> None:
+    """Rows created before class-day validation still bill qty 1 and ignore attendance."""
+    sku = SimpleNamespace(
+        id=uuid.uuid4(),
+        code="LEGACY",
+        name_zh="旧堂费",
+        price=150,
+        billing_unit="per_session",
+        meeting_weekdays=[],
+    )
+    enrollment = SimpleNamespace(
+        id=uuid.uuid4(),
+        sku=sku,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 30),
+    )
+    line = _line_from_enrollment(enrollment, date(2026, 6, 1), date(2026, 6, 30), set())
+    assert line is not None
+    assert line.billing_unit == "per_session"
+    assert line.quantity == Decimal("1.00")
+    assert line.amount == Decimal("150.00")
+
+
 @pytest.mark.asyncio
-async def test_generate_per_session_line_uses_quantity_one(
+async def test_generate_per_session_skips_when_no_attendance(
     client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
     spu = await _create_spu(client, admin_token)
-    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        billing_unit="per_session",
+        price=150,
+        meeting_weekdays=["monday", "tuesday", "wednesday", "thursday", "friday"],
+    )
     await _enroll(
         client,
         admin_token,
@@ -173,12 +255,212 @@ async def test_generate_per_session_line_uses_quantity_one(
         headers=_auth(admin_token),
     )
     assert resp.status_code == 200, resp.text
+    assert resp.json()["created"] == 0
     listed = await client.get(
         "/api/tuition-invoices?year=2026&month=6",
         headers=_auth(admin_token),
     )
-    line = listed.json()[0]["lines"][0]
-    assert line["billing_unit"] == "per_session"
+    assert listed.json() == []
+
+
+@pytest.mark.asyncio
+async def test_generate_per_session_clips_to_enrollment_dates(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        billing_unit="per_session",
+        price=150,
+        meeting_weekdays=["monday"],
+        location_id=sample_location["id"],
+    )
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-15",
+        end_date="2026-06-30",
+    )
+    for day in ("15", "22", "29"):
+        await _check_in(
+            client,
+            admin_token,
+            sample_unit["id"],
+            sample_location["id"],
+            f"2026-06-{day}T10:00:00+08:00",
+        )
+
+    await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    line = (
+        await client.get("/api/tuition-invoices?year=2026&month=6", headers=_auth(admin_token))
+    ).json()[0]["lines"][0]
+    assert float(line["quantity"]) == 3
+    assert float(line["amount"]) == 450
+
+
+@pytest.mark.asyncio
+async def test_generate_monthly_ignores_meeting_weekdays(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        billing_unit="monthly",
+        price=800,
+        meeting_weekdays=["monday", "tuesday", "wednesday", "thursday", "friday"],
+    )
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-01",
+        end_date="2026-06-30",
+    )
+    await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    line = (
+        await client.get("/api/tuition-invoices?year=2026&month=6", headers=_auth(admin_token))
+    ).json()[0]["lines"][0]
+    assert line["billing_unit"] == "monthly"
+    assert float(line["quantity"]) == 1
+    assert float(line["amount"]) == 800
+
+
+@pytest.mark.asyncio
+async def test_generate_per_session_skips_when_no_class_days_in_window(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        billing_unit="per_session",
+        price=150,
+        meeting_weekdays=["monday"],
+    )
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-16",
+        end_date="2026-06-21",
+    )
+
+    resp = await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["created"] == 0
+    listed = await client.get(
+        "/api/tuition-invoices?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    assert listed.json() == []
+
+
+@pytest.mark.asyncio
+async def test_generate_per_session_bills_only_attended_class_days(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        billing_unit="per_session",
+        price=150,
+        meeting_weekdays=["monday"],
+        location_id=sample_location["id"],
+    )
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-15",
+        end_date="2026-06-30",
+    )
+    await _check_in(
+        client, admin_token, sample_unit["id"], sample_location["id"], "2026-06-15T10:00:00+08:00"
+    )
+    await _check_in(
+        client, admin_token, sample_unit["id"], sample_location["id"], "2026-06-22T10:00:00+08:00"
+    )
+
+    await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    line = (
+        await client.get("/api/tuition-invoices?year=2026&month=6", headers=_auth(admin_token))
+    ).json()[0]["lines"][0]
+    assert float(line["quantity"]) == 2
+    assert float(line["amount"]) == 300
+
+
+@pytest.mark.asyncio
+async def test_generate_per_session_ignores_voided_and_other_location(
+    client: AsyncClient,
+    admin_token: str,
+    sample_unit: dict,
+    sample_location: dict,
+    sample_location_b: dict,
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        billing_unit="per_session",
+        price=150,
+        meeting_weekdays=["monday"],
+        location_id=sample_location["id"],
+    )
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-15",
+        end_date="2026-06-30",
+    )
+    await _check_in(
+        client, admin_token, sample_unit["id"], sample_location["id"], "2026-06-15T10:00:00+08:00"
+    )
+    await _check_in(
+        client, admin_token, sample_unit["id"], sample_location_b["id"], "2026-06-22T10:00:00+08:00"
+    )
+    voided = await _check_in(
+        client, admin_token, sample_unit["id"], sample_location["id"], "2026-06-29T10:00:00+08:00"
+    )
+    void_resp = await client.post(
+        f"/api/attendance/{voided['id']}/void",
+        headers=_auth(admin_token),
+    )
+    assert void_resp.status_code == 200, void_resp.text
+
+    await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    line = (
+        await client.get("/api/tuition-invoices?year=2026&month=6", headers=_auth(admin_token))
+    ).json()[0]["lines"][0]
     assert float(line["quantity"]) == 1
     assert float(line["amount"]) == 150
 
@@ -419,7 +701,7 @@ async def test_generate_merges_two_skus_onto_one_invoice(
 ) -> None:
     spu = await _create_spu(client, admin_token)
     sku_a = await _create_sku(client, admin_token, spu["id"], price=800, code=f"A-{uuid.uuid4().hex[:6]}")
-    sku_b = await _create_sku(client, admin_token, spu["id"], price=150, billing_unit="per_session", code=f"B-{uuid.uuid4().hex[:6]}")
+    sku_b = await _create_sku(client, admin_token, spu["id"], price=150, code=f"B-{uuid.uuid4().hex[:6]}")
     await _enroll(
         client,
         admin_token,
@@ -563,3 +845,66 @@ async def test_list_invoices_paginates_with_total_header(
     )
     assert len(page2.json()) == 1
     assert page1.json()[0]["id"] != page2.json()[0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_inactive_sku(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-01",
+        end_date="2026-06-30",
+    )
+    deactivate = await client.patch(
+        f"/api/course-skus/{sku['id']}",
+        json={"is_active": False},
+        headers=_auth(admin_token),
+    )
+    assert deactivate.status_code == 200
+
+    resp = await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 0
+    listed = await client.get(
+        "/api/tuition-invoices?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    assert listed.json() == []
+
+
+@pytest.mark.asyncio
+async def test_invoice_rejects_unknown_status(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-01",
+        end_date="2026-06-30",
+    )
+    await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    invoice_id = (
+        await client.get("/api/tuition-invoices?year=2026&month=6", headers=_auth(admin_token))
+    ).json()[0]["id"]
+    resp = await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={"status": "nope"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422

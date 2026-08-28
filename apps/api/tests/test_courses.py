@@ -75,6 +75,7 @@ async def test_create_sku_defaults_billing_unit_to_monthly(
     spu = await _create_spu(client, admin_token, spu_payload)
     sku = await _create_sku(client, admin_token, spu["id"])
     assert sku["billing_unit"] == "monthly"
+    assert sku["meeting_weekdays"] == []
 
 
 @pytest.mark.asyncio
@@ -82,8 +83,9 @@ async def test_create_sku_with_per_session_billing_unit(
     client: AsyncClient, admin_token: str, spu_payload: dict
 ) -> None:
     spu = await _create_spu(client, admin_token, spu_payload)
-    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session")
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", meeting_weekdays=["tuesday"])
     assert sku["billing_unit"] == "per_session"
+    assert sku["meeting_weekdays"] == ["tuesday"]
 
 
 @pytest.mark.asyncio
@@ -114,11 +116,111 @@ async def test_update_sku_billing_unit(
 
     resp = await client.patch(
         f"/api/course-skus/{sku['id']}",
-        json={"billing_unit": "per_session"},
+        json={"billing_unit": "per_session", "meeting_weekdays": ["wednesday"]},
         headers=_auth(admin_token),
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["billing_unit"] == "per_session"
+    assert resp.json()["meeting_weekdays"] == ["wednesday"]
+
+
+@pytest.mark.asyncio
+async def test_create_sku_with_meeting_weekdays(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        meeting_weekdays=["monday", "wednesday"],
+    )
+    assert sku["meeting_weekdays"] == ["monday", "wednesday"]
+
+
+@pytest.mark.asyncio
+async def test_create_per_session_sku_requires_meeting_weekdays(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    resp = await client.post(
+        "/api/course-skus",
+        json={
+            "spu_id": spu["id"],
+            "code": f"SESS-{uuid.uuid4().hex[:6]}",
+            "name_zh": "堂費班",
+            "billing_unit": "per_session",
+            "meeting_weekdays": [],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_to_per_session_requires_meeting_weekdays(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    resp = await client.patch(
+        f"/api/course-skus/{sku['id']}",
+        json={"billing_unit": "per_session"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_clear_per_session_weekdays_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(
+        client,
+        admin_token,
+        spu["id"],
+        billing_unit="per_session",
+        meeting_weekdays=["tuesday"],
+    )
+    resp = await client.patch(
+        f"/api/course-skus/{sku['id']}",
+        json={"meeting_weekdays": []},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_enroll_inactive_sku_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], is_active=False)
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_sku_rejects_invalid_meeting_weekday(
+    client: AsyncClient, admin_token: str, spu_payload: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    resp = await client.post(
+        "/api/course-skus",
+        json={
+            "spu_id": spu["id"],
+            "code": f"BAD-{uuid.uuid4().hex[:6]}",
+            "name_zh": "bad",
+            "meeting_weekdays": ["funday"],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -268,3 +370,54 @@ async def test_cannot_delete_sku_with_enrollments(
 
     resp = await client.delete(f"/api/course-skus/{sku['id']}", headers=_auth(admin_token))
     assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_patch_enrollment_dates(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    created = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "start_date": "2026-06-01",
+            "end_date": "2026-08-31",
+        },
+        headers=_auth(admin_token),
+    )
+    enrollment_id = created.json()["id"]
+    patched = await client.patch(
+        f"/api/course-enrollments/{enrollment_id}",
+        json={"start_date": "2026-07-01", "end_date": "2026-07-31"},
+        headers=_auth(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["start_date"] == "2026-07-01"
+    assert patched.json()["end_date"] == "2026-07-31"
+
+
+@pytest.mark.asyncio
+async def test_patch_enrollment_start_after_existing_end_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    created = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-30",
+        },
+        headers=_auth(admin_token),
+    )
+    resp = await client.patch(
+        f"/api/course-enrollments/{created.json()['id']}",
+        json={"start_date": "2026-07-01"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422

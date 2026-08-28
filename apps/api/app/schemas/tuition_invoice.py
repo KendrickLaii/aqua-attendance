@@ -1,7 +1,11 @@
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+TuitionInvoiceStatusLiteral = Literal["draft", "issued", "paid", "void"]
 
 
 class TuitionInvoiceLineOut(BaseModel):
@@ -27,7 +31,7 @@ class TuitionInvoiceOut(BaseModel):
     unit_code: str | None = None
     period_start: date
     period_end: date
-    status: str
+    status: TuitionInvoiceStatusLiteral
     total: float
     notes: str | None = None
     lines: list[TuitionInvoiceLineOut] = Field(default_factory=list)
@@ -38,7 +42,7 @@ class TuitionInvoiceOut(BaseModel):
 
 
 class TuitionInvoiceUpdate(BaseModel):
-    status: str | None = Field(default=None, max_length=20)
+    status: TuitionInvoiceStatusLiteral | None = None
     notes: str | None = None
 
 

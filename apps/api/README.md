@@ -135,6 +135,6 @@ API image 由 `Dockerfile` 建置，`.github/workflows/docker-publish.yml` 推�
 
 - 設定 `ENV=production` 與獨立的 `SECRET_KEY` / `QR_SECRET`（各執行 `openssl rand -hex 32`）— 詳見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md)
 - API 會在生產密鑰為佔位符或短於 32 字元時**拒絕啟動**
-- 部署後執行 `python -m alembic upgrade head`（目前 head **036**：課程、SKU `billing_unit`、學費發票）
+- 部署後執行 `python -m alembic upgrade head`（目前 head **037**：課程、SKU `billing_unit`、學費發票、SKU 上課日）
 - 透過 Web **User Management** 建立額外登入使用者 — 公開的 `/api/auth/register` 回傳 403
 - 登出時 client 應呼叫 `POST /api/auth/logout` 並帶 `refresh_token`；過期 refresh row 會在 login、refresh、logout 時自動清理

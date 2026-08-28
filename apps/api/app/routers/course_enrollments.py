@@ -8,7 +8,12 @@ from app.deps import AdminOnly, DB
 from app.models.course_enrollment import CourseEnrollment
 from app.models.course_sku import CourseSku
 from app.models.unit import Unit
-from app.schemas.course_enrollment import CourseEnrollmentCreate, CourseEnrollmentOut, CourseEnrollmentUpdate
+from app.schemas.course_enrollment import (
+    CourseEnrollmentCreate,
+    CourseEnrollmentOut,
+    CourseEnrollmentUpdate,
+    _require_start_on_or_before_end,
+)
 
 router = APIRouter(prefix="/course-enrollments", tags=["courses"])
 
@@ -55,9 +60,12 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     if unit.unit_type != "student":
         raise HTTPException(status_code=422, detail="Only student units can enroll in courses")
 
-    sku_result = await db.execute(select(CourseSku.id).where(CourseSku.id == body.sku_id))
-    if not sku_result.scalar_one_or_none():
+    sku_result = await db.execute(select(CourseSku).where(CourseSku.id == body.sku_id))
+    sku = sku_result.scalar_one_or_none()
+    if not sku:
         raise HTTPException(status_code=404, detail="Course SKU not found")
+    if not sku.is_active:
+        raise HTTPException(status_code=422, detail="Cannot enroll in an inactive class")
 
     enrollment = CourseEnrollment(**body.model_dump())
     db.add(enrollment)
@@ -89,6 +97,12 @@ async def update_course_enrollment(
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    new_start = update_data["start_date"] if "start_date" in update_data else enrollment.start_date
+    new_end = update_data["end_date"] if "end_date" in update_data else enrollment.end_date
+    try:
+        _require_start_on_or_before_end(new_start, new_end)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     for field, value in update_data.items():
         setattr(enrollment, field, value)
     await db.commit()

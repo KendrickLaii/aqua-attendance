@@ -114,6 +114,11 @@ async def update_course_sku(sku_id: uuid.UUID, body: CourseSkuUpdate, _admin: Ad
 
     for field, value in update_data.items():
         setattr(sku, field, value)
+    if sku.billing_unit == "per_session" and not (sku.meeting_weekdays or []):
+        raise HTTPException(
+            status_code=422,
+            detail="per_session classes need at least one class day",
+        )
     await db.commit()
     await db.refresh(sku)
     return sku

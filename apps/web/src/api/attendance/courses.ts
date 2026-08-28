@@ -25,6 +25,15 @@ export interface CourseSpuPayload {
 
 export type BillingUnit = 'monthly' | 'per_session'
 
+export type Weekday =
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday'
+  | 'sunday'
+
 /** SKU — a concrete, enrollable class offering under a CourseSpu. */
 export interface CourseSku {
   id: string
@@ -38,6 +47,7 @@ export interface CourseSku {
   capacity: number | null
   price: number | null
   billing_unit: BillingUnit
+  meeting_weekdays: Weekday[]
   is_active: boolean
   created_at: string
   updated_at: string
@@ -54,6 +64,7 @@ export interface CourseSkuPayload {
   capacity?: number | null
   price?: number | null
   billing_unit?: BillingUnit
+  meeting_weekdays?: Weekday[]
   is_active?: boolean
 }
 
@@ -83,10 +94,26 @@ export interface CourseEnrollmentPayload {
 
 // ---- SPU ----
 
-export async function listCourseSpus(params?: { is_active?: boolean, search?: string }): Promise<CourseSpu[]> {
-  const result = await fetchAttendanceListWithTotal<CourseSpu>('/course-spus', params)
+async function fetchAllAttendancePages<T>(
+  path: string,
+  params?: Record<string, unknown>,
+): Promise<T[]> {
+  const pageSize = 200
+  const first = await fetchAttendanceListWithTotal<T>(path, { ...params, page: 1, page_size: pageSize })
+  const items = [...first.items]
+  let page = 2
+  while (items.length < first.total) {
+    const next = await fetchAttendanceListWithTotal<T>(path, { ...params, page, page_size: pageSize })
+    if (next.items.length === 0)
+      break
+    items.push(...next.items)
+    page += 1
+  }
+  return items
+}
 
-  return result.items
+export async function listCourseSpus(params?: { is_active?: boolean, search?: string }): Promise<CourseSpu[]> {
+  return await fetchAllAttendancePages<CourseSpu>('/course-spus', params)
 }
 
 export async function createCourseSpu(payload: CourseSpuPayload): Promise<CourseSpu> {
@@ -108,9 +135,7 @@ export async function listCourseSkus(params?: {
   is_active?: boolean
   search?: string
 }): Promise<CourseSku[]> {
-  const result = await fetchAttendanceListWithTotal<CourseSku>('/course-skus', params)
-
-  return result.items
+  return await fetchAllAttendancePages<CourseSku>('/course-skus', params)
 }
 
 export async function createCourseSku(payload: CourseSkuPayload): Promise<CourseSku> {

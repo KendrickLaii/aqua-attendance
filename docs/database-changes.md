@@ -251,6 +251,7 @@ erDiagram
         int capacity "容量"
         numeric price "價格"
         string billing_unit "monthly月費 / per_session堂費"
+        json meeting_weekdays "上課星期 monday–sunday；新建堂費必填；空=舊資料堂費qty 1"
         boolean is_active "是否啟用"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
@@ -287,7 +288,7 @@ erDiagram
         string name_zh "快照中文名"
         string billing_unit "快照 monthly/per_session"
         numeric unit_price "快照單價"
-        numeric quantity "數量（堂費暫為1）"
+        numeric quantity "堂費=該月上課日數；月費=1"
         numeric amount "unit_price × quantity"
         datetime created_at "建立時間"
     }
@@ -333,6 +334,7 @@ erDiagram
 | 5 | SPU/SKU 刪除採 `RESTRICT` | 避免誤刪已被報名的開班或仍有 SKU 的科目；刪除前須先清掉下層資料。 |
 | 6 | SKU `billing_unit` 掛在班次 | 一班一種收法：`monthly`（月費）或 `per_session`（堂費）。功課輔導與 A1/F5 共用這兩個選項。價錢在 SKU，不在報名列。 |
 | 7 | 報名起迄日參與出賬 | Generate 只收 `status=active` 且與該月日期視窗重疊的報名（`start_date`/`end_date` 可空＝無界）。 |
+| 8 | SKU `meeting_weekdays` 掛在班次 | 堂費 `quantity` = 該月與報名視窗重疊的上課日 ∩ 該據點出勤。新建堂費至少一天；舊資料空陣列仍出 1 堂且不看出勤。不減假期日曆。 |
 
 ## 學費發票（2026-08-27）
 
@@ -345,27 +347,27 @@ erDiagram
 | 1 | 計價在 SKU，出賬時快照到行項目 | 之後改 A1 學費不可改寫已出賬月份。行項目寫入 `sku_code`、`name_zh`、`billing_unit`、`unit_price`、`quantity`、`amount`。 |
 | 2 | 一學生一月一張發票 | 唯一約束 `(unit_id, period_start, period_end)`。同一學生該月多班次合併為多行。 |
 | 3 | 草稿可重產、已出賬跳過 | `draft` 重跑 Generate 會替換行項目並重算 `total`；`issued`/`paid` 跳過。`void` 不能用 PATCH 改回 draft。該生該月**仍有有效報名**時，再 Generate 會把 `void` **復活成 `draft`**（唯一約束佔住該月，不能另開一張）。沒有有效報名的 `void` 保留；沒有有效報名的 `draft` 會刪除。 |
-| 4 | 堂費 `quantity` 暫為 1 | `schedule_note` 為自由文字；校園打卡不是課堂節數。真實堂數待補課表或課堂出勤後再算。 |
+| 4 | 堂費 `quantity` 來自上課日 ∩ 出勤 | 該月與報名視窗重疊的 `meeting_weekdays`，再扣該據點未到。新建堂費至少一天；舊資料空陣列仍為 1。`quantity` 為 0 則跳過該行。不減假期日曆（見 **#M23**）。 |
 | 5 | `price` 為空則跳過該報名 | 未定價班次不進發票，避免產生 $0 或錯誤行。 |
 
 ### Generate 規則（`POST /api/tuition-invoices/generate?year=&month=`）
 
 - 帳單期 = 該月 1 日～末日。
 - 納入：`course_enrollments.status == active`，且起迄日與該月重疊。
-- 排除：`cancelled`／`completed`、完全落在該月之外、SKU `price` 為空。
-- 月費與堂費目前都是 `quantity = 1`、`amount = unit_price`。
+- 排除：`cancelled`／`completed`、完全落在該月之外、SKU `price` 為空、SKU `is_active=false`。
+- 月費：`quantity = 1`（忽略上課日與出勤）。堂費：`quantity` = 該月與報名起迄重疊的上課日 ∩ 該據點非作廢出勤（香港日曆日）；新建堂費必須有上課日；舊資料 `meeting_weekdays` 為空則仍為 1 且不看出勤；算出 0 則跳過該報名。
 - 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`。已 `paid` 不可再改。`void` 只能靠 Generate 在仍有報名時回收成 draft。
 
 ### 尚未實作（刻意延後）
 
 | 項目 | 現況 | 追蹤 |
 | --- | --- | --- |
-| 堂費按該月實際堂數 | `quantity = 1`；`schedule_note` 不可算堂 | [known-gaps.md](known-gaps.md) **#M23** |
+| 堂費扣公眾假期 | 已按上課日∩出勤計堂；無假期表 | [known-gaps.md](known-gaps.md) **#M23** |
 | 同一學生同一 SKU 可跨學年再報 | 唯一約束永久；重報 409 | **#M22** |
 | 發票發送給家長 | 無 WhatsApp／電郵／PDF 發送 API | **#M24** |
 | 把 Vuexy `/apps/invoice` 當真實帳單 | 不做（假資料） | **D5** |
 
-優先順序：堂費數堂 → 唯一約束 → 發送。
+優先順序：唯一約束（#M22）→ 發送（#M24）。缺席已由出勤相交扣堂；假期日曆仍見 #M23。
 
 ## 薪資／加班（OT）計算設計
 
@@ -612,7 +614,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -629,8 +631,9 @@ ot_hours      = ot_slots * 0.25
 12. ✅ 課程資料模型（034）— 新建 `course_spus`、`course_skus`、`course_enrollments`
 13. ✅ SKU 計價單位（035）— `course_skus.billing_unit`：`monthly`（月費）或 `per_session`（堂費），一班一種收法，既有資料預設月費
 14. ✅ 學費發票（036）— `tuition_invoices` + `tuition_invoice_lines`；按月從有效報名產生草稿，行項目快照 SKU 價錢與 billing_unit
+15. ✅ SKU 上課日（037）— `course_skus.meeting_weekdays`；堂費 Generate 按該月重疊上課日計 `quantity`
 
-> **目前 Alembic 版本：036**（`036_add_tuition_invoices`）
+> **目前 Alembic 版本：037**（`037_add_sku_meeting_weekdays`）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 
