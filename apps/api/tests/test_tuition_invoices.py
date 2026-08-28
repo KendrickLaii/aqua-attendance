@@ -882,6 +882,40 @@ async def test_generate_skips_inactive_sku(
 
 
 @pytest.mark.asyncio
+async def test_generate_skips_inactive_student(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-01",
+        end_date="2026-06-30",
+    )
+    deactivate = await client.patch(
+        f"/api/units/{sample_unit['id']}",
+        json={"is_active": False},
+        headers=_auth(admin_token),
+    )
+    assert deactivate.status_code == 200
+
+    resp = await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 0
+    listed = await client.get(
+        "/api/tuition-invoices?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    assert listed.json() == []
+
+
+@pytest.mark.asyncio
 async def test_invoice_rejects_unknown_status(
     client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:

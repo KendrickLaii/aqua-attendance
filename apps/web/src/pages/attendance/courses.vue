@@ -511,8 +511,8 @@ async function loadStudentOptions(search?: string) {
     })
 
     if (requestId === studentSearchRequestId) {
-      studentOptions.value = students
-      cacheStudents(students)
+      studentOptions.value = students.filter(u => u.status === 'active')
+      cacheStudents(studentOptions.value)
     }
   }
   catch (e) {

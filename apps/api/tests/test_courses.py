@@ -222,6 +222,46 @@ async def test_enroll_inactive_sku_rejected(
 
 
 @pytest.mark.asyncio
+async def test_enroll_inactive_student_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    deactivate = await client.patch(
+        f"/api/units/{sample_unit['id']}",
+        json={"is_active": False},
+        headers=_auth(admin_token),
+    )
+    assert deactivate.status_code == 200
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_enroll_suspended_student_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    suspend = await client.patch(
+        f"/api/units/{sample_unit['id']}",
+        json={"status": "suspended"},
+        headers=_auth(admin_token),
+    )
+    assert suspend.status_code == 200
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_enroll_rejected_when_sku_at_capacity(
     client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
 ) -> None:

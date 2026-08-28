@@ -59,13 +59,14 @@ async def _add_event(
     *,
     created_at: datetime,
     voided_at: datetime | None = None,
+    recorded_at: datetime | None = None,
 ) -> None:
     session.add(
         AttendanceEvent(
             unit_id=uuid.UUID(unit_id),
             event_type="check_in",
             source="scan",
-            recorded_at=_dt(15),
+            recorded_at=recorded_at or _dt(15),
             created_at=created_at,
             location_id=uuid.UUID(location_id),
             voided_at=voided_at,
@@ -110,6 +111,36 @@ async def test_detects_outdated_missing_and_voided(
     assert by_id.get(outdated["id"]) == "outdated"
     assert by_id.get(missing["id"]) == "no_summary"
     assert by_id.get(voided["id"]) == "outdated"
+
+
+@pytest.mark.asyncio
+async def test_stale_detection_uses_hong_kong_month_window(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    """A scan at 2026-03-31 16:30 UTC is 2026-04-01 00:30 HKT — April, not March."""
+    loc = sample_location["id"]
+    unit = await _staff_unit(client, admin_token, loc)
+    april_hkt = datetime(2026, 3, 31, 16, 30, tzinfo=timezone.utc)
+
+    async with TestSessionLocal() as session:
+        await _add_event(
+            session,
+            unit["id"],
+            loc,
+            created_at=april_hkt,
+            recorded_at=april_hkt,
+        )
+        await session.commit()
+
+        march = await detect_stale_summary_units(
+            session, year=2026, month=3, unit_type="staff"
+        )
+        april = await detect_stale_summary_units(
+            session, year=2026, month=4, unit_type="staff"
+        )
+
+    assert unit["id"] not in {s["unit_id"] for s in march}
+    assert any(s["unit_id"] == unit["id"] and s["reason"] == "no_summary" for s in april)
 
 
 @pytest.mark.asyncio

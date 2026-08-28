@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.deps import AdminOnly, DB
 from app.models.course_enrollment import CourseEnrollment, EnrollmentStatus
 from app.models.course_sku import CourseSku
-from app.models.unit import Unit
+from app.models.unit import Unit, UnitStatus
 from app.schemas.course_enrollment import (
     CourseEnrollmentCreate,
     CourseEnrollmentOut,
@@ -34,6 +34,13 @@ async def _require_enrollable_sku(
     count = await db.scalar(select(func.count()).select_from(CourseEnrollment).where(*clauses)) or 0
     if count >= sku.capacity:
         raise HTTPException(status_code=422, detail="Class is at capacity")
+
+
+def _require_enrollable_student(unit: Unit) -> None:
+    if unit.unit_type != "student":
+        raise HTTPException(status_code=422, detail="Only student units can enroll in courses")
+    if not unit.is_active or unit.status != UnitStatus.active.value:
+        raise HTTPException(status_code=422, detail="Cannot enroll an inactive or former student")
 
 
 @router.get("", response_model=list[CourseEnrollmentOut])
@@ -75,8 +82,7 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     unit = unit_result.scalar_one_or_none()
     if not unit:
         raise HTTPException(status_code=404, detail="Unit not found")
-    if unit.unit_type != "student":
-        raise HTTPException(status_code=422, detail="Only student units can enroll in courses")
+    _require_enrollable_student(unit)
 
     sku_result = await db.execute(select(CourseSku).where(CourseSku.id == body.sku_id))
     sku = sku_result.scalar_one_or_none()
@@ -122,6 +128,11 @@ async def update_course_enrollment(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     new_status = update_data.get("status", enrollment.status)
     if new_status == EnrollmentStatus.active.value and enrollment.status != EnrollmentStatus.active.value:
+        unit_result = await db.execute(select(Unit).where(Unit.id == enrollment.unit_id))
+        unit = unit_result.scalar_one_or_none()
+        if not unit:
+            raise HTTPException(status_code=404, detail="Unit not found")
+        _require_enrollable_student(unit)
         sku_result = await db.execute(select(CourseSku).where(CourseSku.id == enrollment.sku_id))
         sku = sku_result.scalar_one_or_none()
         if not sku:

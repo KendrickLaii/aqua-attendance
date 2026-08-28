@@ -8,11 +8,12 @@ snapshot at generation time.
 
 import calendar
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.attendance_tz import ATTENDANCE_TZ
 from app.models.attendance import AttendanceEvent
 from app.models.attendance_summary import AttendanceSummary
 from app.models.payroll_record import PayrollRecord, PayrollStatus
@@ -44,12 +45,8 @@ async def detect_stale_summary_units(
     """
     first_day = date(year, month, 1)
     last_day = date(year, month, calendar.monthrange(year, month)[1])
-    start_dt = datetime(year, month, 1, tzinfo=timezone.utc)
-    end_dt = (
-        datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-        if month == 12
-        else datetime(year, month + 1, 1, tzinfo=timezone.utc)
-    )
+    start_dt = datetime.combine(first_day, time.min, tzinfo=ATTENDANCE_TZ).astimezone(timezone.utc)
+    end_dt = datetime.combine(last_day, time.max, tzinfo=ATTENDANCE_TZ).astimezone(timezone.utc)
 
     ev_q = (
         select(
@@ -59,7 +56,7 @@ async def detect_stale_summary_units(
         )
         .where(
             AttendanceEvent.recorded_at >= start_dt,
-            AttendanceEvent.recorded_at < end_dt,
+            AttendanceEvent.recorded_at <= end_dt,
         )
         .group_by(AttendanceEvent.unit_id)
     )

@@ -18,6 +18,7 @@ from app.models.attendance import AttendanceEvent
 from app.models.course_enrollment import CourseEnrollment
 from app.models.course_sku import CourseSku
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
+from app.models.unit import Unit, UnitStatus
 
 _LOCKED = frozenset({TuitionInvoiceStatus.issued.value, TuitionInvoiceStatus.paid.value})
 _WEEKDAY_INDEX = {
@@ -171,12 +172,15 @@ async def generate_monthly_tuition_invoices(
         select(CourseEnrollment)
         .options(selectinload(CourseEnrollment.sku))
         .join(CourseSku, CourseEnrollment.sku_id == CourseSku.id)
+        .join(Unit, CourseEnrollment.unit_id == Unit.id)
         .where(
             CourseEnrollment.status == "active",
             or_(CourseEnrollment.start_date.is_(None), CourseEnrollment.start_date <= last_day),
             or_(CourseEnrollment.end_date.is_(None), CourseEnrollment.end_date >= first_day),
             CourseSku.price.is_not(None),
             CourseSku.is_active.is_(True),
+            Unit.is_active.is_(True),
+            Unit.status == UnitStatus.active.value,
         )
     )
     enrollments = result.scalars().all()
