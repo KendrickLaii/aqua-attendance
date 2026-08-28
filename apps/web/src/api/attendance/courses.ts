@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
+import { fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 /** SPU — course subject/curriculum, e.g. "Primary Math". */
 export interface CourseSpu {
@@ -152,14 +152,12 @@ export async function deleteCourseSku(id: string): Promise<void> {
 
 // ---- Enrollments ----
 
-export async function listCourseEnrollmentsWithTotal(params?: {
+export async function listAllCourseEnrollments(params?: {
   unit_id?: string
   sku_id?: string
   status?: EnrollmentStatus
-  page?: number
-  page_size?: number
-}): Promise<AttendanceListResult<CourseEnrollment>> {
-  return await fetchAttendanceListWithTotal<CourseEnrollment>('/course-enrollments', params)
+}): Promise<CourseEnrollment[]> {
+  return await fetchAllAttendancePages<CourseEnrollment>('/course-enrollments', params)
 }
 
 export async function createCourseEnrollment(payload: CourseEnrollmentPayload): Promise<CourseEnrollment> {

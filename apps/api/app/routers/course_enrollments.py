@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminOnly, DB
-from app.models.course_enrollment import CourseEnrollment
+from app.models.course_enrollment import CourseEnrollment, EnrollmentStatus
 from app.models.course_sku import CourseSku
 from app.models.unit import Unit
 from app.schemas.course_enrollment import (
@@ -16,6 +16,24 @@ from app.schemas.course_enrollment import (
 )
 
 router = APIRouter(prefix="/course-enrollments", tags=["courses"])
+
+
+async def _require_enrollable_sku(
+    db: DB, sku: CourseSku, *, exclude_enrollment_id: uuid.UUID | None = None
+) -> None:
+    if not sku.is_active:
+        raise HTTPException(status_code=422, detail="Cannot enroll in an inactive class")
+    if sku.capacity is None:
+        return
+    clauses = [
+        CourseEnrollment.sku_id == sku.id,
+        CourseEnrollment.status == EnrollmentStatus.active.value,
+    ]
+    if exclude_enrollment_id is not None:
+        clauses.append(CourseEnrollment.id != exclude_enrollment_id)
+    count = await db.scalar(select(func.count()).select_from(CourseEnrollment).where(*clauses)) or 0
+    if count >= sku.capacity:
+        raise HTTPException(status_code=422, detail="Class is at capacity")
 
 
 @router.get("", response_model=list[CourseEnrollmentOut])
@@ -64,8 +82,7 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     sku = sku_result.scalar_one_or_none()
     if not sku:
         raise HTTPException(status_code=404, detail="Course SKU not found")
-    if not sku.is_active:
-        raise HTTPException(status_code=422, detail="Cannot enroll in an inactive class")
+    await _require_enrollable_sku(db, sku)
 
     enrollment = CourseEnrollment(**body.model_dump())
     db.add(enrollment)
@@ -103,6 +120,13 @@ async def update_course_enrollment(
         _require_start_on_or_before_end(new_start, new_end)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    new_status = update_data.get("status", enrollment.status)
+    if new_status == EnrollmentStatus.active.value and enrollment.status != EnrollmentStatus.active.value:
+        sku_result = await db.execute(select(CourseSku).where(CourseSku.id == enrollment.sku_id))
+        sku = sku_result.scalar_one_or_none()
+        if not sku:
+            raise HTTPException(status_code=404, detail="Course SKU not found")
+        await _require_enrollable_sku(db, sku, exclude_enrollment_id=enrollment.id)
     for field, value in update_data.items():
         setattr(enrollment, field, value)
     await db.commit()

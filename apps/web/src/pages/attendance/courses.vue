@@ -11,7 +11,7 @@ import {
   deleteCourseEnrollment,
   deleteCourseSku,
   deleteCourseSpu,
-  listCourseEnrollmentsWithTotal,
+  listAllCourseEnrollments,
   listCourseSkus,
   listCourseSpus,
   updateCourseEnrollment,
@@ -387,6 +387,13 @@ let rosterRequestId = 0
 
 const rosterSku = computed(() => skus.value.find(k => k.id === rosterSkuId.value) ?? null)
 const activeRosterCount = computed(() => enrollments.value.filter(e => e.status === 'active').length)
+const rosterAtCapacity = computed(() => {
+  const cap = rosterSku.value?.capacity
+  if (cap == null)
+    return false
+
+  return activeRosterCount.value >= cap
+})
 const rosterEditingId = ref<string | null>(null)
 
 function formatRosterDate(value: string | null | undefined, empty = '—'): string {
@@ -473,12 +480,12 @@ async function loadRoster(skuId: string | null) {
 
   enrollmentsLoading.value = true
   try {
-    const result = await listCourseEnrollmentsWithTotal({ sku_id: skuId, page_size: 200 })
+    const items = await listAllCourseEnrollments({ sku_id: skuId })
     if (requestId !== rosterRequestId)
       return
-    enrollments.value = result.items
-    syncEnrollmentDates(result.items)
-    await ensureStudentNames(result.items)
+    enrollments.value = items
+    syncEnrollmentDates(items)
+    await ensureStudentNames(items)
   }
   catch (e) {
     console.error('Failed to load roster', e)
@@ -543,7 +550,7 @@ watch(rosterSkuId, id => {
 })
 
 async function enrollStudent() {
-  if (!selectedStudentId.value || !rosterSkuId.value || rosterSku.value?.is_active === false)
+  if (!selectedStudentId.value || !rosterSkuId.value || rosterSku.value?.is_active === false || rosterAtCapacity.value)
     return
 
   const startDate = emptyToNull(enrollStartDate.value)
@@ -966,6 +973,14 @@ const enrollmentStatusColor: Record<string, string> = {
                     {{ activeRosterCount }}{{ rosterSku.capacity != null ? ` / ${rosterSku.capacity}` : '' }} enrolled
                   </VChip>
                   <VChip
+                    v-if="rosterAtCapacity"
+                    size="small"
+                    variant="tonal"
+                    color="warning"
+                  >
+                    Full
+                  </VChip>
+                  <VChip
                     v-if="!rosterSku.is_active"
                     size="small"
                     variant="tonal"
@@ -1080,7 +1095,7 @@ const enrollmentStatusColor: Record<string, string> = {
                     block
                     height="48"
                     :loading="enrolling"
-                    :disabled="!selectedStudentId || !rosterSkuId || rosterSku?.is_active === false"
+                    :disabled="!selectedStudentId || !rosterSkuId || rosterSku?.is_active === false || rosterAtCapacity"
                     @click="enrollStudent"
                   >
                     Enroll

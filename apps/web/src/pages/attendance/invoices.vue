@@ -31,6 +31,7 @@ const generateSuccess = ref('')
 const expandedId = ref<string | null>(null)
 const statusUpdatingId = ref<string | null>(null)
 const pendingStatus = ref<{ invoice: TuitionInvoice; status: 'issued' | 'paid' | 'void' } | null>(null)
+const pendingGenerate = ref(false)
 const searchQuery = ref('')
 const statusFilter = ref<'all' | TuitionInvoiceStatus>('all')
 
@@ -179,6 +180,17 @@ async function loadInvoices() {
   finally {
     loading.value = false
   }
+}
+
+function askGenerate() {
+  if (!parsedYearMonth.value)
+    return
+  pendingGenerate.value = true
+}
+
+async function confirmGenerate() {
+  await generate()
+  pendingGenerate.value = false
 }
 
 async function generate() {
@@ -331,7 +343,7 @@ watch(yearMonth, () => {
           prepend-icon="ri-magic-line"
           :loading="generating"
           :disabled="!parsedYearMonth"
-          @click="generate"
+          @click="askGenerate"
         >
           Generate
         </VBtn>
@@ -625,6 +637,19 @@ watch(yearMonth, () => {
         {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.unit_code }} will be marked void.
         Generate will restore it to draft if the student is still enrolled this month.
       </template>
+    </AttendanceConfirmDialog>
+
+    <AttendanceConfirmDialog
+      :model-value="pendingGenerate"
+      title="Generate bills for this month?"
+      confirm-label="Generate"
+      confirm-color="primary"
+      :loading="generating"
+      @update:model-value="value => { if (!value) pendingGenerate = false }"
+      @confirm="confirmGenerate"
+      @cancel="pendingGenerate = false"
+    >
+      Replaces drafts, skips issued and paid, deletes leftover drafts, and may restore void bills if the student is still enrolled.
     </AttendanceConfirmDialog>
   </VContainer>
 </template>
