@@ -446,12 +446,13 @@ function confirmDuplicateSave() {
 <template>
   <AttendanceFormDialog
     :model-value="modelValue"
-    title="Manual Correction"
+    title="Manual Correction !"
     icon="ri-edit-box-line"
     :max-width="520"
     :saving="saving"
     :error="error"
     :save-label="isFullDay ? 'Save' : 'Save'"
+    persistent
     @update:model-value="emit('update:modelValue', $event)"
     @save="handleSave"
     @cancel="close"

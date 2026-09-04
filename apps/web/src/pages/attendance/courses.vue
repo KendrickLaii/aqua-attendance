@@ -254,26 +254,15 @@ const skuForm = reactive({
 })
 
 const skuCanSave = computed(() => {
-  if (!skuForm.code.trim() || !skuForm.name_zh.trim())
-    return false
-  if (skuForm.billing_unit === 'per_session' && skuForm.meeting_weekdays.length === 0)
-    return false
-
-  return true
+  return !!(skuForm.code.trim() && skuForm.name_zh.trim())
 })
 
 const skuBillingPreview = computed(() => {
   const raw = skuForm.price
   const hasPrice = raw != null && !Number.isNaN(Number(raw))
   const priceText = hasPrice ? `HK$${Number(raw).toFixed(2)}` : 'no price (Generate skips this class)'
-  if (skuForm.billing_unit === 'per_session') {
-    if (!skuForm.meeting_weekdays.length)
-      return `Select at least one class day. Save stays disabled until then.`
-    const location = locations.value.find(item => item.id === skuForm.location_id)
-    const where = location ? `scans at ${location.name_en}` : 'scans at any campus'
-
-    return `Bills ${priceText} × days on campus (${meetingDaysLabel(skuForm.meeting_weekdays)} ∩ ${where}). No scan that month = no invoice line.`
-  }
+  if (skuForm.billing_unit === 'per_session')
+    return `Bills ${priceText} × sessions purchased, once, when the student is enrolled. Not affected by attendance.`
 
   return `Bills ${priceText} once for each overlapping month. Class days are shown on the roster only.`
 })
@@ -379,6 +368,7 @@ const selectedStudentId = ref<string | null>(null)
 const rosterSkuId = ref<string | null>(null)
 const enrollStartDate = ref('')
 const enrollEndDate = ref('')
+const enrollPurchasedQuantity = ref<number | null>(null)
 const enrolling = ref(false)
 const enrollError = ref('')
 
@@ -566,9 +556,18 @@ watch(() => route.query.sku, () => {
   applySkuFromRoute()
 })
 
+function enrollNeedsPurchasedQuantity() {
+  return rosterSku.value?.billing_unit === 'per_session'
+}
+
 async function enrollStudent() {
   if (!selectedStudentId.value || !rosterSkuId.value || rosterSku.value?.is_active === false || rosterAtCapacity.value)
     return
+  if (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity.value) {
+    enrollError.value = 'Enter how many sessions this student purchased.'
+
+    return
+  }
 
   const startDate = emptyToNull(enrollStartDate.value)
   const endDate = emptyToNull(enrollEndDate.value)
@@ -586,6 +585,7 @@ async function enrollStudent() {
       sku_id: rosterSkuId.value,
       start_date: startDate,
       end_date: endDate,
+      purchased_quantity: enrollNeedsPurchasedQuantity() ? enrollPurchasedQuantity.value : null,
     })
 
     enrollments.value = [created, ...enrollments.value]
@@ -602,6 +602,7 @@ async function enrollStudent() {
     studentSearch.value = ''
     enrollStartDate.value = ''
     enrollEndDate.value = ''
+    enrollPurchasedQuantity.value = null
   }
   catch (e) {
     enrollError.value = formatApiError(e, 'Could not enroll student.')
@@ -1103,6 +1104,22 @@ const enrollmentStatusColor: Record<string, string> = {
                   />
                 </VCol>
                 <VCol
+                  v-if="enrollNeedsPurchasedQuantity()"
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model.number="enrollPurchasedQuantity"
+                    label="Sessions purchased"
+                    type="number"
+                    min="1"
+                    density="comfortable"
+                    hide-details
+                    :disabled="!rosterSkuId"
+                  />
+                </VCol>
+                <VCol
                   cols="12"
                   md="4"
                   class="d-flex align-center"
@@ -1112,7 +1129,7 @@ const enrollmentStatusColor: Record<string, string> = {
                     block
                     height="48"
                     :loading="enrolling"
-                    :disabled="!selectedStudentId || !rosterSkuId || rosterSku?.is_active === false || rosterAtCapacity"
+                    :disabled="!selectedStudentId || !rosterSkuId || rosterSku?.is_active === false || rosterAtCapacity || (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity)"
                     @click="enrollStudent"
                   >
                     Enroll
@@ -1155,6 +1172,9 @@ const enrollmentStatusColor: Record<string, string> = {
                   <tr>
                     <th>Student</th>
                     <th>Status</th>
+                    <th v-if="rosterSku?.billing_unit === 'per_session'">
+                      Sessions purchased
+                    </th>
                     <th>First billed</th>
                     <th>Last billed</th>
                     <th>Added</th>
@@ -1179,6 +1199,9 @@ const enrollmentStatusColor: Record<string, string> = {
                       >
                         {{ e.status }}
                       </VChip>
+                    </td>
+                    <td v-if="rosterSku?.billing_unit === 'per_session'">
+                      {{ e.purchased_quantity ?? '—' }}
                     </td>
                     <td>
                       <VTextField
@@ -1255,7 +1278,7 @@ const enrollmentStatusColor: Record<string, string> = {
                   </tr>
                   <tr v-if="enrollments.length === 0">
                     <td
-                      colspan="6"
+                      :colspan="rosterSku?.billing_unit === 'per_session' ? 7 : 6"
                       class="text-center text-medium-emphasis py-6"
                     >
                       No students in this class yet. Search a name, set billed days, then Enroll.
@@ -1485,7 +1508,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 Class days
               </div>
               <div class="text-caption text-medium-emphasis mb-2">
-                {{ skuForm.billing_unit === 'per_session' ? 'Required for 堂費. Generate bills these weekdays ∩ campus scans.' : 'Optional for 月費. Shown on the roster; not used to calculate the bill.' }}
+                Optional. Shown on the roster for reference only; not used to calculate the bill.
               </div>
               <VChipGroup
                 v-model="skuForm.meeting_weekdays"

@@ -19,6 +19,7 @@ withDefaults(
     bodyClass?: string
     bodyStyle?: string | Record<string, string>
     formDefaults?: boolean
+    persistent?: boolean
   }>(),
   {
     icon: undefined,
@@ -29,6 +30,7 @@ withDefaults(
     bodyClass: 'pa-4',
     bodyStyle: undefined,
     formDefaults: true,
+    persistent: false,
   },
 )
 
@@ -53,6 +55,7 @@ function onSave() {
   <VDialog
     :model-value="modelValue"
     :max-width="maxWidth"
+    :persistent="persistent"
     scrollable
     @update:model-value="emit('update:modelValue', $event)"
   >

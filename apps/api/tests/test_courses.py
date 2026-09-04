@@ -155,9 +155,10 @@ async def test_create_sku_with_meeting_weekdays(
 
 
 @pytest.mark.asyncio
-async def test_create_per_session_sku_requires_meeting_weekdays(
+async def test_create_per_session_sku_without_meeting_weekdays(
     client: AsyncClient, admin_token: str, spu_payload: dict
 ) -> None:
+    """meeting_weekdays is display-only now; per_session billing no longer needs it."""
     spu = await _create_spu(client, admin_token, spu_payload)
     resp = await client.post(
         "/api/course-skus",
@@ -170,11 +171,12 @@ async def test_create_per_session_sku_requires_meeting_weekdays(
         },
         headers=_auth(admin_token),
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["billing_unit"] == "per_session"
 
 
 @pytest.mark.asyncio
-async def test_update_to_per_session_requires_meeting_weekdays(
+async def test_update_to_per_session_without_meeting_weekdays(
     client: AsyncClient, admin_token: str, spu_payload: dict
 ) -> None:
     spu = await _create_spu(client, admin_token, spu_payload)
@@ -184,11 +186,12 @@ async def test_update_to_per_session_requires_meeting_weekdays(
         json={"billing_unit": "per_session"},
         headers=_auth(admin_token),
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["billing_unit"] == "per_session"
 
 
 @pytest.mark.asyncio
-async def test_clear_per_session_weekdays_rejected(
+async def test_clear_per_session_weekdays_allowed(
     client: AsyncClient, admin_token: str, spu_payload: dict
 ) -> None:
     spu = await _create_spu(client, admin_token, spu_payload)
@@ -204,7 +207,8 @@ async def test_clear_per_session_weekdays_rejected(
         json={"meeting_weekdays": []},
         headers=_auth(admin_token),
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["meeting_weekdays"] == []
 
 
 @pytest.mark.asyncio
@@ -408,6 +412,52 @@ async def test_enrollment_rejects_end_before_start(
             "start_date": "2026-06-30",
             "end_date": "2026-06-01",
         },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_per_session_enrollment_requires_purchased_quantity(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_per_session_enrollment_with_purchased_quantity(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"], "purchased_quantity": 8},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["purchased_quantity"] == 8
+
+
+@pytest.mark.asyncio
+async def test_purchased_quantity_must_be_positive(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+
+    resp = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"], "purchased_quantity": 0},
         headers=_auth(admin_token),
     )
     assert resp.status_code == 422

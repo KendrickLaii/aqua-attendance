@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Code example(parent component):
 // const showDeleteConfirm = ref(false)
-// <ConfirmDialog
+// <TaxConfirmDialog
 //     v-model="showDeleteConfirm"
 //     header="Confirm Delete"
 //     text="Are you sure you want to delete this administrator?<br/>This action cannot be undone."

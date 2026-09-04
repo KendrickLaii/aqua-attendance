@@ -78,6 +78,8 @@ export interface CourseEnrollment {
   enrolled_at: string
   start_date: string | null
   end_date: string | null
+  /** One-time session count purchased, for per_session (堂費) SKUs only. */
+  purchased_quantity: number | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -89,6 +91,7 @@ export interface CourseEnrollmentPayload {
   status?: EnrollmentStatus
   start_date?: string | null
   end_date?: string | null
+  purchased_quantity?: number | null
   notes?: string | null
 }
 
@@ -166,7 +169,7 @@ export async function createCourseEnrollment(payload: CourseEnrollmentPayload): 
 
 export async function updateCourseEnrollment(
   id: string,
-  payload: Partial<Pick<CourseEnrollmentPayload, 'status' | 'start_date' | 'end_date' | 'notes'>>,
+  payload: Partial<Pick<CourseEnrollmentPayload, 'status' | 'start_date' | 'end_date' | 'purchased_quantity' | 'notes'>>,
 ): Promise<CourseEnrollment> {
   return await $attendanceApi(`/course-enrollments/${id}`, { method: 'PATCH', body: payload })
 }

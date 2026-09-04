@@ -43,6 +43,13 @@ def _require_enrollable_student(unit: Unit) -> None:
         raise HTTPException(status_code=422, detail="Cannot enroll an inactive or former student")
 
 
+def _require_purchased_quantity_for_per_session(sku: CourseSku, purchased_quantity: int | None) -> None:
+    if sku.billing_unit == "per_session" and purchased_quantity is None:
+        raise HTTPException(
+            status_code=422, detail="purchased_quantity is required when enrolling in a per_session class"
+        )
+
+
 @router.get("", response_model=list[CourseEnrollmentOut])
 async def list_course_enrollments(
     _admin: AdminOnly,
@@ -89,6 +96,7 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     if not sku:
         raise HTTPException(status_code=404, detail="Course SKU not found")
     await _require_enrollable_sku(db, sku)
+    _require_purchased_quantity_for_per_session(sku, body.purchased_quantity)
 
     enrollment = CourseEnrollment(**body.model_dump())
     db.add(enrollment)
@@ -138,6 +146,8 @@ async def update_course_enrollment(
         if not sku:
             raise HTTPException(status_code=404, detail="Course SKU not found")
         await _require_enrollable_sku(db, sku, exclude_enrollment_id=enrollment.id)
+        new_quantity = update_data.get("purchased_quantity", enrollment.purchased_quantity)
+        _require_purchased_quantity_for_per_session(sku, new_quantity)
     for field, value in update_data.items():
         setattr(enrollment, field, value)
     await db.commit()

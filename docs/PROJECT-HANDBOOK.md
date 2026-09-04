@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-08-28（§1.9 SKU `meeting_weekdays`、§1.10 堂費按上課日計堂、§1.11 ERP 路線；Alembic head **037**。本地 migration 請用 `python -m alembic upgrade head`）。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。2026-08-28（§1.9 SKU `meeting_weekdays`、§1.10 堂費按上課日計堂、§1.11 ERP 路線；Alembic head **038**。本地 migration 請用 `python -m alembic upgrade head`）。
 
 ---
 
@@ -9,7 +9,7 @@
 1. [專案概述](#1-專案概述)
    - [1.9 課程資料模型](#19-課程資料模型)
    - [1.10 學費發票](#110-學費發票)
-   - [1.11 以後做成 ERP](#111-以後做成-erp)
+   - [1.11 ERP 不在本專案範圍](#111-erp-不在本專案範圍)
 2. [本地開發與快速開始](#2-本地開發與快速開始)
 3. [生產部署](#3-生產部署)
 4. [CI/CD 說明](#4-cicd-說明)
@@ -224,17 +224,17 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 | 項目 | 現況 | 見 |
 | ------ | ------ | --- |
-| 堂費扣公眾假期 | 已按上課日∩出勤計堂；無假期表 | [known-gaps.md](known-gaps.md) **#M23** |
+| ~~堂費扣公眾假期~~ | 2026-09-04 已失效：堂費改為報名時輸入 `purchased_quantity` 一次性收費，不再按出勤∩上課日計算 | [known-gaps.md](known-gaps.md) ~~#M23~~ |
 | 下學年重報同一 SKU | `(unit_id, sku_id)` 永久唯一，409 | **#M22** |
 | WhatsApp／對外發送發票 | 僅後台狀態流 | **#M24** |
 | Vuexy `/apps/invoice` | 模板假資料，不要當產品 | **D5** |
-| 以後 ERP／家具庫存 | 不進課程 SKU；見路線圖 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
+| ERP／家具庫存 | **不在本 repo 做**，以後是獨立新專案 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
 
 完整 schema 見 [database-changes.md](database-changes.md) § 學費發票。
 
-### 1.11 以後做成 ERP
+### 1.11 ERP 不在本專案範圍
 
-現在是出勤 + 教育營運，不是完整 ERP。以後若要家具庫存、採購、資產：新開物料主檔與庫存流水，**不要**把家具寫進 `course_skus` 或讓學費 Generate 重算那些行。`units` 的 `goods` 類型是掃碼身份，不是倉庫結存。階段與禁做清單見 **[erp-roadmap.md](erp-roadmap.md)**。
+現在是出勤 + 教育營運，**不會**演進成完整 ERP。以後若要家具庫存、採購、資產，是**獨立的全新專案**（獨立部署、獨立資料庫），不會加進 `juku-attendance`：不把家具寫進 `course_skus`、不讓學費 Generate 重算那些行、也不把家具/庫存塞進本系統的 `units`（`goods` 類型是掃碼身份，不是倉庫結存）。這個決定已於 2026-09-04 拍板。`erp-roadmap.md` 保留作為未來新專案的參考草稿，見 **[erp-roadmap.md](erp-roadmap.md)**。
 
 ---
 
@@ -694,7 +694,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-08-28 更新**：SKU `meeting_weekdays` 已上線（Migration 037）；堂費 Generate 按上課日∩出勤計堂。剩餘產品缺口見 [known-gaps.md](known-gaps.md) #M22–#M24。以後 ERP／庫存見 [erp-roadmap.md](erp-roadmap.md)（#F1）。  
+> **2026-09-04 更新**：堂費（per_session）改為報名時輸入 `purchased_quantity` 一次性收費（Migration 038），不再按出勤∩上課日計算，#M23 已失效。ERP／庫存確認不在本 repo 做，是獨立新專案，見 [erp-roadmap.md](erp-roadmap.md)（#F1）。  
+> **2026-08-28 更新**：SKU `meeting_weekdays` 已上線（Migration 037）；堂費 Generate 按上課日∩出勤計堂。剩餘產品缺口見 [known-gaps.md](known-gaps.md) #M22、#M24。  
 > **2026-08-27 更新**：SKU `billing_unit` 與學費發票已上線（Migration 035／036）。  
 > **2026-08-03 更新**：修正產品定位（非僅補習班；多據點已上線）並同步 §1 概述。後端／web／mobile 已完成 product → unit；部分周邊 README 若仍寫 `products` 以程式碼為準。  
 > **2026-07-28 更新**：完成 product → unit 重構審計。#M20 個人資料欄位搬移已完成；#M21 legacy constraint/index 名稱仍待清理。  
@@ -724,7 +725,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 9f. `units.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
 9g. **個人資料欄位搬移至 profiles**（units 瘦身）✅ — 已於 2026-07-28 建立並執行 Alembic migration `f8e65b7cf82b_align_schema_with_er_diagram`；見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態。
 9h. 同一學生同一 SKU 永久唯一（下學年重報 409）⬜ — 見 [known-gaps.md](known-gaps.md) #M22
-9i. 堂費扣公眾假期（上課日∩出勤已做）⬜ — 見 [known-gaps.md](known-gaps.md) #M23
+9i. ~~堂費扣公眾假期~~ ✅ 2026-09-04 已失效（堂費改一次性 `purchased_quantity` 收費，不再依出勤／上課日）— 見 [known-gaps.md](known-gaps.md) ~~#M23~~
 9j. 學費發票對外發送（WhatsApp）⬜ — 見 [known-gaps.md](known-gaps.md) #M24
 
 **第三階段 — 可延後（Low）**
@@ -842,7 +843,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 037**（`037_add_sku_meeting_weekdays`；前序含 034 課程、035 SKU `billing_unit`、036 學費發票）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 038**（`038_add_enrollment_purchased_quantity`；前序含 034 課程、035 SKU `billing_unit`、036 學費發票、037 SKU 上課日）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1062,7 +1063,7 @@ apps/mobile/
 ### 7.5 Mobile 發布檢查清單
 
 #### 後端準備
-- [ ] `python -m alembic upgrade head` on production DB（migrations through `037`，含課程計價、學費發票、SKU 上課日）
+- [ ] `python -m alembic upgrade head` on production DB（migrations through `038`，含課程計價、學費發票、SKU 上課日、堂費一次性購買堂數）
 - [ ] `ENV=production` with strong `SECRET_KEY` and `QR_SECRET`
 - [ ] 透過 Web User Management 建立 admin users
 - [ ] Health check：`GET https://<api-host>/api/health` → `{"status":"ok","database":"ok"}`
@@ -1321,13 +1322,14 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | API | RBAC tests | 後端測試含 `test_courses.py`、`test_tuition_invoices.py`（2026-08-28 兩檔共 38 項）；無 full permission matrix |
 | API | 結構化 logging | 待實作 |
 | Data | Location photo upload | v1 URL-only；upload + S3/R2 later |
-| API / Web | 課程資料（SPU/SKU/Enrollment） | Done — 模型、Router、Migration 034；SKU `billing_unit`（035）、`meeting_weekdays`（037）；Web 班次名冊 + 起迄日 |
-| API / Web | 學費發票 | Done — `tuition_invoices` / lines、Generate、Migration 036–037、`/attendance/invoices`。堂費按上課日∩出勤；假期未扣；Vuexy `/apps/invoice` 仍非真實帳單 |
+| API / Web | 課程資料（SPU/SKU/Enrollment） | Done — 模型、Router、Migration 034；SKU `billing_unit`（035）、`meeting_weekdays`（037，僅供顯示）；`course_enrollments.purchased_quantity`（038）；Web 班次名冊 + 起迄日 + 購買堂數 |
+| API / Web | 學費發票 | Done — `tuition_invoices` / lines、Generate、Migration 036–038、`/attendance/invoices`。堂費改一次性 `purchased_quantity` 收費（038，#M23 已失效）；Vuexy `/apps/invoice` 仍非真實帳單 |
 
 ### 9.3 文件評分卡（2026-08-04 複核）
 
 > 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→80）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
 >
+> **2026-09-04 補記**：Alembic head 為 **038**（`course_enrollments.purchased_quantity`；堂費改一次性收費，不再看出勤）。§1.10／§1.11 已同步。
 > **2026-08-28 補記**：Alembic head 為 **037**（SKU `meeting_weekdays`；堂費按上課日計堂）。§1.9／§1.10／§10 已同步。下表「本次複核」仍為 2026-08-04 當日證據，請以本補記與程式碼為準。
 > **2026-08-27 補記**：當時 head 為 **036**（非 034）；後端測試約 **95** 個 `test_*`。
 
@@ -1375,9 +1377,9 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 > 本手冊統合來源（歷史上）：`README.md`、`docs/index.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/known-gaps.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/database-changes.md`、`docs/attendance-summaries.md`、`docs/docs-audit.md`。
 >
-> **2026-08-27 校對備註**：`docs/` 另含 `代码审查.md`（課程／發票產品審查與跟進）。`known-gaps.md`、`docs-audit.md`、`attendance-summaries.md` 已與本手冊同日勾稽。
+> **2026-08-27 校對備註**：`docs/` 另含 `程式碼審查.md`（課程／發票產品審查與跟進）。`known-gaps.md`、`docs-audit.md`、`attendance-summaries.md` 已與本手冊同日勾稽。
 >
-> **2026-08-04 校對備註**：上述獨立檔案中，`DEPLOY.md`、`CICD-EXPLAINED.md`、`CODE-REVIEW-2026-06.md`、`RUNBOOK.md`、`RELEASE-2026-05.md`、`MOBILE-SPRINT.md`、`MOBILE-RELEASE-CHECKLIST.md`、`LOCATIONS.md` 內容已完全併入本手冊對應章節（§2–§9），檔案本身已不存在於 `docs/`。目前 `docs/` 實際僅存：`project-handbook.md`、`known-gaps.md`、`docs-audit.md`、`attendance-summaries.md`、`database-changes.md`、`index.md`、`代码审查.md`。上面清單保留作為「歷史沿革」紀錄，避免誤解為目前仍有 12 份並存文件。
+> **2026-08-04 校對備註**：上述獨立檔案中，`DEPLOY.md`、`CICD-EXPLAINED.md`、`CODE-REVIEW-2026-06.md`、`RUNBOOK.md`、`RELEASE-2026-05.md`、`MOBILE-SPRINT.md`、`MOBILE-RELEASE-CHECKLIST.md`、`LOCATIONS.md` 內容已完全併入本手冊對應章節（§2–§9），檔案本身已不存在於 `docs/`。目前 `docs/` 實際僅存：`project-handbook.md`、`known-gaps.md`、`docs-audit.md`、`attendance-summaries.md`、`database-changes.md`、`index.md`、`程式碼審查.md`。上面清單保留作為「歷史沿革」紀錄，避免誤解為目前仍有 12 份並存文件。
 
 ---
 
@@ -1698,8 +1700,9 @@ erDiagram
     course_skus ||--o{ tuition_invoice_lines : "source"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **037**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **038**）。
 >
+> **2026-09-04 更新**：`course_enrollments` 新增 `purchased_quantity`（038）。堂費 Generate 改用該欄位一次性收費，不再依出勤∩上課日計算；`meeting_weekdays`（037）僅保留供課表顯示。`(unit_id, sku_id)` 永久唯一仍為已知限制（#M22）。
 > **2026-08-28 更新**：ER 圖已與 [database-changes.md](database-changes.md) 同步：SKU `meeting_weekdays`（037）。堂費 Generate 按上課日∩該據點出勤計 `quantity`（未到已扣）；不減公眾假期日曆。`(unit_id, sku_id)` 永久唯一仍為已知限制。
 >
 > **2026-08-27 更新**：SKU `billing_unit`（035）、`tuition_invoices` / `tuition_invoice_lines`（036）。課程頁為班次名冊 + 起迄日；學費 Generate 快照價錢。

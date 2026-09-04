@@ -42,6 +42,7 @@ declare global {
   const canPayPayroll: typeof import('./src/utils/payrollDisplay')['canPayPayroll']
   const cardCoverUrl: typeof import('./src/utils/locationHours')['cardCoverUrl']
   const clearAttendanceSessionCookies: typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']
+  const computeDetailTotals: typeof import('./src/utils/summaryDisplay')['computeDetailTotals']
   const computed: typeof import('vue')['computed']
   const computedAsync: typeof import('@vueuse/core')['computedAsync']
   const computedEager: typeof import('@vueuse/core')['computedEager']
@@ -77,6 +78,8 @@ declare global {
   const definePage: typeof import('unplugin-vue-router/runtime')['definePage']
   const defineStore: typeof import('pinia')['defineStore']
   const detailPhotosToRows: typeof import('./src/utils/locationPhotos')['detailPhotosToRows']
+  const detailStatusFilterIcon: typeof import('./src/utils/summaryDisplay')['detailStatusFilterIcon']
+  const detailStatusOptions: typeof import('./src/utils/summaryDisplay')['detailStatusOptions']
   const eagerComputed: typeof import('@vueuse/core')['eagerComputed']
   const effectScope: typeof import('vue')['effectScope']
   const emailValidator: typeof import('./src/@core/utils/validators')['emailValidator']
@@ -89,6 +92,7 @@ declare global {
   const fetchProductQrPrintItems: typeof import('./src/utils/printProductQrs')['fetchProductQrPrintItems']
   const fetchUnitQrPrintItems: typeof import('./src/utils/printUnitQrs')['fetchUnitQrPrintItems']
   const filterSelectedTableRows: typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']
+  const filterSummariesByDetailStatus: typeof import('./src/utils/summaryDisplay')['filterSummariesByDetailStatus']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
   const formatApiDetail: typeof import('./src/utils/formatApiDetail')['formatApiDetail']
   const formatApiError: typeof import('./src/utils/formatApiDetail')['formatApiError']
@@ -98,7 +102,10 @@ declare global {
   const formatCardBusinessHours: typeof import('./src/utils/locationHours')['formatCardBusinessHours']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
+  const formatDayHours: typeof import('./src/utils/summaryDisplay')['formatDayHours']
+  const formatDaySlots: typeof import('./src/utils/summaryDisplay')['formatDaySlots']
   const formatEnrollmentRange: typeof import('./src/utils/courseEnrollmentDisplay')['formatEnrollmentRange']
+  const formatHours: typeof import('./src/utils/summaryDisplay')['formatHours']
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
@@ -108,6 +115,8 @@ declare global {
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
   const formatSummaryDateWithWeekday: typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']
   const formatSummaryGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']
+  const formatTotalHours: typeof import('./src/utils/summaryDisplay')['formatTotalHours']
+  const formatTotalSlots: typeof import('./src/utils/summaryDisplay')['formatTotalSlots']
   const formatValue: typeof import('./src/utils/review-format')['formatValue']
   const getActivePinia: typeof import('pinia')['getActivePinia']
   const getAttendanceRole: typeof import('./src/utils/attendanceSession')['getAttendanceRole']
@@ -135,6 +144,7 @@ declare global {
   const isDefined: typeof import('@vueuse/core')['isDefined']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
   const isEmptyArray: typeof import('./src/@core/utils/helpers')['isEmptyArray']
+  const isMissingCheckIn: typeof import('./src/utils/summaryDisplay')['isMissingCheckIn']
   const isNullOrUndefined: typeof import('./src/@core/utils/helpers')['isNullOrUndefined']
   const isObject: typeof import('./src/@core/utils/helpers')['isObject']
   const isObjectLike: typeof import('./src/utils/review-format')['isObjectLike']
@@ -159,6 +169,7 @@ declare global {
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
   const maxCharsRule: typeof import('./src/@core/utils/validators')['maxCharsRule']
+  const needsManualReview: typeof import('./src/utils/summaryDisplay')['needsManualReview']
   const nextTick: typeof import('vue')['nextTick']
   const onActivated: typeof import('vue')['onActivated']
   const onBeforeMount: typeof import('vue')['onBeforeMount']
@@ -182,6 +193,7 @@ declare global {
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
   const openProductQrPrintPlaceholder: typeof import('./src/utils/printProductQrs')['openProductQrPrintPlaceholder']
   const openProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['openProductQrPrintWindow']
+  const openSummaryPrintPlaceholder: typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']
   const openUnitQrPrintPlaceholder: typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
@@ -192,6 +204,7 @@ declare global {
   const payrollStatusOptions: typeof import('./src/utils/payrollDisplay')['payrollStatusOptions']
   const pickCourseSelectionForSku: typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
+  const printAttendanceSummaries: typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']
   const printProductQrs: typeof import('./src/utils/printProductQrs')['printProductQrs']
   const printUnitQrs: typeof import('./src/utils/printUnitQrs')['printUnitQrs']
   const provide: typeof import('vue')['provide']
@@ -213,6 +226,7 @@ declare global {
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const removeDetailPhotoRow: typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']
   const renderProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['renderProductQrPrintWindow']
+  const renderSummaryPrintWindow: typeof import('./src/utils/printAttendanceSummaries')['renderSummaryPrintWindow']
   const renderUnitQrPrintWindow: typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
@@ -220,6 +234,7 @@ declare global {
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
   const rgbaToHex: typeof import('./src/@core/utils/colorConverter')['rgbaToHex']
+  const safeNumber: typeof import('./src/utils/summaryDisplay')['safeNumber']
   const safePayrollNumber: typeof import('./src/utils/payrollDisplay')['safePayrollNumber']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
@@ -230,6 +245,9 @@ declare global {
   const showCardIcon: typeof import('./src/utils/locationHours')['showCardIcon']
   const skuIdFromRouteQuery: typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']
   const storeToRefs: typeof import('pinia')['storeToRefs']
+  const summaryStatusColor: typeof import('./src/utils/summaryDisplay')['summaryStatusColor']
+  const summaryStatusIcon: typeof import('./src/utils/summaryDisplay')['summaryStatusIcon']
+  const summaryStatusLabel: typeof import('./src/utils/summaryDisplay')['summaryStatusLabel']
   const syncRef: typeof import('@vueuse/core')['syncRef']
   const syncRefs: typeof import('@vueuse/core')['syncRefs']
   const templateRef: typeof import('@vueuse/core')['templateRef']
@@ -248,6 +266,9 @@ declare global {
   const tryOnMounted: typeof import('@vueuse/core')['tryOnMounted']
   const tryOnScopeDispose: typeof import('@vueuse/core')['tryOnScopeDispose']
   const tryOnUnmounted: typeof import('@vueuse/core')['tryOnUnmounted']
+  const typeColor: typeof import('./src/utils/summaryDisplay')['typeColor']
+  const typeLabel: typeof import('./src/utils/summaryDisplay')['typeLabel']
+  const unitTypeOptions: typeof import('./src/utils/summaryDisplay')['unitTypeOptions']
   const unref: typeof import('vue')['unref']
   const unrefElement: typeof import('@vueuse/core')['unrefElement']
   const until: typeof import('@vueuse/core')['until']
@@ -512,6 +533,7 @@ declare module 'vue' {
     readonly canPayPayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canPayPayroll']>
     readonly cardCoverUrl: UnwrapRef<typeof import('./src/utils/locationHours')['cardCoverUrl']>
     readonly clearAttendanceSessionCookies: UnwrapRef<typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']>
+    readonly computeDetailTotals: UnwrapRef<typeof import('./src/utils/summaryDisplay')['computeDetailTotals']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
@@ -546,6 +568,8 @@ declare module 'vue' {
     readonly definePage: UnwrapRef<typeof import('unplugin-vue-router/runtime')['definePage']>
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
     readonly detailPhotosToRows: UnwrapRef<typeof import('./src/utils/locationPhotos')['detailPhotosToRows']>
+    readonly detailStatusFilterIcon: UnwrapRef<typeof import('./src/utils/summaryDisplay')['detailStatusFilterIcon']>
+    readonly detailStatusOptions: UnwrapRef<typeof import('./src/utils/summaryDisplay')['detailStatusOptions']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly emailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['emailValidator']>
@@ -557,6 +581,7 @@ declare module 'vue' {
     readonly fetchAttendanceListWithTotal: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']>
     readonly fetchUnitQrPrintItems: UnwrapRef<typeof import('./src/utils/printUnitQrs')['fetchUnitQrPrintItems']>
     readonly filterSelectedTableRows: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']>
+    readonly filterSummariesByDetailStatus: UnwrapRef<typeof import('./src/utils/summaryDisplay')['filterSummariesByDetailStatus']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
     readonly formatApiDetail: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiDetail']>
     readonly formatApiError: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiError']>
@@ -566,7 +591,10 @@ declare module 'vue' {
     readonly formatCardBusinessHours: UnwrapRef<typeof import('./src/utils/locationHours')['formatCardBusinessHours']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
+    readonly formatDayHours: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatDayHours']>
+    readonly formatDaySlots: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatDaySlots']>
     readonly formatEnrollmentRange: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['formatEnrollmentRange']>
+    readonly formatHours: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatHours']>
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
@@ -576,6 +604,8 @@ declare module 'vue' {
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
     readonly formatSummaryDateWithWeekday: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']>
     readonly formatSummaryGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']>
+    readonly formatTotalHours: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatTotalHours']>
+    readonly formatTotalSlots: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatTotalSlots']>
     readonly formatValue: UnwrapRef<typeof import('./src/utils/review-format')['formatValue']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getAttendanceRole: UnwrapRef<typeof import('./src/utils/attendanceSession')['getAttendanceRole']>
@@ -603,6 +633,7 @@ declare module 'vue' {
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
     readonly isEmptyArray: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmptyArray']>
+    readonly isMissingCheckIn: UnwrapRef<typeof import('./src/utils/summaryDisplay')['isMissingCheckIn']>
     readonly isNullOrUndefined: UnwrapRef<typeof import('./src/@core/utils/helpers')['isNullOrUndefined']>
     readonly isObject: UnwrapRef<typeof import('./src/@core/utils/helpers')['isObject']>
     readonly isObjectLike: UnwrapRef<typeof import('./src/utils/review-format')['isObjectLike']>
@@ -627,6 +658,7 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly maxCharsRule: UnwrapRef<typeof import('./src/@core/utils/validators')['maxCharsRule']>
+    readonly needsManualReview: UnwrapRef<typeof import('./src/utils/summaryDisplay')['needsManualReview']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
@@ -648,6 +680,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly openSummaryPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']>
     readonly openUnitQrPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
@@ -658,6 +691,7 @@ declare module 'vue' {
     readonly payrollStatusOptions: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollStatusOptions']>
     readonly pickCourseSelectionForSku: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
+    readonly printAttendanceSummaries: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']>
     readonly printUnitQrs: UnwrapRef<typeof import('./src/utils/printUnitQrs')['printUnitQrs']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
@@ -677,6 +711,7 @@ declare module 'vue' {
     readonly regexValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['regexValidator']>
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly removeDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']>
+    readonly renderSummaryPrintWindow: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['renderSummaryPrintWindow']>
     readonly renderUnitQrPrintWindow: UnwrapRef<typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
@@ -684,6 +719,7 @@ declare module 'vue' {
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>
     readonly rgbaToHex: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['rgbaToHex']>
+    readonly safeNumber: UnwrapRef<typeof import('./src/utils/summaryDisplay')['safeNumber']>
     readonly safePayrollNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['safePayrollNumber']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
@@ -694,6 +730,9 @@ declare module 'vue' {
     readonly showCardIcon: UnwrapRef<typeof import('./src/utils/locationHours')['showCardIcon']>
     readonly skuIdFromRouteQuery: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
+    readonly summaryStatusColor: UnwrapRef<typeof import('./src/utils/summaryDisplay')['summaryStatusColor']>
+    readonly summaryStatusIcon: UnwrapRef<typeof import('./src/utils/summaryDisplay')['summaryStatusIcon']>
+    readonly summaryStatusLabel: UnwrapRef<typeof import('./src/utils/summaryDisplay')['summaryStatusLabel']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
     readonly templateRef: UnwrapRef<typeof import('@vueuse/core')['templateRef']>
@@ -712,6 +751,9 @@ declare module 'vue' {
     readonly tryOnMounted: UnwrapRef<typeof import('@vueuse/core')['tryOnMounted']>
     readonly tryOnScopeDispose: UnwrapRef<typeof import('@vueuse/core')['tryOnScopeDispose']>
     readonly tryOnUnmounted: UnwrapRef<typeof import('@vueuse/core')['tryOnUnmounted']>
+    readonly typeColor: UnwrapRef<typeof import('./src/utils/summaryDisplay')['typeColor']>
+    readonly typeLabel: UnwrapRef<typeof import('./src/utils/summaryDisplay')['typeLabel']>
+    readonly unitTypeOptions: UnwrapRef<typeof import('./src/utils/summaryDisplay')['unitTypeOptions']>
     readonly unref: UnwrapRef<typeof import('vue')['unref']>
     readonly unrefElement: UnwrapRef<typeof import('@vueuse/core')['unrefElement']>
     readonly until: UnwrapRef<typeof import('@vueuse/core')['until']>

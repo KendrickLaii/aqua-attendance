@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ConfirmDialog from '@/components/dialogs/tax/ConfirmDialog.vue'
+import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
 import type { Content } from '@/types/client'
 import type { BasicInformationData } from '@/types/working-section'
 import { useToast } from '@/composables/useToast'
@@ -680,7 +680,7 @@ defineExpose({
       </table>
     </div>
 
-    <ConfirmDialog
+    <TaxConfirmDialog
       v-model="showDeleteRowConfirm"
       header="Confirm Delete"
       text="Are you sure you want to delete this row? This action cannot be undone."

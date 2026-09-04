@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 BillingUnit = Literal["monthly", "per_session"]
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -38,12 +38,6 @@ class CourseSkuCreate(BaseModel):
     @classmethod
     def unique_weekdays(cls, value: list[Weekday]) -> list[Weekday]:
         return _normalize_weekdays(value)
-
-    @model_validator(mode="after")
-    def per_session_needs_class_days(self) -> CourseSkuCreate:
-        if self.billing_unit == "per_session" and not self.meeting_weekdays:
-            raise ValueError("per_session classes need at least one class day")
-        return self
 
 
 class CourseSkuUpdate(BaseModel):

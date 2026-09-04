@@ -31,7 +31,7 @@ export interface DataContentItem {
 }
 
 import AmountInput from './AmountInput.vue'
-import ConfirmDialog from '@/components/dialogs/tax/ConfirmDialog.vue'
+import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
 import AppToastStack from '@/components/AppToastStack.vue'
 import { useToast } from '@/composables/useToast'
 import type { Content } from '@/types/client'
@@ -1074,7 +1074,7 @@ function onPost(item: DataContentItem) {
     </VCard>
   </template>
 
-  <ConfirmDialog
+  <TaxConfirmDialog
     v-model="showDeleteConfirm"
     header="Confirm Delete"
     text="Are you sure you want to delete this breakdown item? The number will be automatically updated after deletion."

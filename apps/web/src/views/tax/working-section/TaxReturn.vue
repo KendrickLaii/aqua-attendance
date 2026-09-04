@@ -5,7 +5,7 @@ import type {
   TemplateFieldValue,
 } from '@/types/tax-return-field-setup'
 import { parseContentToFields } from '@/types/tax-return-field-setup'
-import ConfirmDialog from '@/components/dialogs/tax/ConfirmDialog.vue'
+import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
 
 const router = useRouter()
 const formData = defineModel<ApiTemplate[]>('formData', { default: () => [] })
@@ -331,7 +331,7 @@ const cancelReImportFields = () => {
       </div>
     </VForm>
 
-    <ConfirmDialog
+    <TaxConfirmDialog
       v-model="showLeaveForFieldSetupConfirm"
       header="Leave this page?"
       text="This action will take you away from the current page.<br> Any unsaved changes on this page may be lost.<br> Do you want to continue?"
@@ -342,7 +342,7 @@ const cancelReImportFields = () => {
       @confirm="confirmLeaveToCreateTaxReturnFieldSetup"
     />
 
-    <ConfirmDialog
+    <TaxConfirmDialog
       v-model="showReImportConfirm"
       header="Confirm Re-import"
       text="Do you want to re-import fields? Existing data will be cleared."

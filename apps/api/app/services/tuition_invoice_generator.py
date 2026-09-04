@@ -1,10 +1,21 @@
-"""Generate monthly tuition invoices from course enrollments."""
+"""Generate monthly tuition invoices from course enrollments.
+
+Billing is derived purely from CourseEnrollment + CourseSku, not attendance:
+
+- monthly (月費): flat unit_price, quantity 1, billed every active month.
+- per_session (堂費): a one-time charge for ``purchased_quantity`` sessions,
+  set by admin at enrollment time. It is billed exactly once, in the first
+  month Generate runs for while the enrollment is active; later months are
+  skipped by checking whether a non-void invoice line already exists for
+  that enrollment in a different period. If that invoice is later voided,
+  the charge is treated as not-yet-billed and can be regenerated.
+"""
 
 from __future__ import annotations
 
 import calendar
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -13,84 +24,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.attendance_tz import ATTENDANCE_TZ, attendance_date
-from app.models.attendance import AttendanceEvent
 from app.models.course_enrollment import CourseEnrollment
 from app.models.course_sku import CourseSku
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
 from app.models.unit import Unit, UnitStatus
 
 _LOCKED = frozenset({TuitionInvoiceStatus.issued.value, TuitionInvoiceStatus.paid.value})
-_WEEKDAY_INDEX = {
-    "monday": 0,
-    "tuesday": 1,
-    "wednesday": 2,
-    "thursday": 3,
-    "friday": 4,
-    "saturday": 5,
-    "sunday": 6,
-}
-
-
-def scheduled_session_dates(
-    meeting_weekdays: list[str] | None,
-    *,
-    period_start: date,
-    period_end: date,
-    enroll_start: date | None,
-    enroll_end: date | None,
-) -> list[date] | None:
-    """Return class dates in the clipped billing window.
-
-    ``None`` means weekdays are not configured (callers treat as quantity 1).
-    An empty list means zero sessions (skip the line).
-    Does not subtract holidays or absences.
-    """
-    start = max(period_start, enroll_start or period_start)
-    end = min(period_end, enroll_end or period_end)
-    if start > end:
-        return []
-    wanted = {_WEEKDAY_INDEX[day] for day in (meeting_weekdays or []) if day in _WEEKDAY_INDEX}
-    if not wanted:
-        return None
-    dates: list[date] = []
-    cursor = start
-    step = timedelta(days=1)
-    while cursor <= end:
-        if cursor.weekday() in wanted:
-            dates.append(cursor)
-        cursor += step
-    return dates
-
-
-def count_scheduled_sessions(
-    meeting_weekdays: list[str] | None,
-    *,
-    period_start: date,
-    period_end: date,
-    enroll_start: date | None,
-    enroll_end: date | None,
-) -> int:
-    """Count calendar days in the billing window that match SKU class days."""
-    dates = scheduled_session_dates(
-        meeting_weekdays,
-        period_start=period_start,
-        period_end=period_end,
-        enroll_start=enroll_start,
-        enroll_end=enroll_end,
-    )
-    if dates is None:
-        return 1
-    return len(dates)
-
-
-def _present_dates_for_sku(events: list[AttendanceEvent], sku_location_id: UUID | None) -> set[date]:
-    present: set[date] = set()
-    for event in events:
-        if sku_location_id is not None and event.location_id != sku_location_id:
-            continue
-        present.add(attendance_date(event.recorded_at))
-    return present
 
 
 def _money(value: object) -> Decimal:
@@ -99,26 +38,16 @@ def _money(value: object) -> Decimal:
 
 def _line_from_enrollment(
     enrollment: CourseEnrollment,
-    first_day: date,
-    last_day: date,
-    present_dates: set[date],
+    already_billed_elsewhere: set[UUID],
 ) -> TuitionInvoiceLine | None:
     sku = enrollment.sku
     if sku is None or sku.price is None:
         return None
     unit_price = _money(sku.price)
     if sku.billing_unit == "per_session":
-        dates = scheduled_session_dates(
-            sku.meeting_weekdays,
-            period_start=first_day,
-            period_end=last_day,
-            enroll_start=enrollment.start_date,
-            enroll_end=enrollment.end_date,
-        )
-        if dates is None:
-            quantity = _money(1)
-        else:
-            quantity = _money(sum(1 for day in dates if day in present_dates))
+        if enrollment.id in already_billed_elsewhere or enrollment.purchased_quantity is None:
+            return None
+        quantity = _money(enrollment.purchased_quantity)
     else:
         quantity = _money(1)
     if quantity <= 0:
@@ -135,28 +64,30 @@ def _line_from_enrollment(
     )
 
 
-async def _attendance_by_unit(
+async def _already_billed_elsewhere(
     db: AsyncSession,
-    unit_ids: set[UUID],
+    enrollment_ids: set[UUID],
     first_day: date,
     last_day: date,
-) -> dict[UUID, list[AttendanceEvent]]:
-    if not unit_ids:
-        return {}
-    start_utc = datetime.combine(first_day, time.min, tzinfo=ATTENDANCE_TZ).astimezone(timezone.utc)
-    end_utc = datetime.combine(last_day, time.max, tzinfo=ATTENDANCE_TZ).astimezone(timezone.utc)
+) -> set[UUID]:
+    """One-time per_session charges: enrollments already billed in a
+    different, non-void period. Void invoices don't count as billed."""
+    if not enrollment_ids:
+        return set()
     result = await db.execute(
-        select(AttendanceEvent).where(
-            AttendanceEvent.unit_id.in_(unit_ids),
-            AttendanceEvent.voided_at.is_(None),
-            AttendanceEvent.recorded_at >= start_utc,
-            AttendanceEvent.recorded_at <= end_utc,
+        select(TuitionInvoiceLine.enrollment_id)
+        .join(TuitionInvoice, TuitionInvoiceLine.invoice_id == TuitionInvoice.id)
+        .where(
+            TuitionInvoiceLine.enrollment_id.in_(enrollment_ids),
+            TuitionInvoice.status != TuitionInvoiceStatus.void.value,
+            or_(
+                TuitionInvoice.period_start != first_day,
+                TuitionInvoice.period_end != last_day,
+            ),
         )
+        .distinct()
     )
-    by_unit: dict[UUID, list[AttendanceEvent]] = defaultdict(list)
-    for event in result.scalars():
-        by_unit[event.unit_id].append(event)
-    return by_unit
+    return {row[0] for row in result.all()}
 
 
 async def generate_monthly_tuition_invoices(
@@ -184,18 +115,17 @@ async def generate_monthly_tuition_invoices(
         )
     )
     enrollments = result.scalars().all()
-    attendance_by_unit = await _attendance_by_unit(
-        db, {enrollment.unit_id for enrollment in enrollments}, first_day, last_day
-    )
+
+    per_session_ids = {
+        enrollment.id
+        for enrollment in enrollments
+        if enrollment.sku is not None and enrollment.sku.billing_unit == "per_session"
+    }
+    already_billed_elsewhere = await _already_billed_elsewhere(db, per_session_ids, first_day, last_day)
 
     by_unit: dict = defaultdict(list)
     for enrollment in enrollments:
-        sku = enrollment.sku
-        present = _present_dates_for_sku(
-            attendance_by_unit.get(enrollment.unit_id, []),
-            sku.location_id if sku is not None else None,
-        )
-        line = _line_from_enrollment(enrollment, first_day, last_day, present)
+        line = _line_from_enrollment(enrollment, already_billed_elsewhere)
         if line is None:
             continue
         by_unit[enrollment.unit_id].append(line)

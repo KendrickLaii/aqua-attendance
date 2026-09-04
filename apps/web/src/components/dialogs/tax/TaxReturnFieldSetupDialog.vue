@@ -11,7 +11,7 @@ import {
   createTaxReturnFieldSetup,
   updateTaxReturnFieldSetup,
 } from '@/api/tax-return-field-setup'
-import ConfirmDialog from '@/components/dialogs/tax/ConfirmDialog.vue'
+import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
 
 /**
  * Transform form data to API request format
@@ -519,7 +519,7 @@ const insertFieldBelow = (index: number) => {
     </VCard>
     </VDialog>
     <!-- 👉 delete confirmation dialog -->
-    <ConfirmDialog
+    <TaxConfirmDialog
         v-model="showDeleteConfirm"
         header="Confirm Delete"
         text="Are you sure you want to delete this field?<br/>This action cannot be undone."
