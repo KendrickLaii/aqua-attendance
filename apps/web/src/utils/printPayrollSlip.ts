@@ -52,9 +52,13 @@ export function renderPayrollSlipPrintWindow(printWindow: Window, record: Payrol
   const name = record.unit_name || record.unit_code || record.unit_id
   const periodLabel = formatPeriodLabel(record.payroll_period_start)
   const slipDate = formatSlipDate(record.payment_date)
-  const salary = safePayrollNumber(record.net_pay)
-  const contributions = safePayrollNumber(record.deduction)
-  const subtotal = salary - contributions
+  const salary = safePayrollNumber(record.gross_pay)
+  const adjustment2 = safePayrollNumber(record.adjustment_2)
+  const adjustment2Label = (record.adjustment_2_remark || '').trim() || 'Adjustment 2'
+  const adjustment2Amount = adjustment2 < 0
+    ? `(${formatPayrollCurrency(Math.abs(adjustment2))})`
+    : formatPayrollCurrency(adjustment2)
+  const subtotal = safePayrollNumber(record.net_pay)
   const chequeNumber = (record.cheque_number || '').trim()
   const chequeAmount = safePayrollNumber(record.cheque_amount)
   const cashAmount = safePayrollNumber(record.cash_amount)
@@ -200,8 +204,8 @@ export function renderPayrollSlipPrintWindow(printWindow: Window, record: Payrol
         <td class="amt">${escapeHtml(formatPayrollCurrency(salary))}</td>
       </tr>
       <tr>
-        <td colspan="2" class="indent">Less:- Mandatory Contributions</td>
-        <td class="amt">(${escapeHtml(formatPayrollCurrency(contributions))})</td>
+        <td colspan="2" class="indent">${escapeHtml(adjustment2Label)}</td>
+        <td class="amt">${escapeHtml(adjustment2Amount)}</td>
       </tr>
       <tr class="subtotal">
         <td colspan="2"></td>
