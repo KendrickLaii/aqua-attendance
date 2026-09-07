@@ -72,6 +72,11 @@ class PayrollRecord(Base):
     # Totals
     gross_pay: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     net_pay: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+
+    # Payment split (filled when marking as paid)
+    cheque_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cheque_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    cash_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     
     # Status and metadata
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=PayrollStatus.draft.value)

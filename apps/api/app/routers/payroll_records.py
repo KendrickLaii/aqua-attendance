@@ -193,6 +193,9 @@ async def update_payroll_record(
 
     update_data = body.model_dump(exclude_unset=True)
 
+    if "cheque_number" in update_data and isinstance(update_data["cheque_number"], str):
+        update_data["cheque_number"] = update_data["cheque_number"].strip() or None
+
     if "status" in update_data:
         new_status = update_data["status"]
         if not can_transition_payroll_status(record.status, new_status):

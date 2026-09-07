@@ -12,14 +12,17 @@ import PayrollReviewTab from '@/components/attendance/payroll/PayrollReviewTab.v
 import SummaryDateCell from '@/components/attendance/SummaryDateCell.vue'
 import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { openPayrollSlipPrintPlaceholder, printPayrollSlip } from '@/utils/printPayrollSlip'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { formatPayrollGenerateMessage } from '@/utils/formatGenerateResult'
 import {
   canApprovePayroll,
   canEditPayrollAdjustments,
   canPayPayroll,
+  formatPayrollChequeNumber,
   formatPayrollCurrency,
   formatPayrollHours,
+  parsePayrollCurrencyInput,
   payrollStatusColorMap,
   payrollStatusIcon,
   safePayrollNumber,
@@ -68,6 +71,13 @@ const approving = ref(false)
 const payDialog = ref(false)
 const payTarget = ref<PayrollRecord | null>(null)
 const paying = ref(false)
+const payError = ref('')
+const payChequeNumber = ref('')
+const payChequeAmount = ref(0)
+const payCashAmount = ref(0)
+type PayAmountField = 'cheque' | 'cash'
+const focusedPayField = ref<PayAmountField | null>(null)
+const focusedPayRaw = ref('')
 
 const selectedRecord = ref<PayrollRecord | null>(null)
 const summaries = ref<AttendanceSummary[]>([])
@@ -331,28 +341,131 @@ async function confirmApprove() {
   }
 }
 
+function applyPaymentFields(record: PayrollRecord, updated: PayrollRecord) {
+  record.status = updated.status
+  record.payment_date = updated.payment_date
+  record.cheque_number = updated.cheque_number
+  record.cheque_amount = updated.cheque_amount
+  record.cash_amount = updated.cash_amount
+}
+
 function openPayDialog(record: PayrollRecord) {
   payTarget.value = record
+  payChequeNumber.value = record.cheque_number || ''
+  payChequeAmount.value = record.cheque_amount
+    ? Number(record.cheque_amount)
+    : Number(record.net_pay ?? 0)
+  payCashAmount.value = Number(record.cash_amount) || 0
+  focusedPayField.value = null
+  focusedPayRaw.value = ''
+  payError.value = ''
   payDialog.value = true
 }
 
 function closePayDialog() {
   payDialog.value = false
   payTarget.value = null
+  payChequeNumber.value = ''
+  payChequeAmount.value = 0
+  payCashAmount.value = 0
+  focusedPayField.value = null
+  focusedPayRaw.value = ''
+  payError.value = ''
+}
+
+const paySplitTotal = computed(() => payChequeAmount.value + payCashAmount.value)
+
+function payAmountValue(field: PayAmountField) {
+  return field === 'cheque' ? payChequeAmount.value : payCashAmount.value
+}
+
+function payAmountDisplay(field: PayAmountField) {
+  if (focusedPayField.value === field)
+    return focusedPayRaw.value
+
+  return formatPayrollCurrency(payAmountValue(field))
+}
+
+function onPayAmountFocus(field: PayAmountField) {
+  focusedPayField.value = field
+
+  const n = payAmountValue(field)
+
+  focusedPayRaw.value = Number.isFinite(n) ? String(n) : '0'
+}
+
+function onPayAmountInput(field: PayAmountField, v: string | number | null) {
+  focusedPayRaw.value = v == null ? '' : String(v)
+
+  const parsed = parsePayrollCurrencyInput(focusedPayRaw.value)
+
+  if (field === 'cheque')
+    payChequeAmount.value = parsed
+  else
+    payCashAmount.value = parsed
+}
+
+function onPayAmountBlur(field: PayAmountField) {
+  const parsed = parsePayrollCurrencyInput(focusedPayRaw.value)
+
+  if (field === 'cheque')
+    payChequeAmount.value = parsed
+  else
+    payCashAmount.value = parsed
+
+  focusedPayField.value = null
+  focusedPayRaw.value = ''
 }
 
 async function confirmPay() {
   if (!payTarget.value)
     return
 
+  const chequeNumber = payChequeNumber.value.trim()
+  const chequeAmount = payChequeAmount.value
+  const cashAmount = payCashAmount.value
+
+  if (chequeAmount < 0 || cashAmount < 0) {
+    payError.value = 'Cheque and cash amounts cannot be negative.'
+
+    return
+  }
+  if (chequeAmount > 0 && !chequeNumber) {
+    payError.value = 'Enter a cheque number when cheque amount is greater than 0.'
+
+    return
+  }
+
   paying.value = true
+  payError.value = ''
   try {
-    const ok = await updateStatus(payTarget.value, 'paid')
-    if (ok)
-      closePayDialog()
+    const updated = await updatePayrollRecord(payTarget.value.id, {
+      status: 'paid',
+      cheque_number: chequeNumber || null,
+      cheque_amount: chequeAmount,
+      cash_amount: cashAmount,
+    })
+
+    applyPaymentFields(payTarget.value, updated)
+    closePayDialog()
+  }
+  catch (e) {
+    console.error('Failed to mark payroll as paid', e)
+    payError.value = formatApiError(e, 'Could not mark payroll as paid')
   }
   finally {
     paying.value = false
+  }
+}
+
+function printSelectedSlip(record: PayrollRecord) {
+  try {
+    const printWindow = openPayrollSlipPrintPlaceholder()
+
+    printPayrollSlip(printWindow, record)
+  }
+  catch (e) {
+    loadError.value = formatApiError(e, 'Could not open print window')
   }
 }
 
@@ -723,6 +836,7 @@ function summaryStatusIcon(s: AttendanceSummary) {
       @generate="showGenerate"
       @approve="openApproveDialog"
       @pay="openPayDialog"
+      @print="printSelectedSlip"
       @detail="openDetail"
       @delete="openDeleteDialog"
       @adj-change="onCardAdjChange"
@@ -844,14 +958,20 @@ function summaryStatusIcon(s: AttendanceSummary) {
           >
             Pay
           </VBtn>
+          <VBtn
+            size="small"
+            variant="tonal"
+            color="primary"
+            prepend-icon="ri-printer-line"
+            @click="printSelectedSlip(selectedRecord)"
+          >
+            Print
+          </VBtn>
         </div>
       </VCardTitle>
       <VCardText class="pb-0">
-        <VRow dense>
-          <VCol
-            cols="12"
-            sm="2"
-          >
+        <div class="payroll-metrics">
+          <div class="payroll-metric">
             <div class="text-caption text-medium-emphasis">
               Base
             </div>
@@ -862,11 +982,8 @@ function summaryStatusIcon(s: AttendanceSummary) {
               OT {{ formatPayrollCurrency(selectedRecord.overtime_pay) }}
               · Holiday {{ formatPayrollCurrency(selectedRecord.holiday_pay) }}
             </div>
-          </VCol>
-          <VCol
-            cols="12"
-            sm="2"
-          >
+          </div>
+          <div class="payroll-metric">
             <div class="text-caption text-medium-emphasis">
               Adjustment 1
             </div>
@@ -879,22 +996,16 @@ function summaryStatusIcon(s: AttendanceSummary) {
             <div class="text-caption text-medium-emphasis mt-1">
               Base + OT + Holiday + Adj1 = Gross
             </div>
-          </VCol>
-          <VCol
-            cols="12"
-            sm="2"
-          >
+          </div>
+          <div class="payroll-metric">
             <div class="text-caption text-medium-emphasis">
               Gross pay
             </div>
             <div class="text-h6 font-weight-bold">
               {{ formatPayrollCurrency(selectedRecord.gross_pay) }}
             </div>
-          </VCol>
-          <VCol
-            cols="12"
-            sm="3"
-          >
+          </div>
+          <div class="payroll-metric">
             <div class="text-caption text-medium-emphasis">
               Adjustment 2
             </div>
@@ -907,19 +1018,43 @@ function summaryStatusIcon(s: AttendanceSummary) {
             <div class="text-caption text-medium-emphasis mt-1">
               Gross + Adj2 = Net
             </div>
-          </VCol>
-          <VCol
-            cols="12"
-            sm="3"
-          >
+          </div>
+          <div class="payroll-metric">
             <div class="text-caption text-medium-emphasis">
               Net pay
             </div>
             <div class="text-h6 font-weight-bold text-primary">
               {{ formatPayrollCurrency(selectedRecord.net_pay) }}
             </div>
-          </VCol>
-        </VRow>
+          </div>
+          <div class="payroll-metric">
+            <div class="text-caption text-medium-emphasis">
+              Cheque#
+            </div>
+            <div class="text-h6 font-weight-bold">
+              {{ formatPayrollChequeNumber(selectedRecord.cheque_number) }}
+            </div>
+          </div>
+          <div class="payroll-metric">
+            <div class="text-caption text-medium-emphasis">
+              Cheque amount
+            </div>
+            <div class="text-h6 font-weight-bold">
+              {{ formatPayrollCurrency(selectedRecord.cheque_amount) }}
+            </div>
+          </div>
+          <div class="payroll-metric">
+            <div class="text-caption text-medium-emphasis">
+              Cash amount
+            </div>
+            <div class="text-h6 font-weight-bold">
+              {{ formatPayrollCurrency(selectedRecord.cash_amount) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Cheque + Cash
+            </div>
+          </div>
+        </div>
       </VCardText>
       <VCardText class="text-caption text-medium-emphasis pb-0">
         Daily attendance summaries used to calculate this payroll record. Adjustments can be edited on calculated slips only.
@@ -1226,16 +1361,71 @@ function summaryStatusIcon(s: AttendanceSummary) {
       confirm-label="Pay"
       confirm-color="primary"
       :loading="paying"
+      :error="payError"
+      :max-width="520"
       @confirm="confirmPay"
       @cancel="closePayDialog"
+      @clear-error="payError = ''"
     >
       <template v-if="payTarget">
-        Mark payroll as paid for
-        <strong>{{ payTarget.unit_name || payTarget.unit_code || payTarget.unit_id }}</strong>
-        ({{ payTarget.payroll_period_start }} – {{ payTarget.payroll_period_end }})?
-        Net pay
-        <strong>{{ formatPayrollCurrency(payTarget.net_pay) }}</strong>.
-        This should only be done after payment is complete.
+        <div class="mb-4">
+          Mark payroll as paid for
+          <strong>{{ payTarget.unit_name || payTarget.unit_code || payTarget.unit_id }}</strong>
+          ({{ payTarget.payroll_period_start }} – {{ payTarget.payroll_period_end }})?
+          Net pay
+          <strong>{{ formatPayrollCurrency(payTarget.net_pay) }}</strong>.
+        </div>
+        <VTextField
+          v-model="payChequeNumber"
+          class="mb-3"
+          label="Cheque#"
+          density="compact"
+          variant="outlined"
+          hide-details
+          autocomplete="off"
+        />
+        <VRow dense>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              :model-value="payAmountDisplay('cheque')"
+              class="pay-amount-field"
+              label="Cheque amount"
+              density="compact"
+              variant="underlined"
+              hide-details
+              inputmode="decimal"
+              @focus="onPayAmountFocus('cheque')"
+              @blur="onPayAmountBlur('cheque')"
+              @update:model-value="(v) => onPayAmountInput('cheque', v)"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              :model-value="payAmountDisplay('cash')"
+              class="pay-amount-field"
+              label="Cash amount"
+              density="compact"
+              variant="underlined"
+              hide-details
+              inputmode="decimal"
+              @focus="onPayAmountFocus('cash')"
+              @blur="onPayAmountBlur('cash')"
+              @update:model-value="(v) => onPayAmountInput('cash', v)"
+            />
+          </VCol>
+        </VRow>
+        <div class="text-caption text-medium-emphasis mt-3">
+          Cheque + Cash = {{ formatPayrollCurrency(paySplitTotal) }}
+          <span v-if="payTarget && Math.abs(paySplitTotal - safePayrollNumber(payTarget.net_pay)) > 0.009">
+            · Net {{ formatPayrollCurrency(payTarget.net_pay) }}
+          </span>
+        </div>
       </template>
     </AttendanceConfirmDialog>
 
@@ -1274,6 +1464,21 @@ function summaryStatusIcon(s: AttendanceSummary) {
 <style scoped lang="scss">
 .month-field {
   inline-size: 160px;
+}
+
+.payroll-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 12px;
+}
+
+.payroll-metric {
+  min-width: 118px;
+  flex: 1 1 118px;
+}
+
+.pay-amount-field :deep(input) {
+  text-align: end;
 }
 
 .payroll-table-scroll {

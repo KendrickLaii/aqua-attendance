@@ -30,6 +30,7 @@ const emit = defineEmits<{
   generate: []
   approve: [record: PayrollRecord]
   pay: [record: PayrollRecord]
+  print: [record: PayrollRecord]
   detail: [record: PayrollRecord]
   delete: [record: PayrollRecord]
   adjChange: [record: PayrollRecord]
@@ -461,6 +462,14 @@ function onRemarkChange(record: PayrollRecord) {
               @click="emit('pay', record)"
             >
               Pay
+            </VBtn>
+            <VBtn
+              size="small"
+              variant="text"
+              prepend-icon="ri-printer-line"
+              @click="emit('print', record)"
+            >
+              Print
             </VBtn>
             <VBtn
               size="small"

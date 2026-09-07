@@ -29,6 +29,10 @@ export interface PayrollRecord {
   adjustment_2_remark: string | null
   gross_pay: number
   net_pay: number
+  cheque_number: string | null
+  cheque_amount: number
+  cash_amount: number
+  deduction: number
   status: 'draft' | 'calculated' | 'approved' | 'paid' | 'cancelled'
   calculation_date: string
   approval_date: string | null
@@ -122,6 +126,9 @@ export async function updatePayrollRecord(recordId: string, payload: {
   adjustment_2_remark?: string | null
   gross_pay?: number
   net_pay?: number
+  cheque_number?: string | null
+  cheque_amount?: number
+  cash_amount?: number
 }): Promise<PayrollRecord> {
   return await $attendanceApi(`/payroll-records/${recordId}`, { method: 'PATCH', body: payload })
 }

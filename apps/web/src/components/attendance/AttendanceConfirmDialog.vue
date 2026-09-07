@@ -7,12 +7,14 @@ withDefaults(
     confirmColor?: string
     loading?: boolean
     error?: string
+    maxWidth?: number | string
   }>(),
   {
     confirmLabel: 'Delete',
     confirmColor: 'error',
     loading: false,
     error: '',
+    maxWidth: 420,
   },
 )
 const emit = defineEmits<{
@@ -35,7 +37,7 @@ function onConfirm() {
 <template>
   <VDialog
     :model-value="modelValue"
-    max-width="420"
+    :max-width="maxWidth"
     persistent
     @update:model-value="emit('update:modelValue', $event)"
   >

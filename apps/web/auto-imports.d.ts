@@ -109,7 +109,9 @@ declare global {
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
+  const formatPayrollChequeNumber: typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']
   const formatPayrollCurrency: typeof import('./src/utils/payrollDisplay')['formatPayrollCurrency']
+  const formatPayrollDashAmount: typeof import('./src/utils/payrollDisplay')['formatPayrollDashAmount']
   const formatPayrollGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']
   const formatPayrollHours: typeof import('./src/utils/payrollDisplay')['formatPayrollHours']
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
@@ -191,11 +193,13 @@ declare global {
   const onUnmounted: typeof import('vue')['onUnmounted']
   const onUpdated: typeof import('vue')['onUpdated']
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
+  const openPayrollSlipPrintPlaceholder: typeof import('./src/utils/printPayrollSlip')['openPayrollSlipPrintPlaceholder']
   const openProductQrPrintPlaceholder: typeof import('./src/utils/printProductQrs')['openProductQrPrintPlaceholder']
   const openProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['openProductQrPrintWindow']
   const openSummaryPrintPlaceholder: typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']
   const openUnitQrPrintPlaceholder: typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
+  const parsePayrollCurrencyInput: typeof import('./src/utils/payrollDisplay')['parsePayrollCurrencyInput']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
   const payrollReviewFilterChips: typeof import('./src/utils/payrollDisplay')['payrollReviewFilterChips']
@@ -205,6 +209,7 @@ declare global {
   const pickCourseSelectionForSku: typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const printAttendanceSummaries: typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']
+  const printPayrollSlip: typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']
   const printProductQrs: typeof import('./src/utils/printProductQrs')['printProductQrs']
   const printUnitQrs: typeof import('./src/utils/printUnitQrs')['printUnitQrs']
   const provide: typeof import('vue')['provide']
@@ -225,6 +230,7 @@ declare global {
   const regexValidator: typeof import('./src/@core/utils/validators')['regexValidator']
   const registerPlugins: typeof import('./src/@core/utils/plugins')['registerPlugins']
   const removeDetailPhotoRow: typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']
+  const renderPayrollSlipPrintWindow: typeof import('./src/utils/printPayrollSlip')['renderPayrollSlipPrintWindow']
   const renderProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['renderProductQrPrintWindow']
   const renderSummaryPrintWindow: typeof import('./src/utils/printAttendanceSummaries')['renderSummaryPrintWindow']
   const renderUnitQrPrintWindow: typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']
@@ -598,7 +604,9 @@ declare module 'vue' {
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
+    readonly formatPayrollChequeNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']>
     readonly formatPayrollCurrency: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollCurrency']>
+    readonly formatPayrollDashAmount: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollDashAmount']>
     readonly formatPayrollGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatPayrollGenerateMessage']>
     readonly formatPayrollHours: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollHours']>
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
@@ -680,9 +688,11 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly openPayrollSlipPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['openPayrollSlipPrintPlaceholder']>
     readonly openSummaryPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']>
     readonly openUnitQrPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
+    readonly parsePayrollCurrencyInput: UnwrapRef<typeof import('./src/utils/payrollDisplay')['parsePayrollCurrencyInput']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly payrollReviewFilterChips: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollReviewFilterChips']>
@@ -692,6 +702,7 @@ declare module 'vue' {
     readonly pickCourseSelectionForSku: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly printAttendanceSummaries: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']>
+    readonly printPayrollSlip: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']>
     readonly printUnitQrs: UnwrapRef<typeof import('./src/utils/printUnitQrs')['printUnitQrs']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
@@ -711,6 +722,7 @@ declare module 'vue' {
     readonly regexValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['regexValidator']>
     readonly registerPlugins: UnwrapRef<typeof import('./src/@core/utils/plugins')['registerPlugins']>
     readonly removeDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']>
+    readonly renderPayrollSlipPrintWindow: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['renderPayrollSlipPrintWindow']>
     readonly renderSummaryPrintWindow: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['renderSummaryPrintWindow']>
     readonly renderUnitQrPrintWindow: UnwrapRef<typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>

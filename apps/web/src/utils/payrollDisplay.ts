@@ -63,3 +63,26 @@ export function formatPayrollCurrency(n: number | null | undefined) {
     maximumFractionDigits: 2,
   })
 }
+
+export function formatPayrollDashAmount(n: number | null | undefined) {
+  const value = Number.isFinite(n) ? Number(n) : 0
+  if (value === 0)
+    return '-'
+
+  return formatPayrollCurrency(value)
+}
+
+export function formatPayrollChequeNumber(value: string | null | undefined) {
+  const text = (value ?? '').trim()
+
+  return text || '—'
+}
+
+export function parsePayrollCurrencyInput(display: string | number | null | undefined) {
+  const s = String(display ?? '').replace(/,/g, '').trim()
+  if (s === '' || s === '-' || s === '.' || s === '-.')
+    return 0
+  const n = Number(s)
+
+  return Number.isFinite(n) ? n : 0
+}

@@ -38,6 +38,9 @@ class PayrollRecordCreate(BaseModel):
     adjustment_2_remark: str | None = None
     gross_pay: float = Field(default=0.0, ge=0)
     net_pay: float = Field(default=0.0, ge=0)
+    cheque_number: str | None = Field(default=None, max_length=50)
+    cheque_amount: float = Field(default=0.0, ge=0)
+    cash_amount: float = Field(default=0.0, ge=0)
     status: str = Field(default=PayrollStatus.draft.value)
     payroll_notes: str | None = None
     calculation_method: str = Field(default="standard", max_length=50)
@@ -56,6 +59,9 @@ class PayrollRecordUpdate(BaseModel):
     adjustment_2_remark: str | None = None
     gross_pay: float | None = None
     net_pay: float | None = None
+    cheque_number: str | None = Field(default=None, max_length=50)
+    cheque_amount: float | None = Field(default=None, ge=0)
+    cash_amount: float | None = Field(default=None, ge=0)
 
 
 class PayrollRecordStatsOut(BaseModel):
@@ -97,6 +103,9 @@ class PayrollRecordOut(BaseModel):
     adjustment_2_remark: str | None = None
     gross_pay: float
     net_pay: float
+    cheque_number: str | None = None
+    cheque_amount: float = 0.0
+    cash_amount: float = 0.0
     status: str
     calculation_date: datetime
     approval_date: datetime | None = None
