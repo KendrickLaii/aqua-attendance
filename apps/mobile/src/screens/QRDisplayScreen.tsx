@@ -4,6 +4,7 @@ import LanguagePicker from '../components/LanguagePicker';
 import Badge from '../components/ui/Badge';
 import Card from '../components/ui/Card';
 import { useI18n } from '../i18n/I18nContext';
+import { APP_DIAGNOSTICS } from '../services/api';
 import type { User } from '../services/auth';
 import { colors, layout, spacing, typography } from '../theme';
 
@@ -63,6 +64,19 @@ export default function HelpScreen({ user }: Props) {
       <Card style={styles.langCard}>
         <LanguagePicker />
       </Card>
+
+      <Text style={styles.sectionTitle}>{t('diagnostics.title')}</Text>
+      <Card padded>
+        <Text style={styles.diagnosticText} selectable>
+          {t('diagnostics.version', { version: APP_DIAGNOSTICS.version, build: APP_DIAGNOSTICS.build })}
+        </Text>
+        <Text style={styles.diagnosticText} selectable>
+          {t('diagnostics.environment', { environment: APP_DIAGNOSTICS.environment })}
+        </Text>
+        <Text style={styles.diagnosticText} selectable>
+          {t('diagnostics.api', { api: APP_DIAGNOSTICS.apiHost })}
+        </Text>
+      </Card>
     </ScrollView>
   );
 }
@@ -103,5 +117,6 @@ const styles = StyleSheet.create({
   stepNumAlt: { backgroundColor: colors.primaryMuted },
   stepNumText: { fontSize: 14, fontWeight: '700', color: colors.primary },
   stepBody: { ...typography.body, flex: 1, paddingTop: 2 },
-  langCard: { marginTop: spacing.md },
+  langCard: { marginTop: spacing.md, marginBottom: spacing.xxl },
+  diagnosticText: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.xs },
 });

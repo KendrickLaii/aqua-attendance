@@ -380,6 +380,7 @@ let rosterRequestId = 0
 
 const rosterSku = computed(() => skus.value.find(k => k.id === rosterSkuId.value) ?? null)
 const activeRosterCount = computed(() => enrollments.value.filter(e => e.status === 'active').length)
+
 const rosterAtCapacity = computed(() => {
   const cap = rosterSku.value?.capacity
   if (cap == null)
@@ -387,6 +388,7 @@ const rosterAtCapacity = computed(() => {
 
   return activeRosterCount.value >= cap
 })
+
 const rosterEditingId = ref<string | null>(null)
 
 function formatRosterDate(value: string | null | undefined, empty = '—'): string {
@@ -760,7 +762,9 @@ const enrollmentStatusColor: Record<string, string> = {
               <thead>
                 <tr>
                   <th>Code</th>
-                  <th>Name</th>
+                  <th style="min-width: 8rem;">
+                    Name
+                  </th>
                   <th>Subject</th>
                   <th />
                 </tr>
@@ -774,7 +778,7 @@ const enrollmentStatusColor: Record<string, string> = {
                   @click="selectedSpuId = spu.id"
                 >
                   <td>{{ spu.code }}</td>
-                  <td>
+                  <td class="text-no-wrap">
                     {{ spu.name_zh }}
                     <VChip
                       v-if="!spu.is_active"
@@ -854,20 +858,20 @@ const enrollmentStatusColor: Record<string, string> = {
             <VTable
               density="compact"
               hover
+              class="offerings-table"
             >
               <thead>
                 <tr>
                   <th>Code</th>
-                  <th>Name</th>
-                  <th>Level</th>
+                  <th style="min-width: 10rem;">
+                    Name
+                  </th>
                   <th>Schedule</th>
-                  <th>Location</th>
                   <th>Billing</th>
-                  <th>Days</th>
                   <th class="text-end">
                     Price
                   </th>
-                  <th />
+                  <th class="text-end" />
                 </tr>
               </thead>
               <tbody>
@@ -879,7 +883,7 @@ const enrollmentStatusColor: Record<string, string> = {
                   @click="rosterSkuId = sku.id"
                 >
                   <td>{{ sku.code }}</td>
-                  <td>
+                  <td class="text-no-wrap">
                     {{ sku.name_zh }}
                     <VChip
                       v-if="!sku.is_active"
@@ -889,16 +893,24 @@ const enrollmentStatusColor: Record<string, string> = {
                     >
                       inactive
                     </VChip>
+                    <div class="text-caption text-medium-emphasis">
+                      {{ [sku.level, meetingDaysLabel(sku.meeting_weekdays)].filter(v => v && v !== '—').join(' · ') || '—' }}
+                    </div>
                   </td>
-                  <td>{{ sku.level ?? '—' }}</td>
-                  <td>{{ sku.schedule_note ?? '—' }}</td>
-                  <td>{{ locationName(sku.location_id) }}</td>
+                  <td>
+                    {{ sku.schedule_note ?? '—' }}
+                    <div
+                      v-if="sku.location_id"
+                      class="text-caption text-medium-emphasis"
+                    >
+                      {{ locationName(sku.location_id) }}
+                    </div>
+                  </td>
                   <td>{{ billingUnitLabel(sku.billing_unit ?? 'monthly') }}</td>
-                  <td>{{ meetingDaysLabel(sku.meeting_weekdays) }}</td>
                   <td class="text-end">
                     {{ sku.price != null ? sku.price : '—' }}
                   </td>
-                  <td class="text-end">
+                  <td class="text-end col-actions">
                     <VBtn
                       icon
                       size="x-small"
@@ -926,7 +938,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 </tr>
                 <tr v-if="selectedSpuId && skusForSelectedSpu.length === 0">
                   <td
-                    colspan="9"
+                    colspan="6"
                     class="text-center text-medium-emphasis py-6"
                   >
                     No class offerings yet for this course.
@@ -1474,7 +1486,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 v-model="skuForm.schedule_note"
                 label="Time note"
                 placeholder="Tue 18:00–19:30"
-                hint="For staff display only. Billing uses class days below, not this text."
+                hint="For staff display only. Not used for billing."
                 persistent-hint
                 density="comfortable"
               />
@@ -1486,7 +1498,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 item-title="title"
                 item-value="id"
                 label="Campus"
-                hint="堂費 matches scans at this location. Leave empty to count any campus."
+                hint="Display only. Invoices filter by each student's registered campus, not this."
                 persistent-hint
                 density="comfortable"
                 clearable
@@ -1603,3 +1615,14 @@ const enrollmentStatusColor: Record<string, string> = {
     </AttendanceConfirmDialog>
   </VContainer>
 </template>
+
+<style scoped>
+:deep(tr.bg-primary-lighten-5) td {
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.offerings-table :deep(.col-actions) {
+  white-space: nowrap;
+  width: 1%;
+}
+</style>

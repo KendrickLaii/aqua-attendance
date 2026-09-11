@@ -1,7 +1,24 @@
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { deleteItemAsync, getItemAsync, setItemAsync } from './storage';
 
 const API_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api').trim();
+const API_TIMEOUT_MS = 15_000;
+
+const apiHost = (() => {
+  try {
+    return new URL(API_URL).host;
+  } catch {
+    return API_URL;
+  }
+})();
+
+const APP_DIAGNOSTICS = {
+  version: Constants.expoConfig?.version || 'unknown',
+  build: String(Constants.expoConfig?.android?.versionCode || Constants.expoConfig?.ios?.buildNumber || 'dev'),
+  environment: API_URL.includes('3.114.114.143') ? 'UAT' : API_URL.includes('57.180.114.85') ? 'Production' : 'Development',
+  apiHost,
+};
 
 function networkErrorHint(): string {
   const u = API_URL.toLowerCase();
@@ -44,35 +61,49 @@ async function clearTokens(): Promise<void> {
   await deleteItemAsync('userData');
 }
 
-let refreshing: Promise<boolean> | null = null;
+type RefreshResult = 'refreshed' | 'expired' | 'unavailable';
+
+let refreshing: Promise<RefreshResult> | null = null;
+
+async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 /**
  * Single-flight token refresh. Concurrent 401s share one /auth/refresh call so
  * the server's consume-once rotation doesn't invalidate parallel refreshes and
- * force a spurious logout. Returns true if a fresh access token is now stored.
+ * force a spurious logout.
  */
-async function refreshAccessToken(): Promise<boolean> {
+async function refreshAccessToken(): Promise<RefreshResult> {
   if (refreshing) return refreshing;
 
-  refreshing = (async (): Promise<boolean> => {
+  refreshing = (async (): Promise<RefreshResult> => {
     const refreshToken = await getItemAsync('refreshToken');
-    if (!refreshToken) return false;
+    if (!refreshToken) return 'expired';
     try {
-      const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+      const refreshRes = await fetchWithTimeout(`${API_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!refreshRes.ok) {
-        await clearTokens();
-        return false;
+        if ([400, 401, 403].includes(refreshRes.status)) {
+          await clearTokens();
+          return 'expired';
+        }
+        return 'unavailable';
       }
       const data = await refreshRes.json();
       await setTokens(data.access_token, data.refresh_token);
-      return true;
+      return 'refreshed';
     } catch {
-      await clearTokens();
-      return false;
+      return 'unavailable';
     }
   })();
 
@@ -92,6 +123,13 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.detail = detail;
+  }
+}
+
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired. Please sign in again.');
+    this.name = 'SessionExpiredError';
   }
 }
 
@@ -131,17 +169,22 @@ async function _rawRequest(
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+    res = await fetchWithTimeout(`${API_URL}${path}`, { ...options, headers });
   } catch {
     throw new Error(`Cannot reach API at ${API_URL}. ${networkErrorHint()}`);
   }
 
   if (res.status === 401 && !isAuthPath(path)) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed) {
+    const refreshResult = await refreshAccessToken();
+    if (refreshResult === 'refreshed') {
       const newToken = await getToken();
       if (newToken) headers.Authorization = `Bearer ${newToken}`;
-      const retry = await fetch(`${API_URL}${path}`, { ...options, headers });
+      let retry: Response;
+      try {
+        retry = await fetchWithTimeout(`${API_URL}${path}`, { ...options, headers });
+      } catch {
+        throw new Error(`Cannot reach API at ${API_URL}. ${networkErrorHint()}`);
+      }
       if (!retry.ok) {
         const parsed = await parseErrorBody(retry);
         const friendly = retry.status === 429
@@ -151,8 +194,11 @@ async function _rawRequest(
       }
       return { body: retry.status === 204 ? undefined : await retry.json(), status: retry.status, headers: retry.headers };
     }
+    if (refreshResult === 'unavailable') {
+      throw new Error(`Cannot refresh session because the API is unavailable. ${networkErrorHint()}`);
+    }
     onUnauthorized?.();
-    throw new Error('Session expired. Please sign in again.');
+    throw new SessionExpiredError();
   }
 
   if (!res.ok) {
@@ -181,4 +227,4 @@ export async function apiRequestWithHeaders<T = unknown>(
   return { data: r.body as T, headers: r.headers };
 }
 
-export { apiRequest, setTokens, clearTokens, getToken, API_URL };
+export { apiRequest, setTokens, clearTokens, getToken, API_URL, APP_DIAGNOSTICS };

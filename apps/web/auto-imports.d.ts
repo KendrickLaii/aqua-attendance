@@ -136,6 +136,7 @@ declare global {
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
   const internalEmailValidator: typeof import('./src/@core/utils/validators')['internalEmailValidator']
+  const invoiceMonthLabel: typeof import('./src/utils/printTuitionInvoice')['invoiceMonthLabel']
   const isAttendanceLoggedIn: typeof import('./src/utils/attendanceSession')['isAttendanceLoggedIn']
   const isAutoCheckoutDayNotes: typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutDayNotes']
   const isAutoCheckoutSource: typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSource']
@@ -197,6 +198,7 @@ declare global {
   const openProductQrPrintPlaceholder: typeof import('./src/utils/printProductQrs')['openProductQrPrintPlaceholder']
   const openProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['openProductQrPrintWindow']
   const openSummaryPrintPlaceholder: typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']
+  const openTuitionInvoicePrintPlaceholder: typeof import('./src/utils/printTuitionInvoice')['openTuitionInvoicePrintPlaceholder']
   const openUnitQrPrintPlaceholder: typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
   const parsePayrollCurrencyInput: typeof import('./src/utils/payrollDisplay')['parsePayrollCurrencyInput']
@@ -211,6 +213,7 @@ declare global {
   const printAttendanceSummaries: typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']
   const printPayrollSlip: typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']
   const printProductQrs: typeof import('./src/utils/printProductQrs')['printProductQrs']
+  const printTuitionInvoice: typeof import('./src/utils/printTuitionInvoice')['printTuitionInvoice']
   const printUnitQrs: typeof import('./src/utils/printUnitQrs')['printUnitQrs']
   const provide: typeof import('vue')['provide']
   const provideLocal: typeof import('@vueuse/core')['provideLocal']
@@ -233,6 +236,7 @@ declare global {
   const renderPayrollSlipPrintWindow: typeof import('./src/utils/printPayrollSlip')['renderPayrollSlipPrintWindow']
   const renderProductQrPrintWindow: typeof import('./src/utils/printProductQrs')['renderProductQrPrintWindow']
   const renderSummaryPrintWindow: typeof import('./src/utils/printAttendanceSummaries')['renderSummaryPrintWindow']
+  const renderTuitionInvoicePrintWindow: typeof import('./src/utils/printTuitionInvoice')['renderTuitionInvoicePrintWindow']
   const renderUnitQrPrintWindow: typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
@@ -272,6 +276,7 @@ declare global {
   const tryOnMounted: typeof import('@vueuse/core')['tryOnMounted']
   const tryOnScopeDispose: typeof import('@vueuse/core')['tryOnScopeDispose']
   const tryOnUnmounted: typeof import('@vueuse/core')['tryOnUnmounted']
+  const tuitionInvoicePrintData: typeof import('./src/utils/printTuitionInvoice')['tuitionInvoicePrintData']
   const typeColor: typeof import('./src/utils/summaryDisplay')['typeColor']
   const typeLabel: typeof import('./src/utils/summaryDisplay')['typeLabel']
   const unitTypeOptions: typeof import('./src/utils/summaryDisplay')['unitTypeOptions']
@@ -631,6 +636,7 @@ declare module 'vue' {
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
     readonly internalEmailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['internalEmailValidator']>
+    readonly invoiceMonthLabel: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['invoiceMonthLabel']>
     readonly isAttendanceLoggedIn: UnwrapRef<typeof import('./src/utils/attendanceSession')['isAttendanceLoggedIn']>
     readonly isAutoCheckoutDayNotes: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutDayNotes']>
     readonly isAutoCheckoutSource: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSource']>
@@ -690,6 +696,7 @@ declare module 'vue' {
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
     readonly openPayrollSlipPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['openPayrollSlipPrintPlaceholder']>
     readonly openSummaryPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']>
+    readonly openTuitionInvoicePrintPlaceholder: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['openTuitionInvoicePrintPlaceholder']>
     readonly openUnitQrPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
     readonly parsePayrollCurrencyInput: UnwrapRef<typeof import('./src/utils/payrollDisplay')['parsePayrollCurrencyInput']>
@@ -703,6 +710,7 @@ declare module 'vue' {
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly printAttendanceSummaries: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']>
     readonly printPayrollSlip: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']>
+    readonly printTuitionInvoice: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['printTuitionInvoice']>
     readonly printUnitQrs: UnwrapRef<typeof import('./src/utils/printUnitQrs')['printUnitQrs']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
@@ -724,6 +732,7 @@ declare module 'vue' {
     readonly removeDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['removeDetailPhotoRow']>
     readonly renderPayrollSlipPrintWindow: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['renderPayrollSlipPrintWindow']>
     readonly renderSummaryPrintWindow: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['renderSummaryPrintWindow']>
+    readonly renderTuitionInvoicePrintWindow: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['renderTuitionInvoicePrintWindow']>
     readonly renderUnitQrPrintWindow: UnwrapRef<typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
@@ -763,6 +772,7 @@ declare module 'vue' {
     readonly tryOnMounted: UnwrapRef<typeof import('@vueuse/core')['tryOnMounted']>
     readonly tryOnScopeDispose: UnwrapRef<typeof import('@vueuse/core')['tryOnScopeDispose']>
     readonly tryOnUnmounted: UnwrapRef<typeof import('@vueuse/core')['tryOnUnmounted']>
+    readonly tuitionInvoicePrintData: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['tuitionInvoicePrintData']>
     readonly typeColor: UnwrapRef<typeof import('./src/utils/summaryDisplay')['typeColor']>
     readonly typeLabel: UnwrapRef<typeof import('./src/utils/summaryDisplay')['typeLabel']>
     readonly unitTypeOptions: UnwrapRef<typeof import('./src/utils/summaryDisplay')['unitTypeOptions']>

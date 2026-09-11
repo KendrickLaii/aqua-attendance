@@ -34,6 +34,8 @@ class TuitionInvoiceOut(BaseModel):
     status: TuitionInvoiceStatusLiteral
     total: float
     notes: str | None = None
+    invoice_no: str | None = None
+    issued_at: datetime | None = None
     lines: list[TuitionInvoiceLineOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
@@ -44,6 +46,7 @@ class TuitionInvoiceOut(BaseModel):
 class TuitionInvoiceUpdate(BaseModel):
     status: TuitionInvoiceStatusLiteral | None = None
     notes: str | None = None
+    invoice_no: str | None = Field(default=None, max_length=50)
 
 
 class TuitionInvoiceGenerateResult(BaseModel):

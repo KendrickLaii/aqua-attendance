@@ -30,6 +30,8 @@ class TuitionInvoice(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=TuitionInvoiceStatus.draft.value)
     total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    invoice_no: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export type TuitionInvoiceStatus = 'draft' | 'issued' | 'paid' | 'void'
 
@@ -27,6 +27,8 @@ export interface TuitionInvoice {
   status: TuitionInvoiceStatus
   total: number
   notes: string | null
+  invoice_no: string | null
+  issued_at: string | null
   lines: TuitionInvoiceLine[]
   created_at: string
   updated_at: string
@@ -43,6 +45,7 @@ export async function listTuitionInvoicesWithTotal(params?: {
   year?: number
   month?: number
   status?: string
+  location_id?: string
   page?: number
   page_size?: number
 }): Promise<AttendanceListResult<TuitionInvoice>> {
@@ -53,13 +56,16 @@ export async function listAllTuitionInvoices(params: {
   year: number
   month: number
   status?: string
+  location_id?: string
 }): Promise<AttendanceListResult<TuitionInvoice>> {
   const pageSize = 200
+
   const first = await listTuitionInvoicesWithTotal({
     ...params,
     page: 1,
     page_size: pageSize,
   })
+
   const items = [...first.items]
   const total = first.total
   let page = 2
@@ -69,11 +75,13 @@ export async function listAllTuitionInvoices(params: {
       page,
       page_size: pageSize,
     })
+
     if (next.items.length === 0)
       break
     items.push(...next.items)
     page += 1
   }
+
   return { items, total }
 }
 
@@ -82,6 +90,7 @@ export async function generateTuitionInvoices(
   month: number,
 ): Promise<TuitionInvoiceGenerateResult> {
   const params = new URLSearchParams()
+
   params.set('year', String(year))
   params.set('month', String(month))
 
@@ -90,7 +99,7 @@ export async function generateTuitionInvoices(
 
 export async function updateTuitionInvoice(
   invoiceId: string,
-  payload: { status?: TuitionInvoiceStatus; notes?: string | null },
+  payload: { status?: TuitionInvoiceStatus; notes?: string | null; invoice_no?: string | null },
 ): Promise<TuitionInvoice> {
   return await $attendanceApi(`/tuition-invoices/${invoiceId}`, { method: 'PATCH', body: payload })
 }

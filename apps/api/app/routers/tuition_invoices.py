@@ -1,6 +1,6 @@
 import calendar
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceStatus
+from app.models.unit import Unit
 from app.schemas.tuition_invoice import (
     TuitionInvoiceGenerateResult,
     TuitionInvoiceOut,
@@ -49,6 +50,7 @@ async def list_tuition_invoices(
     year: int | None = None,
     month: int | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
+    location_id: uuid.UUID | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[TuitionInvoiceOut]:
@@ -65,6 +67,10 @@ async def list_tuition_invoices(
 
     count_q = select(func.count()).select_from(TuitionInvoice)
     q = select(TuitionInvoice).options(*_INVOICE_LOAD)
+    if location_id is not None:
+        count_q = count_q.join(Unit, TuitionInvoice.unit_id == Unit.id)
+        q = q.join(Unit, TuitionInvoice.unit_id == Unit.id)
+        clauses.append(Unit.registered_location_id == location_id)
     if clauses:
         count_q = count_q.where(*clauses)
         q = q.where(*clauses)
@@ -140,8 +146,13 @@ async def update_tuition_invoice(
                 detail=f"Cannot change invoice status from '{invoice.status}' to '{new_status}'",
             )
 
+    if "invoice_no" in update_data and isinstance(update_data["invoice_no"], str):
+        update_data["invoice_no"] = update_data["invoice_no"].strip() or None
+
     for field, value in update_data.items():
         setattr(invoice, field, value)
+    if new_status == TuitionInvoiceStatus.issued.value:
+        invoice.issued_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(invoice)
     result = await db.execute(

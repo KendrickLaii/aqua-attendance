@@ -14,7 +14,7 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Field from '../components/ui/Field';
 import { useI18n } from '../i18n/I18nContext';
-import { API_URL } from '../services/api';
+import { API_URL, APP_DIAGNOSTICS } from '../services/api';
 import { login, type User } from '../services/auth';
 import { colors, layout, spacing, typography } from '../theme';
 
@@ -93,6 +93,14 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
           {/* <Text style={styles.apiHint} selectable>
             API: {API_URL}
           </Text> */}
+          <Text style={styles.apiHint} selectable>
+            {t('diagnostics.summary', {
+              version: APP_DIAGNOSTICS.version,
+              build: APP_DIAGNOSTICS.build,
+              environment: APP_DIAGNOSTICS.environment,
+              api: APP_DIAGNOSTICS.apiHost,
+            })}
+          </Text>
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>

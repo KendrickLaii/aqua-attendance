@@ -16,6 +16,13 @@ export const en = {
     signIn: 'Sign In',
     failed: 'Login failed',
   },
+  diagnostics: {
+    title: 'App information',
+    summary: 'v{{version}} ({{build}}) · {{environment}} · {{api}}',
+    version: 'Version: {{version}} (build {{build}})',
+    environment: 'Environment: {{environment}}',
+    api: 'API: {{api}}',
+  },
   tabs: {
     help: 'Help',
     scan: 'Scan',

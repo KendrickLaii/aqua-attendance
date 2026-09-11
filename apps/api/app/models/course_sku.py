@@ -13,7 +13,7 @@ class CourseSku(Base):
     Belongs to one CourseSpu (subject). Carries the variable attributes a
     student actually picks: level, schedule, location, capacity, price,
     billing_unit (monthly 月費 or per_session 堂費), and meeting_weekdays
-    (used to count 堂費 sessions in a billing month).
+    (roster display only — billing uses enrollment purchased_quantity).
     """
 
     __tablename__ = "course_skus"

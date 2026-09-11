@@ -18,6 +18,13 @@ export const zhHant = {
     signIn: '登入',
     failed: '登入失敗',
   },
+  diagnostics: {
+    title: 'App 資訊',
+    summary: 'v{{version}} ({{build}}) · {{environment}} · {{api}}',
+    version: '版本：{{version}}（build {{build}}）',
+    environment: '環境：{{environment}}',
+    api: 'API：{{api}}',
+  },
   tabs: {
     help: '說明',
     scan: '掃描',

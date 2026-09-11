@@ -11,9 +11,9 @@ import LoginScreen from './src/screens/LoginScreen';
 
 import AppNavigator from './src/navigation/AppNavigator';
 
-import { getMe, logout, type User } from './src/services/auth';
+import { getMe, getSavedUser, logout, type User } from './src/services/auth';
 
-import { clearTokens, getToken, setOnUnauthorized } from './src/services/api';
+import { clearTokens, getToken, SessionExpiredError, setOnUnauthorized } from './src/services/api';
 
 import { setItemAsync } from './src/services/storage';
 
@@ -50,11 +50,21 @@ function AppRoot() {
 
       setUser(me);
 
-    } catch {
+    } catch (error: unknown) {
 
-      await clearTokens();
+      if (error instanceof SessionExpiredError) {
 
-      setUser(null);
+        await clearTokens();
+
+        setUser(null);
+
+        return;
+
+      }
+
+      const savedUser = await getSavedUser();
+
+      setUser(savedUser);
 
     }
 
