@@ -44,6 +44,8 @@ const skusForSelectedSpu = computed(() => skus.value.filter(k => k.spu_id === se
 
 const locationName = (id: string | null) => locations.value.find(l => l.id === id)?.name_en ?? '—'
 
+const spuName = (id: string | null | undefined) => spus.value.find(s => s.id === id)?.name_zh ?? ''
+
 const billingUnitOptions: { title: string; value: BillingUnit }[] = [
   { title: 'Monthly (月費)', value: 'monthly' },
   { title: 'Per session (堂費)', value: 'per_session' },
@@ -371,6 +373,9 @@ const enrollEndDate = ref('')
 const enrollPurchasedQuantity = ref<number | null>(null)
 const enrolling = ref(false)
 const enrollError = ref('')
+const enrollSuccess = ref('')
+
+useAutoClearAlerts(enrollSuccess)
 
 const enrollments = ref<CourseEnrollment[]>([])
 const enrollmentsLoading = ref(false)
@@ -541,6 +546,10 @@ watch(skusForSelectedSpu, list => {
 watch(rosterSkuId, id => {
   enrollError.value = ''
   rosterEditingId.value = null
+
+  const sku = skus.value.find(k => k.id === id)
+  if (sku && sku.spu_id !== selectedSpuId.value)
+    selectedSpuId.value = sku.spu_id
   loadRoster(id)
 })
 
@@ -562,9 +571,22 @@ function enrollNeedsPurchasedQuantity() {
   return rosterSku.value?.billing_unit === 'per_session'
 }
 
+const classOptions = computed(() =>
+  skus.value.map(k => ({ ...k, title: `${k.code} · ${k.name_zh}` })),
+)
+
+const activeRosterUnitIds = computed(
+  () => new Set(enrollments.value.filter(e => e.status === 'active').map(e => e.unit_id)),
+)
+
 async function enrollStudent() {
   if (!selectedStudentId.value || !rosterSkuId.value || rosterSku.value?.is_active === false || rosterAtCapacity.value)
     return
+  if (activeRosterUnitIds.value.has(selectedStudentId.value)) {
+    enrollError.value = 'This student is already enrolled in this class.'
+
+    return
+  }
   if (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity.value) {
     enrollError.value = 'Enter how many sessions this student purchased.'
 
@@ -600,6 +622,7 @@ async function enrollStudent() {
     if (picked)
       cacheStudents([picked])
 
+    enrollSuccess.value = `${picked?.full_name ?? 'Student'} enrolled in ${rosterSku.value?.name_zh ?? 'class'}.`
     selectedStudentId.value = null
     studentSearch.value = ''
     enrollStartDate.value = ''
@@ -1034,28 +1057,42 @@ const enrollmentStatusColor: Record<string, string> = {
                   cols="12"
                   md="6"
                 >
-                  <VSelect
+                  <VAutocomplete
                     v-model="rosterSkuId"
-                    :items="skusForSelectedSpu"
-                    item-title="name_zh"
+                    :items="classOptions"
+                    item-title="title"
                     item-value="id"
                     label="Class"
-                    placeholder="Select a class"
+                    placeholder="Search class code or name"
+                    prepend-inner-icon="ri-search-line"
                     density="comfortable"
                     hide-details
-                    :disabled="skusForSelectedSpu.length === 0"
+                    clearable
+                    :disabled="classOptions.length === 0"
                   >
                     <template #item="{ props: itemProps, item }">
                       <VListItem
                         v-bind="itemProps"
                         :title="`${item.raw.code} · ${item.raw.name_zh}`"
-                        :subtitle="`${billingUnitLabel(item.raw.billing_unit ?? 'monthly')} · ${rosterPriceLabel(item.raw)}`"
-                      />
+                        :subtitle="`${spuName(item.raw.spu_id)} · ${billingUnitLabel(item.raw.billing_unit ?? 'monthly')} · ${rosterPriceLabel(item.raw)}`"
+                      >
+                        <template
+                          v-if="!item.raw.is_active"
+                          #append
+                        >
+                          <VChip
+                            size="x-small"
+                            color="grey"
+                          >
+                            inactive
+                          </VChip>
+                        </template>
+                      </VListItem>
                     </template>
                     <template #selection="{ item }">
                       {{ item.raw.code }} · {{ item.raw.name_zh }}
                     </template>
-                  </VSelect>
+                  </VAutocomplete>
                 </VCol>
                 <VCol
                   cols="12"
@@ -1081,7 +1118,20 @@ const enrollmentStatusColor: Record<string, string> = {
                       <VListItem
                         v-bind="itemProps"
                         :subtitle="item.raw.code"
-                      />
+                      >
+                        <template
+                          v-if="activeRosterUnitIds.has(item.raw.id)"
+                          #append
+                        >
+                          <VChip
+                            size="x-small"
+                            variant="tonal"
+                            color="success"
+                          >
+                            in roster
+                          </VChip>
+                        </template>
+                      </VListItem>
                     </template>
                   </VAutocomplete>
                 </VCol>
@@ -1123,7 +1173,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 >
                   <VTextField
                     v-model.number="enrollPurchasedQuantity"
-                    label="Sessions purchased"
+                    label="Sessions purchased (billed once)"
                     type="number"
                     min="1"
                     density="comfortable"
@@ -1159,6 +1209,17 @@ const enrollmentStatusColor: Record<string, string> = {
                 @click:close="enrollError = ''"
               >
                 {{ enrollError }}
+              </VAlert>
+              <VAlert
+                v-if="enrollSuccess"
+                type="success"
+                variant="tonal"
+                density="compact"
+                class="mt-3"
+                closable
+                @click:close="enrollSuccess = ''"
+              >
+                {{ enrollSuccess }}
               </VAlert>
 
               <div

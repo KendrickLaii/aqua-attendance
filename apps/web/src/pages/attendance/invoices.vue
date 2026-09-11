@@ -502,6 +502,11 @@ function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
+function clearFilters() {
+  searchQuery.value = ''
+  statusFilter.value = 'all'
+}
+
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
@@ -566,22 +571,11 @@ watch(yearMonth, () => {
         >
           <VIcon>ri-arrow-right-s-line</VIcon>
         </VBtn>
-        <VSelect
-          v-model="locationId"
-          :items="locationOptions"
-          label="Location"
-          density="compact"
-          hide-details
-          clearable
-          style="max-width: 180px; min-width: 150px;"
-        />
-        <VBtn
-          variant="tonal"
-          prepend-icon="ri-printer-line"
-          @click="openManualInvoice"
-        >
-          Manual invoice
-        </VBtn>
+      </VCol>
+    </VRow>
+
+    <div class="d-flex flex-wrap align-center justify-space-between gap-3 mb-4">
+      <div class="d-flex flex-wrap align-center gap-2">
         <VBtn
           color="primary"
           prepend-icon="ri-magic-line"
@@ -591,8 +585,24 @@ watch(yearMonth, () => {
         >
           Generate
         </VBtn>
-      </VCol>
-    </VRow>
+        <VBtn
+          variant="tonal"
+          prepend-icon="ri-printer-line"
+          @click="openManualInvoice"
+        >
+          Manual invoice
+        </VBtn>
+      </div>
+      <VSelect
+        v-model="locationId"
+        :items="locationOptions"
+        label="Location"
+        density="compact"
+        hide-details
+        clearable
+        style="max-width: 200px; min-width: 160px;"
+      />
+    </div>
 
     <VAlert
       v-if="loadError"
@@ -630,6 +640,47 @@ watch(yearMonth, () => {
       :cards="statCards"
     />
 
+    <div class="d-flex flex-wrap align-center justify-space-between gap-3 mb-4">
+      <VChipGroup
+        v-model="statusFilter"
+        mandatory
+        selected-class="text-primary"
+      >
+        <VChip
+          v-for="chip in statusFilters"
+          :key="chip.value"
+          :value="chip.value"
+          size="small"
+          variant="outlined"
+          filter
+        >
+          {{ chip.title }} ({{ statusCounts[chip.value] ?? 0 }})
+        </VChip>
+      </VChipGroup>
+      <div class="d-flex flex-wrap align-center gap-2">
+        <VTextField
+          v-model="searchQuery"
+          label="Search"
+          placeholder="Student, code, invoice no., or class"
+          prepend-inner-icon="ri-search-line"
+          density="compact"
+          hide-details
+          clearable
+          style="min-width: 260px;"
+        />
+        <VBtn
+          icon
+          variant="tonal"
+          size="small"
+          :loading="loading"
+          title="Refresh"
+          @click="loadInvoices"
+        >
+          <VIcon>ri-refresh-line</VIcon>
+        </VBtn>
+      </div>
+    </div>
+
     <VCard>
       <VCardItem>
         <VCardTitle>Bills</VCardTitle>
@@ -639,35 +690,6 @@ watch(yearMonth, () => {
             · Showing {{ filteredInvoices.length }} of {{ invoices.length }}
           </span>
         </VCardSubtitle>
-        <template #append>
-          <div class="d-flex flex-wrap align-center gap-2">
-            <VChipGroup
-              v-model="statusFilter"
-              mandatory
-              selected-class="text-primary"
-            >
-              <VChip
-                v-for="chip in statusFilters"
-                :key="chip.value"
-                :value="chip.value"
-                size="small"
-                variant="outlined"
-                filter
-              >
-                {{ chip.title }} ({{ statusCounts[chip.value] ?? 0 }})
-              </VChip>
-            </VChipGroup>
-            <VTextField
-              v-model="searchQuery"
-              placeholder="Student, code, or class"
-              prepend-inner-icon="ri-search-line"
-              density="compact"
-              hide-details
-              clearable
-              style="min-width: 220px;"
-            />
-          </div>
-        </template>
       </VCardItem>
       <VCardText>
         <VExpansionPanels
@@ -863,6 +885,15 @@ watch(yearMonth, () => {
                 </template>
                 <template v-else>
                   No bills match this search or status.
+                  <div class="mt-2">
+                    <VBtn
+                      size="small"
+                      variant="text"
+                      @click="clearFilters"
+                    >
+                      Clear filters
+                    </VBtn>
+                  </div>
                 </template>
               </td>
             </tr>
