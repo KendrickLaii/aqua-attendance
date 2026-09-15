@@ -14,17 +14,24 @@ export interface TuitionInvoiceLine {
   unit_price: number
   quantity: number
   amount: number
+  month_label: string | null
+  staff_name: string | null
   created_at: string
 }
 
+export type TuitionInvoiceKind = 'tuition' | 'manual'
+
 export interface TuitionInvoice {
   id: string
-  unit_id: string
+  unit_id: string | null
   unit_name: string | null
   unit_code: string | null
+  manual_student_name: string | null
+  location_id: string
   period_start: string
   period_end: string
   status: TuitionInvoiceStatus
+  kind: TuitionInvoiceKind
   total: number
   notes: string | null
   invoice_no: string | null
@@ -95,6 +102,46 @@ export async function generateTuitionInvoices(
   params.set('month', String(month))
 
   return await $attendanceApi(`/tuition-invoices/generate?${params.toString()}`, { method: 'POST' })
+}
+
+export async function getNextInvoiceNo(locationId: string): Promise<number> {
+  const result = await $attendanceApi<{ next_no: number }>(`/tuition-invoices/next-no?location_id=${locationId}`)
+
+  return result.next_no
+}
+
+export async function allocateInvoiceNo(locationId: string): Promise<number> {
+  const result = await $attendanceApi<{ next_no: number }>(
+    `/tuition-invoices/allocate-no?location_id=${locationId}`,
+    { method: 'POST' },
+  )
+
+  return result.next_no
+}
+
+export interface ManualInvoiceLine {
+  month: string
+  course: string
+  fee: number
+  qty: number
+  staff_name?: string | null
+}
+
+export interface ManualInvoicePayload {
+  date: string
+  location_id: string
+  unit_id?: string | null
+  manual_student_name?: string | null
+  invoice_no?: string | null
+  notes?: string | null
+  lines: ManualInvoiceLine[]
+
+  /** Unbilled per-session purchase ids to bill on this invoice. */
+  purchase_ids?: string[]
+}
+
+export async function createManualTuitionInvoice(payload: ManualInvoicePayload): Promise<TuitionInvoice> {
+  return await $attendanceApi('/tuition-invoices/manual', { method: 'POST', body: payload })
 }
 
 export async function updateTuitionInvoice(

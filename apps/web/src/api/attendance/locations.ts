@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export interface LocationDetailPhoto {
   url: string
@@ -8,7 +8,7 @@ export interface LocationDetailPhoto {
 }
 
 /** Structured hours for OT: keyed by weekday full name, or null if closed. */
-export type BusinessHoursDay = { open: string, close: string } | null
+export type BusinessHoursDay = { open: string; close: string } | null
 export type BusinessHours = Record<string, BusinessHoursDay>
 
 export interface LocationItem {
@@ -18,6 +18,7 @@ export interface LocationItem {
   name_en: string
   location_type: string | null
   region: string | null
+
   /** Structured JSON preferred; legacy free-text string still accepted. */
   business_hours: BusinessHours | string | null
   icon_url: string | null

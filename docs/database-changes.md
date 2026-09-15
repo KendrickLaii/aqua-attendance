@@ -21,6 +21,10 @@
 | 13 | 課程資料 SPU/SKU/Enrollment | ✅ 新增 `course_spus`/`course_skus`/`course_enrollments`（2026-08-04）— 見下方「§ 課程資料模型」 |
 | 14 | 學費發票（與 Vuexy `/apps/invoice` 無關） | ✅ 新增 `tuition_invoices`/`tuition_invoice_lines`（2026-08-27）— 計價在 SKU；按月從有效報名產生草稿 — 見下方「§ 學費發票」 |
 | 15 | 堂費改一次性收費 | ✅ 新增 `course_enrollments.purchased_quantity`（2026-09-04，Migration 038）— per_session 不再按出勤∩上課日計算，改用報名時輸入的固定堂數一次性收費 — 見下方「§ 學費發票」 |
+| 16 | 發票編號與列印 | ✅ `tuition_invoices.invoice_no`/`issued_at`（039）＋每中心獨立編號系列 `invoice_counters`＋`tuition_invoices.location_id`（f5d44789754d）；唯一鍵 `(location_id, invoice_no)` |
+| 17 | SKU 指派教師＋學生個別價 | ✅ `course_skus.staff_id`（040）、`course_enrollments.unit_price`（041）— 私補可班無定價、逐學生定價 |
+| 18 | 手動發票 | ✅ `tuition_invoices.kind`/`manual_student_name`、`unit_id` 改可空、`lines.month_label`（71296d8b9d7f）— 文具什費／私補出單可持久化、重印、付款與作廢 |
+| 19 | 堂費購買記錄 | ✅ `enrollment_purchases`（7d340d0ce7de）— 每次購買/top-up 一列（堂數、單價、日期、billed 連結），取代 `purchased_quantity` 作為計費來源；manual invoice 可直接結算未出單購買 |
 
 ## 完整 ER 圖 (Mermaid)
 
@@ -252,7 +256,8 @@ erDiagram
         int capacity "容量"
         numeric price "價格"
         string billing_unit "monthly月費 / per_session堂費"
-        json meeting_weekdays "上課星期 monday–sunday；新建堂費必填；空=舊資料堂費qty 1"
+        json meeting_weekdays "上課星期 monday–sunday；僅供課表顯示"
+        uuid staff_id FK "負責教師 unit（可空）"
         boolean is_active "是否啟用"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
@@ -265,17 +270,33 @@ erDiagram
         date enrolled_at "報名日期"
         date start_date "開始日期"
         date end_date "結束日期"
-        int purchased_quantity "堂費一次性購買堂數；per_session必填，monthly忽略"
+        int purchased_quantity "報名時初始購買堂數（建首條 purchase 的輸入；per_session必填）"
+        numeric unit_price "學生個別價 override；取代 SKU price 計費"
         text notes "備註"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
     }
+    enrollment_purchases {
+        uuid id PK
+        uuid enrollment_id FK "所屬報名"
+        int purchased_quantity "購買堂數"
+        numeric unit_price "該次單價"
+        date purchased_at "購買日期"
+        uuid billed_invoice_line_id FK "已出單行項目（NULL=未出單）"
+        text notes "備註"
+        datetime created_at "建立時間"
+    }
     tuition_invoices {
         uuid id PK
-        uuid unit_id FK "學生 unit"
-        date period_start "帳單期起（該月1日）"
-        date period_end "帳單期迄（該月末日）"
+        uuid unit_id FK "學生 unit（manual 可空）"
+        uuid location_id FK "發單中心（編號系列與列印抬頭）"
+        date period_start "帳單期起；manual=單日"
+        date period_end "帳單期迄；manual=單日"
         string status "draft/issued/paid/void"
+        string kind "tuition / manual"
+        string manual_student_name "walk-in 姓名（kind=manual 用）"
+        string invoice_no "發票編號；(location_id, invoice_no) 唯一"
+        datetime issued_at "發出時間"
         numeric total "行項目加總"
         text notes "備註"
         datetime created_at "建立時間"
@@ -286,13 +307,19 @@ erDiagram
         uuid invoice_id FK "所屬發票"
         uuid enrollment_id FK "報名（可空）"
         uuid sku_id FK "班次（可空）"
-        string sku_code "快照班次代碼"
+        string sku_code "快照班次代碼（manual 行='manual'）"
         string name_zh "快照中文名"
-        string billing_unit "快照 monthly/per_session"
+        string billing_unit "快照 monthly/per_session/manual"
         numeric unit_price "快照單價"
-        numeric quantity "堂費=該月上課日數；月費=1"
+        numeric quantity "月費=1；堂費=購買堂數"
         numeric amount "unit_price × quantity"
+        string month_label "manual 行自填月份標籤"
         datetime created_at "建立時間"
+    }
+    invoice_counters {
+        int id PK
+        uuid location_id FK "所屬中心（一中心一列）"
+        int next_no "下一個可用編號（1–999999）"
     }
 
     users ||--o{ refresh_tokens : "擁有"
@@ -318,9 +345,14 @@ erDiagram
     course_skus ||--o{ course_enrollments : "報名"
     units ||--o{ course_enrollments : "學生報名"
     units ||--o{ tuition_invoices : "學費發票"
+    locations ||--o{ tuition_invoices : "發單中心"
+    locations ||--o{ invoice_counters : "編號系列"
     tuition_invoices ||--o{ tuition_invoice_lines : "行項目"
     course_enrollments ||--o{ tuition_invoice_lines : "來源報名"
+    course_enrollments ||--o{ enrollment_purchases : "購買記錄"
+    tuition_invoice_lines ||--o{ enrollment_purchases : "已結算購買"
     course_skus ||--o{ tuition_invoice_lines : "來源班次"
+    units ||--o{ course_skus : "負責教師"
 ```
 
 ## 課程資料模型（2026-08-04）
@@ -337,7 +369,9 @@ erDiagram
 | 6 | SKU `billing_unit` 掛在班次 | 一班一種收法：`monthly`（月費）或 `per_session`（堂費）。功課輔導與 A1/F5 共用這兩個選項。價錢在 SKU，不在報名列。 |
 | 7 | 報名起迄日參與出賬 | Generate 只收 `status=active` 且與該月日期視窗重疊的報名（`start_date`/`end_date` 可空＝無界）。 |
 | 8 | SKU `meeting_weekdays` 僅供顯示 | 課表參考欄位，所有 `billing_unit` 皆可留空／不影響計費（2026-09-04 起）。 |
-| 9 | 堂費 `quantity` 來自 `purchased_quantity` | per_session 報名時管理員手動輸入固定購買堂數（`course_enrollments.purchased_quantity`），一次性收費，不再依出勤／上課日計算（2026-09-04，Migration 038）。 |
+| 9 | 堂費計費來自 `enrollment_purchases` | 每次購買/top-up 一列（堂數、單價、日期）；Generate／Manual invoice 只出 `billed_invoice_line_id` 為 NULL 的購買，出單後回填連結，可多次購買不重複收（7d340d0ce7de）。`course_enrollments.purchased_quantity` 僅作報名時建首條 purchase 的輸入欄。 |
+| 10 | SKU 可指派教師 | `course_skus.staff_id` 指向 `unit_type='staff'` 的 unit（040），班次表與名冊顯示負責老師。 |
+| 11 | 學生個別價 `unit_price` | `course_enrollments.unit_price`（041）為 per-student 價錢 override：月費班可逐學生定價；私補（無 SKU 價）以此定每堂價。 |
 
 ## 學費發票（2026-08-27）
 
@@ -350,16 +384,25 @@ erDiagram
 | 1 | 計價在 SKU，出賬時快照到行項目 | 之後改 A1 學費不可改寫已出賬月份。行項目寫入 `sku_code`、`name_zh`、`billing_unit`、`unit_price`、`quantity`、`amount`。 |
 | 2 | 一學生一月一張發票 | 唯一約束 `(unit_id, period_start, period_end)`。同一學生該月多班次合併為多行。 |
 | 3 | 草稿可重產、已出賬跳過 | `draft` 重跑 Generate 會替換行項目並重算 `total`；`issued`/`paid` 跳過。`void` 不能用 PATCH 改回 draft。該生該月**仍有有效報名**時，再 Generate 會把 `void` **復活成 `draft`**（唯一約束佔住該月，不能另開一張）。沒有有效報名的 `void` 保留；沒有有效報名的 `draft` 會刪除。 |
-| 4 | 堂費 `quantity` 來自 `purchased_quantity`，一次性收費 | 報名時管理員輸入固定購買堂數；Generate 只在該 enrollment 第一次出現時收費一次（用 `TuitionInvoiceLine.enrollment_id` 查是否已在其他非作廢月份出現過），不再依出勤／上課日計算（2026-09-04，Migration 038，取代舊的 **#M23** 假期扣堂需求，該項目已失效）。若該次發票被作廢（`void`），視為未收過，允許補開。 |
-| 5 | `price` 為空則跳過該報名 | 未定價班次不進發票，避免產生 $0 或錯誤行。 |
+|| 4 | 堂費逐次購買出單 | `enrollment_purchases` 每列為一次購買；出單只取 `billed_invoice_line_id` 為 NULL 或指向作廢/重建中行的購買，`purchased_at` 須不遲於該月末日。發票行建出後回填連結；作廢發票視為未收，允許補開（7d340d0ce7de）。 |
+|| 5 | `price` 為空則跳過該報名 | 未定價班次不進發票，避免產生 $0 或錯誤行。per_session 例外：價錢在 purchase 列，無須 SKU/enrollment 價。 |
+|| 6 | 發票編號每中心獨立系列 | `invoice_counters` 每 `location_id` 一列；派號以獨立 session `UPDATE…RETURNING` 原子遞增，跳過已被手打佔用的號碼；`(location_id, invoice_no)` 唯一。`void` 後復活的發票會清空 `invoice_no`/`issued_at`，再 Issue 派新號，已用號碼永不重用。 |
+|| 7 | 手動發票為真實記錄 | `kind='manual'`、`unit_id` 可空、`manual_student_name` 存 walk-in 姓名；`POST /manual` 建立即 `issued`，可重印／付款／作廢。可帶 `purchase_ids` 直接結算堂費購買（私補主要出單路徑）。`location_id` 必填，決定編號系列與列印抬頭。 |
 
 ### Generate 規則（`POST /api/tuition-invoices/generate?year=&month=`）
 
 - 帳單期 = 該月 1 日～末日。
 - 納入：`course_enrollments.status == active`，且起迄日與該月重疊。
-- 排除：`cancelled`／`completed`、完全落在該月之外、SKU `price` 為空、SKU `is_active=false`。
-- 月費：`quantity = 1`（忽略 `meeting_weekdays`）。堂費：`quantity = purchased_quantity`（報名時輸入，缺值則跳過該行）；同一 enrollment 只收一次，之後月份不重複收，除非該次發票被作廢。
-- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`。已 `paid` 不可再改。`void` 只能靠 Generate 在仍有報名時回收成 draft。
+- 排除：`cancelled`／`completed`、完全落在該月之外、SKU `is_active=false`、inactive 學生；月費另須 SKU 或 enrollment 有價。
+- 月費：`quantity = 1`；價錢 = `enrollment.unit_price` ?? `sku.price`。
+- 堂費：逐條未出單 `enrollment_purchases` 各出一行（`quantity = purchased_quantity`、單價 = `purchase.unit_price`）；無購買則不出行。
+- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`。已 `paid` 不可再改。`void` 只能靠 Generate 在仍有報名時回收成 draft（同時清空編號）。
+
+### 手動發票（`POST /api/tuition-invoices/manual`）
+
+- `date` + `location_id` 必填；`unit_id` 或 `manual_student_name` 二擇一。
+- `lines`（自由行：月份標籤、課程名、單價、數量）與 `purchase_ids`（結算未出單堂費購買）可混合，至少其一。
+- 建立即 `issued` 並派該中心編號；`purchase_ids` 驗證失敗（不存在／已結算／屬他人）在派號前 422/409，不消耗號碼。
 
 ### 尚未實作（刻意延後）
 
@@ -618,7 +661,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -637,8 +680,14 @@ ot_hours      = ot_slots * 0.25
 14. ✅ 學費發票（036）— `tuition_invoices` + `tuition_invoice_lines`；按月從有效報名產生草稿，行項目快照 SKU 價錢與 billing_unit
 15. ✅ SKU 上課日（037）— `course_skus.meeting_weekdays`（現僅供課表顯示參考，2026-09-04 起不參與計費）
 16. ✅ 堂費一次性收費（038）— `course_enrollments.purchased_quantity`；per_session 改為報名時輸入固定堂數、一次性收費，不再依出勤∩上課日計算（#M23 失效）
+17. ✅ 薪資付款拆帳（039）— `payroll_records` 支票／現金拆帳欄位
+18. ✅ 發票編號（040）— `tuition_invoices.invoice_no` / `issued_at`
+19. ✅ 班次教師＋學生價（041）— `course_skus.staff_id`、`course_enrollments.unit_price`
+20. ✅ 手動發票（71296d8b9d7f）— `tuition_invoices.kind`/`manual_student_name`、`unit_id` 可空、`lines.month_label`
+21. ✅ 每中心編號系列（f5d44789754d）— `tuition_invoices.location_id`、`invoice_counters.location_id`；唯一鍵改 `(location_id, invoice_no)`，按現有最大編號 seed 各中心 counter
+22. ✅ 堂費購買記錄（7d340d0ce7de）— `enrollment_purchases` 表；現有 per_session 報名的 `purchased_quantity` 搬為首條 purchase 並回填 `billed_invoice_line_id`
 
-> **目前 Alembic 版本：038**（`038_add_enrollment_purchased_quantity`）
+> **目前 Alembic 版本：7d340d0ce7de**（`enrollment_purchases`）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

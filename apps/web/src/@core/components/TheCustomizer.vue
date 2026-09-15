@@ -347,76 +347,78 @@ const resetCustomizer = async () => {
           :divider="false"
         >
           <!-- 👉 Primary Color -->
-          <!-- <div class="d-flex flex-column gap-2">
+          <!--
+            <div class="d-flex flex-column gap-2">
             <h6 class="text-h6">
-              Primary Color
+            Primary Color
             </h6>
 
             <div
-              class="d-flex app-customizer-primary-colors"
-              style="column-gap: 0.7rem; margin-block-start: 2px;"
+            class="d-flex app-customizer-primary-colors"
+            style="column-gap: 0.7rem; margin-block-start: 2px;"
             >
-              <div
-                v-for="color in colors"
-                :key="color.main"
-                style="
-              border-radius: 0.375rem;
-              outline: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-              padding-block: 0.5rem;
-              padding-inline: 0.625rem;"
-                class="primary-color-wrapper cursor-pointer"
-                :class="vuetifyTheme.current.value.colors.primary === color.main ? 'active' : ''"
-                :style="vuetifyTheme.current.value.colors.primary === color.main ? `outline-color: ${color.main}; outline-width:2px;` : `--v-color:${color.main}`"
-                @click="setPrimaryColor(color)"
-              >
-                <div
-                  style="border-radius: 0.375rem;block-size: 2.125rem; inline-size: 1.9375rem;"
-                  :style="{ backgroundColor: color.main }"
-                />
-              </div>
-
-              <div
-                class="primary-color-wrapper cursor-pointer"
-                style="
-              border-radius: 0.375rem;
-              outline: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-              padding-block: 0.5rem;
-              padding-inline: 0.625rem;"
-                :class="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? 'active' : ''"
-                :style="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? `outline-color: ${customPrimaryColor}; outline-width:2px;` : ''"
-              >
-                <VBtn
-                  icon
-                  size="34"
-                  :color="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? customPrimaryColor : $vuetify.theme.current.dark ? '#8692d029' : '#4b465c29'"
-                  variant="flat"
-                  style="border-radius: 0.375rem;"
-                >
-                  <VIcon
-                    size="20"
-                    icon="ri-palette-line"
-                    :color="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? 'rgb(var(--v-theme-on-primary))' : ''"
-                  />
-                </VBtn>
-
-                <VMenu
-                  activator="parent"
-                  :close-on-content-click="false"
-                >
-                  <VList>
-                    <VListItem>
-                      <VColorPicker
-                        v-model="customPrimaryColor"
-                        mode="hex"
-                        :modes="['hex']"
-                        @update:model-value="setPrimaryColor({ main: customPrimaryColor, darken: customPrimaryColor })"
-                      />
-                    </VListItem>
-                  </VList>
-                </VMenu>
-              </div>
+            <div
+            v-for="color in colors"
+            :key="color.main"
+            style="
+            border-radius: 0.375rem;
+            outline: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+            padding-block: 0.5rem;
+            padding-inline: 0.625rem;"
+            class="primary-color-wrapper cursor-pointer"
+            :class="vuetifyTheme.current.value.colors.primary === color.main ? 'active' : ''"
+            :style="vuetifyTheme.current.value.colors.primary === color.main ? `outline-color: ${color.main}; outline-width:2px;` : `--v-color:${color.main}`"
+            @click="setPrimaryColor(color)"
+            >
+            <div
+            style="border-radius: 0.375rem;block-size: 2.125rem; inline-size: 1.9375rem;"
+            :style="{ backgroundColor: color.main }"
+            />
             </div>
-          </div> -->
+
+            <div
+            class="primary-color-wrapper cursor-pointer"
+            style="
+            border-radius: 0.375rem;
+            outline: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+            padding-block: 0.5rem;
+            padding-inline: 0.625rem;"
+            :class="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? 'active' : ''"
+            :style="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? `outline-color: ${customPrimaryColor}; outline-width:2px;` : ''"
+            >
+            <VBtn
+            icon
+            size="34"
+            :color="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? customPrimaryColor : $vuetify.theme.current.dark ? '#8692d029' : '#4b465c29'"
+            variant="flat"
+            style="border-radius: 0.375rem;"
+            >
+            <VIcon
+            size="20"
+            icon="ri-palette-line"
+            :color="vuetifyTheme.current.value.colors.primary === customPrimaryColor ? 'rgb(var(--v-theme-on-primary))' : ''"
+            />
+            </VBtn>
+
+            <VMenu
+            activator="parent"
+            :close-on-content-click="false"
+            >
+            <VList>
+            <VListItem>
+            <VColorPicker
+            v-model="customPrimaryColor"
+            mode="hex"
+            :modes="['hex']"
+            @update:model-value="setPrimaryColor({ main: customPrimaryColor, darken: customPrimaryColor })"
+            />
+            </VListItem>
+            </VList>
+            </VMenu>
+            </div>
+            </div>
+            </div>
+          -->
 
           <!-- 👉 Theme -->
           <div class="d-flex flex-column gap-3">

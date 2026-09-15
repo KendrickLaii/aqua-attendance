@@ -1,4 +1,4 @@
-import { ref, watch, onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { getAttachmentByWorkingUuid, oneDriveGet } from '@/api/attachment'
 import type { TaxAttachmentListItem, TaxAttachmentRecord } from '@/types/attachment'
@@ -76,6 +76,7 @@ function normalizeAttachmentListFromApi(raw: unknown): TaxAttachmentListItem[] {
     if (url)
       out.push({ name, url, size })
   }
+
   return out
 }
 
@@ -83,6 +84,7 @@ function normalizeAttachmentListFromApi(raw: unknown): TaxAttachmentListItem[] {
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
+
     reader.onload = () => resolve(String(reader.result ?? ''))
     reader.onerror = () => reject(reader.error ?? new Error('read failed'))
     reader.readAsDataURL(file)
@@ -94,8 +96,10 @@ function fileToDataUrl(file: File): Promise<string> {
 // ────────────────────────────────────────────
 
 interface UseAttachmentsOptions {
+
   /** Reactive ref (or getter) that provides the current working record UUID. */
   workingRecordUuid: Ref<string | undefined>
+
   /** Basic info needed for OneDrive folder lookup. */
   companyNameEn: Ref<string>
   fiscalYearEnd: Ref<string>
@@ -115,6 +119,7 @@ export function useAttachments(options: UseAttachmentsOptions) {
     if (!uuid) {
       attachmentData.value = null
       attachmentList.value = []
+
       return
     }
 
@@ -129,6 +134,7 @@ export function useAttachments(options: UseAttachmentsOptions) {
       console.error('Failed to fetch attachment:', error)
       attachmentData.value = null
       attachmentList.value = []
+
       // Show user-facing feedback instead of silently swallowing the error
       showToast('Failed to load attachments', 'error')
     }
@@ -145,6 +151,7 @@ export function useAttachments(options: UseAttachmentsOptions) {
     for (const item of attachmentList.value) {
       if (item.file) {
         const data = await fileToDataUrl(item.file)
+
         out.push({
           name: item.name,
           type: item.file.type,
@@ -160,6 +167,7 @@ export function useAttachments(options: UseAttachmentsOptions) {
         })
       }
     }
+
     return out
   }
 
@@ -171,6 +179,7 @@ export function useAttachments(options: UseAttachmentsOptions) {
   // ── OneDrive integration ──
   async function openOneDrive() {
     isOneDriveButtonLoading.value = true
+
     // Extract year from fiscal year end date (format: "DD-MM-YYYY" or "YYYY-MM-DD")
     const year = options.fiscalYearEnd.value?.split('-').pop() ?? ''
     try {
@@ -179,9 +188,9 @@ export function useAttachments(options: UseAttachmentsOptions) {
         year,
         folder_name: 'Tax',
       })
-      if ((res as Record<string, unknown>)?.status_code === 200) {
+
+      if ((res as Record<string, unknown>)?.status_code === 200)
         window.open((res as Record<string, unknown> & { data: { folderUrl: string } }).data.folderUrl, '_blank')
-      }
     }
     catch (e) {
       console.error(e)
@@ -194,7 +203,8 @@ export function useAttachments(options: UseAttachmentsOptions) {
 
   // ── Auto-load when workingRecordUuid changes ──
   watch(options.workingRecordUuid, async (value, oldValue) => {
-    if (!value || value === oldValue) return
+    if (!value || value === oldValue)
+      return
     await loadAttachments()
   })
 

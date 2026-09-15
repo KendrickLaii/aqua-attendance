@@ -55,6 +55,7 @@ export function formatSummaryGenerateMessage(
 
     if (existingSummaryDays > 0) {
       const rowLabel = plural(existingSummaryDays, 'daily row')
+
       return {
         title: `No check-in events for ${period}`,
         detail: `Nothing was recalculated. The ${existingSummaryDays} ${rowLabel} below are existing summary data (seed or manual) — not computed from attendance events.`,
@@ -68,9 +69,11 @@ export function formatSummaryGenerateMessage(
   }
 
   const dayLabel = plural(total_days, 'daily summary')
+
   const withOrphan = (detail?: string) => {
     if (!orphanNote)
       return detail
+
     return detail ? `${detail} ${orphanNote}` : orphanNote
   }
 
@@ -162,6 +165,7 @@ export function formatPayrollGenerateMessage(
 
   if (skipped > 0) {
     const skipLabel = plural(skipped, 'approved/paid record')
+
     detail = detail
       ? `${detail} ${skipped} ${skipLabel} skipped.`
       : `${skipped} ${skipLabel} skipped.`

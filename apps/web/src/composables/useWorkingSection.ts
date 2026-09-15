@@ -19,9 +19,11 @@ export const useWorkingSection = () => {
     if (!payload.uuid) {
       alertMessage.value = 'No company selected'
       showAlert.value = true
+
       return
     }
     onSuccess?.()
+
     // Prefetch route chunk before push so Suspense / lazy route gap is minimal (less “full page reload” feel)
     try {
       await import('@/pages/tax/working-section/create/[uuid].vue')
@@ -45,6 +47,7 @@ export const useWorkingSection = () => {
       if (!valid) {
         alertMessage.value = `Please fill in the following required fields:\n${errors.map(e => `• ${e}`).join('\n')}`
         showAlert.value = true
+
         return
       }
     }

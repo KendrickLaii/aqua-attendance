@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { attendanceGetMe, attendanceLogin, attendanceLogout } from '@/api/attendance/auth'
-import type { AttendanceUser, AttendanceLoginPayload } from '@/api/attendance/auth'
+import type { AttendanceLoginPayload, AttendanceUser } from '@/api/attendance/auth'
 import { clearAttendanceSessionCookies } from '@/utils/attendanceSession'
 
 export const useAttendanceAuthStore = defineStore('attendanceAuth', {
@@ -9,18 +9,22 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
     isLoggedIn: false,
   }),
   getters: {
-    role: (state) => state.user?.role ?? null,
-    isAdmin: (state) => state.user?.role === 'admin' || state.user?.role === 'superadmin',
-    isSuperAdmin: (state) => state.user?.role === 'superadmin',
+    role: state => state.user?.role ?? null,
+    isAdmin: state => state.user?.role === 'admin' || state.user?.role === 'superadmin',
+    isSuperAdmin: state => state.user?.role === 'superadmin',
   },
   actions: {
     async login(payload: AttendanceLoginPayload) {
       const tokens = await attendanceLogin(payload)
+
       useCookie('accessToken').value = tokens.access_token
       useCookie('refreshToken').value = tokens.refresh_token
+
       const me = await attendanceGetMe()
+
       this.user = me
       this.isLoggedIn = true
+
       // Template-compatible shape so navbar + CASL work without mirroring
       useCookie('userData').value = JSON.stringify({
         id: me.id,
@@ -49,6 +53,7 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
       if (raw && token) {
         try {
           const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+
           // Normalise template shape (fullName) back to API shape (full_name)
           this.user = {
             ...parsed,

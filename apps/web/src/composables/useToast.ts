@@ -15,6 +15,7 @@ let _id = 0
 export function useToast() {
   function show(message: string, color = 'success', duration = 3000) {
     const id = _id++
+
     toasts.value.push({ id, message, color, createdAt: Date.now(), duration })
   }
 

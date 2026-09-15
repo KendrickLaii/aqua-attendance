@@ -153,6 +153,7 @@ export function getSummaryDateParts(
     return null
 
   const noon = zonedTimeToUtc(year, month, day, 12, 0, 0, 0, timeZone)
+
   const weekday = new Intl.DateTimeFormat('en-US', {
     timeZone,
     weekday: 'short',
@@ -185,6 +186,7 @@ export function formatAttendanceDateTime(iso: string | null | undefined): string
     return '—'
 
   const date = d.toLocaleDateString('en-GB', { timeZone: ATTENDANCE_TIMEZONE })
+
   const time = d.toLocaleTimeString('en-GB', {
     timeZone: ATTENDANCE_TIMEZONE,
     hour: '2-digit',

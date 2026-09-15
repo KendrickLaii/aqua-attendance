@@ -3,6 +3,7 @@ export async function copyTextToClipboard(text: string): Promise<void> {
   try {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
+
       return
     }
   }
@@ -15,6 +16,7 @@ export async function copyTextToClipboard(text: string): Promise<void> {
     throw new Error('Clipboard fallback requires document')
 
   const textarea = document.createElement('textarea')
+
   textarea.value = text
   textarea.setAttribute('readonly', '')
   textarea.style.position = 'fixed'
@@ -27,9 +29,9 @@ export async function copyTextToClipboard(text: string): Promise<void> {
   textarea.setSelectionRange(0, textarea.value.length)
 
   const ok = document.execCommand('copy')
+
   document.body.removeChild(textarea)
 
   if (!ok)
     throw new Error('Fallback copy failed')
 }
-

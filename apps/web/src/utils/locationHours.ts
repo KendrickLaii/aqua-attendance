@@ -51,7 +51,7 @@ export function defaultHoursSchedule(): DaySchedule[] {
 }
 
 export function applyHoursPreset(schedule: DaySchedule[], preset: HoursPreset) {
-  schedule.forEach((d) => {
+  schedule.forEach(d => {
     if (preset === 'clear') {
       d.isOpen = false
     }
@@ -91,7 +91,7 @@ export function loadHoursSchedule(
 ): DaySchedule[] {
   const stored = rawDetails?.hours_schedule as HoursScheduleEntry[] | undefined
   if (stored?.length) {
-    return LOCATION_DAYS.map((d) => {
+    return LOCATION_DAYS.map(d => {
       const saved = stored.find(s => s.day === d.key)
 
       return {
@@ -104,7 +104,7 @@ export function loadHoursSchedule(
   }
 
   if (businessHours && typeof businessHours === 'object') {
-    return LOCATION_DAYS.map((d) => {
+    return LOCATION_DAYS.map(d => {
       const full = DAY_KEY_TO_FULL[d.key]
       const dayHours = businessHours[full] ?? businessHours[d.key] ?? null
 
@@ -159,6 +159,7 @@ function compressDayRange(dayKeys: string[]): string {
   const sorted = [...new Set(dayKeys)].sort(
     (a, b) => DAY_ORDER.indexOf(a as typeof DAY_ORDER[number]) - DAY_ORDER.indexOf(b as typeof DAY_ORDER[number]),
   )
+
   const joined = sorted.join(',')
 
   if (joined === 'mon,tue,wed,thu,fri,sat,sun')
@@ -173,7 +174,7 @@ function compressDayRange(dayKeys: string[]): string {
 
 function formatStructuredBusinessHours(hours: BusinessHours): string {
   const openEntries = LOCATION_DAYS
-    .map((d) => {
+    .map(d => {
       const full = DAY_KEY_TO_FULL[d.key]
       const dayHours = hours[full] ?? hours[d.key] ?? null
       if (!dayHours || typeof dayHours !== 'object' || !dayHours.open || !dayHours.close)
@@ -181,7 +182,7 @@ function formatStructuredBusinessHours(hours: BusinessHours): string {
 
       return { day: d.key, openTime: dayHours.open, closeTime: dayHours.close }
     })
-    .filter((e): e is { day: DayKey, openTime: string, closeTime: string } => e != null)
+    .filter((e): e is { day: DayKey; openTime: string; closeTime: string } => e != null)
 
   if (!openEntries.length)
     return ''
@@ -192,7 +193,7 @@ function formatStructuredBusinessHours(hours: BusinessHours): string {
   if (sameHours)
     return `${compressDayRange(openEntries.map(s => s.day))} ${first.openTime}–${first.closeTime}`
 
-  const preview = openEntries.slice(0, 2).map((s) => {
+  const preview = openEntries.slice(0, 2).map(s => {
     const short = LOCATION_DAYS.find(d => d.key === s.day)?.short ?? s.day
 
     return `${short} ${s.openTime}–${s.closeTime}`
@@ -217,7 +218,7 @@ export function formatCardBusinessHours(l: LocationItem): string {
     if (sameHours)
       return `${compressDayRange(open.map(s => s.day))} ${first.openTime}–${first.closeTime}`
 
-    const preview = open.slice(0, 2).map((s) => {
+    const preview = open.slice(0, 2).map(s => {
       const short = LOCATION_DAYS.find(d => d.key === s.day)?.short ?? s.day
 
       return `${short} ${s.openTime}–${s.closeTime}`

@@ -19,7 +19,7 @@ interface ProfileNavItem {
   type: 'navItem'
   icon: string
   title: string
-  to: { name: string, params?: Record<string, string | number> }
+  to: { name: string; params?: Record<string, string | number> }
   badgeProps?: Record<string, unknown>
 }
 
@@ -72,14 +72,15 @@ onMounted(() => {
 })
 
 const logout = async () => {
-  const onAttendanceApp =
-    router.currentRoute.value.path.startsWith('/attendance')
+  const onAttendanceApp
+    = router.currentRoute.value.path.startsWith('/attendance')
     || isAttendanceLoggedIn()
 
   if (onAttendanceApp) {
     await attendanceAuth.logout()
     ability.update([])
     await router.push({ name: 'attendance-login' })
+
     return
   }
 

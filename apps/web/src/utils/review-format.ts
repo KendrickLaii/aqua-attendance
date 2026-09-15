@@ -61,6 +61,7 @@ export function formatPrimitive(value: unknown): string {
     return Number.isNaN(value) ? '-' : String(value)
 
   const s = String(value).trim()
+
   return s === '' ? '' : s
 }
 
@@ -78,6 +79,7 @@ export function formatAmount(val: unknown): string {
     return String(val)
   const abs = Math.abs(num)
   const withCommas = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
   return num < 0 ? `(${withCommas})` : withCommas
 }
 
@@ -111,6 +113,7 @@ export function toRoman(n: number): string {
   const map: [number, string][] = [
     [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
   ]
+
   let num = Math.max(0, Math.floor(n))
   let out = ''
   for (const [val, sym] of map) {
@@ -119,6 +122,7 @@ export function toRoman(n: number): string {
       num -= val
     }
   }
+
   return out || String(n)
 }
 

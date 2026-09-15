@@ -10,6 +10,7 @@ export async function getAllBusinessNature(page: number, size: number) {
     method: 'GET',
     params: { page, size },
   })
+
   return res as BusinessNatureListResponse
 }
 
@@ -17,6 +18,7 @@ export async function getBusinessNatureByUuid(uuid: string) {
   const res = await $authApi(`/business_nature/get/${uuid}`, {
     method: 'GET',
   })
+
   return res as BusinessNatureMutationResponse
 }
 
@@ -25,15 +27,18 @@ export async function createBusinessNature(payload: BusinessNaturePayload) {
     method: 'POST',
     body: payload,
   })
+
   return res as BusinessNatureMutationResponse
 }
 
 export async function updateBusinessNature(uuid: string, payload: BusinessNaturePayload) {
   const req: BusinessNatureEditPayload = { ...payload, uuid }
+
   const res = await $authApi('/business_nature/edit', {
     method: 'PUT',
     body: req,
   })
+
   return res as BusinessNatureMutationResponse
 }
 
@@ -45,5 +50,6 @@ export async function deleteBusinessNature(uuid: string) {
       data: [`${uuid}`],
     },
   })
+
   return res as BusinessNatureMutationResponse
 }

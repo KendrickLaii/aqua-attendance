@@ -10,6 +10,7 @@ import customPages from './custom-pages'
 import type { HorizontalNavItems } from '@layouts/types'
 
 const devNavItems = [...dashboard, ...apps, ...pages, ...uiElements, ...forms, ...tables, ...charts, ...others] as HorizontalNavItems
+
 // export default devNavItems
 
 // prod
@@ -36,7 +37,8 @@ function collectRouteNames(
 /** return the set of route names that are allowed in the horizontal navigation */
 export function getAllowedRouteNames(): Set<string> {
   const set = new Set<string>()
+
   collectRouteNames(prodNavItems as Parameters<typeof collectRouteNames>[0], set)
+
   return set
 }
-

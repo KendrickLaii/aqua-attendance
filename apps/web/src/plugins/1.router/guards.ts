@@ -1,12 +1,13 @@
+import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
 import { getAllowedRouteNames } from '@/navigation/vertical'
 import { canNavigate } from '@layouts/plugins/casl'
 import { getAttendanceRole, isAttendanceLoggedIn } from '@/utils/attendanceSession'
-import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
 
 const ATTENDANCE_PUBLIC_ROUTE_NAMES = new Set(['attendance-login', 'attendance'])
 
 function resolveAttendanceRedirectTarget(to: { query: Record<string, unknown>; fullPath: string }) {
   const raw = to.query.to
+
   const target = typeof raw === 'string'
     ? raw.trim()
     : Array.isArray(raw)

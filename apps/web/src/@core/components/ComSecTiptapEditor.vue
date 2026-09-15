@@ -6,14 +6,8 @@ import { StarterKit } from '@tiptap/starter-kit'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 
 defineOptions({
-  name: 'ComSecTiptapEditor'
+  name: 'ComSecTiptapEditor',
 })
-
-interface Props {
-  modelValue: string
-  placeholder?: string
-  isDivider?: boolean
-}
 
 const props = withDefaults(defineProps<Props>(), {
   isDivider: true,
@@ -25,8 +19,15 @@ const emit = defineEmits<{
   (e: 'blur'): void
 }>()
 
+interface Props {
+  modelValue: string
+  placeholder?: string
+  isDivider?: boolean
+}
+
 const editorRef = ref()
 const isFocused = ref(false)
+
 const editor = useEditor({
   content: props.modelValue,
   extensions: [
@@ -46,13 +47,13 @@ const editor = useEditor({
     emit('update:modelValue', editor.value.getHTML())
   },
   onFocus() {
-    isFocused.value = true;
+    isFocused.value = true
     emit('focus')
   },
   onBlur() {
-    isFocused.value = false;
+    isFocused.value = false
     emit('blur')
-  }
+  },
 })
 
 watch(() => props.modelValue, () => {
@@ -66,7 +67,7 @@ watch(() => props.modelValue, () => {
 
 // Expose editor instance to parent component
 defineExpose({
-  editor
+  editor,
 })
 </script>
 

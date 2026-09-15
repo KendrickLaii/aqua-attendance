@@ -1,7 +1,4 @@
 <script setup lang="ts">
-const page = defineModel<number>('page', { required: true })
-const pageSize = defineModel<number>('pageSize', { required: true })
-
 defineProps<{
   totalPages: number
   pageSizeOptions?: number[]
@@ -12,6 +9,9 @@ defineProps<{
 const emit = defineEmits<{
   change: []
 }>()
+
+const page = defineModel<number>('page', { required: true })
+const pageSize = defineModel<number>('pageSize', { required: true })
 
 function onPageSizeChange() {
   page.value = 1

@@ -4,7 +4,6 @@ import miscMaskLight from '@images/misc/misc-mask-light.png'
 import tree1 from '@images/misc/tree1.png'
 
 const authThemeMask = useGenerateImageVariant(miscMaskLight, miscMaskDark)
-
 </script>
 
 <template>

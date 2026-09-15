@@ -35,7 +35,7 @@ Branding is generic (“AQUA Attendance”). The data model still fits education
 | **Course SPU** (`course_spus`) | Course subject / curriculum family, e.g. “Primary Math” |
 | **Course SKU** (`course_skus`) | A concrete class under an SPU, e.g. “Primary Math P3 Tue 18:00”. Holds `price` and `billing_unit` (`monthly` or `per_session`) |
 | **Course enrollment** (`course_enrollments`) | Links a student unit to a course SKU (active / completed / cancelled), with optional start/end dates |
-| **Tuition invoice** (`tuition_invoices`) | One student bill per calendar month, generated from overlapping active enrollments. Line items snapshot SKU price. Not the Vuexy `/apps/invoice` demo |
+| **Tuition invoice** (`tuition_invoices`) | One student bill per calendar month (`kind=tuition`), generated from overlapping active enrollments — per-session charges come from `enrollment_purchases`. `kind=manual` for ad-hoc/walk-in invoices (can settle session purchases). Per-location invoice numbering + printable layout. Line items snapshot SKU price. Not the Vuexy `/apps/invoice` demo |
 
 ## Repository layout
 
@@ -208,8 +208,8 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 | Notifications | `/api/notifications` (CRUD, mark read) | Admin |
 | Audit | `/api/audit-logs` (query) | Superadmin |
 | Auto-checkout | `/api/auto-checkout/run` | Admin |
-| Courses | `/api/course-spus`, `/course-skus`, `/course-enrollments` | Admin |
-| Tuition invoices | `/api/tuition-invoices` (list/get/patch, `POST /generate`) | Admin |
+| Courses | `/api/course-spus`, `/course-skus`, `/course-enrollments` (incl. `POST /course-enrollments/{id}/purchases`) | Admin |
+| Tuition invoices | `/api/tuition-invoices` (list/get/patch, `POST /generate`, `POST /manual`, `GET /next-no`, `POST /allocate-no`) | Admin |
 | Health | `/api/health` | None |
 
 Full OpenAPI: http://localhost:8000/docs
@@ -232,7 +232,7 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/audit-logs` | Superadmin | Audit log query |
 | `/attendance/users` | Admin (CASL) | User CRUD |
 | `/attendance/courses` | Admin | Course catalog (class roster + enroll with start/end dates) |
-| `/attendance/invoices` | Admin | Monthly tuition invoices (Generate → issue / paid / void) |
+| `/attendance/invoices` | Admin | Monthly tuition invoices (Generate → issue / paid / void), manual invoices, print/reprint |
 
 Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos / legacy tax UI (not used in production nav).
 
@@ -278,7 +278,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 - [ ] Offline mode
 - [ ] Biometric auth on mobile
 - [ ] Advanced analytics
-- [ ] Class scheduling integration (needed for real 堂費 session counts on invoices)
+- [ ] Class scheduling / timetable view (堂費 billing is purchase-based, not attendance-based)
 - [ ] Parent portal / WhatsApp send of tuition invoices
 - [ ] Geofencing
 - [ ] Bulk CSV import for units

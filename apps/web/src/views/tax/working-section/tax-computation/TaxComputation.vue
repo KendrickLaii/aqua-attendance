@@ -1,17 +1,20 @@
 <script setup lang="ts">
-//Components
+// Components
 import TaxMenu from './components/TaxMenu.vue'
 import ProfitsTaxComputation from './components/ProfitsTaxComputation.vue'
 import DPL from './components/DPL.vue'
-//Types
-import type { Content } from '@/types/client'
-import type { BasicInformationData } from '@/types/working-section'
+
+// Types
 import type { TaxMenuItem } from './components/TaxMenu.vue'
 import type { DPLGroupedData, GroupedDataItem } from './components/DPL.vue'
-//API
-import { getTaxComputationByWorkingRecordUuid, editTaxComputation, printScheduleOne } from '@/api/tax-computation'
-//helpers
-import { createDefaultAmountList, createDefaultTaxComputationSections, DEFAULT_TAX_RATE } from '@/helper/taxComputation'
+import type { Content } from '@/types/client'
+import type { BasicInformationData } from '@/types/working-section'
+
+// API
+import { editTaxComputation, getTaxComputationByWorkingRecordUuid, printScheduleOne } from '@/api/tax-computation'
+
+// helpers
+import { DEFAULT_TAX_RATE, createDefaultAmountList, createDefaultTaxComputationSections } from '@/helper/taxComputation'
 
 interface Section {
   id: number
@@ -19,7 +22,7 @@ interface Section {
   description: string
   dataContentList: any[]
 }
-export interface AmountList{
+export interface AmountList {
   title: string
   type: string
   current_year: number
@@ -33,14 +36,17 @@ interface Props {
   mode: 'create' | 'edit'
 }
 const props = defineProps<Props>()
+
 const emit = defineEmits<{
   (e: 'toast', message: string, type: 'success' | 'error' | 'info' | 'warning'): void
 }>()
+
 const { clientData, basicInformationData, mode } = toRefs(props)
 const taxCurrencyLabel = computed(() => props.clientCurrency?.currency || props.clientData?.currency || 'HKD')
 const taxComputationUuid = ref<string>('')
 const pendingDplRestoreData = ref<DPLGroupedData | GroupedDataItem[] | null>(null)
 const amountList = ref<AmountList[]>(createDefaultAmountList())
+
 const taxMenu = ref<TaxMenuItem[]>([
   { id: 0, scheduleNumber: 1, isIncluded: true, analysis: 'Profits Tax Computation' },
   { id: 1, scheduleNumber: 2, isIncluded: true, analysis: 'Computation of Depreciation Allowances' },
@@ -50,33 +56,41 @@ const taxMenu = ref<TaxMenuItem[]>([
   { id: 5, scheduleNumber: 6, isIncluded: true, analysis: 'Supporting Schedule' },
 ])
 
-const sections=ref<Section[]>(createDefaultTaxComputationSections(basicInformationData.value, taxCurrencyLabel.value))
+const sections = ref<Section[]>(createDefaultTaxComputationSections(basicInformationData.value, taxCurrencyLabel.value))
 const selectedSection = ref<Section | null>(null)
+
 const updateSelectedSection = (value: number) => {
   selectedSection.value = sections.value.find((section: Section) => section.id === value) ?? null
 }
+
 const taxRateItems = [
   { title: '16.5%', value: 0.165 },
   { title: '8.25%', value: 0.0825 },
 ]
+
 const taxRate = ref<number>(DEFAULT_TAX_RATE)
+
 const updateTaxMenu = (value: TaxMenuItem[]) => {
   taxMenu.value = value
 }
+
 const localDPL = ref<string>('')
-const isDebugMode = import.meta.env.VITE_ENV_MODE === 'dev' ? true : false // for debugging
-const onPostAll = () =>{
-  console.log('onPostAll',selectedSection.value?.dataContentList)
+const isDebugMode = import.meta.env.VITE_ENV_MODE === 'dev' // for debugging
+
+const onPostAll = () => {
+  console.log('onPostAll', selectedSection.value?.dataContentList)
 }
-const consoleAmountList = () =>{
-  console.log('amount list:',amountList.value)
-  console.log('tax computation uuid:',taxComputationUuid.value)
+
+const consoleAmountList = () => {
+  console.log('amount list:', amountList.value)
+  console.log('tax computation uuid:', taxComputationUuid.value)
 }
+
 async function saveTaxComputation() {
   const payload = {
     data_content: {
-      data: sections.value, //middle
-      taxMenu: taxMenu.value, //left
+      data: sections.value, // middle
+      taxMenu: taxMenu.value, // left
       taxRate: taxRate.value,
     },
     data_content_amount_list: amountList.value,
@@ -86,16 +100,20 @@ async function saveTaxComputation() {
     uuid: taxComputationUuid.value,
     working_record_uuid: props.workingRecordUuid,
   }
+
   const res = await editTaxComputation(payload)
-  console.log('res',res)
+
+  console.log('res', res)
+
   return res
 }
 
 function mergeAmountListFromApi(list: unknown[]): AmountList[] {
   const defaults = createDefaultAmountList()
-  if (!Array.isArray(list) || list.length === 0) return defaults
+  if (!Array.isArray(list) || list.length === 0)
+    return defaults
 
-  return defaults.map((defaultItem) => {
+  return defaults.map(defaultItem => {
     const apiItem = list.find((item): item is Partial<AmountList> =>
       typeof item === 'object' && item != null && 'type' in item && item.type === defaultItem.type,
     )
@@ -112,10 +130,12 @@ function mergeAmountListFromApi(list: unknown[]): AmountList[] {
 }
 
 async function loadTaxComputation() {
-  if (!props.workingRecordUuid) return
+  if (!props.workingRecordUuid)
+    return
 
   const res = await getTaxComputationByWorkingRecordUuid(props.workingRecordUuid)
-  if (res.status_code !== 200) return
+  if (res.status_code !== 200)
+    return
 
   const { data } = res
   const dataContent = data?.data_content as { data?: Section[]; taxMenu?: TaxMenuItem[]; taxRate?: number } | undefined
@@ -180,7 +200,8 @@ onMounted(async () => {
 })
 
 watch(() => props.workingRecordUuid, async (value, oldValue) => {
-  if (!value || value === oldValue) return
+  if (!value || value === oldValue)
+    return
   await loadTaxComputation()
 })
 
@@ -197,6 +218,7 @@ watch(dplRef, () => {
 
 const groupedDataFromDpl = computed<DPLGroupedData>(() => {
   const g = dplRef.value?.groupedData
+
   const payload = (g && typeof g === 'object' && 'value' in g)
     ? (g as { value: DPLGroupedData }).value
     : (g as DPLGroupedData | undefined)
@@ -218,28 +240,35 @@ function onHandleSaveGroupedData(data: DPLGroupedData) {
 
 function setAmountListByType(type: string, current_year: number) {
   const item = amountList.value.find(a => a.type === type)
-  if (item) item.current_year = current_year
+  if (item)
+    item.current_year = current_year
 }
 
 function onUpdateTableData(payload: { order: number; tableData: any[] }) {
   const section = selectedSection.value
-  if (!section?.dataContentList) return
+  if (!section?.dataContentList)
+    return
   const item = section.dataContentList.find((i: any) => i.order === payload.order)
-  if (item) item.tableData = payload.tableData
+  if (item)
+    item.tableData = payload.tableData
 }
 
 function onUpdateTextContent(payload: { order: number; content: string }) {
   const section = selectedSection.value
-  if (!section?.dataContentList) return
+  if (!section?.dataContentList)
+    return
   const item = section.dataContentList.find((i: any) => i.order === payload.order)
-  if (item) item.content = payload.content
+  if (item)
+    item.content = payload.content
 }
 
 function onUpdateSelectedCheckbox(payload: { order: number; value: string[] }) {
   const section = selectedSection.value
-  if (!section?.dataContentList) return
+  if (!section?.dataContentList)
+    return
   const item = section.dataContentList.find((i: any) => i.order === payload.order)
-  if (item) item.selectedCheckbox = payload.value
+  if (item)
+    item.selectedCheckbox = payload.value
 }
 
 function onUpdateLocalDPL(val: string) {
@@ -247,7 +276,8 @@ function onUpdateLocalDPL(val: string) {
 }
 
 async function onPrintScheduleOne() {
-  if (!taxComputationUuid.value || !props.workingRecordUuid) return
+  if (!taxComputationUuid.value || !props.workingRecordUuid)
+    return
 
   const result = await printScheduleOne(
     taxComputationUuid.value,
@@ -256,14 +286,17 @@ async function onPrintScheduleOne() {
     String(basicInformationData.value?.year_of_assessment_ly ?? ''),
     String(basicInformationData.value?.year_of_assessment ?? ''),
   )
+
   const { blob, filename, errorMessage } = result
   if (errorMessage) {
     // emit('toast', errorMessage, 'error')
     emit('toast', 'Failed to print PDF', 'error')
+
     return
   }
   if (!blob || !filename) {
     emit('toast', 'Failed to print PDF', 'error')
+
     return
   }
 
@@ -271,6 +304,7 @@ async function onPrintScheduleOne() {
 
   // Download the file
   const a = document.createElement('a')
+
   a.href = url
   a.download = filename
   document.body.appendChild(a)
@@ -286,7 +320,10 @@ function onResetSch1Data() {
 </script>
 
 <template>
-  <VLayout v-if="taxComputationUuid || mode === 'create'" class="tax-computation-layout">
+  <VLayout
+    v-if="taxComputationUuid || mode === 'create'"
+    class="tax-computation-layout"
+  >
     <TaxMenu
       :tax-menu="taxMenu"
       @tax-menu-update="updateTaxMenu"
@@ -294,70 +331,114 @@ function onResetSch1Data() {
     />
     <VMain class="tax-computation-main">
       <div class="tax-computation-middle pl-4">
-      <VCard height="100vh" width="100%" class="border border-primary rounded pa-5 d-flex flex-column mb-3">
-        <!-- Fixed: header text + button -->
-        <div class="assessment-header-fixed">
-          <h6 class="assessment-title text-h6">Years of Assessment {{basicInformationData.year_of_assessment_ly}}/{{basicInformationData.year_of_assessment}} and {{basicInformationData.provisional_ly}}/{{basicInformationData.provisional}} (Provisional)</h6>
-          <p class="file-number">File Number: {{basicInformationData.taxFileNumber}}</p>
-          <!-- <VBtn v-if="isDebugMode" color="primary" size="x-small" @click="onPostAll">(Dev)Post all</VBtn> -->
-          <VBtn v-if="isDebugMode" color="primary" size="x-small" @click="onResetSch1Data" class="ml-2">(Dev)Reset sch1 data</VBtn>
-          <VBtn v-if="isDebugMode" class ='ml-2' color="primary" size="x-small" @click="consoleAmountList">(Dev)Amount List</VBtn>
-        </div>
-        <VSheet class="sheet-wrap border border-primary rounded">
-          <div class="sheet-header d-flex justify-space-between align-center pa-3" style="height: 64px;">
-            <h6 class="sheet-title text-h6">{{ selectedSection?.title }}</h6>
-            <div v-if="selectedSection?.id === 0" 
-              class="d-flex gap-2 align-center"
-              :style="{
-                maxWidth: '25%',
-                minWidth: taxComputationUuid && props.workingRecordUuid ? '200px' : '150px',
-              }"
+        <VCard
+          height="100vh"
+          width="100%"
+          class="border border-primary rounded pa-5 d-flex flex-column mb-3"
+        >
+          <!-- Fixed: header text + button -->
+          <div class="assessment-header-fixed">
+            <h6 class="assessment-title text-h6">
+              Years of Assessment {{ basicInformationData.year_of_assessment_ly }}/{{ basicInformationData.year_of_assessment }} and {{ basicInformationData.provisional_ly }}/{{ basicInformationData.provisional }} (Provisional)
+            </h6>
+            <p class="file-number">
+              File Number: {{ basicInformationData.taxFileNumber }}
+            </p>
+            <!-- <VBtn v-if="isDebugMode" color="primary" size="x-small" @click="onPostAll">(Dev)Post all</VBtn> -->
+            <VBtn
+              v-if="isDebugMode"
+              color="primary"
+              size="x-small"
+              class="ml-2"
+              @click="onResetSch1Data"
+            >
+              (Dev)Reset sch1 data
+            </VBtn>
+            <VBtn
+              v-if="isDebugMode"
+              class="ml-2"
+              color="primary"
+              size="x-small"
+              @click="consoleAmountList"
+            >
+              (Dev)Amount List
+            </VBtn>
+          </div>
+          <VSheet class="sheet-wrap border border-primary rounded">
+            <div
+              class="sheet-header d-flex justify-space-between align-center pa-3"
+              style="height: 64px;"
+            >
+              <h6 class="sheet-title text-h6">
+                {{ selectedSection?.title }}
+              </h6>
+              <div
+                v-if="selectedSection?.id === 0"
+                class="d-flex gap-2 align-center"
+                :style="{
+                  maxWidth: '25%',
+                  minWidth: taxComputationUuid && props.workingRecordUuid ? '200px' : '150px',
+                }"
               >
-              <VBtn v-if="taxComputationUuid && props.workingRecordUuid" color="primary" size="small" @click="onPrintScheduleOne">Print</VBtn>
-              <VSelect density="compact" label="Tax rate" :items="taxRateItems" v-model="taxRate" />
+                <VBtn
+                  v-if="taxComputationUuid && props.workingRecordUuid"
+                  color="primary"
+                  size="small"
+                  @click="onPrintScheduleOne"
+                >
+                  Print
+                </VBtn>
+                <VSelect
+                  v-model="taxRate"
+                  density="compact"
+                  label="Tax rate"
+                  :items="taxRateItems"
+                />
+              </div>
             </div>
-          </div>
-          <VDivider />
-          <div class="sheet-content">
-            <!-- taxComputationUuid: {{ taxComputationUuid }}
-            <br/>
-            workingRecordUuid: {{ props.workingRecordUuid }} -->
-            <ProfitsTaxComputation
-              v-if="selectedSection?.id === 0"
-              :data-content-list="selectedSection?.dataContentList ?? []"
-              :client-data="clientData"
-              :client-currency="props.clientCurrency ?? null"
-              :basic-information-data="basicInformationData"
-              :tax-rate="taxRate"
-              :grouped-data="groupedDataForProfitComputation"
-              :amount-list="amountList"
-              @update:table-data="onUpdateTableData"
-              @update:text-content="onUpdateTextContent"
-              @update:selected-checkbox="onUpdateSelectedCheckbox"
-              @update:amount-before-tax="(val) => setAmountListByType('amount_before_tax', val)"
-              @update:net-assessable-profit="(val) => setAmountListByType('net_assessable_profit', val)"
-              @update:profit-adjustment="(val) => setAmountListByType('profit_adjustment', val)"
-              @update:year-of-assessment="(val) => setAmountListByType('year_of_assessment', val)"
-              @update:year-of-assessment-provisional="(val) => setAmountListByType('year_of_assessment_provisional', val)"
-              @update:profit-tax-current-year="(val) => setAmountListByType('profit_tax_current_year', val)"
-              @update:profit-tax-provisional="(val) => setAmountListByType('profit_tax_provisional', val)"
-              @update:total-tax-payable="(val) => setAmountListByType('total_tax_payable', val)"
-            />
-            <div v-if="selectedSection?.id === 4">
+            <VDivider />
+            <div class="sheet-content">
+              <!--
+                taxComputationUuid: {{ taxComputationUuid }}
+                <br/>
+                workingRecordUuid: {{ props.workingRecordUuid }}
+              -->
+              <ProfitsTaxComputation
+                v-if="selectedSection?.id === 0"
+                :data-content-list="selectedSection?.dataContentList ?? []"
+                :client-data="clientData"
+                :client-currency="props.clientCurrency ?? null"
+                :basic-information-data="basicInformationData"
+                :tax-rate="taxRate"
+                :grouped-data="groupedDataForProfitComputation"
+                :amount-list="amountList"
+                @update:table-data="onUpdateTableData"
+                @update:text-content="onUpdateTextContent"
+                @update:selected-checkbox="onUpdateSelectedCheckbox"
+                @update:amount-before-tax="(val) => setAmountListByType('amount_before_tax', val)"
+                @update:net-assessable-profit="(val) => setAmountListByType('net_assessable_profit', val)"
+                @update:profit-adjustment="(val) => setAmountListByType('profit_adjustment', val)"
+                @update:year-of-assessment="(val) => setAmountListByType('year_of_assessment', val)"
+                @update:year-of-assessment-provisional="(val) => setAmountListByType('year_of_assessment_provisional', val)"
+                @update:profit-tax-current-year="(val) => setAmountListByType('profit_tax_current_year', val)"
+                @update:profit-tax-provisional="(val) => setAmountListByType('profit_tax_provisional', val)"
+                @update:total-tax-payable="(val) => setAmountListByType('total_tax_payable', val)"
+              />
+              <div v-if="selectedSection?.id === 4">
               <!-- {{ localDPL }} -->
+              </div>
             </div>
-          </div>
-        </VSheet>
-      </VCard>
+          </VSheet>
+        </VCard>
       </div>
       <div class="tax-computation-right">
-        <DPL 
+        <DPL
           ref="dplRef"
           :client-data="clientData"
           :client-currency="props.clientCurrency ?? null"
           :basic-information-data="basicInformationData"
           @save-grouped-data="onHandleSaveGroupedData"
-          @update:localDPL="onUpdateLocalDPL"
+          @update:local-d-p-l="onUpdateLocalDPL"
         />
       </div>
     </VMain>
@@ -418,5 +499,4 @@ function onResetSch1Data() {
   min-height: 0;
   overflow-y: auto;
 }
-
 </style>

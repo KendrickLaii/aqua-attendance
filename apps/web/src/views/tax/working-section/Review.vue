@@ -57,19 +57,19 @@ import { parseContentToFields } from '@/types/tax-return-field-setup'
 
 // Shared formatting utilities (extracted from this file → now reusable & testable)
 import {
-  isObjectLike,
-  isComplexValue,
-  formatPrimitive,
-  formatAmount,
-  toRoman,
   buildRowsFromObject,
   entriesOf,
+  formatAmount,
+  formatPrimitive,
+  isComplexValue,
+  isObjectLike,
+  toRoman,
 } from '@/utils/review-format'
 import type { KeyValueRow } from '@/utils/review-format'
 
 // Composables (each encapsulates one domain of logic)
 import { useAttachments } from '@/composables/useAttachments'
-import { useTaxComputationReview, isTableContent, isCheckboxContent } from '@/composables/useTaxComputationReview'
+import { isCheckboxContent, isTableContent, useTaxComputationReview } from '@/composables/useTaxComputationReview'
 import { useTaxClipboard } from '@/composables/useTaxClipboard'
 
 // ────────────────────────────────────────────
@@ -202,6 +202,7 @@ const taxReturnRows = computed<KeyValueRow[]>(() => {
 function isTaxReturnField(val: unknown): val is Record<string, unknown> {
   if (!isObjectLike(val))
     return false
+
   return 'name' in val
 }
 
@@ -242,14 +243,15 @@ const {
   clientData: () => props.clientData,
   flattenTaxComputationData,
 })
-//tax return review print start
+
+// tax return review print start
 function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
+    .replaceAll('\'', '&#39;')
 }
 
 function formatTaxReturnPrintValue(value: unknown, fieldType?: unknown): string {
@@ -262,6 +264,7 @@ function formatTaxReturnPrintValue(value: unknown, fieldType?: unknown): string 
     const numeric = Number(raw.replaceAll(',', ''))
     if (!Number.isNaN(numeric) && Number.isFinite(numeric))
       return Math.trunc(numeric).toLocaleString('en-US')
+
     return raw
   }
 
@@ -277,10 +280,12 @@ function formatTaxReturnPrintValue(value: unknown, fieldType?: unknown): string 
   const isValidDate = dateObj.getFullYear() === year
     && dateObj.getMonth() === month - 1
     && dateObj.getDate() === day
+
   if (!isValidDate)
     return raw
 
   const monthShort = dateObj.toLocaleString('en-US', { month: 'short' })
+
   return `${monthShort} ${day},${year}`
 }
 
@@ -317,7 +322,8 @@ const printTaxReturnInformation = () => {
   const flattenedFields = taxReturnRows.value.flatMap(row => {
     if (!isTaxReturnFieldList(row.value))
       return []
-    console.log ("row.value",row.value)
+    console.log ('row.value', row.value)
+
     return row.value.map(field => ({
       taxReturnNo: formatPrimitive(field.tax_return_number) || '-',
       field: formatPrimitive(field.name) || '-',
@@ -335,6 +341,7 @@ const printTaxReturnInformation = () => {
   const headerLine1 = `${formatPrimitive(props.basicInformationData.companyNameEn) || '-'} (${formatPrimitive(props.basicInformationData.companyNumber) || '-'})`
   const headerLine2 = `${formatPrimitive(props.basicInformationData.taxFileNumber) || '-'}`
   const headerLine3 = `${formatPrimitive(props.basicInformationData.year_of_assessment_ly) || '-'} / ${formatPrimitive(props.basicInformationData.year_of_assessment) || '-'}`
+
   const tableRows = flattenedFields.length
     ? flattenedFields.map(item => `
       <tr data-field-type="${escapeHtml(item.type)}">
@@ -378,7 +385,8 @@ const printTaxReturnInformation = () => {
   printWindow.document.title = `${props.basicInformationData.companyNameEn} - Tax Return ${formatPrimitive(props.basicInformationData.year_of_assessment_ly)} / ${formatPrimitive(props.basicInformationData.year_of_assessment)}`
   printWindow.document.close()
 }
-//tax return review print end
+
+// tax return review print end
 </script>
 
 <template>
@@ -388,15 +396,18 @@ const printTaxReturnInformation = () => {
         <h6 class="text-h6">
           Review
         </h6>
-          <VBtn 
-            title="Copy client information and tax computation (Schedule 1)"
-            color="primary"
-            size="x-small"
-            icon="ri-clipboard-line"
-            @click.stop.prevent="copyClientInformationAndTaxComputation"
-          />
+        <VBtn
+          title="Copy client information and tax computation (Schedule 1)"
+          color="primary"
+          size="x-small"
+          icon="ri-clipboard-line"
+          @click.stop.prevent="copyClientInformationAndTaxComputation"
+        />
       </div>
-      <VList density="compact" nav>
+      <VList
+        density="compact"
+        nav
+      >
         <VListItem
           v-for="item in sectionItems"
           :key="item.key"
@@ -414,16 +425,32 @@ const printTaxReturnInformation = () => {
       <VCard class="review-card overflow-y-auto">
         <VCardText class="review-card-content">
           <template v-if="selectedSection === 'basic'">
-            <VExpansionPanels multiple class="review-basic-expansion-panels">
+            <VExpansionPanels
+              multiple
+              class="review-basic-expansion-panels"
+            >
               <VExpansionPanel>
                 <VExpansionPanelTitle class="d-flex gap-1 align-center">
                   Basic information
                 </VExpansionPanelTitle>
                 <VExpansionPanelText>
-                  <div v-if="!basicInfoRows.length" class="text-medium-emphasis">No data to display.</div>
-                  <div v-else class="review-grid">
-                    <template v-for="row in basicInfoRows" :key="row.key">
-                      <div class="review-key">{{ row.label }}</div>
+                  <div
+                    v-if="!basicInfoRows.length"
+                    class="text-medium-emphasis"
+                  >
+                    No data to display.
+                  </div>
+                  <div
+                    v-else
+                    class="review-grid"
+                  >
+                    <template
+                      v-for="row in basicInfoRows"
+                      :key="row.key"
+                    >
+                      <div class="review-key">
+                        {{ row.label }}
+                      </div>
                       <div class="review-value">
                         <span v-if="!isComplexValue(row.value)">{{ formatPrimitive(row.value) }}</span>
                         <span v-else>{{ JSON.stringify(row.value, null, 2) }}</span>
@@ -438,10 +465,23 @@ const printTaxReturnInformation = () => {
                   Client information
                 </VExpansionPanelTitle>
                 <VExpansionPanelText>
-                  <div v-if="!clientDataRows.length" class="text-medium-emphasis">No client data to display.</div>
-                  <div v-else class="review-grid">
-                    <template v-for="row in clientDataRows" :key="row.key">
-                      <div class="review-key">{{ row.label }}</div>
+                  <div
+                    v-if="!clientDataRows.length"
+                    class="text-medium-emphasis"
+                  >
+                    No client data to display.
+                  </div>
+                  <div
+                    v-else
+                    class="review-grid"
+                  >
+                    <template
+                      v-for="row in clientDataRows"
+                      :key="row.key"
+                    >
+                      <div class="review-key">
+                        {{ row.label }}
+                      </div>
                       <div class="review-value">
                         <span v-if="!isComplexValue(row.value)">{{ formatPrimitive(row.value) }}</span>
                         <span v-else>{{ JSON.stringify(row.value, null, 2) }}</span>
@@ -466,102 +506,140 @@ const printTaxReturnInformation = () => {
           -->
           <template v-else-if="selectedSection === 'taxComputation'">
             <div class="d-flex gap-1 align-center">
-              <h6 class="text-h6 mb-0">Tax computation</h6>
+              <h6 class="text-h6 mb-0">
+                Tax computation
+              </h6>
             </div>
-            <VDivider class="my-2"/>
+            <VDivider class="my-2" />
             <template v-if="!taxComputationMapped">
-              <div class="text-medium-emphasis">No data to display.</div>
+              <div class="text-medium-emphasis">
+                No data to display.
+              </div>
             </template>
             <template v-else>
               <div class="review-section">
                 <!-- Tax rate (simple key-value) -->
                 <div class="review-grid">
-                  <div class="review-key">Tax Rate</div>
-                  <div class="review-value">{{ taxComputationMapped.taxRate }}</div>
+                  <div class="review-key">
+                    Tax Rate
+                  </div>
+                  <div class="review-value">
+                    {{ taxComputationMapped.taxRate }}
+                  </div>
                 </div>
                 <!-- Tax schedules (expansion panels) -->
                 <div class="review-row-stacked">
-                <div class="review-key">Tax Schedules</div>
-                <div class="review-row-stacked-content">
-                  <VExpansionPanels multiple>
-                    <!-- Uses processedSchedules instead of raw taxSchedules -->
-                    <VExpansionPanel
-                      v-for="(schedule, sIdx) in processedSchedules"
-                      :key="sIdx"
-                    >
-                      <VExpansionPanelTitle>
-                        {{ toRoman(schedule.scheduleNumber) }} {{ schedule.scheduleName }}
-                      </VExpansionPanelTitle>
-                      <VExpansionPanelText>
-                        <!-- processedContent is already filtered — no function call needed here -->
-                        <div
-                          v-if="isComplexValue(schedule.processedContent)"
-                          class="review-grid nested"
-                        >
-                          <template
-                            v-for="sub in entriesOf(schedule.processedContent, 'Data content')"
-                            :key="sub.key"
+                  <div class="review-key">
+                    Tax Schedules
+                  </div>
+                  <div class="review-row-stacked-content">
+                    <VExpansionPanels multiple>
+                      <!-- Uses processedSchedules instead of raw taxSchedules -->
+                      <VExpansionPanel
+                        v-for="(schedule, sIdx) in processedSchedules"
+                        :key="sIdx"
+                      >
+                        <VExpansionPanelTitle>
+                          {{ toRoman(schedule.scheduleNumber) }} {{ schedule.scheduleName }}
+                        </VExpansionPanelTitle>
+                        <VExpansionPanelText>
+                          <!-- processedContent is already filtered — no function call needed here -->
+                          <div
+                            v-if="isComplexValue(schedule.processedContent)"
+                            class="review-grid nested"
                           >
-                            <div class="review-key">{{ sub.label }}</div>
-                            <div class="review-value">
-                              <!-- table content -->
-                              <template v-if="isTableContent(sub.value)">
-                                <VTable density="compact" class="review-data-table">
-                                  <thead>
-                                    <tr>
-                                      <th class="review-col-name">Name</th>
-                                      <th class="review-col-sch">Sch.</th>
-                                      <th class="review-col-amount">Amount</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    <tr v-for="(r, ri) in sub.value.rows" :key="ri">
-                                      <td class="review-col-name">{{ r.name ?? '-' }}</td>
-                                      <td class="review-col-sch">{{ r.schedule ?? '-' }}</td>
-                                      <td class="review-col-amount">{{ formatAmount(r.amount) }}</td>
-                                    </tr>
-                                  </tbody>
-                                </VTable>
-                              </template>
-                              <!-- checkbox content -->
-                              <template v-else-if="isCheckboxContent(sub.value)">
-                                <div class="review-checkbox-chips">
-                                  <VChip
-                                    v-for="(label, idx) in sub.value.selectedCheckbox"
-                                    :key="idx"
-                                    size="small"
-                                    class="ma-1"
+                            <template
+                              v-for="sub in entriesOf(schedule.processedContent, 'Data content')"
+                              :key="sub.key"
+                            >
+                              <div class="review-key">
+                                {{ sub.label }}
+                              </div>
+                              <div class="review-value">
+                                <!-- table content -->
+                                <template v-if="isTableContent(sub.value)">
+                                  <VTable
+                                    density="compact"
+                                    class="review-data-table"
                                   >
-                                    {{ label }}
-                                  </VChip>
-                                </div>
-                              </template>
-                              <template v-else-if="!isComplexValue(sub.value)">
-                                <span>{{ formatPrimitive(sub.value) }}</span>
-                              </template>
-                              <template v-else>
-                                <span>{{ JSON.stringify(sub.value, null, 2) }}</span>
-                              </template>
-                            </div>
-                          </template>
-                        </div>
-                        <div v-else>
-                          {{ formatPrimitive(schedule.processedContent) }}
-                        </div>
-                      </VExpansionPanelText>
-                    </VExpansionPanel>
-                  </VExpansionPanels>
+                                    <thead>
+                                      <tr>
+                                        <th class="review-col-name">
+                                          Name
+                                        </th>
+                                        <th class="review-col-sch">
+                                          Sch.
+                                        </th>
+                                        <th class="review-col-amount">
+                                          Amount
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr
+                                        v-for="(r, ri) in sub.value.rows"
+                                        :key="ri"
+                                      >
+                                        <td class="review-col-name">
+                                          {{ r.name ?? '-' }}
+                                        </td>
+                                        <td class="review-col-sch">
+                                          {{ r.schedule ?? '-' }}
+                                        </td>
+                                        <td class="review-col-amount">
+                                          {{ formatAmount(r.amount) }}
+                                        </td>
+                                      </tr>
+                                    </tbody>
+                                  </VTable>
+                                </template>
+                                <!-- checkbox content -->
+                                <template v-else-if="isCheckboxContent(sub.value)">
+                                  <div class="review-checkbox-chips">
+                                    <VChip
+                                      v-for="(label, idx) in sub.value.selectedCheckbox"
+                                      :key="idx"
+                                      size="small"
+                                      class="ma-1"
+                                    >
+                                      {{ label }}
+                                    </VChip>
+                                  </div>
+                                </template>
+                                <template v-else-if="!isComplexValue(sub.value)">
+                                  <span>{{ formatPrimitive(sub.value) }}</span>
+                                </template>
+                                <template v-else>
+                                  <span>{{ JSON.stringify(sub.value, null, 2) }}</span>
+                                </template>
+                              </div>
+                            </template>
+                          </div>
+                          <div v-else>
+                            {{ formatPrimitive(schedule.processedContent) }}
+                          </div>
+                        </VExpansionPanelText>
+                      </VExpansionPanel>
+                    </VExpansionPanels>
+                  </div>
                 </div>
-              </div>
               </div>
             </template>
           </template>
 
           <template v-else-if="selectedSection === 'taxReturn'">
-            <div v-if="!taxReturnRows.length" class="text-medium-emphasis">No data to display.</div>
-            <div v-else class="review-section">
+            <div
+              v-if="!taxReturnRows.length"
+              class="text-medium-emphasis"
+            >
+              No data to display.
+            </div>
+            <div
+              v-else
+              class="review-section"
+            >
               <div class="tax-return-print-button">
-                <VBtn 
+                <VBtn
                   title="Print tax return information"
                   color="primary"
                   size="x-small"
@@ -569,10 +647,16 @@ const printTaxReturnInformation = () => {
                   @click.stop.prevent="printTaxReturnInformation"
                 />
               </div>
-              <template v-for="row in taxReturnRows" :key="row.key">
+              <template
+                v-for="row in taxReturnRows"
+                :key="row.key"
+              >
                 <div class="tax-return-list">
                   <div>
-                    <div v-if="isTaxReturnFieldList(row.value) && row.value.length" class="review-tai-list">
+                    <div
+                      v-if="isTaxReturnFieldList(row.value) && row.value.length"
+                      class="review-tai-list"
+                    >
                       <div class="review-tai-row review-tai-header">
                         <span class="review-tai-col-no">Tax Return No.</span>
                         <span class="review-tai-col-field">Field</span>
@@ -581,14 +665,17 @@ const printTaxReturnInformation = () => {
                         <span class="review-tai-col-action" />
                       </div>
                       <VDivider />
-                      
+
                       <div
                         v-for="(field, idx) in row.value"
                         :key="`${row.key}-${field.name ?? idx}`"
                         class="review-tai-row"
                       >
                         <span class="review-tai-col-no text-body-2 text-medium-emphasis">
-                          <VChip class="review-tai-col-no-chip" label>{{ field.tax_return_number || '-' }}</VChip>
+                          <VChip
+                            class="review-tai-col-no-chip"
+                            label
+                          >{{ field.tax_return_number || '-' }}</VChip>
                         </span>
 
                         <span class="review-tai-col-field text-body-2">{{ field.name || '-' }}</span>
@@ -598,14 +685,28 @@ const printTaxReturnInformation = () => {
                         </span>
 
                         <span class="review-tai-col-ref text-body-2 text-medium-emphasis">
-                          <VChip class="review-tai-col-no-chip" label>{{ field.tax_return_reference || '-' }}</VChip>
+                          <VChip
+                            class="review-tai-col-no-chip"
+                            label
+                          >{{ field.tax_return_reference || '-' }}</VChip>
                         </span>
 
                         <div class="review-tai-col-action d-flex align-center justify-center">
-                          <VTooltip location="left" max-width="280">
+                          <VTooltip
+                            location="left"
+                            max-width="280"
+                          >
                             <template #activator="{ props: tooltipProps }">
-                              <VBtn v-bind="tooltipProps" icon size="x-small" variant="text">
-                                <VIcon icon="ri-eye-line" size="16" />
+                              <VBtn
+                                v-bind="tooltipProps"
+                                icon
+                                size="x-small"
+                                variant="text"
+                              >
+                                <VIcon
+                                  icon="ri-eye-line"
+                                  size="16"
+                                />
                               </VBtn>
                             </template>
                             <div class="review-tai-tooltip-content">
@@ -630,7 +731,10 @@ const printTaxReturnInformation = () => {
                         </div>
                       </div>
                     </div>
-                    <div v-else-if="isTaxReturnFieldList(row.value)" class="text-medium-emphasis">
+                    <div
+                      v-else-if="isTaxReturnFieldList(row.value)"
+                      class="text-medium-emphasis"
+                    >
                       No data to display.
                     </div>
                     <div v-else>
@@ -643,13 +747,23 @@ const printTaxReturnInformation = () => {
           </template>
 
           <template v-else-if="selectedSection === 'attachments'">
-            <div v-if="isDebugMode" class="text-body-2 mb-2">
+            <div
+              v-if="isDebugMode"
+              class="text-body-2 mb-2"
+            >
               {{ isDebugMode ? `(Dev)Attachment UUID: ${attachmentData?.uuid} | workingRecordUuid: ${props.workingRecordUuid}` : '-' }}
             </div>
-            <VBtn color="primary" size="small" @click="openOneDrive" class="mb-2" :loading="isOneDriveButtonLoading">Open In oneDrive</VBtn>
+            <VBtn
+              color="primary"
+              size="small"
+              class="mb-2"
+              :loading="isOneDriveButtonLoading"
+              @click="openOneDrive"
+            >
+              Open In OneDrive
+            </VBtn>
             <FileUploadZone v-model="attachmentList" />
           </template>
-
         </VCardText>
       </VCard>
     </div>
@@ -902,4 +1016,3 @@ const printTaxReturnInformation = () => {
   max-height: 34vh;
 }
 </style>
-

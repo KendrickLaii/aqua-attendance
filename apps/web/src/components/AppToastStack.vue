@@ -13,6 +13,7 @@ function formatCloseIn(ms: number) {
   const s = Math.max(0, ms) / 1000
   if (s >= 10)
     return `${Math.ceil(s)}s`
+
   return `${s.toFixed(1)}s`
 }
 
@@ -99,7 +100,7 @@ onBeforeUnmount(() => {
               <div
                 class="toast-progress-bar"
                 :style="{
-                  width: `${Math.max(0, Math.min(1, (remainingMsById[toast.id] ?? toast.duration) / toast.duration)) * 100}%`
+                  width: `${Math.max(0, Math.min(1, (remainingMsById[toast.id] ?? toast.duration) / toast.duration)) * 100}%`,
                 }"
               />
             </div>

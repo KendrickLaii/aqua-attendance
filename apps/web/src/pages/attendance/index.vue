@@ -21,7 +21,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="d-flex align-center justify-center" style="min-height: 100vh">
-    <VProgressCircular indeterminate color="primary" size="48" />
+  <div
+    class="d-flex align-center justify-center"
+    style="min-height: 100vh"
+  >
+    <VProgressCircular
+      indeterminate
+      color="primary"
+      size="48"
+    />
   </div>
 </template>

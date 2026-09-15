@@ -1,7 +1,7 @@
-import { defineThemeConfig } from '@core'
-import { Skins } from '@core/enums'
 import { breakpointsVuetifyV3 } from '@vueuse/core'
 import { VIcon } from 'vuetify/components/VIcon'
+import { defineThemeConfig } from '@core'
+import { Skins } from '@core/enums'
 
 // ❗ Logo SVG must be imported with ?raw suffix
 import logo from '@images/logos/aqua-logo.png'
@@ -11,6 +11,7 @@ import { AppContentLayoutNav, ContentWidth, FooterType, NavbarType } from '@layo
 export const { themeConfig, layoutConfig } = defineThemeConfig({
   app: {
     title: 'aqua',
+
     // ❗ if you have SVG logo and want it to adapt according to theme color, you have to apply color as `color: rgb(var(--v-global-theme-primary))`
     // logo: h('div', { innerHTML: logo, style: 'line-height:0; color: rgb(var(--v-global-theme-primary))' }),
     // ❗ For PNG/JPG images, use img tag. For SVG with theme color adaptation, use innerHTML with ?raw import
@@ -39,7 +40,7 @@ export const { themeConfig, layoutConfig } = defineThemeConfig({
         },
       ],
     },
-    theme: 'aqua',  // change to 'light', 'dark', 'system' or 'aqua
+    theme: 'aqua', // change to 'light', 'dark', 'system' or 'aqua
     skin: Skins.Default,
     iconRenderer: VIcon,
   },

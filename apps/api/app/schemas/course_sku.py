@@ -28,6 +28,7 @@ class CourseSkuCreate(BaseModel):
     level: str | None = Field(default=None, max_length=100)
     schedule_note: str | None = Field(default=None, max_length=255)
     location_id: uuid.UUID | None = None
+    staff_id: uuid.UUID | None = None
     capacity: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
     billing_unit: BillingUnit = "monthly"
@@ -48,6 +49,7 @@ class CourseSkuUpdate(BaseModel):
     level: str | None = Field(default=None, max_length=100)
     schedule_note: str | None = Field(default=None, max_length=255)
     location_id: uuid.UUID | None = None
+    staff_id: uuid.UUID | None = None
     capacity: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
     billing_unit: BillingUnit | None = None
@@ -71,6 +73,7 @@ class CourseSkuOut(BaseModel):
     level: str | None = None
     schedule_note: str | None = None
     location_id: uuid.UUID | None = None
+    staff_id: uuid.UUID | None = None
     capacity: int | None = None
     price: float | None = None
     billing_unit: BillingUnit

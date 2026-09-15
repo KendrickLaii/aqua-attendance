@@ -17,6 +17,7 @@ import { handlerPagesDatatable } from '@db/pages/datatable/index'
 import { handlerPagesFaq } from '@db/pages/faq/index'
 import { handlerPagesHelpCenter } from '@db/pages/help-center/index'
 import { handlerPagesProfile } from '@db/pages/profile/index'
+
 const worker = setupWorker(
   ...handlerAppsEcommerce,
   ...handlerAppsAcademy,

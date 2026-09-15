@@ -55,9 +55,11 @@ export function renderPayrollSlipPrintWindow(printWindow: Window, record: Payrol
   const salary = safePayrollNumber(record.gross_pay)
   const adjustment2 = safePayrollNumber(record.adjustment_2)
   const adjustment2Label = (record.adjustment_2_remark || '').trim() || 'Adjustment 2'
+
   const adjustment2Amount = adjustment2 < 0
     ? `(${formatPayrollCurrency(Math.abs(adjustment2))})`
     : formatPayrollCurrency(adjustment2)
+
   const subtotal = safePayrollNumber(record.net_pay)
   const chequeNumber = (record.cheque_number || '').trim()
   const chequeAmount = safePayrollNumber(record.cheque_amount)

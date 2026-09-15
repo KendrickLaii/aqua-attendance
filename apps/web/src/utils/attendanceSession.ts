@@ -16,6 +16,7 @@ export function getAttendanceRole(): string | undefined {
     return undefined
   try {
     const user = typeof raw === 'string' ? JSON.parse(raw) : raw
+
     return user?.role as string | undefined
   }
   catch {

@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import type { VForm } from 'vuetify/components/VForm'
 import {
   createBusinessNature,
   updateBusinessNature,
 } from '@/api/business-nature'
 import type { BusinessNatureItem, BusinessNaturePayload } from '@/types/business-nature'
-import type { VForm } from 'vuetify/components/VForm'
 
 // 👉 Form data interface
 export interface FormData {
@@ -20,6 +20,7 @@ interface Emit {
   (e: 'showAlert', value: string): void
   (e: 'saved'): void
 }
+
 // 👉 Emit
 const emit = defineEmits<Emit>()
 
@@ -31,10 +32,12 @@ const isSubmitting = ref(false)
 
 // 👉Dropdown items
 const statusItems = [
-    { title: 'Enable', value: 'enable' },
-    { title: 'Disable', value: 'disable' },
+  { title: 'Enable', value: 'enable' },
+  { title: 'Disable', value: 'disable' },
 ]
+
 const formValidated = ref(false)
+
 // 👉 Form initial data
 const formData = ref<FormData>({
   businessNature: '',
@@ -42,11 +45,12 @@ const formData = ref<FormData>({
   hsicClassification: '',
   status: 'enable',
 })
+
 // 👉 Method to open dialog - exposed to parent component
 const openDialog = async (mode: 'Create' | 'Edit', data: BusinessNatureItem | null = null) => {
   dialogMode.value = mode
   businessNatureClassData.value = data
-  
+
   if (mode === 'Edit' && data) {
     formData.value = {
       uuid: data.uuid,
@@ -55,7 +59,8 @@ const openDialog = async (mode: 'Create' | 'Edit', data: BusinessNatureItem | nu
       hsicClassification: data.hsic_classification || '',
       status: data.status || 'enable',
     }
-  } else {
+  }
+  else {
     formData.value = {
       businessNature: '',
       hsicCode: '',
@@ -65,7 +70,7 @@ const openDialog = async (mode: 'Create' | 'Edit', data: BusinessNatureItem | nu
     formValidated.value = false
     formRef.value?.resetValidation()
   }
-  
+
   // Open dialog - components will mount due to v-if
   isDialogVisible.value = true
 }
@@ -79,19 +84,23 @@ const mapToApiPayload = (): BusinessNaturePayload => ({
 
 // 👉 Form submission: validate then call API by dialogMode.
 const formSubmit = async () => {
-  if (isSubmitting.value) return
+  if (isSubmitting.value)
+    return
 
   formValidated.value = true
+
   const validation = await formRef.value?.validate()
   const isValid = validation?.valid ?? false
 
   if (!isValid) {
     emit('showAlert', 'Please fill in all required fields to save business nature class')
+
     return
   }
 
   try {
     isSubmitting.value = true
+
     const payload = mapToApiPayload()
 
     if (dialogMode.value === 'Create') {
@@ -101,6 +110,7 @@ const formSubmit = async () => {
     else {
       if (!formData.value.uuid) {
         emit('showAlert', 'Missing uuid for edit')
+
         return
       }
       await updateBusinessNature(formData.value.uuid, payload)
@@ -109,10 +119,12 @@ const formSubmit = async () => {
 
     emit('saved')
     resetData()
-  } catch (error) {
+  }
+  catch (error) {
     console.error('Failed to save business nature class:', error)
     emit('showAlert', 'Failed to save business nature class')
-  } finally {
+  }
+  finally {
     isSubmitting.value = false
   }
 }
@@ -121,7 +133,7 @@ const formSubmit = async () => {
 const resetData = () => {
   // Close dialog - this will unmount all tab components due to v-if
   isDialogVisible.value = false
-  
+
   // 👉 Reset data after dialog is closed
   nextTick(() => {
     businessNatureClassData.value = null
@@ -138,11 +150,12 @@ const resetData = () => {
 
 // 👉 Method to browse HSIC
 const browseHSIC = (keyword: string) => {
-    if(!keyword) {
-        emit('showAlert', 'Please enter a business nature to browse HSIC')
-        return
-    }
-    window.open(`https://www.censtatd.gov.hk/en/index_hsic2_code.html?keyword=${encodeURIComponent(keyword)}`, '_blank')
+  if (!keyword) {
+    emit('showAlert', 'Please enter a business nature to browse HSIC')
+
+    return
+  }
+  window.open(`https://www.censtatd.gov.hk/en/index_hsic2_code.html?keyword=${encodeURIComponent(keyword)}`, '_blank')
 }
 
 // 👉 Expose methods to parent component
@@ -154,32 +167,34 @@ defineExpose({
 
 <template>
   <VDialog
+    v-model="isDialogVisible"
     scrollable
     :width="$vuetify.display.smAndDown ? 'auto' : 600"
-    v-model="isDialogVisible"
-    >
+  >
     <VCard class="pa-sm-6 pa-4">
-        <div class="d-flex justify-space-between align-center mb-4">
-            <h5 class="text-h5">
-                {{ dialogMode === 'Create' ? 'Add New Business Nature Class' : 'Edit Business Nature Class' }}
-            </h5>
-            <!-- 👉 dialog close btn -->
-            <DialogCloseBtn
-                variant="text"
-                size="default"
-                @click="resetData"
-            />
-        </div>
+      <div class="d-flex justify-space-between align-center mb-4">
+        <h5 class="text-h5">
+          {{ dialogMode === 'Create' ? 'Add New Business Nature Class' : 'Edit Business Nature Class' }}
+        </h5>
+        <!-- 👉 dialog close btn -->
+        <DialogCloseBtn
+          variant="text"
+          size="default"
+          @click="resetData"
+        />
+      </div>
 
-        <VDivider />
-        
-        <VCardText class="pt-5">
+      <VDivider />
 
-        <VForm ref="formRef" @submit.prevent="">
-            <VRow>
+      <VCardText class="pt-5">
+        <VForm
+          ref="formRef"
+          @submit.prevent=""
+        >
+          <VRow>
             <!-- 👉 Business Nature -->
             <VCol cols="12">
-                <VTextField
+              <VTextField
                 v-model="formData.businessNature"
                 label="Business Nature"
                 hide-details
@@ -187,76 +202,79 @@ defineExpose({
                 density="compact"
                 :rules="[requiredValidator]"
                 class="required-field"
-                />
-                <small class="cursor-pointer ml-2" @click="browseHSIC(formData.businessNature)">
-                    <span :style="$vuetify.theme.name === 'dark' ? 'color: white' : 'color: blue'">
-                        <u>Browse from Hong Kong Standard Industrial Classification</u>
-                    </span>
-                </small>
+              />
+              <small
+                class="cursor-pointer ml-2"
+                @click="browseHSIC(formData.businessNature)"
+              >
+                <span :style="$vuetify.theme.name === 'dark' ? 'color: white' : 'color: blue'">
+                  <u>Browse from Hong Kong Standard Industrial Classification</u>
+                </span>
+              </small>
             </VCol>
 
             <!-- 👉 HSIC Code -->
             <VCol cols="12">
-                <VTextField
-                    v-model="formData.hsicCode"
-                    label="HSIC Code"
-                    placeholder="Enter HSIC Code"
-                    density="compact"
-                />
+              <VTextField
+                v-model="formData.hsicCode"
+                label="HSIC Code"
+                placeholder="Enter HSIC Code"
+                density="compact"
+              />
             </VCol>
 
             <!-- 👉 HSIC Classification -->
             <VCol cols="12">
-                <VTextField
-                    v-model="formData.hsicClassification"
-                    label="HSIC Classification"
-                    placeholder="Enter HSIC Classification"
-                    density="compact"
-                />
+              <VTextField
+                v-model="formData.hsicClassification"
+                label="HSIC Classification"
+                placeholder="Enter HSIC Classification"
+                density="compact"
+              />
             </VCol>
             <!-- 👉 Status Dropdown -->
             <VCol cols="12">
-                <VSelect
-                    v-model="formData.status"
-                    :items="statusItems"
-                    label="Status"
-                    placeholder="Select Status"
-                    density="compact"
-                    hide-details
-                    class="required-field"
-                    :rules="[requiredValidator]"
-                />
+              <VSelect
+                v-model="formData.status"
+                :items="statusItems"
+                label="Status"
+                placeholder="Select Status"
+                density="compact"
+                hide-details
+                class="required-field"
+                :rules="[requiredValidator]"
+              />
             </VCol>
-            </VRow>
+          </VRow>
         </VForm>
-        </VCardText>
-        <V-Divider />
-        <!-- 👉 Footer buttons -->
-        <VCardActions class="d-flex justify-end flex-wrap gap-4 py-3 px-3">
-            <VBtn
-                color="secondary"
-                variant="outlined"
-                @click="resetData"
-            >
-                Cancel
-            </VBtn>
+      </VCardText>
+      <VDivider />
+      <!-- 👉 Footer buttons -->
+      <VCardActions class="d-flex justify-end flex-wrap gap-4 py-3 px-3">
+        <VBtn
+          color="secondary"
+          variant="outlined"
+          @click="resetData"
+        >
+          Cancel
+        </VBtn>
 
-            <VBtn
-                type="submit"
-                variant="elevated"
-                color="primary"
-                @click="formSubmit"
-            >
-                    Submit
-                <VIcon
-                    end
-                    icon="ri-check-line"
-                    class="flip-in-rtl"
-                />
-            </VBtn>
-        </VCardActions>
+        <VBtn
+          type="submit"
+          variant="elevated"
+          color="primary"
+          @click="formSubmit"
+        >
+          Submit
+          <VIcon
+            end
+            icon="ri-check-line"
+            class="flip-in-rtl"
+          />
+        </VBtn>
+      </VCardActions>
     </VCard>
-    </VDialog>
+  </VDialog>
 </template>
 
 <style lang="scss" scoped>

@@ -3,28 +3,30 @@
 Billing is derived purely from CourseEnrollment + CourseSku, not attendance:
 
 - monthly (月費): flat unit_price, quantity 1, billed every active month.
-- per_session (堂費): a one-time charge for ``purchased_quantity`` sessions,
-  set by admin at enrollment time. It is billed exactly once, in the first
-  month Generate runs for while the enrollment is active; later months are
-  skipped by checking whether a non-void invoice line already exists for
-  that enrollment in a different period. If that invoice is later voided,
-  the charge is treated as not-yet-billed and can be regenerated.
+- price: enrollment.unit_price overrides the SKU price when set — lets
+  price-less classes (e.g. 私補) be billed per student.
+- per_session (堂費): each EnrollmentPurchase (initial purchase or top-up)
+  is billed once, in the first month Generate runs for that covers or
+  follows its ``purchased_at`` date. A purchase stays billable while its
+  ``billed_invoice_line_id`` is NULL or points at a line on a void or
+  rebuilt-draft invoice.
 """
 
 from __future__ import annotations
 
 import calendar
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.course_enrollment import CourseEnrollment
+from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
 from app.models.course_sku import CourseSku
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
 from app.models.unit import Unit, UnitStatus
@@ -36,22 +38,28 @@ def _money(value: object) -> Decimal:
     return Decimal(str(value)).quantize(Decimal("0.01"))
 
 
-def _line_from_enrollment(
+@dataclass
+class _BillingContext:
+    first_day: date
+    last_day: date
+    unbilled_line_ids: set[UUID] = field(default_factory=set)
+
+
+def _enrollment_price(enrollment: CourseEnrollment, sku: CourseSku) -> Decimal | None:
+    override = getattr(enrollment, "unit_price", None)
+    raw_price = override if override is not None else sku.price
+    if raw_price is None:
+        return None
+    return _money(raw_price)
+
+
+def _new_line(
     enrollment: CourseEnrollment,
-    already_billed_elsewhere: set[UUID],
-) -> TuitionInvoiceLine | None:
-    sku = enrollment.sku
-    if sku is None or sku.price is None:
-        return None
-    unit_price = _money(sku.price)
-    if sku.billing_unit == "per_session":
-        if enrollment.id in already_billed_elsewhere or enrollment.purchased_quantity is None:
-            return None
-        quantity = _money(enrollment.purchased_quantity)
-    else:
-        quantity = _money(1)
-    if quantity <= 0:
-        return None
+    sku: CourseSku,
+    unit_price: Decimal,
+    quantity: Decimal,
+) -> TuitionInvoiceLine:
+    staff = getattr(sku, "staff", None)
     return TuitionInvoiceLine(
         enrollment_id=enrollment.id,
         sku_id=sku.id,
@@ -61,31 +69,72 @@ def _line_from_enrollment(
         unit_price=unit_price,
         quantity=quantity,
         amount=unit_price * quantity,
+        staff_name=staff.full_name if staff else None,
     )
 
 
-async def _already_billed_elsewhere(
+def _lines_from_enrollment(
+    enrollment: CourseEnrollment,
+    ctx: _BillingContext,
+) -> tuple[list[TuitionInvoiceLine], list[tuple[TuitionInvoiceLine, EnrollmentPurchase]]]:
+    sku = enrollment.sku
+    if sku is None:
+        return [], []
+    lines: list[TuitionInvoiceLine] = []
+    purchase_links: list[tuple[TuitionInvoiceLine, EnrollmentPurchase]] = []
+
+    if sku.billing_unit == "per_session":
+        # Each purchase bills itself; a purchase counts as unbilled while its
+        # link is NULL or points at a line that is being rebuilt/voided this
+        # run. Enrollments without purchases have nothing to bill.
+        for p in getattr(enrollment, "purchases", []):
+            if p.purchased_at > ctx.last_day:
+                continue
+            if p.billed_invoice_line_id is not None and p.billed_invoice_line_id not in ctx.unbilled_line_ids:
+                continue
+            quantity = _money(p.purchased_quantity)
+            if quantity <= 0:
+                continue
+            unit_price = _money(p.unit_price)
+            line = _new_line(enrollment, sku, unit_price, quantity)
+            lines.append(line)
+            purchase_links.append((line, p))
+        return lines, purchase_links
+
+    unit_price = _enrollment_price(enrollment, sku)
+    if unit_price is None:
+        return [], []
+    lines.append(_new_line(enrollment, sku, unit_price, _money(1)))
+    return lines, purchase_links
+
+
+async def _unbilled_line_ids(
     db: AsyncSession,
     enrollment_ids: set[UUID],
     first_day: date,
     last_day: date,
 ) -> set[UUID]:
-    """One-time per_session charges: enrollments already billed in a
-    different, non-void period. Void invoices don't count as billed."""
+    """Line ids that must not block a purchase from being billed again:
+    lines on voided invoices (any period), plus lines on this period's
+    draft/void invoices, which get cleared and rebuilt below."""
     if not enrollment_ids:
         return set()
     result = await db.execute(
-        select(TuitionInvoiceLine.enrollment_id)
+        select(TuitionInvoiceLine.id)
         .join(TuitionInvoice, TuitionInvoiceLine.invoice_id == TuitionInvoice.id)
         .where(
             TuitionInvoiceLine.enrollment_id.in_(enrollment_ids),
-            TuitionInvoice.status != TuitionInvoiceStatus.void.value,
             or_(
-                TuitionInvoice.period_start != first_day,
-                TuitionInvoice.period_end != last_day,
+                TuitionInvoice.status == TuitionInvoiceStatus.void.value,
+                and_(
+                    TuitionInvoice.period_start == first_day,
+                    TuitionInvoice.period_end == last_day,
+                    TuitionInvoice.status.in_(
+                        [TuitionInvoiceStatus.draft.value, TuitionInvoiceStatus.void.value]
+                    ),
+                ),
             ),
         )
-        .distinct()
     )
     return {row[0] for row in result.all()}
 
@@ -101,14 +150,23 @@ async def generate_monthly_tuition_invoices(
 
     result = await db.execute(
         select(CourseEnrollment)
-        .options(selectinload(CourseEnrollment.sku))
+        .options(
+            selectinload(CourseEnrollment.sku).selectinload(CourseSku.staff),
+            selectinload(CourseEnrollment.unit),
+            selectinload(CourseEnrollment.purchases),
+        )
         .join(CourseSku, CourseEnrollment.sku_id == CourseSku.id)
         .join(Unit, CourseEnrollment.unit_id == Unit.id)
         .where(
             CourseEnrollment.status == "active",
             or_(CourseEnrollment.start_date.is_(None), CourseEnrollment.start_date <= last_day),
             or_(CourseEnrollment.end_date.is_(None), CourseEnrollment.end_date >= first_day),
-            CourseSku.price.is_not(None),
+            # per_session prices live on EnrollmentPurchase, not the SKU/enrollment.
+            or_(
+                CourseSku.billing_unit == "per_session",
+                CourseSku.price.is_not(None),
+                CourseEnrollment.unit_price.is_not(None),
+            ),
             CourseSku.is_active.is_(True),
             Unit.is_active.is_(True),
             Unit.status == UnitStatus.active.value,
@@ -121,14 +179,22 @@ async def generate_monthly_tuition_invoices(
         for enrollment in enrollments
         if enrollment.sku is not None and enrollment.sku.billing_unit == "per_session"
     }
-    already_billed_elsewhere = await _already_billed_elsewhere(db, per_session_ids, first_day, last_day)
+    ctx = _BillingContext(
+        first_day=first_day,
+        last_day=last_day,
+        unbilled_line_ids=await _unbilled_line_ids(db, per_session_ids, first_day, last_day),
+    )
 
     by_unit: dict = defaultdict(list)
+    unit_locations: dict = {}
+    line_purchase_links: list[tuple[TuitionInvoiceLine, EnrollmentPurchase]] = []
     for enrollment in enrollments:
-        line = _line_from_enrollment(enrollment, already_billed_elsewhere)
-        if line is None:
+        lines, links = _lines_from_enrollment(enrollment, ctx)
+        if not lines:
             continue
-        by_unit[enrollment.unit_id].append(line)
+        by_unit[enrollment.unit_id].extend(lines)
+        line_purchase_links.extend(links)
+        unit_locations[enrollment.unit_id] = enrollment.unit.registered_location_id
 
     existing_result = await db.execute(
         select(TuitionInvoice)
@@ -156,6 +222,7 @@ async def generate_monthly_tuition_invoices(
         if invoice is None:
             invoice = TuitionInvoice(
                 unit_id=unit_id,
+                location_id=unit_locations.get(unit_id),
                 period_start=first_day,
                 period_end=last_day,
                 status=TuitionInvoiceStatus.draft.value,
@@ -166,9 +233,17 @@ async def generate_monthly_tuition_invoices(
             created += 1
             continue
 
+        was_void = invoice.status == TuitionInvoiceStatus.void.value
         invoice.lines.clear()
         invoice.total = total
         invoice.status = TuitionInvoiceStatus.draft.value
+        if invoice.location_id is None:
+            invoice.location_id = unit_locations.get(unit_id)
+        if was_void:
+            # A voided invoice has already been printed with its old number.
+            # Re-issuing it must use a fresh number, not reuse the old one.
+            invoice.invoice_no = None
+            invoice.issued_at = None
         for line in lines:
             invoice.lines.append(line)
         updated += 1
@@ -184,6 +259,9 @@ async def generate_monthly_tuition_invoices(
         deleted += 1
 
     try:
+        await db.flush()
+        for line, purchase in line_purchase_links:
+            purchase.billed_invoice_line_id = line.id
         await db.commit()
     except IntegrityError:
         await db.rollback()

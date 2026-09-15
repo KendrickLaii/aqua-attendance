@@ -25,6 +25,7 @@ export function useAttendanceCaslSync() {
     let role: string | undefined
     try {
       const user = typeof raw === 'string' ? JSON.parse(raw) as { role?: string } : (raw as { role?: string })
+
       role = user?.role
     }
     catch {

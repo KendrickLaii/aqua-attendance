@@ -53,6 +53,7 @@ export type ProcessedContentItem =
 export interface ProcessedSchedule {
   scheduleName: string
   scheduleNumber: number
+
   /** The dataContentList after filtering — ready for the template to render directly. */
   processedContent: unknown[]
 }
@@ -77,6 +78,7 @@ export function isTaxScheduleEntry(entry: KeyValueRow): entry is KeyValueRow & {
   if (!isObjectLike(entry.value))
     return false
   const v = entry.value as Record<string, unknown>
+
   return (
     typeof v.scheduleName === 'string'
     && typeof v.scheduleNumber === 'number'
@@ -106,6 +108,7 @@ export function filterSelectedTableRows(tableData: unknown[]): Record<string, un
     if (!r || typeof r !== 'object')
       return false
     const t = r as Record<string, unknown>
+
     return t.itemSelect === true
       && t.type !== 'subtotal'
       && t.type !== 'blankRow'
@@ -145,18 +148,22 @@ function processDataContent(scheduleName: string, dataContentList: unknown[]): u
     if (type === 'info') {
       const tableData = Array.isArray(row.tableData) ? row.tableData : []
       const filtered = filterSelectedTableRows(tableData)
+
       const rows: FilteredTableRow[] = filtered.map(t => ({
         name: t.name ?? '',
         schedule: t.schedule ?? '',
         amount: t.this ?? '',
       }))
+
       out.push({ type: 'table', rows })
     }
     else if (type === 'checkboxes') {
       const selectedCheckbox = Array.isArray(row.selectedCheckbox) ? row.selectedCheckbox : []
+
       out.push({ type: 'checkboxes', selectedCheckbox })
     }
   }
+
   return out
 }
 
@@ -190,10 +197,13 @@ function mapTaxComputationData(raw: unknown): TaxComputationMapped | null {
     const menu = m as Record<string, unknown>
     const analysis = String(menu.analysis ?? '')
     const scheduleNumber = Number(menu.scheduleNumber)
+
     const dataItem = data.find(
       (d: unknown) => typeof d === 'object' && d !== null && (d as Record<string, unknown>).title === analysis,
     ) as Record<string, unknown> | undefined
+
     const dataContentList = Array.isArray(dataItem?.dataContentList) ? dataItem.dataContentList : []
+
     return {
       scheduleName: analysis,
       scheduleNumber: Number.isNaN(scheduleNumber) ? 0 : scheduleNumber,
@@ -268,6 +278,7 @@ export function useTaxComputationReview(taxComputationData: Ref<unknown>) {
 
       if (type === 'info') {
         const tableData = Array.isArray(row.tableData) ? row.tableData : []
+
         // Uses the SAME shared filter as the display logic — no more duplication
         const filtered = filterSelectedTableRows(tableData)
 
@@ -280,6 +291,7 @@ export function useTaxComputationReview(taxComputationData: Ref<unknown>) {
       }
       else if (type === 'checkboxes') {
         const selectedCheckbox = Array.isArray(row.selectedCheckbox) ? row.selectedCheckbox : []
+
         extracted.push(...selectedCheckbox.filter(v => typeof v === 'string'))
       }
     }
@@ -293,12 +305,14 @@ export function useTaxComputationReview(taxComputationData: Ref<unknown>) {
       }
       const e = entry as Record<string, unknown>
       const tag = String(e.dataContentTag ?? '')
+
       flattenedStringParts.push(`${tag}-name|${String(e.name ?? '')}`)
       flattenedStringParts.push(`${tag}-sch|${String(e.schedule ?? '')}`)
       flattenedStringParts.push(`${tag}-amount|${String(e.amount ?? '')}`)
     }
 
     const flattenedString = flattenedStringParts.join(';')
+
     return { taxRate: mapped.taxRate, extracted, flattenedString }
   }
 

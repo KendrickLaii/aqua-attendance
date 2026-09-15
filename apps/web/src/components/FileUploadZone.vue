@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import { useDropZone, useFileDialog, useObjectUrl } from '@vueuse/core'
 import type { TaxAttachmentListItem } from '@/types/attachment'
 import { useToast } from '@/composables/useToast'
-import { useDropZone, useFileDialog, useObjectUrl } from '@vueuse/core'
-import excelPreviewImage from '@/assets/images/aqua/preview-image/excel.png'
-import pdfPreviewImage from '@/assets/images/aqua/preview-image/pdf.png'
-import wordPreviewImage from '@/assets/images/aqua/preview-image/word.png'
-import zipPreviewImage from '@/assets/images/aqua/preview-image/zip.png'
+import excelPreviewImage from '@images/aqua/preview-image/excel.png'
+import pdfPreviewImage from '@images/aqua/preview-image/pdf.png'
+import wordPreviewImage from '@images/aqua/preview-image/word.png'
+import zipPreviewImage from '@images/aqua/preview-image/zip.png'
 
 const dropZoneRef = ref<HTMLDivElement>()
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
@@ -18,10 +18,12 @@ const { open, onChange } = useFileDialog()
 function pushFile(file: File) {
   if (file.size > MAX_FILE_SIZE_BYTES) {
     showToast(`File "${file.name}" exceeds 10MB limit.`, 'error')
+
     return
   }
 
   const url = useObjectUrl(file).value ?? ''
+
   items.value = [...items.value, {
     file,
     url,
@@ -53,9 +55,11 @@ function removeAt(index: number) {
 
 function downloadAt(index: number) {
   const item = items.value[index]
-  if (!item?.url) return
+  if (!item?.url)
+    return
 
   const link = document.createElement('a')
+
   link.href = item.url
   link.download = item.name || `attachment-${index + 1}`
   document.body.appendChild(link)
@@ -69,6 +73,7 @@ function isImageItem(item: TaxAttachmentListItem): boolean {
     return true
 
   const name = String(item.name ?? '').toLowerCase()
+
   return /\.(png|jpe?g|gif|webp|ico|bmp|svg)$/.test(name)
 }
 
@@ -78,6 +83,7 @@ function isPdfItem(item: TaxAttachmentListItem): boolean {
     return true
 
   const name = String(item.name ?? '').toLowerCase()
+
   return /\.pdf$/.test(name)
 }
 
@@ -87,6 +93,7 @@ function isExcelItem(item: TaxAttachmentListItem): boolean {
     return true
 
   const name = String(item.name ?? '').toLowerCase()
+
   return /\.(xls|xlsx|xlsm|csv)$/.test(name)
 }
 
@@ -101,6 +108,7 @@ function isWordItem(item: TaxAttachmentListItem): boolean {
     return true
 
   const name = String(item.name ?? '').toLowerCase()
+
   return /\.(doc|docx|docm|dot|dotx|rtf)$/.test(name)
 }
 
@@ -110,6 +118,7 @@ function isZipItem(item: TaxAttachmentListItem): boolean {
     return true
 
   const name = String(item.name ?? '').toLowerCase()
+
   return /\.(zip|rar|7z)$/.test(name)
 }
 
@@ -177,7 +186,10 @@ function formatFileSize(size?: number): string {
                 sm="4"
                 class="file-card-col"
               >
-                <VCard :ripple="false" class="file-card">
+                <VCard
+                  :ripple="false"
+                  class="file-card"
+                >
                   <VCardText
                     class="d-flex flex-column file-card-content"
                     @click.stop
@@ -211,7 +223,10 @@ function formatFileSize(size?: number): string {
                       v-else
                       class="d-flex flex-column align-center justify-center file-fallback-box rounded pa-4"
                     >
-                      <VIcon size="36" icon="ri-file-3-line" />
+                      <VIcon
+                        size="36"
+                        icon="ri-file-3-line"
+                      />
                       <span class="text-caption mt-2">No preview</span>
                     </div>
                     <div class="mt-2 file-meta">

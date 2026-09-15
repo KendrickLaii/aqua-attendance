@@ -30,18 +30,18 @@ export function formatEnrollmentRange(
   return `${from} → ${to}`
 }
 
-export type UnitEnrollmentLike = {
+export interface UnitEnrollmentLike {
   id: string
   sku_id: string
   status: string
 }
 
-export type UnitSkuLike = {
+export interface UnitSkuLike {
   id: string
   name_zh: string
 }
 
-export type UnitEnrollmentRow<E extends UnitEnrollmentLike = UnitEnrollmentLike, S extends UnitSkuLike = UnitSkuLike> = {
+export interface UnitEnrollmentRow<E extends UnitEnrollmentLike = UnitEnrollmentLike, S extends UnitSkuLike = UnitSkuLike> {
   enrollment: E
   sku: S | null
 }
@@ -51,6 +51,7 @@ export function buildUnitEnrollmentRows<E extends UnitEnrollmentLike, S extends 
   skus: S[],
 ): UnitEnrollmentRow<E, S>[] {
   const byId = new Map(skus.map(sku => [sku.id, sku]))
+
   const rows = enrollments.map(enrollment => ({
     enrollment,
     sku: byId.get(enrollment.sku_id) ?? null,

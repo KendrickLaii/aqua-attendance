@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import BasicInfo from './client-dialog-tabs/BasicInfo.vue'
+import History from './client-dialog-tabs/History.vue'
 import type { Content } from '@/types/client'
 import type { CurrencyProperties } from '@/types/currency'
 import { createClient, updateClient } from '@/api/client'
 import { getAllCurrency } from '@/api/currency'
-import BasicInfo from './client-dialog-tabs/BasicInfo.vue'
-import History from './client-dialog-tabs/History.vue'
 
 // Validation error type for showAlert payload
 export interface ShowAlertPayload {
@@ -25,7 +25,6 @@ const isDialogVisible = ref(false)
 const dialogMode = ref<'Create' | 'Edit'>('Create')
 const clientData = ref<Content | null>(null)
 
-
 // Refs for tab components
 const basicInfoRef = ref()
 const historyRef = ref()
@@ -43,12 +42,14 @@ const tabData = ref<Record<string, any>>({
   basicInfo: {},
   history: {},
 })
+
 const currencyItems = ref<Array<{ label: string; value: string }>>([])
 
 const fetchCurrencyItems = async () => {
   try {
     const res = await getAllCurrency(1, 1000)
     const list = res?.data?.content ?? []
+
     currencyItems.value = (list as CurrencyProperties[])
       .filter(item => Boolean(item.uuid))
       .map(item => ({
@@ -85,7 +86,7 @@ const openDialog = async (mode: 'Create' | 'Edit', data: Content | null = null) 
   }
 
   isDialogVisible.value = true
-  console.log("TEST tabData",tabData.value)
+  console.log('TEST tabData', tabData.value)
 }
 
 // Handle data updates from tabs
@@ -99,7 +100,7 @@ const handleBasicInfoAlert = (payload: ShowAlertPayload) => {
 
 // Expose methods to parent component
 defineExpose({
-  openDialog
+  openDialog,
 })
 
 // Form submission
@@ -117,6 +118,7 @@ const formSubmit = async () => {
   }
 
   const errors: ValidationError[] = []
+
   validations.forEach((result, index) => {
     if (result === false) {
       errors.push({ tab: tabNames[index] })
@@ -135,6 +137,7 @@ const formSubmit = async () => {
     try {
       const editUuid = clientData.value && 'uuid' in clientData.value ? clientData.value.uuid : undefined
       const { tax_file_no_part1, tax_file_no_part2, ...basicInfoRest } = tabData.value.basicInfo as Record<string, unknown>
+
       const submitData: Partial<Content> = {
         ...basicInfoRest,
         ...(dialogMode.value === 'Edit' && editUuid ? { uuid: editUuid } : {}),
@@ -201,13 +204,23 @@ const resetClientData = () => {
       </div>
 
       <VCardText class="pt-1 overflow-hidden px-0">
-        <VTabs show-arrows v-model="currentTab" fixed>
-          <VTab v-for="(tab, index) in tabs" :key="index">
+        <VTabs
+          v-model="currentTab"
+          show-arrows
+          fixed
+        >
+          <VTab
+            v-for="(tab, index) in tabs"
+            :key="index"
+          >
             {{ tab.title }}
           </VTab>
         </VTabs>
 
-        <VWindow v-model="currentTab" v-if="isDialogVisible">
+        <VWindow
+          v-if="isDialogVisible"
+          v-model="currentTab"
+        >
           <VWindowItem class="overflow-y-auto overflow-x-hidden pb-3 pr-3 form-scroll">
             <!-- {{ tabData.basicInfo }} -->
             <BasicInfo
@@ -215,7 +228,7 @@ const resetClientData = () => {
               :initial-data="tabData.basicInfo"
               :currency-items="currencyItems"
               @update:data="handleBasicInfoUpdate"
-              @showAlert="handleBasicInfoAlert"
+              @show-alert="handleBasicInfoAlert"
             />
           </VWindowItem>
 
@@ -258,6 +271,7 @@ const resetClientData = () => {
   height: calc(95vh - 210px);
 }
 </style>
+
 <style>
 .flatpickr-calendar.open {
   z-index: 2501 !important;

@@ -110,10 +110,13 @@ function buildCompanyInfoString(
 // ────────────────────────────────────────────
 
 interface UseTaxClipboardOptions {
+
   /** The basic information data from the working section. */
   basicInformationData: () => BasicInformationData
+
   /** The client profile data (may be null). */
   clientData: () => Content | null | undefined
+
   /**
    * A function that flattens the tax computation into a string.
    * Provided by the `useTaxComputationReview` composable.
@@ -139,6 +142,7 @@ export function useTaxClipboard(options: UseTaxClipboardOptions) {
 
     if (!clientData || !basicInfo) {
       showToast('No client information or tax computation data to copy', 'error')
+
       return
     }
 
@@ -153,6 +157,7 @@ export function useTaxClipboard(options: UseTaxClipboardOptions) {
     const combined = [companyInformationString, taxString].filter(Boolean).join('')
     if (!combined) {
       showToast('No client information or tax computation data to copy', 'error')
+
       return
     }
 

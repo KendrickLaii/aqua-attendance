@@ -3,15 +3,18 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB
-from app.models.course_enrollment import CourseEnrollment, EnrollmentStatus
+from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase, EnrollmentStatus
 from app.models.course_sku import CourseSku
 from app.models.unit import Unit, UnitStatus
 from app.schemas.course_enrollment import (
     CourseEnrollmentCreate,
     CourseEnrollmentOut,
     CourseEnrollmentUpdate,
+    EnrollmentPurchaseCreate,
+    EnrollmentPurchaseOut,
     _require_start_on_or_before_end,
 )
 
@@ -74,7 +77,7 @@ async def list_course_enrollments(
         count_q = count_q.where(*clauses)
     total = await db.scalar(count_q) or 0
 
-    q = select(CourseEnrollment)
+    q = select(CourseEnrollment).options(selectinload(CourseEnrollment.purchases))
     if clauses:
         q = q.where(*clauses)
     q = q.order_by(CourseEnrollment.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
@@ -98,20 +101,47 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     await _require_enrollable_sku(db, sku)
     _require_purchased_quantity_for_per_session(sku, body.purchased_quantity)
 
+    initial_purchase_price: float | None = None
+    if sku.billing_unit == "per_session":
+        initial_purchase_price = body.unit_price if body.unit_price is not None else sku.price
+        if initial_purchase_price is None:
+            raise HTTPException(
+                status_code=422,
+                detail="This class has no fixed price — enter a price for this student.",
+            )
+
     enrollment = CourseEnrollment(**body.model_dump())
     db.add(enrollment)
     try:
+        if initial_purchase_price is not None:
+            await db.flush()
+            db.add(
+                EnrollmentPurchase(
+                    enrollment_id=enrollment.id,
+                    purchased_quantity=body.purchased_quantity,
+                    unit_price=initial_purchase_price,
+                    purchased_at=body.start_date or enrollment.enrolled_at,
+                )
+            )
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="This student is already enrolled in this course")
-    await db.refresh(enrollment)
-    return enrollment
+    result = await db.execute(
+        select(CourseEnrollment)
+        .options(selectinload(CourseEnrollment.purchases))
+        .where(CourseEnrollment.id == enrollment.id)
+    )
+    return result.scalar_one()
 
 
 @router.get("/{enrollment_id}", response_model=CourseEnrollmentOut)
 async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB) -> CourseEnrollment:
-    result = await db.execute(select(CourseEnrollment).where(CourseEnrollment.id == enrollment_id))
+    result = await db.execute(
+        select(CourseEnrollment)
+        .options(selectinload(CourseEnrollment.purchases))
+        .where(CourseEnrollment.id == enrollment_id)
+    )
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
@@ -122,12 +152,21 @@ async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db:
 async def update_course_enrollment(
     enrollment_id: uuid.UUID, body: CourseEnrollmentUpdate, _admin: AdminOnly, db: DB
 ) -> CourseEnrollment:
-    result = await db.execute(select(CourseEnrollment).where(CourseEnrollment.id == enrollment_id))
+    result = await db.execute(
+        select(CourseEnrollment)
+        .options(selectinload(CourseEnrollment.purchases))
+        .where(CourseEnrollment.id == enrollment_id)
+    )
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    if "purchased_quantity" in update_data and len(enrollment.purchases) > 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Use Top up to add sessions; purchases are billed individually.",
+        )
     new_start = update_data["start_date"] if "start_date" in update_data else enrollment.start_date
     new_end = update_data["end_date"] if "end_date" in update_data else enrollment.end_date
     try:
@@ -151,8 +190,12 @@ async def update_course_enrollment(
     for field, value in update_data.items():
         setattr(enrollment, field, value)
     await db.commit()
-    await db.refresh(enrollment)
-    return enrollment
+    result = await db.execute(
+        select(CourseEnrollment)
+        .options(selectinload(CourseEnrollment.purchases))
+        .where(CourseEnrollment.id == enrollment.id)
+    )
+    return result.scalar_one()
 
 
 @router.delete("/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -163,3 +206,43 @@ async def delete_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, 
         raise HTTPException(status_code=404, detail="Enrollment not found")
     await db.delete(enrollment)
     await db.commit()
+
+
+@router.post("/{enrollment_id}/purchases", response_model=EnrollmentPurchaseOut, status_code=status.HTTP_201_CREATED)
+async def create_enrollment_purchase(
+    enrollment_id: uuid.UUID, body: EnrollmentPurchaseCreate, _admin: AdminOnly, db: DB
+) -> EnrollmentPurchase:
+    result = await db.execute(
+        select(CourseEnrollment).options(selectinload(CourseEnrollment.purchases)).where(CourseEnrollment.id == enrollment_id)
+    )
+    enrollment = result.scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    if enrollment.status != EnrollmentStatus.active.value:
+        raise HTTPException(status_code=422, detail="Cannot top up a non-active enrollment")
+
+    sku = await db.get(CourseSku, enrollment.sku_id)
+    if sku and sku.billing_unit != "per_session":
+        raise HTTPException(status_code=422, detail="Top-ups are only allowed for per_session classes")
+
+    purchase = EnrollmentPurchase(
+        enrollment_id=enrollment_id,
+        purchased_quantity=body.purchased_quantity,
+        unit_price=body.unit_price,
+        purchased_at=body.purchased_at,
+        notes=body.notes,
+    )
+    db.add(purchase)
+    await db.commit()
+    await db.refresh(purchase)
+    return purchase
+
+
+@router.get("/{enrollment_id}/purchases", response_model=list[EnrollmentPurchaseOut])
+async def list_enrollment_purchases(
+    enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB
+) -> list[EnrollmentPurchase]:
+    result = await db.execute(
+        select(EnrollmentPurchase).where(EnrollmentPurchase.enrollment_id == enrollment_id)
+    )
+    return list(result.scalars().all())

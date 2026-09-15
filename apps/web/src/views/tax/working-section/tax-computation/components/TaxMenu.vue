@@ -26,12 +26,14 @@ const toggleItem = (item: TaxMenuItem) => {
   item.isIncluded = !item.isIncluded
   let seq = 1
   props.taxMenu.forEach(menuItem => {
-    if (menuItem.isIncluded) menuItem.scheduleNumber = seq++
+    if (menuItem.isIncluded)
+      menuItem.scheduleNumber = seq++
   })
   emit('tax-menu-update', [...props.taxMenu])
 }
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+
 const getDisplaySchedule = (item: TaxMenuItem) =>
   ROMAN[item.scheduleNumber - 1] ?? item.scheduleNumber.toString()
 
@@ -46,7 +48,7 @@ watch(visibleTabs, tabs => {
 </script>
 
 <template>
-<VNavigationDrawer
+  <VNavigationDrawer
     :rail="!pinned"
     :expand-on-hover="!pinned"
     permanent
@@ -63,16 +65,28 @@ watch(visibleTabs, tabs => {
       @mouseleave="drawerHovered = false"
     >
       <div class="tax-menu-header d-flex align-center pa-2 justify-space-between">
-        <div class="tax-menu-title-wrap" :class="{ 'tax-menu-title-wrap--visible': showDetails }">
+        <div
+          class="tax-menu-title-wrap"
+          :class="{ 'tax-menu-title-wrap--visible': showDetails }"
+        >
           <span class="tax-menu-title text-body-2">Tax Computation</span>
         </div>
         <div class="tax-menu-actions d-flex align-center gap-1">
-          <IconBtn size="small" @click="pinned = !pinned">
-                <VIcon :icon="pinned ? 'ri-pushpin-fill' : 'ri-pushpin-2-line'" />
-              </IconBtn>
-          <VMenu v-model="menuOpen" :close-on-content-click="false">
+          <IconBtn
+            size="small"
+            @click="pinned = !pinned"
+          >
+            <VIcon :icon="pinned ? 'ri-pushpin-fill' : 'ri-pushpin-2-line'" />
+          </IconBtn>
+          <VMenu
+            v-model="menuOpen"
+            :close-on-content-click="false"
+          >
             <template #activator="{ props: menuProps }">
-              <IconBtn v-bind="menuProps" size="small">
+              <IconBtn
+                v-bind="menuProps"
+                size="small"
+              >
                 <VIcon icon="ri-settings-3-line" />
               </IconBtn>
             </template>
@@ -86,7 +100,10 @@ watch(visibleTabs, tabs => {
               >
                 <template #prepend>
                   <VListItemAction start>
-                    <VCheckboxBtn :model-value="item.isIncluded" density="compact"/>
+                    <VCheckboxBtn
+                      :model-value="item.isIncluded"
+                      density="compact"
+                    />
                   </VListItemAction>
                 </template>
                 <template #title>
@@ -100,18 +117,27 @@ watch(visibleTabs, tabs => {
 
       <VDivider />
 
-      <VTabs v-model="selectedTab" direction="vertical" slider-color="primary" class="tax-tabs flex-grow-1" @update:model-value="emit('tab-change', selectedTab?.id ?? 0)">
-      <VTab
-        v-for="(tab, index) in visibleTabs"
-        :key="tab.id"
-        class="tax-tab w-100"
-        :value="tab"
+      <VTabs
+        v-model="selectedTab"
+        direction="vertical"
+        slider-color="primary"
+        class="tax-tabs flex-grow-1"
+        @update:model-value="emit('tab-change', selectedTab?.id ?? 0)"
       >
-        <div class="tax-tab-content w-100 d-flex flex-column align-start text-left gap-1">
-          <span class="tax-tab-id">{{ getDisplaySchedule(tab) }}</span>
-          <span v-if="showDetails" class="tax-tab-analysis">{{ tab.analysis }}</span>
-        </div>
-      </VTab>
+        <VTab
+          v-for="(tab, index) in visibleTabs"
+          :key="tab.id"
+          class="tax-tab w-100"
+          :value="tab"
+        >
+          <div class="tax-tab-content w-100 d-flex flex-column align-start text-left gap-1">
+            <span class="tax-tab-id">{{ getDisplaySchedule(tab) }}</span>
+            <span
+              v-if="showDetails"
+              class="tax-tab-analysis"
+            >{{ tab.analysis }}</span>
+          </div>
+        </VTab>
       </VTabs>
     </div>
   </VNavigationDrawer>

@@ -8,6 +8,7 @@ from app.models.course_enrollment import CourseEnrollment
 from app.models.course_sku import CourseSku
 from app.models.course_spu import CourseSpu
 from app.models.location import Location
+from app.models.unit import Unit
 from app.schemas.course_sku import CourseSkuCreate, CourseSkuOut, CourseSkuUpdate
 from app.utils.search import ilike_contains
 
@@ -26,6 +27,14 @@ async def _assert_location_exists(db: DB, location_id: uuid.UUID | None) -> None
     result = await db.execute(select(Location.id).where(Location.id == location_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+
+
+async def _assert_staff_exists(db: DB, staff_id: uuid.UUID | None) -> None:
+    if staff_id is None:
+        return
+    result = await db.execute(select(Unit.unit_type).where(Unit.id == staff_id))
+    if result.scalar_one_or_none() != "staff":
+        raise HTTPException(status_code=422, detail="staff_id does not reference an existing staff member")
 
 
 @router.get("", response_model=list[CourseSkuOut])
@@ -72,6 +81,7 @@ async def list_course_skus(
 async def create_course_sku(body: CourseSkuCreate, _admin: AdminOnly, db: DB) -> CourseSku:
     await _assert_spu_exists(db, body.spu_id)
     await _assert_location_exists(db, body.location_id)
+    await _assert_staff_exists(db, body.staff_id)
 
     exists = await db.execute(select(CourseSku).where(CourseSku.code == body.code))
     if exists.scalar_one_or_none():
@@ -105,6 +115,8 @@ async def update_course_sku(sku_id: uuid.UUID, body: CourseSkuUpdate, _admin: Ad
         await _assert_spu_exists(db, update_data["spu_id"])
     if "location_id" in update_data:
         await _assert_location_exists(db, update_data["location_id"])
+    if "staff_id" in update_data:
+        await _assert_staff_exists(db, update_data["staff_id"])
 
     new_code = update_data.get("code")
     if new_code:

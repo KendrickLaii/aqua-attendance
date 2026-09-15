@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export interface UnitLocationRef {
   id: string

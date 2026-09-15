@@ -25,13 +25,13 @@ export function formatApiError(e: unknown, fallback: string): string {
     : undefined
 
   const status = e && typeof e === 'object' && 'statusCode' in e ? (e as { statusCode?: number }).statusCode : undefined
+
   const rawMessage = formatApiDetail(data?.detail)
     || data?.error
     || (e instanceof Error ? e.message : fallback)
 
-  if (status === 429) {
+  if (status === 429)
     return `${rawMessage || 'Too many requests'}. Please try again later.`
-  }
 
   return rawMessage
 }

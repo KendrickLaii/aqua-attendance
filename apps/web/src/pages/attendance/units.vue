@@ -13,11 +13,11 @@ import UnitQrDialogs from '@/components/attendance/UnitQrDialogs.vue'
 import AppToastStack from '@/components/AppToastStack.vue'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import {
+  type UnitEnrollmentRow,
   billingUnitShortLabel,
   buildUnitEnrollmentRows,
   enrollmentStatusColor,
   formatEnrollmentRange,
-  type UnitEnrollmentRow,
 } from '@/utils/courseEnrollmentDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useToast } from '@/composables/useToast'
@@ -487,6 +487,7 @@ async function loadStudentEnrollments(unitId: string | null) {
       listAllCourseEnrollments({ unit_id: unitId }),
       listCourseSkus(),
     ])
+
     if (requestId !== unitEnrollmentsRequestId)
       return
     unitEnrollmentRows.value = buildUnitEnrollmentRows(enrollments, skuList)

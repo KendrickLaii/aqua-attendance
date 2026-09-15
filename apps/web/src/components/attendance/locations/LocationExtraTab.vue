@@ -24,10 +24,13 @@ defineProps<{
         v-model="form.details_json"
         label="Extra Details (JSON)"
         rows="4"
-        hint='Free-form key/value pairs. Example: {"floor":"2F","room":"A-01"}'
+        hint="Free-form key/value pairs. Example: {&quot;floor&quot;:&quot;2F&quot;,&quot;room&quot;:&quot;A-01&quot;}"
         persistent-hint
         prepend-inner-icon="ri-code-line"
-        :rules="[v => { if (!v.trim()) return true; try { JSON.parse(v); return true } catch { return 'Invalid JSON' } }]"
+        :rules="[v => {
+          if (!v.trim()) return true; try { JSON.parse(v); return true }
+          catch { return 'Invalid JSON' }
+        }]"
       />
     </VCol>
   </VRow>

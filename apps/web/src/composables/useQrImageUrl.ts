@@ -9,11 +9,12 @@ export function useQrImageUrl(token: Ref<string>, sizePx = 280) {
 
   watch(
     token,
-    async (value) => {
+    async value => {
       if (!value) {
         qrImageUrl.value = ''
         qrImageError.value = false
         qrImageLoading.value = false
+
         return
       }
       qrImageLoading.value = true

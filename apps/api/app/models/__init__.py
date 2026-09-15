@@ -11,11 +11,12 @@ from app.models.payroll_record import PayrollRecord
 from app.models.audit_log import AuditLog
 from app.models.course_spu import CourseSpu
 from app.models.course_sku import CourseSku
-from app.models.course_enrollment import CourseEnrollment
+from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
 from app.models.tuition_invoice import TuitionInvoice
+from app.models.invoice_counter import InvoiceCounter
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
     "Notification", "AttendanceSummary", "PayrollRecord", "AuditLog",
-    "CourseSpu", "CourseSku", "CourseEnrollment", "TuitionInvoice",
+    "CourseSpu", "CourseSku", "CourseEnrollment", "EnrollmentPurchase", "TuitionInvoice", "InvoiceCounter",
 ]

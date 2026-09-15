@@ -27,6 +27,7 @@ export interface TuitionInvoicePrintData {
   lines: TuitionInvoicePrintLine[]
   logoUrl?: string
   header?: TuitionInvoicePrintHeader
+  remark?: string
 }
 
 const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
@@ -81,7 +82,7 @@ export function tuitionInvoicePrintData(
 ): TuitionInvoicePrintData {
   const studentName = invoice.unit_name
     ? `${invoice.unit_name}${invoice.unit_code ? ` (${invoice.unit_code})` : ''}`
-    : (invoice.unit_code ?? '')
+    : (invoice.manual_student_name ?? '')
 
   return {
     invoiceNo: invoice.invoice_no ?? '',
@@ -89,8 +90,9 @@ export function tuitionInvoicePrintData(
     studentName,
     logoUrl: options?.logoUrl,
     header: options?.header,
+    remark: invoice.notes ?? '',
     lines: invoice.lines.map(line => ({
-      month: invoiceMonthLabel(invoice.period_start),
+      month: line.month_label ?? invoiceMonthLabel(invoice.period_start),
       course: line.name_zh || line.sku_code,
       fee: Number(line.unit_price),
       qty: Number(line.quantity),
@@ -265,6 +267,15 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
       padding: 4px 8px;
       font-weight: 700;
     }
+    .remark {
+      clear: both;
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+    .remark .label {
+      display: inline-block;
+      min-width: 3em;
+    }
     .foot {
       clear: both;
       display: table;
@@ -344,6 +355,7 @@ ${lineRows}
   <div class="total-row">
     <div class="amount">${escapeHtml(formatMoney(total))}</div>
   </div>
+  ${data.remark ? `<div class="remark"><span class="label">備註:</span>${escapeHtml(data.remark)}</div>` : ''}
 
   <div class="foot">
     <div class="cell payinfo">

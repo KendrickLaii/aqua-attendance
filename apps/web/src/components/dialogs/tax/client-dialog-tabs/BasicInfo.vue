@@ -99,22 +99,27 @@ const formData = ref<BasicInfoFormData>({ ...defaultFormData })
 
 /** Given year end date (Y-m-d), return year start: (end - 1 year) + 1 day. Handles leap years and month lengths. */
 function computeYearStartFromEnd(yearEndStr: string): string {
-  if (!yearEndStr || !/^\d{4}-\d{2}-\d{2}$/.test(yearEndStr)) return ''
-  const d = new Date(yearEndStr + 'T12:00:00')
-  if (Number.isNaN(d.getTime())) return ''
+  if (!yearEndStr || !/^\d{4}-\d{2}-\d{2}$/.test(yearEndStr))
+    return ''
+  const d = new Date(`${yearEndStr}T12:00:00`)
+  if (Number.isNaN(d.getTime()))
+    return ''
   d.setFullYear(d.getFullYear() - 1)
   d.setDate(d.getDate() + 1)
+
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
+
   return `${y}-${m}-${day}`
 }
 
 /** Restrict to max 4-digit integer (0–9999) and sync year_of_assessment_ly, provisional_ly, provisional. */
 function onYearOfAssessmentChange(raw: string) {
   const digitsOnly = raw.replace(/\D/g, '').slice(0, 4)
-  const num = digitsOnly === '' ? NaN : Math.min(parseInt(digitsOnly, 10), 9999)
+  const num = digitsOnly === '' ? Number.NaN : Math.min(Number.parseInt(digitsOnly, 10), 9999)
   const sanitized = digitsOnly === '' ? '' : String(num)
+
   formData.value.year_of_assessment = sanitized
   if (sanitized === '' || Number.isNaN(num)) {
     formData.value.year_of_assessment_ly = ''
@@ -137,7 +142,8 @@ function onYearEndChange(
   formData.value[endKey] = value
   if (!formData.value[startKey]?.trim()) {
     const start = computeYearStartFromEnd(value)
-    if (start) formData.value[startKey] = start
+    if (start)
+      formData.value[startKey] = start
   }
 }
 
@@ -145,13 +151,14 @@ function onYearEndChange(
 const isInitializing = ref(false)
 
 // Watch for initial data changes
-watch(() => props.initialData, (newData) => {
+watch(() => props.initialData, newData => {
   isInitializing.value = true
-  
+
   if (newData) {
     const d = newData as Partial<BasicInfoFormData>
     const taxFileNo = d.tax_file_no ?? ''
     const [taxFileNoPart1 = '', taxFileNoPart2 = ''] = taxFileNo.split('/')
+
     formData.value = {
       L_year_end: d.L_year_end ?? '',
       L_year_start: d.L_year_start ?? '',
@@ -188,17 +195,18 @@ watch(() => props.initialData, (newData) => {
       year_of_assessment_ly: d.year_of_assessment_ly ?? '',
       main_signer_position: d.main_signer_position ?? null,
     }
-  } else {
+  }
+  else {
     formData.value = { ...defaultFormData }
   }
-  
+
   nextTick(() => {
     isInitializing.value = false
   })
 }, { immediate: true })
 
 // Watch formData and emit updates (but not during initialization). Combine tax_file_no from part1/part2 for API.
-watch(formData, (newData) => {
+watch(formData, newData => {
   if (!isInitializing.value) {
     emit('update:data', {
       ...newData,
@@ -223,8 +231,10 @@ const validate = async () => {
       const labelEl = document.querySelector<HTMLLabelElement>(
         `label[for="${id}"]:not([aria-hidden="true"])`,
       )
+
       return labelEl?.textContent?.trim() || String(id)
     })
+
     return { valid: false, errors }
   }
 
@@ -240,11 +250,14 @@ const reset = () => {
 const pickNonEmpty = (incoming: string, current: string) => incoming?.trim() ? incoming : current
 
 const convertYmdToDmy = (dateStr: string) => {
-  if (!dateStr?.trim()) return ''
+  if (!dateStr?.trim())
+    return ''
   const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return dateStr
+  if (!match)
+    return dateStr
 
   const [, year, month, day] = match
+
   return `${day}-${month}-${year}`
 }
 
@@ -267,6 +280,7 @@ const applyAquaAuditProfileToForm = (profile: AquaAuditClientProfile) => {
     tax_file_no: pickNonEmpty(profile.tax_file_no, formData.value.tax_file_no),
     tax_file_no_part1: pickNonEmpty(taxFileNoPart1, formData.value.tax_file_no_part1),
     tax_file_no_part2: pickNonEmpty(taxFileNoPart2, formData.value.tax_file_no_part2),
+
     // API returns currency_uuid; keep best-effort mapping to existing currency field.
     // currency: pickNonEmpty(profile.currency_uuid, formData.value.currency || '') || null,
     // business_nature_uuid: pickNonEmpty(profile.business_nature_uuid, formData.value.business_nature_uuid),
@@ -276,6 +290,7 @@ const applyAquaAuditProfileToForm = (profile: AquaAuditClientProfile) => {
 const getDataFromAquaAudit = async () => {
   if (!formData.value.company_no?.trim()) {
     emit('showAlert', { message: 'Company number cannot be blank', type: 'error' })
+
     return
   }
 
@@ -289,11 +304,13 @@ const getDataFromAquaAudit = async () => {
       && Number((res as any).status_code) !== 200
     ) {
       emit('showAlert', { message: 'Failed to get client profile', type: 'error' })
+
       return
     }
 
     applyAquaAuditProfileToForm(res)
-  } catch (error) {
+  }
+  catch (error) {
     console.error('Failed to get client profile from AQUA Audit:', error)
     emit('showAlert', { message: 'Failed to get client profile', type: 'error' })
   }
@@ -302,26 +319,33 @@ const getDataFromAquaAudit = async () => {
 // Expose methods
 defineExpose({
   validate,
-  reset
+  reset,
 })
 
 // Dropdown items
 const currencyItems = computed(() => props.currencyItems ?? [])
+
 const fiscalPeriodItems = [
   { title: 'Year/ Year', value: '0' },
   { title: 'Year/ Period', value: '1' },
   { title: 'Period/ Year', value: '2' },
   { title: 'Period/ Period', value: '3' },
 ]
+
 const statusItems = [
   { title: 'Enable', value: 'enable' },
   { title: 'Disable', value: 'disable' },
 ]
-const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment mangager','Provisional liquidator','Liquidator']
+
+const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment mangager', 'Provisional liquidator', 'Liquidator']
 </script>
 
 <template>
-  <VForm ref="refForm" v-model="isFormValid" @submit.prevent="() => {}">
+  <VForm
+    ref="refForm"
+    v-model="isFormValid"
+    @submit.prevent="() => {}"
+  >
     <div class="mt-2">
       <VRow>
         <VCol cols="6">
@@ -355,14 +379,14 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             :rules="[requiredValidator]"
           />
           <VBtn
-          color="primary"
-          variant="elevated"
-          size="x-small"
-          @click="getDataFromAquaAudit"
-          style="margin-bottom: 10px;"
-        >
-          Get from AQUA Audit
-        </VBtn>
+            color="primary"
+            variant="elevated"
+            size="x-small"
+            style="margin-bottom: 10px;"
+            @click="getDataFromAquaAudit"
+          >
+            Get from AQUA Audit
+          </VBtn>
           <div class="mb-2 required-field">
             <AppDateTimePicker
               v-model="formData.incorporation_date"
@@ -474,64 +498,65 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             :rules="[requiredValidator]"
           />
 
-          <!-- <span class="text-body-1 font-weight-medium text-high-emphasis">Fiscal & assessment years</span>
-          <div class="d-flex flex-column">
+          <!--
+            <span class="text-body-1 font-weight-medium text-high-emphasis">Fiscal & assessment years</span>
+            <div class="d-flex flex-column">
             <div class="w-100 my-2 d-flex gap-2 align-center">
-              <div class="w-50">
-                <AppDateTimePicker
-                  :model-value="formData.f_year_end"
-                  name="f_year_end"
-                  label="Year end date"
-                  placeholder="Select year end date"
-                  density="compact"
-                  hide-details
-                  clearable
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  @update:model-value="(v: string) => onYearEndChange(v, 'f_year_end', 'f_year_start')"
-                />
-              </div>
-              <div class="w-50">
-                <AppDateTimePicker
-                  :model-value="formData.L_year_end"
-                  name="L_year_end"
-                  label="Prior year end date"
-                  placeholder="Select prior year end date"
-                  density="compact"
-                  hide-details
-                  clearable
-                  :config="{ dateFormat: 'Y-m-d' }"
-                  @update:model-value="(v: string) => onYearEndChange(v, 'L_year_end', 'L_year_start')"
-              />
-              </div>
+            <div class="w-50">
+            <AppDateTimePicker
+            :model-value="formData.f_year_end"
+            name="f_year_end"
+            label="Year end date"
+            placeholder="Select year end date"
+            density="compact"
+            hide-details
+            clearable
+            :config="{ dateFormat: 'Y-m-d' }"
+            @update:model-value="(v: string) => onYearEndChange(v, 'f_year_end', 'f_year_start')"
+            />
+            </div>
+            <div class="w-50">
+            <AppDateTimePicker
+            :model-value="formData.L_year_end"
+            name="L_year_end"
+            label="Prior year end date"
+            placeholder="Select prior year end date"
+            density="compact"
+            hide-details
+            clearable
+            :config="{ dateFormat: 'Y-m-d' }"
+            @update:model-value="(v: string) => onYearEndChange(v, 'L_year_end', 'L_year_start')"
+            />
+            </div>
             </div>
             <div class="w-100 mb-2 d-flex gap-2">
-              <div class="w-50">
-                <AppDateTimePicker
-                  v-model="formData.f_year_start"
-                  name="f_year_start"
-                  label="Year start date"
-                  placeholder="Select year start date"
-                  density="compact"
-                  hide-details
-                  clearable
-                  :config="{ dateFormat: 'Y-m-d' }"
-                />
-              </div>
-              <div class="w-50">
-                <AppDateTimePicker
-                  v-model="formData.L_year_start"
-                  name="L_year_start"
-                  label="Prior year start date"
-                  placeholder="Select prior year start date"
-                  density="compact"
-                  hide-details
-                  clearable
-                  :config="{ dateFormat: 'Y-m-d' }"
-                />
-              </div>
+            <div class="w-50">
+            <AppDateTimePicker
+            v-model="formData.f_year_start"
+            name="f_year_start"
+            label="Year start date"
+            placeholder="Select year start date"
+            density="compact"
+            hide-details
+            clearable
+            :config="{ dateFormat: 'Y-m-d' }"
+            />
             </div>
-          </div>
-          <VSelect
+            <div class="w-50">
+            <AppDateTimePicker
+            v-model="formData.L_year_start"
+            name="L_year_start"
+            label="Prior year start date"
+            placeholder="Select prior year start date"
+            density="compact"
+            hide-details
+            clearable
+            :config="{ dateFormat: 'Y-m-d' }"
+            />
+            </div>
+            </div>
+            </div>
+            <VSelect
             v-model="formData.fiscal_period"
             name="fiscal_period"
             label="Fiscal period"
@@ -540,8 +565,8 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             hide-details
             :items="fiscalPeriodItems"
             class="mb-2"
-          />
-          <VTextField
+            />
+            <VTextField
             v-model="formData.reportin_standards"
             name="reportin_standards"
             label="Reporting standards"
@@ -549,59 +574,60 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             density="compact"
             hide-details
             class="mb-2"
-          />
-          <div class="d-flex flex-column">
+            />
+            <div class="d-flex flex-column">
             <div class="w-100 mb-2 d-flex gap-2 align-center">
-              <div class="w-50">
-                <VTextField
-                  v-model="formData.year_of_assessment_ly"
-                  name="year_of_assessment_ly"
-                  label="Year of assessment (LY)"
-                  density="compact"
-                  hide-details
-                  disabled
-                />
-              </div>
-              <span class="text-body-1 font-weight-medium text-high-emphasis">/</span>
-              <div class="w-50">
-                <VTextField
-                  :model-value="formData.year_of_assessment"
-                  name="year_of_assessment"
-                  label="Year of assessment"
-                  :placeholder="`e.g. ${new Date().getFullYear()}`"
-                  density="compact"
-                  hide-details
-                  maxlength="4"
-                  @update:model-value="onYearOfAssessmentChange"
-                />
-              </div>
+            <div class="w-50">
+            <VTextField
+            v-model="formData.year_of_assessment_ly"
+            name="year_of_assessment_ly"
+            label="Year of assessment (LY)"
+            density="compact"
+            hide-details
+            disabled
+            />
+            </div>
+            <span class="text-body-1 font-weight-medium text-high-emphasis">/</span>
+            <div class="w-50">
+            <VTextField
+            :model-value="formData.year_of_assessment"
+            name="year_of_assessment"
+            label="Year of assessment"
+            :placeholder="`e.g. ${new Date().getFullYear()}`"
+            density="compact"
+            hide-details
+            maxlength="4"
+            @update:model-value="onYearOfAssessmentChange"
+            />
+            </div>
             </div>
             <div class="w-100 mb-2 d-flex gap-2 align-center">
-              <div class="w-50">
-                <VTextField
-                  v-model="formData.provisional_ly"
-                  name="provisional_ly"
-                  label="Provisional (LY)"
-                  density="compact"
-                  hide-details
-                  class="mb-2"
-                  disabled
-                />
-              </div>
-              <span class="text-body-1 font-weight-medium text-high-emphasis">/</span>
-              <div class="w-50">
-                <VTextField
-                  v-model="formData.provisional"
-                  name="provisional"
-                  label="Provisional"
-                  density="compact"
-                  hide-details
-                  class="mb-2"
-                  disabled
-                />
-              </div>
+            <div class="w-50">
+            <VTextField
+            v-model="formData.provisional_ly"
+            name="provisional_ly"
+            label="Provisional (LY)"
+            density="compact"
+            hide-details
+            class="mb-2"
+            disabled
+            />
             </div>
-          </div> -->
+            <span class="text-body-1 font-weight-medium text-high-emphasis">/</span>
+            <div class="w-50">
+            <VTextField
+            v-model="formData.provisional"
+            name="provisional"
+            label="Provisional"
+            density="compact"
+            hide-details
+            class="mb-2"
+            disabled
+            />
+            </div>
+            </div>
+            </div>
+          -->
         </VCol>
         <VCol cols="6">
           <span class="text-body-1 font-weight-medium text-high-emphasis">Contact & staff</span>
@@ -632,8 +658,9 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             hide-details
             class="mb-2"
           />
-          <!-- <span class="text-body-1 font-weight-medium text-high-emphasis">Dates & reporting</span>
-          <AppDateTimePicker
+          <!--
+            <span class="text-body-1 font-weight-medium text-high-emphasis">Dates & reporting</span>
+            <AppDateTimePicker
             v-model="formData.engage_date"
             name="engage_date"
             label="Engage date"
@@ -642,8 +669,8 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             hide-details
             class="my-2"
             :config="{ dateFormat: 'Y-m-d' }"
-          />
-          <AppDateTimePicker
+            />
+            <AppDateTimePicker
             v-model="formData.due_date"
             name="due_date"
             label="Due date"
@@ -652,8 +679,8 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             hide-details
             class="mb-2"
             :config="{ dateFormat: 'Y-m-d' }"
-          />
-          <AppDateTimePicker
+            />
+            <AppDateTimePicker
             v-model="formData.report_date"
             name="report_date"
             label="Report date"
@@ -662,9 +689,9 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             hide-details
             class="mb-2"
             :config="{ dateFormat: 'Y-m-d' }"
-          />
-          <span class="text-body-1 font-weight-medium text-high-emphasis">Signing partner</span>
-          <VTextField
+            />
+            <span class="text-body-1 font-weight-medium text-high-emphasis">Signing partner</span>
+            <VTextField
             v-model="formData.signing_partner"
             name="signing_partner"
             label="Signing partner"
@@ -672,8 +699,8 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             density="compact"
             hide-details
             class="my-2"
-          />
-          <VTextField
+            />
+            <VTextField
             v-model="formData.position_of_signing_partner"
             name="position_of_signing_partner"
             label="Position of signing partner"
@@ -681,8 +708,8 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             density="compact"
             hide-details
             class="mb-2"
-          />
-          <VTextField
+            />
+            <VTextField
             v-model="formData.practising_certificate_number"
             name="practising_certificate_number"
             label="Practising certificate number"
@@ -690,7 +717,8 @@ const mainSignerPositionItems = ['Secretary', 'Manager', 'Director', 'Investment
             density="compact"
             hide-details
             class="mb-2"
-          /> -->
+            />
+          -->
           <VSelect
             v-model="formData.status"
             name="status"

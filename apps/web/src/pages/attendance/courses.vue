@@ -8,6 +8,7 @@ import {
   createCourseEnrollment,
   createCourseSku,
   createCourseSpu,
+  createEnrollmentPurchase,
   deleteCourseEnrollment,
   deleteCourseSku,
   deleteCourseSpu,
@@ -37,6 +38,16 @@ useAutoClearAlerts(loadError)
 const spus = ref<CourseSpu[]>([])
 const skus = ref<CourseSku[]>([])
 const locations = ref<LocationItem[]>([])
+const staffUnits = ref<Unit[]>([])
+
+const staffOptions = computed(() =>
+  staffUnits.value
+    .slice()
+    .sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.full_name.localeCompare(b.full_name))
+    .map(u => ({ value: u.id, title: `${u.full_name} · ${u.code}${u.is_active ? '' : ' (inactive)'}` })),
+)
+
+const staffName = (id: string | null | undefined) => staffUnits.value.find(u => u.id === id)?.full_name ?? ''
 
 const selectedSpuId = ref<string | null>(null)
 const selectedSpu = computed(() => spus.value.find(s => s.id === selectedSpuId.value) ?? null)
@@ -91,15 +102,17 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [spuList, skuList, locationList] = await Promise.all([
+    const [spuList, skuList, locationList, staffList] = await Promise.all([
       listCourseSpus(),
       listCourseSkus(),
       listLocations({ is_active: true }),
+      listUnits({ unit_type: 'staff', page_size: 200 }),
     ])
 
     spus.value = spuList
     skus.value = skuList
     locations.value = locationList
+    staffUnits.value = staffList
     if (!selectedSpuId.value && spuList.length > 0)
       selectedSpuId.value = spuList[0].id
   }
@@ -248,6 +261,7 @@ const skuForm = reactive({
   level: '',
   schedule_note: '',
   location_id: null as string | null,
+  staff_id: null as string | null,
   capacity: null as number | null,
   price: null as number | null,
   billing_unit: 'monthly' as BillingUnit,
@@ -280,6 +294,7 @@ function openCreateSku() {
     level: '',
     schedule_note: '',
     location_id: null,
+    staff_id: null,
     capacity: null,
     price: null,
     billing_unit: 'monthly' as BillingUnit,
@@ -299,6 +314,7 @@ function openEditSku(sku: CourseSku) {
     level: sku.level ?? '',
     schedule_note: sku.schedule_note ?? '',
     location_id: sku.location_id,
+    staff_id: sku.staff_id,
     capacity: sku.capacity,
     price: sku.price,
     billing_unit: sku.billing_unit,
@@ -323,6 +339,7 @@ async function saveSku() {
     level: skuForm.level.trim() || null,
     schedule_note: skuForm.schedule_note.trim() || null,
     location_id: skuForm.location_id,
+    staff_id: skuForm.staff_id,
     capacity: skuForm.capacity,
     price: skuForm.price,
     billing_unit: skuForm.billing_unit,
@@ -371,6 +388,7 @@ const rosterSkuId = ref<string | null>(null)
 const enrollStartDate = ref('')
 const enrollEndDate = ref('')
 const enrollPurchasedQuantity = ref<number | null>(null)
+const enrollUnitPrice = ref<number | null>(null)
 const enrolling = ref(false)
 const enrollError = ref('')
 const enrollSuccess = ref('')
@@ -379,7 +397,7 @@ useAutoClearAlerts(enrollSuccess)
 
 const enrollments = ref<CourseEnrollment[]>([])
 const enrollmentsLoading = ref(false)
-const enrollmentDates = ref<Record<string, { start: string; end: string }>>({})
+const enrollmentDates = ref<Record<string, { start: string; end: string; price: string }>>({})
 const enrollmentDateSavingId = ref<string | null>(null)
 let rosterRequestId = 0
 
@@ -395,6 +413,16 @@ const rosterAtCapacity = computed(() => {
 })
 
 const rosterEditingId = ref<string | null>(null)
+
+// Top-up UI hidden for now — backend purchase endpoints stay available.
+const topUpEnabled = false
+const topUpOpen = ref(false)
+const topUpEnrollment = ref<CourseEnrollment | null>(null)
+const topUpQuantity = ref<number | null>(null)
+const topUpPrice = ref<number | null>(null)
+const topUpDate = ref<string>('')
+const topUpNote = ref('')
+const topUpSaving = ref(false)
 
 function formatRosterDate(value: string | null | undefined, empty = '—'): string {
   if (!value)
@@ -416,6 +444,7 @@ function beginEditEnrollmentDates(enrollment: CourseEnrollment) {
   enrollmentDates.value[enrollment.id] = {
     start: enrollment.start_date ?? '',
     end: enrollment.end_date ?? '',
+    price: enrollment.unit_price != null ? String(enrollment.unit_price) : '',
   }
 }
 
@@ -423,6 +452,7 @@ function cancelEditEnrollmentDates(enrollment: CourseEnrollment) {
   enrollmentDates.value[enrollment.id] = {
     start: enrollment.start_date ?? '',
     end: enrollment.end_date ?? '',
+    price: enrollment.unit_price != null ? String(enrollment.unit_price) : '',
   }
   rosterEditingId.value = null
 }
@@ -448,7 +478,7 @@ function emptyToNull(value: string): string | null {
 
 function syncEnrollmentDates(items: CourseEnrollment[]) {
   enrollmentDates.value = Object.fromEntries(
-    items.map(e => [e.id, { start: e.start_date ?? '', end: e.end_date ?? '' }]),
+    items.map(e => [e.id, { start: e.start_date ?? '', end: e.end_date ?? '', price: e.unit_price != null ? String(e.unit_price) : '' }]),
   )
 }
 
@@ -571,6 +601,44 @@ function enrollNeedsPurchasedQuantity() {
   return rosterSku.value?.billing_unit === 'per_session'
 }
 
+const enrollPriceHint = computed(() => {
+  const sku = rosterSku.value
+  if (!sku)
+    return ''
+  if (sku.billing_unit === 'per_session') {
+    if (sku.price == null)
+      return 'No class price — enter the price for the sessions bought now.'
+
+    return `Leave empty to use the class price (${rosterPriceLabel(sku)}).`
+  }
+  if (sku.price == null)
+    return 'No class price — enter this student\'s monthly price, or Generate will skip them.'
+
+  return `Leave empty to use the class price (${rosterPriceLabel(sku)}).`
+})
+
+const enrollEffectivePrice = computed(() => enrollUnitPrice.value ?? rosterSku.value?.price ?? null)
+
+const enrollBillPreview = computed(() => {
+  const sku = rosterSku.value
+  if (!sku)
+    return ''
+  const price = enrollEffectivePrice.value
+  if (sku.billing_unit === 'per_session') {
+    const qty = enrollPurchasedQuantity.value
+    if (qty == null || qty <= 0)
+      return 'Per-session class — enter how many sessions this student bought. Billed once, not monthly.'
+    if (price == null)
+      return 'This class has no set price — enter the price per session to bill it.'
+
+    return `One-time charge: ${qty} × HK$${price.toFixed(2)} = HK$${(qty * price).toFixed(2)} — bill it from the Manual invoice dialog or Generate.`
+  }
+  if (price == null)
+    return 'No class price — this student will be skipped at Generate until a price is set.'
+
+  return `Bills HK$${price.toFixed(2)} every month that overlaps the billed window.`
+})
+
 const classOptions = computed(() =>
   skus.value.map(k => ({ ...k, title: `${k.code} · ${k.name_zh}` })),
 )
@@ -600,6 +668,11 @@ async function enrollStudent() {
 
     return
   }
+  if (enrollUnitPrice.value != null && enrollUnitPrice.value < 0) {
+    enrollError.value = 'Price cannot be negative.'
+
+    return
+  }
 
   enrolling.value = true
   enrollError.value = ''
@@ -610,11 +683,12 @@ async function enrollStudent() {
       start_date: startDate,
       end_date: endDate,
       purchased_quantity: enrollNeedsPurchasedQuantity() ? enrollPurchasedQuantity.value : null,
+      unit_price: enrollUnitPrice.value,
     })
 
     enrollments.value = [created, ...enrollments.value]
     enrollmentDates.value = {
-      [created.id]: { start: created.start_date ?? '', end: created.end_date ?? '' },
+      [created.id]: { start: created.start_date ?? '', end: created.end_date ?? '', price: created.unit_price != null ? String(created.unit_price) : '' },
       ...enrollmentDates.value,
     }
 
@@ -628,6 +702,7 @@ async function enrollStudent() {
     enrollStartDate.value = ''
     enrollEndDate.value = ''
     enrollPurchasedQuantity.value = null
+    enrollUnitPrice.value = null
   }
   catch (e) {
     enrollError.value = formatApiError(e, 'Could not enroll student.')
@@ -650,12 +725,21 @@ async function saveEnrollmentDates(enrollment: CourseEnrollment) {
     return
   }
 
+  const trimmedPrice = draft.price.trim()
+  const unitPrice = trimmedPrice ? Number(trimmedPrice) : null
+  if (unitPrice != null && (Number.isNaN(unitPrice) || unitPrice < 0)) {
+    enrollError.value = 'Price must be zero or more.'
+
+    return
+  }
+
   enrollmentDateSavingId.value = enrollment.id
   enrollError.value = ''
   try {
     const updated = await updateCourseEnrollment(enrollment.id, {
       start_date: startDate,
       end_date: endDate,
+      unit_price: unitPrice,
     })
 
     const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
@@ -666,6 +750,7 @@ async function saveEnrollmentDates(enrollment: CourseEnrollment) {
     enrollmentDates.value[enrollment.id] = {
       start: updated.start_date ?? '',
       end: updated.end_date ?? '',
+      price: updated.unit_price != null ? String(updated.unit_price) : '',
     }
     rosterEditingId.value = null
   }
@@ -701,10 +786,71 @@ function removeEnrollment(enrollment: CourseEnrollment) {
   })
 }
 
+function openTopUp(enrollment: CourseEnrollment) {
+  topUpEnrollment.value = enrollment
+  topUpQuantity.value = null
+  topUpPrice.value = enrollment.unit_price ?? rosterSku.value?.price ?? null
+  topUpDate.value = new Date().toLocaleDateString('en-CA')
+  topUpNote.value = ''
+  topUpOpen.value = true
+}
+
+async function saveTopUp() {
+  if (!topUpEnrollment.value || !topUpQuantity.value || topUpQuantity.value <= 0)
+    return
+  if (topUpPrice.value == null || topUpPrice.value < 0)
+    return
+
+  topUpSaving.value = true
+  try {
+    const created = await createEnrollmentPurchase(topUpEnrollment.value.id, {
+      purchased_quantity: topUpQuantity.value,
+      unit_price: topUpPrice.value,
+      purchased_at: topUpDate.value,
+      notes: topUpNote.value.trim() || null,
+    })
+
+    const idx = enrollments.value.findIndex(e => e.id === topUpEnrollment.value!.id)
+    if (idx !== -1) {
+      const existing = enrollments.value[idx]
+
+      existing.purchases = [...existing.purchases, created]
+    }
+    enrollSuccess.value = `Added ${created.purchased_quantity} session${created.purchased_quantity === 1 ? '' : 's'} for ${studentLabel(topUpEnrollment.value.unit_id)} — billed on the next Generate.`
+    topUpOpen.value = false
+  }
+  catch (e) {
+    enrollError.value = formatApiError(e, 'Could not add top-up.')
+  }
+  finally {
+    topUpSaving.value = false
+  }
+}
+
 const enrollmentStatusColor: Record<string, string> = {
   active: 'success',
   completed: 'info',
   cancelled: 'grey',
+}
+
+function purchaseSummary(e: CourseEnrollment) {
+  const purchases = e.purchases ?? []
+
+  return {
+    total: purchases.reduce((sum, p) => sum + p.purchased_quantity, 0),
+    unbilled: purchases.filter(p => p.billed_invoice_line_id === null).length,
+  }
+}
+
+function purchaseTooltip(e: CourseEnrollment): string {
+  return (e.purchases ?? [])
+    .map(p => [
+      formatRosterDate(p.purchased_at),
+      `${p.purchased_quantity} × ${Number(p.unit_price).toFixed(2)}`,
+      p.billed_invoice_line_id === null ? 'unbilled' : 'billed',
+      p.notes ?? '',
+    ].filter(Boolean).join(' · '))
+    .join('\n')
 }
 </script>
 
@@ -894,7 +1040,7 @@ const enrollmentStatusColor: Record<string, string> = {
                   <th class="text-end">
                     Price
                   </th>
-                  <th class="text-end" />
+                  <th class="text-end col-actions" />
                 </tr>
               </thead>
               <tbody>
@@ -923,10 +1069,10 @@ const enrollmentStatusColor: Record<string, string> = {
                   <td>
                     {{ sku.schedule_note ?? '—' }}
                     <div
-                      v-if="sku.location_id"
+                      v-if="sku.location_id || staffName(sku.staff_id)"
                       class="text-caption text-medium-emphasis"
                     >
-                      {{ locationName(sku.location_id) }}
+                      {{ [sku.location_id ? locationName(sku.location_id) : '', staffName(sku.staff_id)].filter(Boolean).join(' · ') }}
                     </div>
                   </td>
                   <td>{{ billingUnitLabel(sku.billing_unit ?? 'monthly') }}</td>
@@ -1011,6 +1157,13 @@ const enrollmentStatusColor: Record<string, string> = {
                   >
                     {{ billingUnitLabel(rosterSku.billing_unit ?? 'monthly') }}
                     · {{ rosterPriceLabel(rosterSku) }}
+                  </VChip>
+                  <VChip
+                    v-if="staffName(rosterSku.staff_id)"
+                    size="small"
+                    variant="tonal"
+                  >
+                    {{ staffName(rosterSku.staff_id) }}
                   </VChip>
                   <VChip
                     v-if="rosterSku.meeting_weekdays?.length"
@@ -1173,14 +1326,33 @@ const enrollmentStatusColor: Record<string, string> = {
                 >
                   <VTextField
                     v-model.number="enrollPurchasedQuantity"
-                    label="Sessions purchased (billed once)"
+                    label="Sessions bought"
                     type="number"
                     min="1"
                     density="comfortable"
-                    hide-details
+                    :hint="enrollPurchasedQuantity ? `${enrollPurchasedQuantity} session${enrollPurchasedQuantity === 1 ? '' : 's'}` : 'One-time purchase, billed once'"
+                    persistent-hint
                     :disabled="!rosterSkuId"
                   />
                 </VCol>
+                <!--                 <VCol
+                  cols="12"
+                  sm="6"
+                  md="4"
+                >
+                  <VTextField
+                    v-model.number="enrollUnitPrice"
+                    :label="rosterSku?.billing_unit === 'per_session' ? 'Price / session' : 'Price / month'"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    prefix="HK$"
+                    density="comfortable"
+                    :hint="enrollPriceHint"
+                    persistent-hint
+                    :disabled="!rosterSkuId"
+                  />
+                </VCol> -->
                 <VCol
                   cols="12"
                   md="4"
@@ -1198,6 +1370,18 @@ const enrollmentStatusColor: Record<string, string> = {
                   </VBtn>
                 </VCol>
               </VRow>
+
+              <div
+                v-if="enrollBillPreview"
+                class="text-caption text-medium-emphasis mt-2 d-flex align-center"
+              >
+                <VIcon
+                  icon="ri-bill-line"
+                  size="14"
+                  class="me-1"
+                />
+                {{ enrollBillPreview }}
+              </div>
 
               <VAlert
                 v-if="enrollError"
@@ -1248,6 +1432,9 @@ const enrollmentStatusColor: Record<string, string> = {
                     <th v-if="rosterSku?.billing_unit === 'per_session'">
                       Sessions purchased
                     </th>
+                    <th class="text-end">
+                      Price
+                    </th>
                     <th>First billed</th>
                     <th>Last billed</th>
                     <th>Added</th>
@@ -1274,7 +1461,51 @@ const enrollmentStatusColor: Record<string, string> = {
                       </VChip>
                     </td>
                     <td v-if="rosterSku?.billing_unit === 'per_session'">
-                      {{ e.purchased_quantity ?? '—' }}
+                      <VTooltip
+                        v-if="e.purchases.length > 0"
+                        :text="purchaseTooltip(e)"
+                        location="top"
+                      >
+                        <template #activator="{ props: tooltipProps }">
+                          <span v-bind="tooltipProps">
+                            {{ purchaseSummary(e).total }}
+                            <VChip
+                              v-if="purchaseSummary(e).unbilled > 0"
+                              size="x-small"
+                              color="warning"
+                              variant="tonal"
+                              class="ms-1"
+                            >
+                              {{ purchaseSummary(e).unbilled }} unbilled
+                            </VChip>
+                          </span>
+                        </template>
+                      </VTooltip>
+                      <template v-else>
+                        {{ e.purchased_quantity ?? '—' }}
+                      </template>
+                    </td>
+                    <td class="text-end">
+                      <VTextField
+                        v-if="rosterEditingId === e.id && enrollmentDates[e.id]"
+                        v-model="enrollmentDates[e.id].price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        prefix="HK$"
+                        density="compact"
+                        hide-details
+                        style="max-width: 140px; margin-inline-start: auto;"
+                      />
+                      <template v-else>
+                        {{ e.unit_price != null ? Number(e.unit_price).toFixed(2) : (rosterSku?.price != null ? rosterSku.price : '—') }}
+                        <div
+                          v-if="e.unit_price != null"
+                          class="text-caption text-medium-emphasis"
+                        >
+                          per-student
+                        </div>
+                      </template>
                     </td>
                     <td>
                       <VTextField
@@ -1324,7 +1555,7 @@ const enrollmentStatusColor: Record<string, string> = {
                           variant="text"
                           @click="beginEditEnrollmentDates(e)"
                         >
-                          Edit dates
+                          Edit
                         </VBtn>
                         <VBtn
                           v-if="e.status === 'active'"
@@ -1333,6 +1564,15 @@ const enrollmentStatusColor: Record<string, string> = {
                           @click="cancelEnrollment(e)"
                         >
                           Unenroll
+                        </VBtn>
+                        <VBtn
+                          v-if="topUpEnabled && rosterSku?.billing_unit === 'per_session' && e.status === 'active'"
+                          size="x-small"
+                          variant="text"
+                          color="primary"
+                          @click="openTopUp(e)"
+                        >
+                          Top up
                         </VBtn>
                         <VBtn
                           icon
@@ -1351,7 +1591,7 @@ const enrollmentStatusColor: Record<string, string> = {
                   </tr>
                   <tr v-if="enrollments.length === 0">
                     <td
-                      :colspan="rosterSku?.billing_unit === 'per_session' ? 7 : 6"
+                      :colspan="rosterSku?.billing_unit === 'per_session' ? 8 : 7"
                       class="text-center text-medium-emphasis py-6"
                     >
                       No students in this class yet. Search a name, set billed days, then Enroll.
@@ -1552,7 +1792,10 @@ const enrollmentStatusColor: Record<string, string> = {
                 density="comfortable"
               />
             </VCol>
-            <VCol cols="8">
+            <VCol
+              cols="12"
+              sm="6"
+            >
               <VSelect
                 v-model="skuForm.location_id"
                 :items="locationOptions"
@@ -1565,7 +1808,24 @@ const enrollmentStatusColor: Record<string, string> = {
                 clearable
               />
             </VCol>
-            <VCol cols="4">
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VAutocomplete
+                v-model="skuForm.staff_id"
+                :items="staffOptions"
+                label="Teacher / staff"
+                hint="Optional. The staff member who teaches this class."
+                persistent-hint
+                density="comfortable"
+                clearable
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="4"
+            >
               <VTextField
                 v-model.number="skuForm.capacity"
                 label="Capacity"
@@ -1576,7 +1836,10 @@ const enrollmentStatusColor: Record<string, string> = {
                 density="comfortable"
               />
             </VCol>
-            <VCol cols="12">
+            <VCol
+              cols="12"
+              sm="8"
+            >
               <div class="text-body-2 mb-1">
                 Class days
               </div>
@@ -1626,7 +1889,7 @@ const enrollmentStatusColor: Record<string, string> = {
                 min="0"
                 step="0.01"
                 prefix="HK$"
-                hint="Leave empty to skip this class at Generate."
+                hint="Leave empty to skip this class at Generate — or for variable-rate classes like 私補, leave empty and set a per-student price on each enrollment."
                 persistent-hint
                 density="comfortable"
               />
@@ -1674,6 +1937,81 @@ const enrollmentStatusColor: Record<string, string> = {
     >
       {{ deleteTarget?.detail }}
     </AttendanceConfirmDialog>
+
+    <VDialog
+      v-if="topUpEnabled"
+      v-model="topUpOpen"
+      max-width="420"
+      persistent
+    >
+      <VCard>
+        <VCardTitle>Top up sessions</VCardTitle>
+        <VCardText>
+          <VRow>
+            <VCol cols="12">
+              <VNumberInput
+                v-model="topUpQuantity"
+                label="Sessions purchased"
+                min="1"
+                density="compact"
+                hide-details
+              />
+            </VCol>
+            <VCol cols="12">
+              <VNumberInput
+                v-model="topUpPrice"
+                label="Price per session"
+                min="0"
+                density="compact"
+                hide-details
+              />
+            </VCol>
+            <VCol cols="12">
+              <VTextField
+                v-model="topUpDate"
+                label="Purchase date"
+                type="date"
+                density="compact"
+                hide-details
+              />
+            </VCol>
+            <VCol cols="12">
+              <VTextField
+                v-model="topUpNote"
+                label="Note (optional)"
+                density="compact"
+                hide-details
+              />
+            </VCol>
+          </VRow>
+          <VAlert
+            v-if="enrollError"
+            type="error"
+            variant="tonal"
+            class="mt-4"
+            density="compact"
+          >
+            {{ enrollError }}
+          </VAlert>
+        </VCardText>
+        <VCardActions class="justify-end">
+          <VBtn
+            variant="text"
+            @click="topUpOpen = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            :loading="topUpSaving"
+            :disabled="topUpQuantity == null || topUpQuantity < 1 || topUpPrice == null || topUpPrice < 0"
+            @click="saveTopUp"
+          >
+            Add top-up
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </VContainer>
 </template>
 
@@ -1683,7 +2021,18 @@ const enrollmentStatusColor: Record<string, string> = {
 }
 
 .offerings-table :deep(.col-actions) {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 1;
   white-space: nowrap;
   width: 1%;
+  background: rgb(var(--v-theme-surface));
+  border-inline-start: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.offerings-table :deep(tr.bg-primary-lighten-5 td.col-actions) {
+  background:
+    linear-gradient(rgba(var(--v-theme-primary), 0.08), rgba(var(--v-theme-primary), 0.08)),
+    rgb(var(--v-theme-surface));
 }
 </style>

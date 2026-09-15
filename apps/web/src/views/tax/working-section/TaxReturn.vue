@@ -7,12 +7,6 @@ import type {
 import { parseContentToFields } from '@/types/tax-return-field-setup'
 import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
 
-const router = useRouter()
-const formData = defineModel<ApiTemplate[]>('formData', { default: () => [] })
-const emit = defineEmits<{
-  (e: 'reimport'): void
-}>()
-
 const props = withDefaults(
   defineProps<{
     templates?: ApiTemplate[]
@@ -23,9 +17,15 @@ const props = withDefaults(
     templates: () => [],
     title: 'Tax Return',
     description: 'Complete the following fields according to the tax return.',
-  }
+  },
 )
 
+const emit = defineEmits<{
+  (e: 'reimport'): void
+}>()
+
+const router = useRouter()
+const formData = defineModel<ApiTemplate[]>('formData', { default: () => [] })
 type TemplateFieldWithValue = TemplateField & { value?: TemplateFieldValue }
 
 function buildFieldsForTemplate(template: ApiTemplate): TemplateFieldWithValue[] {
@@ -45,17 +45,21 @@ function getFieldKey(tplIndex: number, fieldName: string, fieldIndex: number): s
 function getFieldValue(tplIndex: number, fieldIndex: number): TemplateFieldValue {
   const row = fieldsByTemplate.value[tplIndex] ?? []
   const field = row[fieldIndex]
+
   return field?.value ?? null
 }
 
 function setFieldValue(tplIndex: number, fieldIndex: number, value: TemplateFieldValue) {
   const row = fieldsByTemplate.value[tplIndex]
-  if (!row) return
+  if (!row)
+    return
 
   const field = row[fieldIndex]
-  if (!field) return
+  if (!field)
+    return
 
   field.value = value
+
   // sync back to v-model (ApiTemplate shape)
   formData.value = (props.templates ?? []).map((tpl, i) => ({
     ...tpl,
@@ -65,7 +69,7 @@ function setFieldValue(tplIndex: number, fieldIndex: number, value: TemplateFiel
   }))
 }
 
-//remove 0 before number e.g. 01234 -> 1234
+// remove 0 before number e.g. 01234 -> 1234
 function normalizeIntegerOnBlur(tplIndex: number, fieldIndex: number) {
   const currentValue = getFieldValue(tplIndex, fieldIndex)
   if (currentValue === null || currentValue === undefined || currentValue === '')
@@ -76,6 +80,7 @@ function normalizeIntegerOnBlur(tplIndex: number, fieldIndex: number) {
     return
 
   const normalized = Number.parseInt(raw, 10)
+
   setFieldValue(tplIndex, fieldIndex, Number.isNaN(normalized) ? currentValue : normalized)
 }
 
@@ -86,17 +91,21 @@ watch(
     const list = (templates ?? []) as ApiTemplate[]
     if (!list.length) {
       fieldsByTemplate.value = []
+
       return
     }
+
     // use formData if it matches templates length and has content.fields; else init from templates
-    const hasValidFormData =
-      formData.value.length === list.length &&
-      formData.value.every(item => (item.content?.fields?.length ?? 0) > 0)
+    const hasValidFormData
+      = formData.value.length === list.length
+      && formData.value.every(item => (item.content?.fields?.length ?? 0) > 0)
+
     if (hasValidFormData) {
       fieldsByTemplate.value = formData.value.map(item =>
-        (item.content?.fields ?? []).map(f => ({ ...f, value: f.value ?? null }))
+        (item.content?.fields ?? []).map(f => ({ ...f, value: f.value ?? null })),
       )
-    } else {
+    }
+    else {
       fieldsByTemplate.value = list.map(tpl => buildFieldsForTemplate(tpl))
       formData.value = list.map((tpl, i) => ({
         ...tpl,
@@ -106,7 +115,7 @@ watch(
       }))
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 )
 
 const isText = (type: string) => (type ?? '').toLowerCase() === 'text'
@@ -152,8 +161,12 @@ const cancelReImportFields = () => {
 
 <template>
   <div>
-    <h6 class="text-h6">{{ title }}</h6>
-    <p class="text-body-1 text-medium-emphasis mb-4">{{ description }}</p>
+    <h6 class="text-h6">
+      {{ title }}
+    </h6>
+    <p class="text-body-1 text-medium-emphasis mb-4">
+      {{ description }}
+    </p>
 
     <template v-if="!templates?.length">
       <p class="text-body-2 text-medium-emphasis mb-3">
@@ -165,28 +178,41 @@ const cancelReImportFields = () => {
         size="small"
         @click="promptNavigateToCreateTaxReturnFieldSetup"
       >
-        <VIcon icon="ri-add-line" class="me-1" />
+        <VIcon
+          icon="ri-add-line"
+          class="me-1"
+        />
         Create Tax Return Field Setup
       </VBtn>
     </template>
 
-    <VForm v-else ref="formRef" @submit.prevent="">
+    <VForm
+      v-else
+      ref="formRef"
+      @submit.prevent=""
+    >
       <div
         v-for="(template, tplIndex) in templates"
         :key="template.uuid ?? template.id ?? tplIndex"
         class="mb-6"
       >
-        <h6 v-if="template.title" class="text-subtitle-1 font-weight-medium mb-1">
+        <h6
+          v-if="template.title"
+          class="text-subtitle-1 font-weight-medium mb-1"
+        >
           {{ template.title }}
         </h6>
-        <p v-if="template.description" class="text-body-2 text-medium-emphasis mb-3">
+        <p
+          v-if="template.description"
+          class="text-body-2 text-medium-emphasis mb-3"
+        >
           {{ template.description }}
         </p>
         <VBtn
           color="primary"
           size="x-small"
-          @click.stop.prevent="reImportFields"
           class="mb-2"
+          @click.stop.prevent="reImportFields"
         >
           Re-import fields
         </VBtn>
@@ -210,65 +236,82 @@ const cancelReImportFields = () => {
             class="tai-field-row"
           >
             <!-- col 1: tax_return_number -->
-              <span class="tai-col-no text-body-2 text-medium-emphasis">
-                <VChip class="tai-col-no-chip" label>{{ field.tax_return_number || '-' }}</VChip>
-              </span>
+            <span class="tai-col-no text-body-2 text-medium-emphasis">
+              <VChip
+                class="tai-col-no-chip"
+                label
+              >{{ field.tax_return_number || '-' }}</VChip>
+            </span>
 
-              <!-- col 2: label -->
-              <span class="tai-col-field text-body-2">{{ field.name }}</span>
+            <!-- col 2: label -->
+            <span class="tai-col-field text-body-2">{{ field.name }}</span>
 
-              <!-- col 3: value control -->
-              <div class="tai-col-control">
-                <!-- text -->
-                <VTextField
-                  v-if="isText(field.type ?? 'text')"
+            <!-- col 3: value control -->
+            <div class="tai-col-control">
+              <!-- text -->
+              <VTextField
+                v-if="isText(field.type ?? 'text')"
+                :model-value="String(getFieldValue(tplIndex, fieldIndex) ?? '')"
+                clearable
+                type="text"
+                density="compact"
+                hide-details
+                class="tai-value-right-input"
+                @update:model-value="(v: string | number) => setFieldValue(tplIndex, fieldIndex, v)"
+              />
+              <!-- integer -->
+              <VTextField
+                v-else-if="isInteger(field.type ?? '')"
+                :model-value="getFieldValue(tplIndex, fieldIndex)"
+                type="number"
+                clearable
+                density="compact"
+                hide-details
+                class="no-number-spin tai-value-right-input"
+                @update:model-value="(v: string | number) => setFieldValue(tplIndex, fieldIndex, v)"
+                @blur="normalizeIntegerOnBlur(tplIndex, fieldIndex)"
+              />
+              <!-- date -->
+              <div
+                v-else-if="isDate(field.type ?? '')"
+                class="tai-date-right-wrap"
+              >
+                <AppDateTimePicker
+                  clearable
                   :model-value="String(getFieldValue(tplIndex, fieldIndex) ?? '')"
-                  clearable
-                  type="text"
-                  density="compact"
-                  hide-details
-                  class="tai-value-right-input"
-                  @update:model-value="(v: string | number) => setFieldValue(tplIndex, fieldIndex, v)"
+                  placeholder="Select date"
+                  :config="{ dateFormat: 'd-m-Y', allowInput: true }"
+                  @update:model-value="(v: string) => setFieldValue(tplIndex, fieldIndex, v || null)"
                 />
-                <!-- integer -->
-                <VTextField
-                  v-else-if="isInteger(field.type ?? '')"
-                  :model-value="getFieldValue(tplIndex, fieldIndex)"
-                  type="number"
-                  clearable
-                  density="compact"
-                  hide-details
-                  class="no-number-spin tai-value-right-input"
-                  @update:model-value="(v: string | number) => setFieldValue(tplIndex, fieldIndex, v)"
-                  @blur="normalizeIntegerOnBlur(tplIndex, fieldIndex)"
-                />
-                <!-- date -->
+              </div>
+              <!-- radio -->
+              <VHover
+                v-else-if="isRadio(field.type ?? '')"
+                v-slot="{ isHovering, props: hoverProps }"
+              >
                 <div
-                  v-else-if="isDate(field.type ?? '')"
-                  class="tai-date-right-wrap"
+                  v-bind="hoverProps"
+                  class="d-flex align-center gap-2"
                 >
-                  <AppDateTimePicker
-                    clearable
-                    :model-value="String(getFieldValue(tplIndex, fieldIndex) ?? '')"
-                    placeholder="Select date"
-                    :config="{ dateFormat: 'd-m-Y', allowInput: true }"
-                    @update:model-value="(v: string) => setFieldValue(tplIndex, fieldIndex, v || null)"
-                  />
-                </div>
-                <!-- radio -->
-                <VHover v-else-if="isRadio(field.type ?? '')" v-slot="{ isHovering, props: hoverProps }">
-                  <div v-bind="hoverProps" class="d-flex align-center gap-2">
-                    <VRadioGroup
-                      class="d-flex justify-end"
-                      :model-value="getFieldValue(tplIndex, fieldIndex)"
-                      density="compact"
-                      hide-details
-                      inline
-                      @update:model-value="(v: string | number | boolean | null) => setFieldValue(tplIndex, fieldIndex, typeof v === 'boolean' ? v : null)"
-                    >
-                      <VRadio style="margin-right: 4px;" :value="true" label="Yes" />
-                      <VRadio style="margin-right: 4px;" :value="false" label="No" />
-                      <VBtn
+                  <VRadioGroup
+                    class="d-flex justify-end"
+                    :model-value="getFieldValue(tplIndex, fieldIndex)"
+                    density="compact"
+                    hide-details
+                    inline
+                    @update:model-value="(v: string | number | boolean | null) => setFieldValue(tplIndex, fieldIndex, typeof v === 'boolean' ? v : null)"
+                  >
+                    <VRadio
+                      style="margin-right: 4px;"
+                      :value="true"
+                      label="Yes"
+                    />
+                    <VRadio
+                      style="margin-right: 4px;"
+                      :value="false"
+                      label="No"
+                    />
+                    <VBtn
                       icon="ri-close-line"
                       size="x-small"
                       variant="text"
@@ -276,57 +319,70 @@ const cancelReImportFields = () => {
                       :disabled="getFieldValue(tplIndex, fieldIndex) === null"
                       @click="setFieldValue(tplIndex, fieldIndex, null)"
                     />
-                    </VRadioGroup>
-                    
-                  </div>
-                </VHover>
-                <!-- default to text -->
-                <VTextField
-                  v-else
-                  :model-value="String(getFieldValue(tplIndex, fieldIndex) ?? '')"
-                  clearable
-                  type="text"
-                  density="compact"
-                  hide-details
-                  class="tai-value-right-input"
-                  @update:model-value="(v: string | number) => setFieldValue(tplIndex, fieldIndex, v)"
-                />
-              </div>
-
-              <!-- col 4: tax return reference -->
-              <span class="tai-col-ref text-body-2 text-medium-emphasis">
-                <VChip class="tai-col-no-chip" label>{{ field.tax_return_reference || '-' }}</VChip>
-              </span>
-
-              <!-- col 5: eye icon tooltip -->
-              <div class="tai-col-action d-flex align-center justify-center">
-                <VTooltip location="left" max-width="280">
-                  <template #activator="{ props: tooltipProps }">
-                    <VBtn v-bind="tooltipProps" icon size="x-small" variant="text">
-                      <VIcon icon="ri-eye-line" size="16" />
-                    </VBtn>
-                  </template>
-                  <div class="tai-tooltip-content">
-                    <div class="tai-tooltip-row">
-                      <span class="tai-tooltip-key">Aqua mapping:</span>
-                      <span class="tai-tooltip-val">{{ field.aqua_mapping || '-' }}</span>
-                    </div>
-                    <div class="tai-tooltip-row">
-                      <span class="tai-tooltip-key">IRD mapping:</span>
-                      <span class="tai-tooltip-val">{{ field.ird_mapping || '-' }}</span>
-                    </div>
-                    <div class="tai-tooltip-row">
-                      <span class="tai-tooltip-key">Tax return no.:</span>
-                      <span class="tai-tooltip-val">{{ field.tax_return_number || '-' }}</span>
-                    </div>
-                    <div class="tai-tooltip-row">
-                      <span class="tai-tooltip-key">Tax return ref.:</span>
-                      <span class="tai-tooltip-val">{{ field.tax_return_reference || '-' }}</span>
-                    </div>
-                  </div>
-                </VTooltip>
-              </div>
+                  </VRadioGroup>
+                </div>
+              </VHover>
+              <!-- default to text -->
+              <VTextField
+                v-else
+                :model-value="String(getFieldValue(tplIndex, fieldIndex) ?? '')"
+                clearable
+                type="text"
+                density="compact"
+                hide-details
+                class="tai-value-right-input"
+                @update:model-value="(v: string | number) => setFieldValue(tplIndex, fieldIndex, v)"
+              />
             </div>
+
+            <!-- col 4: tax return reference -->
+            <span class="tai-col-ref text-body-2 text-medium-emphasis">
+              <VChip
+                class="tai-col-no-chip"
+                label
+              >{{ field.tax_return_reference || '-' }}</VChip>
+            </span>
+
+            <!-- col 5: eye icon tooltip -->
+            <div class="tai-col-action d-flex align-center justify-center">
+              <VTooltip
+                location="left"
+                max-width="280"
+              >
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    icon
+                    size="x-small"
+                    variant="text"
+                  >
+                    <VIcon
+                      icon="ri-eye-line"
+                      size="16"
+                    />
+                  </VBtn>
+                </template>
+                <div class="tai-tooltip-content">
+                  <div class="tai-tooltip-row">
+                    <span class="tai-tooltip-key">Aqua mapping:</span>
+                    <span class="tai-tooltip-val">{{ field.aqua_mapping || '-' }}</span>
+                  </div>
+                  <div class="tai-tooltip-row">
+                    <span class="tai-tooltip-key">IRD mapping:</span>
+                    <span class="tai-tooltip-val">{{ field.ird_mapping || '-' }}</span>
+                  </div>
+                  <div class="tai-tooltip-row">
+                    <span class="tai-tooltip-key">Tax return no.:</span>
+                    <span class="tai-tooltip-val">{{ field.tax_return_number || '-' }}</span>
+                  </div>
+                  <div class="tai-tooltip-row">
+                    <span class="tai-tooltip-key">Tax return ref.:</span>
+                    <span class="tai-tooltip-val">{{ field.tax_return_reference || '-' }}</span>
+                  </div>
+                </div>
+              </VTooltip>
+            </div>
+          </div>
         </div>
       </div>
     </VForm>

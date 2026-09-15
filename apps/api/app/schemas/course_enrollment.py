@@ -21,6 +21,7 @@ class CourseEnrollmentCreate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     purchased_quantity: int | None = None
+    unit_price: float | None = Field(default=None, ge=0)
     notes: str | None = None
 
     @model_validator(mode="after")
@@ -35,6 +36,7 @@ class CourseEnrollmentUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     purchased_quantity: int | None = None
+    unit_price: float | None = Field(default=None, ge=0)
     notes: str | None = None
 
     @model_validator(mode="after")
@@ -42,6 +44,26 @@ class CourseEnrollmentUpdate(BaseModel):
         _require_start_on_or_before_end(self.start_date, self.end_date)
         _require_positive_quantity(self.purchased_quantity)
         return self
+
+
+class EnrollmentPurchaseCreate(BaseModel):
+    purchased_quantity: int = Field(..., ge=1)
+    unit_price: float = Field(..., ge=0)
+    purchased_at: date
+    notes: str | None = None
+
+
+class EnrollmentPurchaseOut(BaseModel):
+    id: uuid.UUID
+    enrollment_id: uuid.UUID
+    purchased_quantity: int
+    unit_price: float
+    purchased_at: date
+    billed_invoice_line_id: uuid.UUID | None = None
+    notes: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class CourseEnrollmentOut(BaseModel):
@@ -53,7 +75,9 @@ class CourseEnrollmentOut(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     purchased_quantity: int | None = None
+    unit_price: float | None = None
     notes: str | None = None
+    purchases: list[EnrollmentPurchaseOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

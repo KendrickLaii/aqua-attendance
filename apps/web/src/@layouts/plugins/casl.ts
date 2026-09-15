@@ -64,6 +64,7 @@ export const canNavigate = (to: RouteLocationNormalized) => {
   return to.matched.some(route => {
     if (route.meta?.action && route.meta?.subject)
       return ability.can(route.meta.action, route.meta.subject)
+
     return false
   })
 }

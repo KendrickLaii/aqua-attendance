@@ -61,7 +61,7 @@ npm run dev
 | `/attendance/audit-logs` | 稽核查詢（superadmin） |
 | `/attendance/users` | User CRUD（admin） |
 | `/attendance/courses` | 課程管理（班次名冊 + 報名起迄日；SKU 含月費／堂費） |
-| `/attendance/invoices` | 學費發票（選月份 Generate → Issue / Mark paid / Void） |
+| `/attendance/invoices` | 學費發票（選月份 Generate → Issue / Mark paid / Void；Manual invoice 開單；列印／重印） |
 
 導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。
 

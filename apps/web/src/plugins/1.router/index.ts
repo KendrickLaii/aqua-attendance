@@ -40,9 +40,8 @@ setupGuards(router)
 
 // Auto-reload on failed dynamic imports (stale Vite module graph)
 router.onError((error, to) => {
-  if (error.message.includes('Failed to fetch dynamically imported module')) {
+  if (error.message.includes('Failed to fetch dynamically imported module'))
     window.location.href = to.fullPath
-  }
 })
 
 export { router }

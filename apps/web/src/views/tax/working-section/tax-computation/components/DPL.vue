@@ -5,6 +5,29 @@ import type { BasicInformationData } from '@/types/working-section'
 import { useToast } from '@/composables/useToast'
 import { getNoteACFromAqua } from '@/api/tax-computation'
 
+const props = withDefaults(
+  defineProps<{
+
+    /** API data: Import data, each row is [item name, Note, this, last, tag, attr] */
+    importData?: DPLRow[]
+
+    /** client data, used for currency label (e.g. "2022 HKD") */
+    clientData?: Content | null
+
+    /** basic info, used for Aqua request (company/year labels) */
+    basicInformationData: BasicInformationData
+
+    /** resolved currency object by currency uuid */
+    clientCurrency?: { currency: string; symbol: string; uuid: string } | null
+  }>(),
+  { importData: () => [], clientData: null, clientCurrency: null },
+)
+
+const emit = defineEmits<{
+  (e: 'save-grouped-data', data: DPLGroupedData): void
+  (e: 'update:localDPL', val: string): void
+}>()
+
 const { show: showToast } = useToast()
 
 const SCH_OPTIONS = [
@@ -19,6 +42,7 @@ const SCH_OPTIONS = [
 
 const showImportDPLDialog = ref(false)
 const importDPLData = ref('')
+
 const onClearImportedData = () => {
   pastedImportGroupedData.value = null
   showToast('Imported data cleared.', 'success')
@@ -28,10 +52,12 @@ const openImportDPLDialog = () => {
   importDPLData.value = ''
   showImportDPLDialog.value = true
 }
+
 const importDataFromAqua = async () => {
   const basicInfo = props.basicInformationData
   if (!basicInfo) {
     showToast('Basic information is missing.', 'error')
+
     return
   }
 
@@ -40,6 +66,7 @@ const importDataFromAqua = async () => {
   const yearOfAssessmentLy = basicInfo.year_of_assessment_ly || ''
   if (!companyName || !yearOfAssessment || !yearOfAssessmentLy) {
     showToast('Missing required fields for Aqua request.', 'error')
+
     return
   }
 
@@ -53,11 +80,15 @@ const importDataFromAqua = async () => {
     console.log('getNoteACFromAqua', res)
     if (!res.DPL) {
       showToast('No DPL data found.', 'error')
+
       return
     }
     const dpl = res.DPL
-    console.log('dpl in Json', JSON.parse(dpl))
+
+    console.log('dpl in JSON', JSON.parse(dpl))
+
     const { items, profitBeforeTaxCurrentYear } = parseImportedDplJsonToGroupedItems(dpl) // items = Display name and sub account, profitBeforeTaxCurrentYear = Profit before tax
+
     console.log('grouped items', items)
     pastedImportGroupedData.value = items
     applyProfitBeforeTaxCurrentYear(profitBeforeTaxCurrentYear)
@@ -69,34 +100,42 @@ const importDataFromAqua = async () => {
     showToast('Failed to fetch note data from Aqua.', 'error')
   }
 }
+
 /** each row has 6 columns: [item name, Note, this, last, tag, attr], display Content/Sch./Taxable/This, hide last/tag/attr */
 export type DPLRow = [string, string, string, string, string, object]
 
 /** currently focused amount cell */
 const focusedAmountKey = ref<string | null>(null)
+
 /** raw input string while editing (e.g. "-" so user can type negative); 0  display as empty so user can type "-" first */
 const focusedAmountRaw = ref<string>('')
 
 /** thousands format: negative numbers are wrapped in parentheses */
 function formatAmountDisplay(raw: string): string {
   const s = String(raw).replace(/,/g, '').trim()
-  if (s === '' || s === '-') return s
+  if (s === '' || s === '-')
+    return s
   const num = Number.parseFloat(s)
-  if (Number.isNaN(num)) return raw
-  if (num === 0) return '-'
+  if (Number.isNaN(num))
+    return raw
+  if (num === 0)
+    return '-'
   const absStr = Math.abs(num).toLocaleString('en-HK')
+
   return num < 0 ? `(${absStr})` : absStr
 }
 
 /** convert displayed value to a string that can be stored (remove commas, convert parentheses to negative numbers) */
 function parseAmountInput(display: string): string {
-  let s = String(display).replace(/,/g, '').trim()
+  const s = String(display).replace(/,/g, '').trim()
   const wrapped = /^\((.*)\)$/.exec(s)
   if (wrapped) {
     const inner = wrapped[1].replace(/,/g, '').trim()
     const n = Number.parseFloat(inner)
+
     return Number.isNaN(n) ? s : String(-n)
   }
+
   return s
 }
 
@@ -105,6 +144,7 @@ function sanitizeAmountInput(value: string): string {
   let s = String(value).replace(/[^\d-]/g, '')
   if (s.includes('-') && s[0] !== '-')
     s = s.replace(/-/g, '')
+
   return s
 }
 
@@ -112,15 +152,20 @@ function sanitizeAmountInput(value: string): string {
 function onAmountKeydown(e: KeyboardEvent) {
   const key = e.key
   const allowedKeys = ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End']
-  if (allowedKeys.includes(key)) return
-  if ((e.ctrlKey || e.metaKey) && key === 'v') return // allow paste, then sanitize
-  if ((e.ctrlKey || e.metaKey) && (key === 'a' || key === 'c' || key === 'x')) return
-  if (/^\d$/.test(key)) return
+  if (allowedKeys.includes(key))
+    return
+  if ((e.ctrlKey || e.metaKey) && key === 'v')
+    return // allow paste, then sanitize
+  if ((e.ctrlKey || e.metaKey) && (key === 'a' || key === 'c' || key === 'x'))
+    return
+  if (/^\d$/.test(key))
+    return
   if (key === '-') {
     const target = e.target as HTMLInputElement
     const val = target?.value ?? ''
     const start = target?.selectionStart ?? 0
-    if (val === '' || (start === 0 && val[0] !== '-')) return
+    if (val === '' || (start === 0 && val[0] !== '-'))
+      return
   }
   e.preventDefault()
 }
@@ -152,12 +197,14 @@ function dplJsonCellToAttrObject(cell: unknown): Record<string, unknown> | null 
   if (typeof cell === 'string' && cell.trim() !== '') {
     try {
       const p = JSON.parse(cell) as unknown
+
       return isPlainObject(p) ? p : null
     }
     catch {
       return null
     }
   }
+
   return null
 }
 
@@ -168,6 +215,7 @@ function dplImportAmountToNumber(raw: unknown): number {
     return 0
   const normalized = parseAmountInput(s)
   const n = Number.parseFloat(normalized)
+
   return Number.isNaN(n) ? 0 : n
 }
 
@@ -178,6 +226,7 @@ function dplRowToGroupedItem(row: DPLRow): GroupedDataItem {
   const priorVal = Number.parseFloat(parseAmountInput(String(r[3] ?? '')))
   const tagStr = String(r[4] ?? '').toLowerCase()
   const attr = dplJsonCellToAttrObject(r[5]) ?? {}
+
   return {
     content: String(r[0] ?? ''),
     scheduleNumber: String(r[1] ?? ''),
@@ -200,8 +249,8 @@ function importedDplRowToGroupedItem(row: unknown[]): GroupedDataItem {
   const meta = dplJsonCellToAttrObject(row[5])
   const lineStyle = row[4]
 
-  const tag: string | Record<string, unknown> =
-    meta != null ? meta : String(lineStyle ?? '')
+  const tag: string | Record<string, unknown>
+    = meta != null ? meta : String(lineStyle ?? '')
 
   const categoryName = meta && typeof meta.categoryName === 'string' ? meta.categoryName : ''
 
@@ -233,11 +282,13 @@ function parseImportedDplJsonToGroupedItems(jsonStr: string): ParsedImportedDplR
   const rows = parsed.filter((row): row is unknown[] => Array.isArray(row))
 
   // find the row that has the category name "Profit before tax"
-  const profitBeforeTaxRow = rows.find((row) => {
+  const profitBeforeTaxRow = rows.find(row => {
     const obj = dplJsonCellToAttrObject(row[5])
     const categoryName = typeof obj?.categoryName === 'string' ? obj.categoryName.trim().toUpperCase() : ''
+
     return categoryName === 'PROFIT BEFORE TAX'
   })
+
   // get the current year amount of the profit before tax row
   const profitBeforeTaxCurrentYear = profitBeforeTaxRow
     ? dplImportAmountToNumber(profitBeforeTaxRow[2])
@@ -245,8 +296,9 @@ function parseImportedDplJsonToGroupedItems(jsonStr: string): ParsedImportedDplR
 
   // get the items that are display name or sub account
   const items = rows
-    .filter((row) => {
+    .filter(row => {
       const obj = dplJsonCellToAttrObject(row[5])
+
       return obj != null && (obj.isDisplayName === true || obj.isSubAccount === true)
     })
     .map(importedDplRowToGroupedItem)
@@ -268,6 +320,7 @@ function applyProfitBeforeTaxCurrentYear(value: number) {
 function onImportDPL() {
   try {
     const { items, profitBeforeTaxCurrentYear } = parseImportedDplJsonToGroupedItems(importDPLData.value)
+
     console.log('onImportDPL', items)
 
     pastedImportGroupedData.value = items
@@ -311,24 +364,11 @@ function createDefaultMannualRows(): GroupedDataItem[] {
   ]
 }
 
-const props = withDefaults(
-  defineProps<{
-    /** API data: Import data, each row is [item name, Note, this, last, tag, attr] */
-    importData?: DPLRow[]
-    /** client data, used for currency label (e.g. "2022 HKD") */
-    clientData?: Content | null
-    /** basic info, used for Aqua request (company/year labels) */
-    basicInformationData: BasicInformationData
-    /** resolved currency object by currency uuid */
-    clientCurrency?: { currency: string; symbol: string; uuid: string } | null
-  }>(),
-  { importData: () => [], clientData: null, clientCurrency: null },
-)
-
 const currency = computed(() => {
   const name = props.clientCurrency?.currency
   if (typeof name === 'string' && name.trim() !== '')
     return name
+
   return props.clientData?.currency ?? 'HKD'
 })
 
@@ -336,6 +376,7 @@ const currency = computed(() => {
 const importGroupedData = computed<GroupedDataItem[]>(() => {
   if (pastedImportGroupedData.value !== null)
     return pastedImportGroupedData.value
+
   return (props.importData ?? []).map(dplRowToGroupedItem)
 })
 
@@ -356,6 +397,7 @@ function splitLegacyRows(rows: GroupedDataItem[]): DPLGroupedData {
     else
       importedData.push(row)
   }
+
   return { importedData, mannualInputData: manualRows }
 }
 
@@ -364,6 +406,7 @@ function ensureProfitLossRow(rows: GroupedDataItem[]): GroupedDataItem[] {
   const hasProfitLossRow = next.some(r => r.attr?.isCalculated === true)
   if (!hasProfitLossRow)
     next.push({ ...PROFIT_LOSS_GROUPED_ITEM, attr: { ...PROFIT_LOSS_GROUPED_ITEM.attr } })
+
   return next.length ? next : createDefaultMannualRows()
 }
 
@@ -371,18 +414,22 @@ function setGroupedData(data?: DPLGroupedData | GroupedDataItem[] | null) {
   if (!data) {
     pastedImportGroupedData.value = null
     mannualInputData.value = createDefaultMannualRows()
+
     return
   }
 
   if (Array.isArray(data)) {
     const split = splitLegacyRows(data)
+
     pastedImportGroupedData.value = split.importedData.length ? split.importedData : null
     mannualInputData.value = ensureProfitLossRow(split.mannualInputData)
+
     return
   }
 
   const importedRows = Array.isArray(data.importedData) ? data.importedData : []
   const manualRows = Array.isArray(data.mannualInputData) ? data.mannualInputData : []
+
   pastedImportGroupedData.value = importedRows.length
     ? importedRows.map(item => ({ ...item, attr: { ...(item.attr ?? {}) } }))
     : null
@@ -392,18 +439,22 @@ function setGroupedData(data?: DPLGroupedData | GroupedDataItem[] | null) {
 function addRow(afterIndex: number) {
   const len = mannualInputData.value.length
   const insertAt = afterIndex >= len - 1 ? len - 1 : afterIndex + 1
+
   mannualInputData.value.splice(insertAt, 0, { ...EMPTY_GROUPED_ITEM })
 }
 
 function removeOthersRow(index: number) {
-  if (mannualInputData.value.length <= 2) return
-  if (index === mannualInputData.value.length - 1) return
+  if (mannualInputData.value.length <= 2)
+    return
+  if (index === mannualInputData.value.length - 1)
+    return
   mannualInputData.value.splice(index, 1)
 }
 
 function getProfitLossContentByValue(value: number): string {
   if (Number.isNaN(value))
     return 'Profit/ (Loss) before tax'
+
   return value >= 0 ? 'Loss before tax' : 'Profit before tax'
 }
 
@@ -417,8 +468,10 @@ function syncProfitLossRowContent() {
 /** last row (Profit/Loss) Content displays: based on the current_year amount */
 const profitLossLabel = computed(() => {
   const rows = mannualInputData.value
-  if (!rows.length) return 'Profit/ (Loss) before tax'
+  if (!rows.length)
+    return 'Profit/ (Loss) before tax'
   const last = rows[rows.length - 1]
+
   return getProfitLossContentByValue(last.current_year)
 })
 
@@ -447,6 +500,7 @@ function cancelDeleteRow() {
 
 function handleAmountFocus(rowIndex: number) {
   const row = mannualInputData.value[rowIndex]
+
   focusedAmountKey.value = `others-${rowIndex}`
   focusedAmountRaw.value = row?.current_year === 0 ? '' : String(row?.current_year ?? '')
 }
@@ -456,6 +510,7 @@ function handleAmountBlur(rowIndex: number) {
   const raw = focusedAmountRaw.value
   if (row) {
     const parsed = Number.parseFloat(parseAmountInput(raw))
+
     row.current_year = Number.isNaN(parsed) ? 0 : parsed
     if (isProfitLossRow(rowIndex))
       row.content = getProfitLossContentByValue(row.current_year)
@@ -467,15 +522,18 @@ function handleAmountBlur(rowIndex: number) {
 /** Output payload grouped by source section for clearer restore logic. */
 const groupedData = computed<DPLGroupedData>(() => {
   const importedData = importGroupedData.value.map(item => ({ ...item, attr: { ...item.attr } }))
-  const manualPayload = mannualInputData.value.map((item) => {
+
+  const manualPayload = mannualInputData.value.map(item => {
     if (item.attr?.isCalculated === true) {
       return {
         ...item,
         content: getProfitLossContentByValue(item.current_year),
       }
     }
+
     return { ...item, attr: { ...item.attr } }
   })
+
   return {
     importedData,
     mannualInputData: manualPayload,
@@ -492,12 +550,9 @@ watch(
 
 function onSaveSelection() {
   console.log('groupedData', groupedData.value)
+
   // emit('save-grouped-data', groupedData.value)
 }
-const emit = defineEmits<{ 
-  (e: 'save-grouped-data', data: DPLGroupedData): void
-  (e: 'update:localDPL', val: string): void
-}>()
 defineExpose({
   groupedData,
   setGroupedData,
@@ -506,17 +561,30 @@ defineExpose({
 
 <template>
   <div class="dpl">
-    <!-- <VBtn color="primary" size="x-small" @click="onSaveSelection">
+    <!--
+      <VBtn color="primary" size="x-small" @click="onSaveSelection">
       groupedData
-    </VBtn> -->
+      </VBtn>
+    -->
     <div class="dpl-header">
-      <h6 class="dpl-title text-h6">Detailed income statement</h6>
+      <h6 class="dpl-title text-h6">
+        Detailed income statement
+      </h6>
       <div class="dpl-header-buttons d-flex gap-2">
-        <VBtn color="primary" size="x-small" @click="importDataFromAqua">
+        <VBtn
+          color="primary"
+          size="x-small"
+          @click="importDataFromAqua"
+        >
           Import from AQUA
         </VBtn>
-          <VBtn color="error" size="x-small" :disabled="pastedImportGroupedData === null" @click="onClearImportedData">
-            Clear imported data
+        <VBtn
+          color="error"
+          size="x-small"
+          :disabled="pastedImportGroupedData === null"
+          @click="onClearImportedData"
+        >
+          Clear imported data
         </VBtn>
       </div>
     </div>
@@ -531,22 +599,45 @@ defineExpose({
         </colgroup>
         <thead>
           <tr>
-            <th colspan="3" class="dpl-th-group">Context Control</th>
-            <th colspan="1" class="dpl-th-group">DR./(CR.)</th>
+            <th
+              colspan="3"
+              class="dpl-th-group"
+            >
+              Context Control
+            </th>
+            <th
+              colspan="1"
+              class="dpl-th-group"
+            >
+              DR./(CR.)
+            </th>
             <th class="dpl-th-group" />
           </tr>
           <tr>
-            <th class="dpl-th">Content</th>
-            <th class="dpl-th dpl-th-sch">Sch.</th>
-            <th class="dpl-th dpl-th-add-back">Add back</th>
-            <th class="dpl-th dpl-th-amount">{{ currency }}</th>
-            <th class="dpl-th dpl-th-actions">Actions</th>
+            <th class="dpl-th">
+              Content
+            </th>
+            <th class="dpl-th dpl-th-sch">
+              Sch.
+            </th>
+            <th class="dpl-th dpl-th-add-back">
+              Add back
+            </th>
+            <th class="dpl-th dpl-th-amount">
+              {{ currency }}
+            </th>
+            <th class="dpl-th dpl-th-actions">
+              Actions
+            </th>
           </tr>
         </thead>
         <tbody>
           <!-- Import (from API): display Content / Sch. / Taxable / This, hide last/tag/attr -->
           <tr class="dpl-category-row">
-            <td colspan="5" class="dpl-category-cell">
+            <td
+              colspan="5"
+              class="dpl-category-cell"
+            >
               <span class="dpl-category-name">Import</span>
             </td>
           </tr>
@@ -556,7 +647,7 @@ defineExpose({
             class="dpl-data-row"
           >
             <td class="dpl-td">
-              <span class="dpl-content-text">{{row.content}}</span>
+              <span class="dpl-content-text">{{ row.content }}</span>
             </td>
             <td class="dpl-td dpl-td-sch">
               <VSelect
@@ -588,7 +679,10 @@ defineExpose({
 
           <!-- Others (manual input) -->
           <tr class="dpl-category-row">
-            <td colspan="5" class="dpl-category-cell">
+            <td
+              colspan="5"
+              class="dpl-category-cell"
+            >
               <span class="dpl-category-name">Others</span>
             </td>
           </tr>
@@ -629,7 +723,10 @@ defineExpose({
               />
             </td>
             <td class="dpl-td dpl-td-add-back">
-              <div v-if="!isProfitLossRow(rowIndex)" class="dpl-td-add-back-inner">
+              <div
+                v-if="!isProfitLossRow(rowIndex)"
+                class="dpl-td-add-back-inner"
+              >
                 <VSwitch
                   v-model="row.addBack"
                   base-color="error"
@@ -691,7 +788,10 @@ defineExpose({
       @cancel="cancelDeleteRow"
     />
 
-    <VDialog v-model="showImportDPLDialog" max-width="500">
+    <VDialog
+      v-model="showImportDPLDialog"
+      max-width="500"
+    >
       <VCard>
         <div class="d-flex justify-space-between align-center pa-4">
           <span class="text-h6">Import DPL</span>
@@ -716,7 +816,11 @@ defineExpose({
               class="required-field"
             />
             <div class="d-flex justify-end mt-4">
-              <VBtn type="submit" color="primary" size="small">
+              <VBtn
+                type="submit"
+                color="primary"
+                size="small"
+              >
                 Import
               </VBtn>
             </div>

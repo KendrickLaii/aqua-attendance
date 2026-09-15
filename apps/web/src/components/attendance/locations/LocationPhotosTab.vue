@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { addDetailPhotoRow, removeDetailPhotoRow, type DetailPhotoRow } from '@/utils/locationPhotos'
+import { type DetailPhotoRow, addDetailPhotoRow, removeDetailPhotoRow } from '@/utils/locationPhotos'
 
 export interface LocationPhotosForm {
   icon_url: string

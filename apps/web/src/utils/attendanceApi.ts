@@ -27,8 +27,8 @@ function attachAttendanceAuthHeaders(options: { headers?: HeadersInit }) {
 }
 
 function isAttendanceAuthRequestUrl(request: Parameters<typeof ofetch>[0]): boolean {
-  const s =
-    typeof request === 'string'
+  const s
+    = typeof request === 'string'
       ? request
       : request instanceof Request
         ? request.url
@@ -59,6 +59,7 @@ function refreshAttendanceTokens(): Promise<boolean> {
     const refreshToken = useCookie('refreshToken').value
     if (!refreshToken) {
       redirectToLogin()
+
       return false
     }
 
@@ -112,8 +113,8 @@ export async function $attendanceApi<T = unknown>(
     if (!(error instanceof FetchError))
       throw error
 
-    const unauthorizedStatus =
-      typeof error.status === 'number'
+    const unauthorizedStatus
+      = typeof error.status === 'number'
         ? error.status
         : 'statusCode' in error && typeof (error as { statusCode?: number }).statusCode === 'number'
           ? (error as { statusCode: number }).statusCode
@@ -122,8 +123,7 @@ export async function $attendanceApi<T = unknown>(
     if (unauthorizedStatus !== 401)
       throw error
 
-    if (!isAttendanceAuthRequestUrl(request))
-    {
+    if (!isAttendanceAuthRequestUrl(request)) {
       const refreshed = await refreshAttendanceTokens()
       if (!refreshed)
         throw error

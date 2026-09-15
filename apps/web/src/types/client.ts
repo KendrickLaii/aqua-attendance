@@ -1,12 +1,12 @@
 export interface ClientProperties {
-  status_code: number;
-  message:     string;
-  data:        Data;
+  status_code: number
+  message: string
+  data: Data
 }
 
 export interface Data {
-  content: Content[];
-  count:   number;
+  content: Content[]
+  count: number
 }
 
 export interface Content {
@@ -44,6 +44,7 @@ export interface Content {
   tax_file_no: string
   year_of_assessment: string
   year_of_assessment_ly: string
+
   // Timestamps & relations (present in fuzzy search / detail responses)
   assignee_uuid?: string | null
   created_at?: string | null

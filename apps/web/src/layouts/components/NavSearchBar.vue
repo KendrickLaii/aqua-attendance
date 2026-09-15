@@ -4,7 +4,7 @@ import { withQuery } from 'ufo'
 import type { RouteLocationRaw } from 'vue-router'
 import type { SearchResults } from '@db/app-bar-search/types'
 import { useConfigStore } from '@core/stores/config'
-import ctrlKSvg from '@/assets/images/aqua/svg/CtrlK.svg?raw'
+import ctrlKSvg from '@images/aqua/svg/CtrlK.svg?raw'
 
 interface Suggestion {
   icon: string
@@ -128,7 +128,10 @@ const LazyAppBarSearch = defineAsyncComponent(() => import('@core/components/App
       @click="Shepherd.activeTour?.cancel()"
     >
       <span class="me-3">Search</span>
-      <span class="ctrl-k-svg-wrap" v-html="ctrlKSvg" />
+      <span
+        class="ctrl-k-svg-wrap"
+        v-html="ctrlKSvg"
+      />
 
     </span>
   </div>

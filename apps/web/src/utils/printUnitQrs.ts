@@ -46,16 +46,14 @@ export function openUnitQrPrintPlaceholder(): Window {
 }
 
 export async function fetchUnitQrPrintItems(units: Unit[]): Promise<UnitQrPrintItem[]> {
-  const results = await Promise.all(
-    units.map(async (unit) => {
+  return await Promise.all(
+    units.map(async unit => {
       const { qr_token } = await getQRToken(unit.id)
       const qrDataUrl = await toQrDataUrl(qr_token, UNIT_QR_PRINT_IMAGE_SIZE)
 
       return { unit, qrDataUrl }
     }),
   )
-
-  return results
 }
 
 function waitForImages(doc: Document): Promise<void> {
@@ -64,7 +62,7 @@ function waitForImages(doc: Document): Promise<void> {
     return Promise.resolve()
 
   return Promise.all(
-    images.map(img => new Promise<void>((resolve) => {
+    images.map(img => new Promise<void>(resolve => {
       if (img.complete) {
         resolve()
 

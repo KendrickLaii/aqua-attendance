@@ -30,6 +30,9 @@ class CourseSku(Base):
     location_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    staff_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("units.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     billing_unit: Mapped[str] = mapped_column(
@@ -48,4 +51,5 @@ class CourseSku(Base):
 
     spu = relationship("CourseSpu", back_populates="skus")
     location = relationship("Location")
+    staff = relationship("Unit", foreign_keys=[staff_id])
     enrollments = relationship("CourseEnrollment", back_populates="sku")

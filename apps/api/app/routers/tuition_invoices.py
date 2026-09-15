@@ -3,15 +3,22 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.deps import AdminOnly, DB
-from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceStatus
+from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
+from app.models.course_sku import CourseSku
+from app.models.invoice_counter import InvoiceCounter
+from app.models.location import Location
+from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
 from app.models.unit import Unit
 from app.schemas.tuition_invoice import (
     TuitionInvoiceGenerateResult,
+    TuitionInvoiceManualCreate,
+    TuitionInvoiceNextNo,
     TuitionInvoiceOut,
     TuitionInvoiceUpdate,
 )
@@ -33,12 +40,21 @@ def _invoice_to_out(invoice: TuitionInvoice) -> TuitionInvoiceOut:
     if invoice.unit:
         out.unit_name = invoice.unit.full_name
         out.unit_code = invoice.unit.code
+    elif invoice.kind == "manual":
+        out.unit_name = invoice.manual_student_name
+    for line_out, line in zip(out.lines, invoice.lines):
+        if line_out.staff_name:
+            continue
+        staff = line.sku.staff if line.sku else None
+        line_out.staff_name = staff.full_name if staff else None
     return out
 
 
 _INVOICE_LOAD = (
     selectinload(TuitionInvoice.unit),
-    selectinload(TuitionInvoice.lines),
+    selectinload(TuitionInvoice.lines)
+    .selectinload(TuitionInvoiceLine.sku)
+    .selectinload(CourseSku.staff),
 )
 
 
@@ -60,17 +76,17 @@ async def list_tuition_invoices(
             raise HTTPException(status_code=422, detail="month must be 1-12")
         first_day = date(year, month, 1)
         last_day = date(year, month, calendar.monthrange(year, month)[1])
-        clauses.append(TuitionInvoice.period_start == first_day)
-        clauses.append(TuitionInvoice.period_end == last_day)
+        # Includes tuition invoices for the full month and manual invoices
+        # for any day in the month (manual period_start == period_end == date).
+        clauses.append(TuitionInvoice.period_start >= first_day)
+        clauses.append(TuitionInvoice.period_end <= last_day)
     if status_filter is not None:
         clauses.append(TuitionInvoice.status == status_filter)
 
     count_q = select(func.count()).select_from(TuitionInvoice)
     q = select(TuitionInvoice).options(*_INVOICE_LOAD)
     if location_id is not None:
-        count_q = count_q.join(Unit, TuitionInvoice.unit_id == Unit.id)
-        q = q.join(Unit, TuitionInvoice.unit_id == Unit.id)
-        clauses.append(Unit.registered_location_id == location_id)
+        clauses.append(TuitionInvoice.location_id == location_id)
     if clauses:
         count_q = count_q.where(*clauses)
         q = q.where(*clauses)
@@ -114,6 +130,275 @@ async def generate_tuition_invoices(
     return TuitionInvoiceGenerateResult(**result)
 
 
+_INVOICE_NO_MAX = 999999
+_COUNTER_ID = 1
+
+
+async def _max_numeric_invoice_no(db: AsyncSession, location_id: uuid.UUID | None) -> int:
+    result = await db.execute(
+        select(TuitionInvoice.invoice_no).where(
+            TuitionInvoice.invoice_no.is_not(None),
+            TuitionInvoice.location_id == location_id,
+        )
+    )
+    max_no = 0
+    for value in result.scalars().all():
+        try:
+            max_no = max(max_no, int(value))
+        except (TypeError, ValueError):
+            continue
+    return max_no
+
+
+async def _peek_next_invoice_no(db: AsyncSession, location_id: uuid.UUID | None = None) -> int:
+    counter = await db.execute(
+        select(InvoiceCounter).where(InvoiceCounter.location_id == location_id)
+    )
+    row = counter.scalar_one_or_none()
+    if row is not None:
+        return row.next_no
+    return await _max_numeric_invoice_no(db, location_id) + 1
+
+
+def _parse_numeric_invoice_no(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        return int(value.strip())
+    except (TypeError, ValueError):
+        return None
+
+
+async def _counter_session(db: AsyncSession):
+    """Return a new, independent AsyncSession on the same database engine.
+
+    The invoice counter must be committed independently of the caller's
+    transaction so that a uniqueness conflict on an invoice number does not
+    roll the counter back and cause number reuse / 409 loops.
+    """
+    factory = async_sessionmaker(db.bind, class_=AsyncSession, expire_on_commit=False)
+    return factory()
+
+
+async def _bump_invoice_counter(db: AsyncSession, n: int, location_id: uuid.UUID | None = None) -> None:
+    """Advance the per-location counter to at least n + 1 in a committed, separate session."""
+    if n < 1:
+        return
+    if n > _INVOICE_NO_MAX:
+        raise HTTPException(status_code=422, detail="Invoice number exceeds maximum 999999.")
+    session = await _counter_session(db)
+    async with session, session.begin():
+        counter = await session.execute(
+            select(InvoiceCounter).where(InvoiceCounter.location_id == location_id).with_for_update()
+        )
+        counter = counter.scalar_one_or_none()
+        target = n + 1
+        if counter is None:
+            seed = await _max_numeric_invoice_no(session, location_id)
+            target = max(target, seed + 1)
+            try:
+                async with session.begin_nested():
+                    session.add(InvoiceCounter(location_id=location_id, next_no=target))
+                    await session.flush()
+            except IntegrityError:
+                # Another request created the counter row first — update it.
+                await session.execute(
+                    update(InvoiceCounter)
+                    .where(
+                        InvoiceCounter.location_id == location_id,
+                        InvoiceCounter.next_no < target,
+                    )
+                    .values(next_no=target)
+                )
+        elif counter.next_no < target:
+            counter.next_no = target
+
+
+async def _allocate_invoice_no(db: AsyncSession, location_id: uuid.UUID | None = None) -> int:
+    """Atomically take the next sequential invoice number for a given location.
+
+    The counter is updated and committed in a separate session so that a
+    later failure of the caller's invoice transaction does not roll the
+    counter back. If a manual number has already been used, the counter is
+    advanced until a free number is returned.
+    """
+    session = await _counter_session(db)
+    async with session, session.begin():
+        for _ in range(1000):
+            result = await session.execute(
+                update(InvoiceCounter)
+                .where(InvoiceCounter.location_id == location_id)
+                .values(next_no=InvoiceCounter.next_no + 1)
+                .returning(InvoiceCounter.next_no)
+            )
+            next_after = result.scalar_one_or_none()
+            if next_after is None:
+                allocated = await _max_numeric_invoice_no(session, location_id) + 1
+                if allocated > _INVOICE_NO_MAX:
+                    raise HTTPException(status_code=422, detail="Invoice numbers exhausted (max 999999).")
+                try:
+                    async with session.begin_nested():
+                        session.add(InvoiceCounter(location_id=location_id, next_no=allocated + 1))
+                        await session.flush()
+                except IntegrityError:
+                    # Another request created the counter row first — fall
+                    # through to the normal UPDATE path once.
+                    continue
+                return allocated
+
+            allocated = next_after - 1
+            if allocated > _INVOICE_NO_MAX:
+                raise HTTPException(status_code=422, detail="Invoice numbers exhausted (max 999999).")
+
+            # A manually entered number may have been used without updating
+            # the counter. Skip any already-allocated numbers in this location.
+            exists = await session.scalar(
+                select(TuitionInvoice.id).where(
+                    TuitionInvoice.location_id == location_id,
+                    TuitionInvoice.invoice_no == str(allocated),
+                )
+            )
+            if not exists:
+                return allocated
+            # already in use — the next loop will bump the counter again
+
+    raise HTTPException(status_code=422, detail="Could not allocate a free invoice number.")
+
+
+@router.get("/next-no", response_model=TuitionInvoiceNextNo)
+async def next_invoice_no(
+    _admin: AdminOnly,
+    db: DB,
+    location_id: uuid.UUID | None = Query(default=None),
+) -> TuitionInvoiceNextNo:
+    return TuitionInvoiceNextNo(next_no=await _peek_next_invoice_no(db, location_id))
+
+
+@router.post("/allocate-no", response_model=TuitionInvoiceNextNo)
+async def allocate_invoice_no(
+    _admin: AdminOnly,
+    db: DB,
+    location_id: uuid.UUID | None = Query(default=None),
+) -> TuitionInvoiceNextNo:
+    """Consume the next invoice number for a given location."""
+    allocated = await _allocate_invoice_no(db, location_id)
+    await db.commit()
+    return TuitionInvoiceNextNo(next_no=allocated)
+
+
+@router.post("/manual", response_model=TuitionInvoiceOut, status_code=status.HTTP_201_CREATED)
+async def create_manual_tuition_invoice(
+    body: TuitionInvoiceManualCreate,
+    _admin: AdminOnly,
+    db: DB,
+) -> TuitionInvoiceOut:
+    """Create and issue a manual (ad-hoc) invoice, storing it for reprint/payment tracking."""
+    location = await db.get(Location, body.location_id)
+    if not location:
+        raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+
+    if body.unit_id is not None:
+        unit = await db.get(Unit, body.unit_id)
+        if not unit:
+            raise HTTPException(status_code=422, detail="unit_id does not reference an existing unit")
+
+    # Validate and build purchase lines before allocating an invoice number —
+    # a failed create must not consume a number.
+    purchase_links: list[tuple[TuitionInvoiceLine, EnrollmentPurchase]] = []
+    if body.purchase_ids:
+        result = await db.execute(
+            select(EnrollmentPurchase)
+            .options(
+                selectinload(EnrollmentPurchase.enrollment)
+                .selectinload(CourseEnrollment.sku)
+                .selectinload(CourseSku.staff)
+            )
+            .where(EnrollmentPurchase.id.in_(body.purchase_ids))
+        )
+        purchases = {p.id: p for p in result.scalars().all()}
+        if len(purchases) != len(set(body.purchase_ids)):
+            raise HTTPException(status_code=422, detail="Unknown purchase id in purchase_ids")
+        for purchase_id in body.purchase_ids:
+            purchase = purchases[purchase_id]
+            if purchase.billed_invoice_line_id is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This session package has already been billed on another invoice.",
+                )
+            if body.unit_id is not None and purchase.enrollment.unit_id != body.unit_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail="This session package belongs to a different student.",
+                )
+            sku: CourseSku | None = purchase.enrollment.sku
+            line = TuitionInvoiceLine(
+                enrollment_id=purchase.enrollment_id,
+                sku_id=sku.id if sku else None,
+                sku_code=sku.code if sku else "manual",
+                name_zh=sku.name_zh if sku else "Sessions",
+                billing_unit="per_session",
+                unit_price=purchase.unit_price,
+                quantity=purchase.purchased_quantity,
+                amount=purchase.unit_price * purchase.purchased_quantity,
+                month_label=purchase.purchased_at.strftime("%Y-%m"),
+                staff_name=sku.staff.full_name if sku and sku.staff else None,
+            )
+            purchase_links.append((line, purchase))
+
+    invoice_no = body.invoice_no.strip() if body.invoice_no and body.invoice_no.strip() else None
+    if invoice_no:
+        manual_no = _parse_numeric_invoice_no(invoice_no)
+        if manual_no is not None:
+            await _bump_invoice_counter(db, manual_no, body.location_id)
+    else:
+        invoice_no = str(await _allocate_invoice_no(db, body.location_id))
+
+    lines = [
+        TuitionInvoiceLine(
+            name_zh=line.course,
+            sku_code="manual",
+            billing_unit="manual",
+            unit_price=line.fee,
+            quantity=line.qty,
+            amount=line.fee * line.qty,
+            month_label=line.month,
+            staff_name=line.staff_name.strip() if line.staff_name else None,
+        )
+        for line in body.lines
+    ]
+    lines = [line for line, _ in purchase_links] + lines
+    total = sum(line.amount for line in lines)
+
+    invoice = TuitionInvoice(
+        unit_id=body.unit_id,
+        location_id=body.location_id,
+        manual_student_name=body.manual_student_name.strip() if body.manual_student_name else None,
+        period_start=body.date,
+        period_end=body.date,
+        status=TuitionInvoiceStatus.issued.value,
+        kind="manual",
+        total=total,
+        notes=body.notes,
+        invoice_no=invoice_no,
+        issued_at=datetime.now(timezone.utc),
+    )
+    invoice.lines = lines
+    db.add(invoice)
+    try:
+        await db.flush()
+        for line, purchase in purchase_links:
+            purchase.billed_invoice_line_id = line.id
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Invoice no. already in use — pick another.")
+    await db.refresh(invoice)
+    result = await db.execute(
+        select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice.id)
+    )
+    return _invoice_to_out(result.scalar_one())
+
+
 @router.get("/{invoice_id}", response_model=TuitionInvoiceOut)
 async def get_tuition_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> TuitionInvoiceOut:
     result = await db.execute(
@@ -152,8 +437,21 @@ async def update_tuition_invoice(
     for field, value in update_data.items():
         setattr(invoice, field, value)
     if new_status == TuitionInvoiceStatus.issued.value:
+        location_id = invoice.location_id or (invoice.unit.registered_location_id if invoice.unit else None)
+        invoice.location_id = location_id
+        if not invoice.invoice_no:
+            invoice.invoice_no = str(await _allocate_invoice_no(db, location_id))
+        else:
+            # Reserve this manual number so the counter never collides with it.
+            manual_no = _parse_numeric_invoice_no(invoice.invoice_no)
+            if manual_no is not None:
+                await _bump_invoice_counter(db, manual_no, location_id)
         invoice.issued_at = datetime.now(timezone.utc)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Invoice no. already in use — pick another.")
     await db.refresh(invoice)
     result = await db.execute(
         select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice.id)

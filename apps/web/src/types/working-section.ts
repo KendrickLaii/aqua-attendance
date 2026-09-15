@@ -37,6 +37,7 @@ export interface WorkingSectionProperties {
   created_at?: string | null
   updated_at?: string | null
   deleted_at?: string | null
+
   /** Used for list page edit redirect, from API profile_uuid */
   profile_uuid?: string
 }
@@ -67,21 +68,25 @@ export interface WorkingRecordListItem {
   tax_computation_uuid?: string | null
   tax_additional_info?: Record<string, unknown>
   tax_data?: Record<string, unknown>
+
   // fiscal year dates
   f_year_start?: string
   f_year_end?: string
   L_year_start?: string
   L_year_end?: string
   fiscal_period?: string | null
+
   // year of assessment
   year_of_assessment?: string
   year_of_assessment_ly?: string
   provisional?: string
   provisional_ly?: string
+
   // dates
   engage_date?: string
   due_date?: string
   report_date?: string
+
   // signing info
   signing_partner?: string
   position_of_signing_partner?: string
@@ -110,26 +115,31 @@ export interface WorkingRecordPayload {
   tax_year: string
   title: string
   tax_computation_uuid?: string
+
   // Fiscal year dates
   f_year_start: string
   f_year_end: string
   L_year_start: string
   L_year_end: string
   fiscal_period: string | null
+
   // Year of assessment
   year_of_assessment: string
   year_of_assessment_ly: string
   provisional: string
   provisional_ly: string
+
   // Dates
   engage_date: string
   due_date: string
+
   // Signing info
   signing_partner: string
   position_of_signing_partner: string
   practising_certificate_number: string
   main_signer: string
   main_signer_position: string
+
   // Staff
   contact_person: string
   manager: string

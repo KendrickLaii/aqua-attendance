@@ -1,6 +1,6 @@
-import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAttendanceListWithTotal, type AttendanceListResult } from '@/utils/attendanceListApi'
 import type { AttendanceUser } from './auth'
+import { $attendanceApi } from '@/utils/attendanceApi'
+import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export async function listUsers(params?: {
   role?: string

@@ -66,15 +66,13 @@ export async function getAllTaxComputations(page: number, size: number) {
 }
 
 export async function deleteTaxComputation(uuid: string) {
-  const res = await $authApi('/tax_computation/del', {
+  return await $authApi('/tax_computation/del', {
     method: 'DELETE',
     body: {
       uuid,
       data: [`${uuid}`],
     },
   })
-
-  return res
 }
 
 export async function getNoteACFromAqua(params: NoteACFromAquaParams) {
@@ -106,7 +104,7 @@ export async function printScheduleOne(
   const res = await $authApi.raw('/printing/schedule', {
     method: 'POST',
     headers: {
-      accept: 'application/json',
+      'accept': 'application/json',
       'Content-Type': 'application/json',
       ...(accessToken ? { 'auth-token': accessToken } : {}),
     },
@@ -156,11 +154,13 @@ export async function printScheduleOne(
     const star = disposition.match(/filename\*\s*=\s*([^;]+)/i)?.[1]?.trim()
     if (star) {
       const v = star.replace(/^UTF-8''/i, '').replace(/^["']|["']$/g, '')
-      try { return decodeURIComponent(v) } catch { return v }
+      try { return decodeURIComponent(v) }
+      catch { return v }
     }
 
     const plain = disposition.match(/filename\s*=\s*([^;]+)/i)?.[1]?.trim()
-    if (plain) return plain.replace(/^["']|["']$/g, '')
+    if (plain)
+      return plain.replace(/^["']|["']$/g, '')
 
     return 'ScheduleOne'
   })()

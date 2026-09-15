@@ -1,4 +1,19 @@
 <script setup lang="ts">
+import type { AmountList } from '../TaxComputation.vue'
+import AmountInput from './AmountInput.vue'
+import type { GroupedDataItem } from './DPL.vue'
+import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
+import AppToastStack from '@/components/AppToastStack.vue'
+import { useToast } from '@/composables/useToast'
+import type { Content } from '@/types/client'
+import type { BasicInformationData } from '@/types/working-section'
+import {
+  buildBasicPeriodLine,
+  buildBasicPeriodProvisionalLine,
+  buildYearsOfAssessmentLine,
+  buildYearsOfAssessmentProvisionalLine,
+} from '@/helper/taxComputation'
+
 export interface TableRow {
   titleSelect?: boolean
   total?: boolean
@@ -15,6 +30,7 @@ export interface TableRow {
   noTotalNum?: number
   this_sum_error?: boolean
   last_sum_error?: boolean
+
   /** subtotal row: start/end are the indices of the range being summed */
   start?: number
   end?: number
@@ -30,24 +46,34 @@ export interface DataContentItem {
   selectedCheckbox?: string[]
 }
 
-import AmountInput from './AmountInput.vue'
-import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
-import AppToastStack from '@/components/AppToastStack.vue'
-import { useToast } from '@/composables/useToast'
-import type { Content } from '@/types/client'
-import type { AmountList } from '../TaxComputation.vue'
-import type { GroupedDataItem } from './DPL.vue'
-import type { BasicInformationData } from '@/types/working-section'
-import {
-  buildBasicPeriodLine,
-  buildBasicPeriodProvisionalLine,
-  buildYearsOfAssessmentLine,
-  buildYearsOfAssessmentProvisionalLine,
-} from '@/helper/taxComputation'
+const props = defineProps<{
+  dataContentList: DataContentItem[]
+  clientData?: Content | null
+  clientCurrency?: { currency: string; symbol: string; uuid: string } | null
+  basicInformationData: BasicInformationData
+  taxRate?: number
+  groupedData?: GroupedDataItem[]
+  scheduleNumber?: string
+  amountList: AmountList[]
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:tableData', payload: { order: number; tableData: TableRow[] }): void
+  (e: 'update:amount-before-tax', value: number): void
+  (e: 'update:net-assessable-profit', value: number): void
+  (e: 'update:profit-adjustment', value: number): void
+  (e: 'update:year-of-assessment', value: number): void
+  (e: 'update:year-of-assessment-provisional', value: number): void
+  (e: 'update:profit-tax-current-year', value: number): void
+  (e: 'update:profit-tax-provisional', value: number): void
+  (e: 'update:total-tax-payable', value: number): void
+  (e: 'update:text-content', payload: { order: number; content: string }): void
+  (e: 'update:selected-checkbox', payload: { order: number; value: string[] }): void
+}>()
 
 const { show: showToast } = useToast()
 
-const isDebugMode = import.meta.env.VITE_ENV_MODE === 'dev' ? true : false // for debugging
+const isDebugMode = import.meta.env.VITE_ENV_MODE === 'dev' // for debugging
 
 const SCHEDULE_OPTIONS = [
   { title: 'I', value: 'I' },
@@ -97,30 +123,24 @@ function onTaxReductionComboBoxChange(
   if (val == null) {
     rv.label = ''
     rv.thisVal = ''
+
     return
   }
   if (typeof val === 'string') {
     // VCombobox passes a string on manual typing; keep the typed text as label
     rv.label = val
+
     const option = TAX_REDUCTION_OPTIONS.find(o => o.title === val)
+
     rv.thisVal = option != null ? getBoundedTaxReductionValue(order, option.value) : rv.thisVal
+
     return
   }
+
   // User selected from dropdown: val is { title, value }
   rv.label = val.title ?? ''
   rv.thisVal = getBoundedTaxReductionValue(order, val.value)
 }
-
-const props = defineProps<{
-  dataContentList: DataContentItem[]
-  clientData?: Content | null
-  clientCurrency?: { currency: string; symbol: string; uuid: string } | null
-  basicInformationData: BasicInformationData
-  taxRate?: number
-  groupedData?: GroupedDataItem[]
-  scheduleNumber?: string
-  amountList: AmountList[]
-}>()
 
 const currencyLabel = computed(() => props.clientCurrency?.currency || props.clientData?.currency || 'HKD')
 
@@ -137,46 +157,40 @@ const totalTaxPayableLabels = computed(() => {
   }
 })
 
-const emit = defineEmits<{
-  (e: 'update:tableData', payload: { order: number; tableData: TableRow[] }): void
-  (e: 'update:amount-before-tax', value: number): void
-  (e: 'update:net-assessable-profit', value: number): void
-  (e: 'update:profit-adjustment', value: number): void
-  (e: 'update:year-of-assessment', value: number): void
-  (e: 'update:year-of-assessment-provisional', value: number): void
-  (e: 'update:profit-tax-current-year', value: number): void
-  (e: 'update:profit-tax-provisional', value: number): void
-  (e: 'update:total-tax-payable', value: number): void
-  (e: 'update:text-content', payload: { order: number; content: string }): void
-  (e: 'update:selected-checkbox', payload: { order: number; value: string[] }): void
-}>()
-
 // Keep `totalTaxPayable` labels in sync with `basicInformationData`.
 // Why: these labels are stored in `tableData` (so they can be persisted), but the source of truth
 // is Basic Information. This watcher updates ONLY the label rows (fixedRow/total `name`) and never
 // touches user-entered amounts.
-watch(totalTaxPayableLabels, (labels) => {
-  if (!labels?.fixedRowName) return
+watch(totalTaxPayableLabels, labels => {
+  if (!labels?.fixedRowName)
+    return
   const item = props.dataContentList.find(i => i.tableType === 'totalTaxPayable' && Array.isArray(i.tableData))
-  if (!item?.tableData?.length) return
+  if (!item?.tableData?.length)
+    return
   const fixedIdx = item.tableData.findIndex(r => r.type === 'fixedRow' && r.tag?.includes('noInput'))
   const totalIdx = item.tableData.findIndex(r => r.type === 'total')
-  if (fixedIdx < 0 && totalIdx < 0) return
+  if (fixedIdx < 0 && totalIdx < 0)
+    return
 
   const nextTableData = item.tableData.map((r, i) => {
-    if (i === fixedIdx && r.name !== labels.fixedRowName) return { ...r, name: labels.fixedRowName }
-    if (i === totalIdx && r.name !== labels.totalRowName) return { ...r, name: labels.totalRowName }
+    if (i === fixedIdx && r.name !== labels.fixedRowName)
+      return { ...r, name: labels.fixedRowName }
+    if (i === totalIdx && r.name !== labels.totalRowName)
+      return { ...r, name: labels.totalRowName }
+
     return r
   })
 
   // Avoid emitting if nothing changed
   const changed = nextTableData.some((r, i) => r !== item.tableData![i])
-  if (!changed) return
+  if (!changed)
+    return
   emit('update:tableData', { order: item.order, tableData: nextTableData })
 }, { immediate: true })
 
 const yearOfAssessmentLabels = computed(() => {
   const bi = props.basicInformationData
+
   return {
     line1: buildYearsOfAssessmentLine(bi),
     line2: buildBasicPeriodLine(bi),
@@ -185,30 +199,37 @@ const yearOfAssessmentLabels = computed(() => {
 
 // Keep `yearOfAssessment` header lines in sync with `basicInformationData`.
 // These two lines are stored as `noInput` fixedRows in `tableData` so they can be saved/restored.
-watch(yearOfAssessmentLabels, (labels) => {
+watch(yearOfAssessmentLabels, labels => {
   const item = props.dataContentList.find(i => i.tableType === 'yearOfAssessment' && Array.isArray(i.tableData))
-  if (!item?.tableData?.length) return
+  if (!item?.tableData?.length)
+    return
 
   const fixed = item.tableData
     .map((r, idx) => ({ r, idx }))
     .filter(x => x.r.type === 'fixedRow' && x.r.tag?.includes('noInput'))
 
-  if (fixed.length < 2) return
+  if (fixed.length < 2)
+    return
   const [a, b] = fixed
 
   const next = item.tableData.map((r, i) => {
-    if (i === a.idx && r.name !== labels.line1) return { ...r, name: labels.line1 }
-    if (i === b.idx && r.name !== labels.line2) return { ...r, name: labels.line2 }
+    if (i === a.idx && r.name !== labels.line1)
+      return { ...r, name: labels.line1 }
+    if (i === b.idx && r.name !== labels.line2)
+      return { ...r, name: labels.line2 }
+
     return r
   })
 
   const changed = next.some((r, i) => r !== item.tableData![i])
-  if (!changed) return
+  if (!changed)
+    return
   emit('update:tableData', { order: item.order, tableData: next })
 }, { immediate: true })
 
 const yearOfAssessmentProvisionalLabels = computed(() => {
   const bi = props.basicInformationData
+
   return {
     line1: buildYearsOfAssessmentProvisionalLine(bi),
     line2: buildBasicPeriodProvisionalLine(bi),
@@ -217,25 +238,31 @@ const yearOfAssessmentProvisionalLabels = computed(() => {
 
 // Keep `yearOfAssessmentProvisional` header lines in sync with `basicInformationData`.
 // Like the current-year card, we persist these as `noInput` fixedRows and only update their `name`.
-watch(yearOfAssessmentProvisionalLabels, (labels) => {
+watch(yearOfAssessmentProvisionalLabels, labels => {
   const item = props.dataContentList.find(i => i.tableType === 'yearOfAssessmentProvisional' && Array.isArray(i.tableData))
-  if (!item?.tableData?.length) return
+  if (!item?.tableData?.length)
+    return
 
   const fixed = item.tableData
     .map((r, idx) => ({ r, idx }))
     .filter(x => x.r.type === 'fixedRow' && x.r.tag?.includes('noInput'))
 
-  if (fixed.length < 2) return
+  if (fixed.length < 2)
+    return
   const [a, b] = fixed
 
   const next = item.tableData.map((r, i) => {
-    if (i === a.idx && r.name !== labels.line1) return { ...r, name: labels.line1 }
-    if (i === b.idx && r.name !== labels.line2) return { ...r, name: labels.line2 }
+    if (i === a.idx && r.name !== labels.line1)
+      return { ...r, name: labels.line1 }
+    if (i === b.idx && r.name !== labels.line2)
+      return { ...r, name: labels.line2 }
+
     return r
   })
 
   const changed = next.some((r, i) => r !== item.tableData![i])
-  if (!changed) return
+  if (!changed)
+    return
   emit('update:tableData', { order: item.order, tableData: next })
 }, { immediate: true })
 
@@ -250,6 +277,7 @@ function getRowValue(order: number, number: number) {
   const key = rowKey(order, number)
   if (!rowValues.value[key])
     rowValues.value[key] = { label: '', schedule: '', thisVal: '', lastVal: '' }
+
   return rowValues.value[key]
 }
 
@@ -259,21 +287,26 @@ function findAmountListItemByType(type: string) {
 
 // --- Shared: parse amount & format total ---
 function parseAmount(s: string | undefined): number {
-  if (s == null) return 0
+  if (s == null)
+    return 0
   const t = String(s).trim()
-  if (!t || t === '-') return 0
+  if (!t || t === '-')
+    return 0
 
   // Support "(1,234)" negative format and comma-separated numbers.
   const isParenNegative = /^\(.*\)$/.test(t)
   const stripped = t.replace(/[(),\s]/g, '')
   const numeric = isParenNegative ? `-${stripped}` : stripped
   const n = Number(numeric)
+
   return Number.isNaN(n) ? 0 : n
 }
 
 function formatTotalDisplay(n: number): string {
-  if (n === 0) return '-'
+  if (n === 0)
+    return '-'
   const abs = Math.abs(n).toLocaleString('en-US')
+
   return n < 0 ? `(${abs})` : abs
 }
 
@@ -287,14 +320,17 @@ function renumberBreakdowns(data: TableRow[]): TableRow[] {
       used.add(r.number)
   }
   let nextNum = 1
+
   const alloc = () => {
     while (used.has(nextNum)) nextNum++
     used.add(nextNum)
+
     return nextNum++
   }
 
-  return data.map((r) => {
-    if (r.type !== 'breakdown') return r
+  return data.map(r => {
+    if (r.type !== 'breakdown')
+      return r
 
     // The two-tier "Remaining @16.5%" row is a computed row; keep its number unset/0.
     if (r.tag?.includes(REMAINING_AT_165_TAG))
@@ -305,6 +341,7 @@ function renumberBreakdowns(data: TableRow[]): TableRow[] {
       return r
 
     const n = alloc()
+
     return { ...r, number: n, noTotalNum: n }
   })
 }
@@ -329,18 +366,22 @@ function getTotalRow(item: DataContentItem) {
 function computeTotalThisSum(item: DataContentItem): number {
   const bodyRows = getBodyRows(item)
   let sum = 0
+
   // Sum all fixedRows (e.g. "Profit before tax" and "First HK$2,000,000... @8.25%" when type is fixedRow)
   for (const row of bodyRows) {
     if (row.type === 'fixedRow')
       sum += parseAmount(row.this ?? '')
   }
+
   // Sum all breakdowns (prefer row.this when present so Sync/tag rows are included)
   const breakdowns = bodyRows.filter((r): r is TableRow & { number: number } => r.type === 'breakdown' && r.number != null)
   for (const row of breakdowns) {
     const fromRow = row.this !== undefined && String(row.this).trim() !== ''
     const amount = fromRow ? row.this : getRowValue(item.order, row.number).thisVal
+
     sum += parseAmount(amount ?? '')
   }
+
   return sum
 }
 
@@ -357,6 +398,7 @@ function computeTotalThisSumFromData(item: DataContentItem, data: TableRow[]): n
   for (const row of breakdowns) {
     const fromRow = row.this !== undefined && String(row.this).trim() !== ''
     const amount = fromRow ? row.this : getRowValue(item.order, row.number).thisVal
+
     sum += parseAmount(amount ?? '')
   }
 
@@ -366,11 +408,13 @@ function computeTotalThisSumFromData(item: DataContentItem, data: TableRow[]): n
 function refreshComputedRows(item: DataContentItem, data: TableRow[]): TableRow[] {
   const next = refreshSubtotal(data)
   const totalIdx = next.findIndex(r => r.type === 'total' && r.total === true)
-  if (totalIdx < 0) return next
+  if (totalIdx < 0)
+    return next
 
   const total = computeTotalThisSumFromData(item, next)
   const totalRow = next[totalIdx]
   const patched = { ...totalRow, this: formatTotalDisplay(total) }
+
   return next.map((r, i) => (i === totalIdx ? patched : r))
 }
 
@@ -381,11 +425,13 @@ function refreshComputedRows(item: DataContentItem, data: TableRow[]): TableRow[
  */
 function refreshSubtotal(data: TableRow[]): TableRow[] {
   const subtotalIdx = data.findIndex(r => r.type === 'subtotal')
-  if (subtotalIdx < 0) return data
+  if (subtotalIdx < 0)
+    return data
 
   const a = data.findIndex(r => r.tag?.includes('taxRatePercentage'))
   const b = subtotalIdx - 1 // subtotal is placed right after oneOffTaxReduction
-  if (a < 0 || b <= a) return data
+  if (a < 0 || b <= a)
+    return data
 
   const c = data
     .slice(a, b + 1)
@@ -399,13 +445,16 @@ function refreshSubtotal(data: TableRow[]): TableRow[] {
 function updateRow(patch: Partial<TableRow>, rowRef: TableRow, item: DataContentItem) {
   const data = item.tableData ?? []
   const patched = data.map(r => r === rowRef ? { ...r, ...patch } : r)
+
   emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, patched) })
 }
 
 function addBreakdownAfter(row: TableRow, item: DataContentItem) {
   const data = item.tableData ?? []
   const idx = data.findIndex(r => r === row)
-  if (idx < 0) return
+  if (idx < 0)
+    return
+
   const newBreakdown: TableRow = {
     itemSelect: true,
     name: '',
@@ -418,8 +467,10 @@ function addBreakdownAfter(row: TableRow, item: DataContentItem) {
     number: 0,
     noTotalNum: 0,
   }
+
   const next = [...data]
   const insertAt = row.type === 'subtotal' ? idx + 2 : idx + 1
+
   next.splice(insertAt, 0, newBreakdown)
   emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, renumberBreakdowns(next)) })
 }
@@ -435,9 +486,11 @@ function requestDeleteBreakdown(row: TableRow, item: DataContentItem) {
 }
 
 function confirmDeleteBreakdown() {
-  if (!rowToDelete || !itemToDelete) return
+  if (!rowToDelete || !itemToDelete)
+    return
   const data = itemToDelete.tableData ?? []
   const next = data.filter(r => r !== rowToDelete)
+
   emit('update:tableData', { order: itemToDelete.order, tableData: refreshComputedRows(itemToDelete, renumberBreakdowns(next)) })
   rowToDelete = null
   itemToDelete = null
@@ -446,15 +499,19 @@ function confirmDeleteBreakdown() {
 let isSyncingFromParent = false
 
 // Sync rowValues from tableData when dataContentList has breakdown rows
-watch(() => props.dataContentList, (list) => {
+watch(() => props.dataContentList, list => {
   isSyncingFromParent = true
+
   const next: Record<string, { label: string; schedule: string; thisVal: string; lastVal: string }> = {}
-  ;(list ?? []).forEach((item) => {
+
+  ;(list ?? []).forEach(item => {
     const breakdowns = (item.tableData ?? []).filter((r): r is TableRow & { number: number } =>
       r.type === 'breakdown' && r.number != null && !r.tag?.includes(REMAINING_AT_165_TAG),
     )
+
     for (const row of breakdowns) {
       const key = rowKey(item.order, row.number)
+
       next[key] = {
         label: row.name ?? '',
         schedule: row.schedule ?? '',
@@ -469,17 +526,25 @@ watch(() => props.dataContentList, (list) => {
 
 // When rowValues change (user edit), push back to each item's tableData and emit
 function syncBreakdownToTableData() {
-  if (isSyncingFromParent) return
-  ;(props.dataContentList ?? []).forEach((item) => {
+  if (isSyncingFromParent)
+    return
+  ;(props.dataContentList ?? []).forEach(item => {
     const data = item.tableData ?? []
-    if (data.length === 0) return
-    const patched = data.map((r) => {
-      if (r.type !== 'breakdown' || r.number == null) return r
-      if (r.tag?.includes(REMAINING_AT_165_TAG)) return r
+    if (data.length === 0)
+      return
+
+    const patched = data.map(r => {
+      if (r.type !== 'breakdown' || r.number == null)
+        return r
+      if (r.tag?.includes(REMAINING_AT_165_TAG))
+        return r
       const v = rowValues.value[rowKey(item.order, r.number)]
-      if (!v) return r
+      if (!v)
+        return r
+
       return { ...r, name: v.label, schedule: v.schedule, this: v.thisVal, last: v.lastVal }
     })
+
     emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, patched) })
   })
 }
@@ -495,6 +560,7 @@ function insertAddBackItem(item: DataContentItem, baseData?: TableRow[]) {
 
   const groupedData = props.groupedData ?? []
   const addBackItems = groupedData.filter(i => i.addBack === true)
+
   const sortedAddBackItems = [
     ...addBackItems.filter(i => i.current_year >= 0),
     ...addBackItems.filter(i => i.current_year < 0),
@@ -503,6 +569,7 @@ function insertAddBackItem(item: DataContentItem, baseData?: TableRow[]) {
   const newRows: TableRow[] = sortedAddBackItems.map((groupItem, index) => {
     const prefix = groupItem.current_year >= 0 ? 'Add' : 'Less'
     const num = index + 1
+
     return {
       itemSelect: true,
       name: `${prefix}: ${groupItem.content}`,
@@ -518,6 +585,7 @@ function insertAddBackItem(item: DataContentItem, baseData?: TableRow[]) {
   })
 
   const next = [...withoutBreakdown]
+
   next.splice(insertIndex, 0, ...newRows)
   emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, next) })
 }
@@ -549,6 +617,7 @@ function buildTwoTierRows(data: TableRow[], currentYear: number): TableRow[] {
   // Insert immediately after taxRatePercentage
   const taxRateIdx = data.findIndex(r => r.tag?.includes('taxRatePercentage'))
   const insertAt = taxRateIdx >= 0 ? taxRateIdx + 1 : data.length
+
   return [...data.slice(0, insertAt), newRow, ...data.slice(insertAt)]
 }
 
@@ -565,13 +634,16 @@ function onSync(item: DataContentItem) {
     const list = props.groupedData ?? []
     const match = list.find(i => typeof i.content === 'string' && i.content.endsWith(' before tax'))
     const row = getFixedRow(item)
-    if (!match || !row) return
-    const patch = { name: match.content, schedule: match.scheduleNumber, ['this']: formatTotalDisplay((match.current_year) * -1) } as Partial<TableRow>
+    if (!match || !row)
+      return
+    const patch = { name: match.content, schedule: match.scheduleNumber, this: formatTotalDisplay((match.current_year) * -1) } as Partial<TableRow>
     const data = item.tableData ?? []
     const nextAfterFixed = data.map(r => r === row ? { ...r, ...patch } : r)
+
     insertAddBackItem(item, nextAfterFixed)
     emit('update:amount-before-tax', match.current_year)
     showToast('Synced successfully.', 'info')
+
     return
   }
 
@@ -579,12 +651,15 @@ function onSync(item: DataContentItem) {
   if (item.tableType === 'yearOfAssessment') {
     const amountListItem = findAmountListItemByType('profit_adjustment')
     const row = (item.tableData ?? []).find(r => r.type === 'fixedRow' && r.tag?.includes('syncTarget'))
-    if (amountListItem == null || !row) return
-    const patch = { ['this']: formatTotalDisplay(amountListItem.current_year) } as Partial<TableRow>
+    if (amountListItem == null || !row)
+      return
+    const patch = { this: formatTotalDisplay(amountListItem.current_year) } as Partial<TableRow>
     const data = item.tableData ?? []
     const next = data.map(r => r === row ? { ...r, ...patch } : r)
+
     emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, next) })
     showToast('Synced successfully.', 'info')
+
     return
   }
 
@@ -592,24 +667,30 @@ function onSync(item: DataContentItem) {
   if (item.tableType === 'yearOfAssessmentProvisional') {
     const amountListItem = findAmountListItemByType('year_of_assessment')
     const totalRow = getTotalRow(item)
-    if (amountListItem == null || !totalRow) return
+    if (amountListItem == null || !totalRow)
+      return
     const patch = { this: formatTotalDisplay(amountListItem.current_year) } as Partial<TableRow>
     const data = item.tableData ?? []
     const next = data.map(r => r === totalRow ? { ...r, ...patch } : r)
+
     emit('update:tableData', { order: item.order, tableData: next })
     showToast('Synced successfully.', 'info')
+
     return
   }
-  
+
   if (item.tableType === 'netAssessableProfit') {
     const amountListItem = findAmountListItemByType('year_of_assessment')
     const row = (item.tableData ?? []).find(r => r.type === 'fixedRow' && r.tag?.includes('syncTarget'))
-    if (amountListItem == null || !row) return
-    const patch = { ['this']: formatTotalDisplay(amountListItem.current_year) } as Partial<TableRow>
+    if (amountListItem == null || !row)
+      return
+    const patch = { this: formatTotalDisplay(amountListItem.current_year) } as Partial<TableRow>
     const data = item.tableData ?? []
     const next = data.map(r => r === row ? { ...r, ...patch } : r)
+
     emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, next) })
     showToast('Synced successfully.', 'info')
+
     return
   }
 
@@ -617,14 +698,17 @@ function onSync(item: DataContentItem) {
   if (item.tableType === 'profitTaxCurrentYear') {
     const amountListItem = findAmountListItemByType('net_assessable_profit')
     const taxRateRow = (item.tableData ?? []).find(r => r.tag?.includes('taxRatePercentage'))
-    if (amountListItem == null || !taxRateRow) return
+    if (amountListItem == null || !taxRateRow)
+      return
     const taxRate = props.taxRate ?? 0.165
     const currentYear = amountListItem.current_year
     const isTwoTier = taxRate === 0.0825 && currentYear > 2000000
+
     // Label: two-tier shows first 2M @8.25%; else single rate label
     const name = isTwoTier
       ? 'First HK$2,000,000 of assessable profit @8.25%'
       : (taxRate === 0.0825 ? 'Profits tax thereon @8.25%' : 'Profits tax thereon @16.5%')
+
     // Amount: negative current year yields 0; two-tier uses fixed 165000; otherwise trunc(currentYear * taxRate)
     let taxAmount = 0
     if (currentYear < 0)
@@ -643,6 +727,7 @@ function onSync(item: DataContentItem) {
 
     emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, renumberBreakdowns(data)) })
     showToast('Synced successfully.', 'info')
+
     return
   }
 
@@ -650,10 +735,12 @@ function onSync(item: DataContentItem) {
   if (item.tableType === 'profitTaxProvisional') {
     const amountListItem = findAmountListItemByType('year_of_assessment_provisional')
     const taxRateRow = (item.tableData ?? []).find(r => r.tag?.includes('taxRatePercentage'))
-    if (amountListItem == null || !taxRateRow) return
+    if (amountListItem == null || !taxRateRow)
+      return
     const taxRate = props.taxRate ?? 0.165
     const currentYear = amountListItem.current_year
     const isTwoTier = taxRate === 0.0825 && currentYear > 2000000
+
     const name = isTwoTier
       ? 'First HK$2,000,000 of assessable profit @8.25%'
       : (taxRate === 0.0825 ? 'Profits tax thereon @8.25%' : 'Profits tax thereon @16.5%')
@@ -676,7 +763,6 @@ function onSync(item: DataContentItem) {
 
     emit('update:tableData', { order: item.order, tableData: refreshComputedRows(item, renumberBreakdowns(data)) })
     showToast('Synced successfully.', 'info')
-    return
   }
 }
 
@@ -692,6 +778,7 @@ function onPost(item: DataContentItem) {
   if (item.tableType === 'yearOfAssessmentProvisional') {
     const totalRow = getTotalRow(item)
     const raw = totalRow?.this ?? ''
+
     emit('update:year-of-assessment-provisional', parseAmount(raw))
   }
   if (item.tableType === 'profitTaxCurrentYear')
@@ -706,46 +793,89 @@ function onPost(item: DataContentItem) {
       const next = (totalTaxPayableItem.tableData ?? []).map(r =>
         r === totalTaxPayableRow ? { ...r, this: formatTotalDisplay(totalTaxPayableValue) } : r,
       )
+
       emit('update:tableData', { order: totalTaxPayableItem.order, tableData: next })
     }
 
     emit('update:profit-tax-provisional', value)
     emit('update:total-tax-payable', totalTaxPayableValue)
   }
-    showToast('Posted successfully.', 'info')
+  showToast('Posted successfully.', 'info')
 }
 </script>
 
 <template>
-  <template v-for="item in dataContentList" :key="item.order">
+  <template
+    v-for="item in dataContentList"
+    :key="item.order"
+  >
     <!-- profitAdjustment / profitTaxCurrentYear / profitTaxProvisional: card + table with Sync, breakdown (+/-), Post -->
-    <VCard v-if="['profitAdjustment', 'profitTaxCurrentYear', 'profitTaxProvisional', 'netAssessableProfit'].includes(item.tableType ?? '')" class="ptc-card pa-4 ma-3">
+    <VCard
+      v-if="['profitAdjustment', 'profitTaxCurrentYear', 'profitTaxProvisional', 'netAssessableProfit'].includes(item.tableType ?? '')"
+      class="ptc-card pa-4 ma-3"
+    >
       <div class="ptc-table">
-        <div v-if="getTitleRow(item)" class="ptc-row ptc-header">
+        <div
+          v-if="getTitleRow(item)"
+          class="ptc-row ptc-header"
+        >
           {{ isDebugMode ? `(Dev)tableType: ${item.tableType}` : '' }}
-          <VBtn v-if="isDebugMode" color="primary" size="x-small" @click="console.log('tableData', item.tableData)">(Dev)tableData</VBtn>
+          <VBtn
+            v-if="isDebugMode"
+            color="primary"
+            size="x-small"
+            @click="console.log('tableData', item.tableData)"
+          >
+            (Dev)tableData
+          </VBtn>
           <div class="ptc-cell ptc-name" />
-          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">{{ getTitleRow(item)!.schedule || "Schedule" }}</div>
-          <div class="ptc-cell ptc-amount text-center text-decoration-underline">{{ getTitleRow(item)!.this || "Amount" }}</div>
+          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">
+            {{ getTitleRow(item)!.schedule || "Schedule" }}
+          </div>
+          <div class="ptc-cell ptc-amount text-center text-decoration-underline">
+            {{ getTitleRow(item)!.this || "Amount" }}
+          </div>
           <div class="ptc-cell ptc-action">
-            <VBtn color="primary" size="x-small" @click="onSync(item)">Sync</VBtn>
+            <VBtn
+              color="primary"
+              size="x-small"
+              @click="onSync(item)"
+            >
+              Sync
+            </VBtn>
           </div>
         </div>
-        <div v-if="getCurrencyRow(item)" class="ptc-row ptc-currency">
+        <div
+          v-if="getCurrencyRow(item)"
+          class="ptc-row ptc-currency"
+        >
           <div class="ptc-cell ptc-name" />
           <div class="ptc-cell ptc-schedule" />
-          <div class="ptc-cell ptc-amount text-center">{{ getCurrencyRow(item)!.this || currencyLabel }}</div>
+          <div class="ptc-cell ptc-amount text-center">
+            {{ getCurrencyRow(item)!.this || currencyLabel }}
+          </div>
           <div class="ptc-cell ptc-action" />
         </div>
-        <template v-for="(row, rowIdx) in getBodyRows(item)" :key="`${row.type}-${row.number ?? rowIdx}`">
-          <div v-if="row.type === 'blankRow'" class="ptc-row ptc-blank-row">
+        <template
+          v-for="(row, rowIdx) in getBodyRows(item)"
+          :key="`${row.type}-${row.number ?? rowIdx}`"
+        >
+          <div
+            v-if="row.type === 'blankRow'"
+            class="ptc-row ptc-blank-row"
+          >
             <div class="ptc-cell ptc-name" />
             <div class="ptc-cell ptc-schedule" />
             <div class="ptc-cell ptc-amount" />
             <div class="ptc-cell ptc-action" />
           </div>
-          <div v-else-if="row.type === 'fixedRow'" class="ptc-row">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+          <div
+            v-else-if="row.type === 'fixedRow'"
+            class="ptc-row"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule">
               <VSelect
                 v-if="!row.tag?.includes('noInput')"
@@ -763,27 +893,33 @@ function onPost(item: DataContentItem) {
                 v-if="!row.tag?.includes('noInput')"
                 :model-value="row.this"
                 class="ptc-amount-input"
-                @update:model-value="updateRow({ this: $event }, row, item)"
                 :disabled="row.tag?.includes('taxRatePercentage') || row.tag?.includes('inputDisabled')"
+                @update:model-value="updateRow({ this: $event }, row, item)"
               />
             </div>
             <div class="ptc-cell ptc-action" />
           </div>
-          <div v-else-if="row.type === 'breakdown' || row.type === 'subtotal'" class="ptc-row">
+          <div
+            v-else-if="row.type === 'breakdown' || row.type === 'subtotal'"
+            class="ptc-row"
+          >
             <div class="ptc-cell ptc-name ptc-breakdown-name">
               <span class="ptc-row-label">{{ row.type === 'subtotal' || row.tag?.includes(REMAINING_AT_165_TAG) ? '' : `(${row.number})` }}</span>
               <span v-if="row.tag?.includes(REMAINING_AT_165_TAG)">{{ row.name }}</span>
-              <VCombobox v-if="row.scheduleType === 'comboBox'"
+              <VCombobox
+                v-if="row.scheduleType === 'comboBox'"
                 :model-value="getRowValue(item.order, row.number!).label || row.name"
                 :items="TAX_REDUCTION_OPTIONS"
                 item-title="title"
                 item-value="title"
                 density="compact"
-                hide-details variant="outlined"
+                hide-details
+                variant="outlined"
                 class="ptc-breakdown-input"
                 @update:model-value="(val) => onTaxReductionComboBoxChange(val, item.order, row.number!)"
               />
-              <VTextField v-else-if="row.type !== 'subtotal' && !row.tag?.includes(REMAINING_AT_165_TAG)"
+              <VTextField
+                v-else-if="row.type !== 'subtotal' && !row.tag?.includes(REMAINING_AT_165_TAG)"
                 v-model="getRowValue(item.order, row.number!).label"
                 density="compact"
                 hide-details
@@ -792,7 +928,8 @@ function onPost(item: DataContentItem) {
               />
             </div>
             <div class="ptc-cell ptc-schedule">
-              <VSelect v-if="row.type !== 'subtotal'"
+              <VSelect
+                v-if="row.type !== 'subtotal'"
                 v-model="getRowValue(item.order, row.number!).schedule"
                 :items="SCHEDULE_OPTIONS"
                 density="compact"
@@ -801,7 +938,10 @@ function onPost(item: DataContentItem) {
                 class="ptc-schedule-input"
               />
             </div>
-            <div class="ptc-cell ptc-amount" :class="{ 'ptc-amount-subtotal': row.type === 'subtotal' }">
+            <div
+              class="ptc-cell ptc-amount"
+              :class="{ 'ptc-amount-subtotal': row.type === 'subtotal' }"
+            >
               <AmountInput
                 v-if="row.type !== 'subtotal' && !row.tag?.includes(REMAINING_AT_165_TAG)"
                 v-model="getRowValue(item.order, row.number!).thisVal"
@@ -821,7 +961,12 @@ function onPost(item: DataContentItem) {
               />
             </div>
             <div class="ptc-cell ptc-action">
-              <IconBtn size="x-small" variant="text" color="primary" @click="addBreakdownAfter(row, item)">
+              <IconBtn
+                size="x-small"
+                variant="text"
+                color="primary"
+                @click="addBreakdownAfter(row, item)"
+              >
                 <VIcon icon="ri-add-line" />
               </IconBtn>
               <IconBtn
@@ -835,8 +980,13 @@ function onPost(item: DataContentItem) {
               </IconBtn>
             </div>
           </div>
-          <div v-else-if="row.type === 'total'" class="ptc-row ptc-total">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+          <div
+            v-else-if="row.type === 'total'"
+            class="ptc-row ptc-total"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule" />
             <div class="ptc-cell ptc-amount">
               <VTextField
@@ -848,7 +998,13 @@ function onPost(item: DataContentItem) {
               />
             </div>
             <div class="ptc-cell ptc-action">
-              <VBtn color="primary" size="x-small" @click="onPost(item)">Post</VBtn>
+              <VBtn
+                color="primary"
+                size="x-small"
+                @click="onPost(item)"
+              >
+                Post
+              </VBtn>
             </div>
           </div>
         </template>
@@ -856,29 +1012,62 @@ function onPost(item: DataContentItem) {
     </VCard>
 
     <!-- yearOfAssessment: card with title + subtitle + table -->
-    <VCard v-else-if="item.tableType === 'yearOfAssessment'" class="ptc-card pa-4 ma-3">
+    <VCard
+      v-else-if="item.tableType === 'yearOfAssessment'"
+      class="ptc-card pa-4 ma-3"
+    >
       <div class="ptc-table">
         {{ isDebugMode ? `(Dev)tableType: ${item.tableType}` : '' }}
-        <VBtn v-if="isDebugMode" color="primary" size="x-small" @click="console.log('tableData', item.tableData)">(Dev)tableData</VBtn>
-        <div v-if="getTitleRow(item)" class="ptc-row ptc-header">
+        <VBtn
+          v-if="isDebugMode"
+          color="primary"
+          size="x-small"
+          @click="console.log('tableData', item.tableData)"
+        >
+          (Dev)tableData
+        </VBtn>
+        <div
+          v-if="getTitleRow(item)"
+          class="ptc-row ptc-header"
+        >
           <div class="ptc-cell ptc-name">
             <!-- kept in tableData as noInput fixedRows -->
           </div>
-          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">Schedule</div>
-          <div class="ptc-cell ptc-amount text-center text-decoration-underline">Amount</div>
+          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">
+            Schedule
+          </div>
+          <div class="ptc-cell ptc-amount text-center text-decoration-underline">
+            Amount
+          </div>
           <div class="ptc-cell ptc-action">
-            <VBtn color="primary" size="x-small" @click="onSync(item)">Sync</VBtn>
+            <VBtn
+              color="primary"
+              size="x-small"
+              @click="onSync(item)"
+            >
+              Sync
+            </VBtn>
           </div>
         </div>
         <div class="ptc-row ptc-currency">
           <div class="ptc-cell ptc-name" />
           <div class="ptc-cell ptc-schedule" />
-          <div class="ptc-cell ptc-amount text-center">{{ currencyLabel }}</div>
+          <div class="ptc-cell ptc-amount text-center">
+            {{ currencyLabel }}
+          </div>
           <div class="ptc-cell ptc-action" />
         </div>
-        <template v-for="(row, rowIdx) in getBodyRows(item)" :key="`${row.type}-${row.number ?? rowIdx}`">
-          <div v-if="row.type === 'fixedRow'" class="ptc-row">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+        <template
+          v-for="(row, rowIdx) in getBodyRows(item)"
+          :key="`${row.type}-${row.number ?? rowIdx}`"
+        >
+          <div
+            v-if="row.type === 'fixedRow'"
+            class="ptc-row"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule">
               <VSelect
                 v-if="!row.tag?.includes('noInput')"
@@ -901,7 +1090,10 @@ function onPost(item: DataContentItem) {
             </div>
             <div class="ptc-cell ptc-action" />
           </div>
-          <div v-else-if="row.type === 'breakdown'" class="ptc-row">
+          <div
+            v-else-if="row.type === 'breakdown'"
+            class="ptc-row"
+          >
             <div class="ptc-cell ptc-name ptc-breakdown-name">
               <span class="ptc-row-label">({{ row.number }})</span>
               <VTextField
@@ -929,16 +1121,32 @@ function onPost(item: DataContentItem) {
               />
             </div>
             <div class="ptc-cell ptc-action">
-              <IconBtn size="x-small" variant="text" color="primary" @click="addBreakdownAfter(row, item)">
+              <IconBtn
+                size="x-small"
+                variant="text"
+                color="primary"
+                @click="addBreakdownAfter(row, item)"
+              >
                 <VIcon icon="ri-add-line" />
               </IconBtn>
-              <IconBtn :disabled="row.scheduleType === 'comboBox'" size="x-small" variant="text" color="error" @click="requestDeleteBreakdown(row, item)">
+              <IconBtn
+                :disabled="row.scheduleType === 'comboBox'"
+                size="x-small"
+                variant="text"
+                color="error"
+                @click="requestDeleteBreakdown(row, item)"
+              >
                 <VIcon icon="ri-delete-bin-line" />
               </IconBtn>
             </div>
           </div>
-          <div v-else-if="row.type === 'total'" class="ptc-row ptc-total">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+          <div
+            v-else-if="row.type === 'total'"
+            class="ptc-row ptc-total"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule" />
             <div class="ptc-cell ptc-amount">
               <VTextField
@@ -950,7 +1158,13 @@ function onPost(item: DataContentItem) {
               />
             </div>
             <div class="ptc-cell ptc-action">
-              <VBtn color="primary" size="x-small" @click="onPost(item)">Post</VBtn>
+              <VBtn
+                color="primary"
+                size="x-small"
+                @click="onPost(item)"
+              >
+                Post
+              </VBtn>
             </div>
           </div>
         </template>
@@ -958,35 +1172,76 @@ function onPost(item: DataContentItem) {
     </VCard>
 
     <!-- yearOfAssessmentProvisional: YEARS OF ASSESSMENT (PROVISIONAL) + Basic period + single total row with Post -->
-    <VCard v-else-if="item.tableType === 'yearOfAssessmentProvisional'" class="ptc-card pa-4 ma-3">
+    <VCard
+      v-else-if="item.tableType === 'yearOfAssessmentProvisional'"
+      class="ptc-card pa-4 ma-3"
+    >
       <div class="ptc-table">
         {{ isDebugMode ? `(Dev)tableType: ${item.tableType}` : '' }}
-        <VBtn v-if="isDebugMode" color="primary" size="x-small" @click="console.log('tableData', item.tableData)">(Dev)tableData</VBtn>
-        <div v-if="getTitleRow(item)" class="ptc-row ptc-header">
+        <VBtn
+          v-if="isDebugMode"
+          color="primary"
+          size="x-small"
+          @click="console.log('tableData', item.tableData)"
+        >
+          (Dev)tableData
+        </VBtn>
+        <div
+          v-if="getTitleRow(item)"
+          class="ptc-row ptc-header"
+        >
           <div class="ptc-cell ptc-name">
             <!-- kept in tableData as noInput fixedRows -->
           </div>
-          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">Schedule</div>
-          <div class="ptc-cell ptc-amount text-center text-decoration-underline">Amount</div>
+          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">
+            Schedule
+          </div>
+          <div class="ptc-cell ptc-amount text-center text-decoration-underline">
+            Amount
+          </div>
           <div class="ptc-cell ptc-action">
-            <VBtn color="primary" size="x-small" @click="onSync(item)">Sync</VBtn>
+            <VBtn
+              color="primary"
+              size="x-small"
+              @click="onSync(item)"
+            >
+              Sync
+            </VBtn>
           </div>
         </div>
-        <div v-if="getCurrencyRow(item)" class="ptc-row ptc-currency">
-          <div class="ptc-cell ptc-name"/>
+        <div
+          v-if="getCurrencyRow(item)"
+          class="ptc-row ptc-currency"
+        >
+          <div class="ptc-cell ptc-name" />
           <div class="ptc-cell ptc-schedule" />
-          <div class="ptc-cell ptc-amount text-center">{{ currencyLabel }}</div>
+          <div class="ptc-cell ptc-amount text-center">
+            {{ currencyLabel }}
+          </div>
           <div class="ptc-cell ptc-action" />
         </div>
-        <template v-for="(row, rowIdx) in getBodyRows(item)" :key="`${row.type}-${row.number ?? rowIdx}`">
-          <div v-if="row.type === 'fixedRow'" class="ptc-row">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+        <template
+          v-for="(row, rowIdx) in getBodyRows(item)"
+          :key="`${row.type}-${row.number ?? rowIdx}`"
+        >
+          <div
+            v-if="row.type === 'fixedRow'"
+            class="ptc-row"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule" />
             <div class="ptc-cell ptc-amount" />
             <div class="ptc-cell ptc-action" />
           </div>
-          <div v-if="row.type === 'total'" class="ptc-row ptc-total">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+          <div
+            v-if="row.type === 'total'"
+            class="ptc-row ptc-total"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule" />
             <div class="ptc-cell ptc-amount">
               <VTextField
@@ -998,7 +1253,13 @@ function onPost(item: DataContentItem) {
               />
             </div>
             <div class="ptc-cell ptc-action">
-              <VBtn color="primary" size="x-small" @click="onPost(item)">Post</VBtn>
+              <VBtn
+                color="primary"
+                size="x-small"
+                @click="onPost(item)"
+              >
+                Post
+              </VBtn>
             </div>
           </div>
         </template>
@@ -1006,31 +1267,66 @@ function onPost(item: DataContentItem) {
     </VCard>
 
     <!-- totalTaxPayable: summary card, Schedule + Amount, no Sync/Post/+/- -->
-    <VCard v-else-if="item.tableType === 'totalTaxPayable'" class="ptc-card pa-4 ma-3">
+    <VCard
+      v-else-if="item.tableType === 'totalTaxPayable'"
+      class="ptc-card pa-4 ma-3"
+    >
       <div class="ptc-table">
         {{ isDebugMode ? `(Dev)tableType: ${item.tableType}` : '' }}
-        <VBtn v-if="isDebugMode" color="primary" size="x-small" @click="console.log('tableData', item.tableData)">(Dev)tableData</VBtn>
-        <div v-if="getTitleRow(item)" class="ptc-row ptc-header">
+        <VBtn
+          v-if="isDebugMode"
+          color="primary"
+          size="x-small"
+          @click="console.log('tableData', item.tableData)"
+        >
+          (Dev)tableData
+        </VBtn>
+        <div
+          v-if="getTitleRow(item)"
+          class="ptc-row ptc-header"
+        >
           <div class="ptc-cell ptc-name" />
-          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">Schedule</div>
-          <div class="ptc-cell ptc-amount text-center text-decoration-underline">Amount</div>
+          <div class="ptc-cell ptc-schedule text-center text-decoration-underline">
+            Schedule
+          </div>
+          <div class="ptc-cell ptc-amount text-center text-decoration-underline">
+            Amount
+          </div>
           <div class="ptc-cell ptc-action" />
         </div>
-        <div v-if="getCurrencyRow(item)" class="ptc-row ptc-currency">
+        <div
+          v-if="getCurrencyRow(item)"
+          class="ptc-row ptc-currency"
+        >
           <div class="ptc-cell ptc-name" />
           <div class="ptc-cell ptc-schedule" />
-          <div class="ptc-cell ptc-amount text-center">{{ currencyLabel }}</div>
+          <div class="ptc-cell ptc-amount text-center">
+            {{ currencyLabel }}
+          </div>
           <div class="ptc-cell ptc-action" />
         </div>
-        <template v-for="(row, rowIdx) in getBodyRows(item)" :key="`${row.type}-${row.number ?? rowIdx}`">
-          <div v-if="row.type === 'fixedRow'" class="ptc-row">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+        <template
+          v-for="(row, rowIdx) in getBodyRows(item)"
+          :key="`${row.type}-${row.number ?? rowIdx}`"
+        >
+          <div
+            v-if="row.type === 'fixedRow'"
+            class="ptc-row"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule" />
             <div class="ptc-cell ptc-amount" />
             <div class="ptc-cell ptc-action" />
           </div>
-          <div v-else-if="row.type === 'total'" class="ptc-row ptc-total">
-            <div class="ptc-cell ptc-name">{{ row.name }}</div>
+          <div
+            v-else-if="row.type === 'total'"
+            class="ptc-row ptc-total"
+          >
+            <div class="ptc-cell ptc-name">
+              {{ row.name }}
+            </div>
             <div class="ptc-cell ptc-schedule" />
             <div class="ptc-cell ptc-amount">
               <VTextField
@@ -1048,7 +1344,10 @@ function onPost(item: DataContentItem) {
     </VCard>
 
     <!-- type="text": show VTextarea for content -->
-    <VCard v-else-if="item.type === 'text'" class="ptc-card pa-4 ma-3">
+    <VCard
+      v-else-if="item.type === 'text'"
+      class="ptc-card pa-4 ma-3"
+    >
       <VTextarea
         :model-value="item.content ?? ''"
         variant="outlined"
@@ -1061,7 +1360,10 @@ function onPost(item: DataContentItem) {
     </VCard>
 
     <!-- type="checkboxes": show checkboxes for content -->
-    <VCard v-else-if="item.type === 'checkboxes'" class="ptc-card pa-3 ma-3">
+    <VCard
+      v-else-if="item.type === 'checkboxes'"
+      class="ptc-card pa-3 ma-3"
+    >
       <VCheckbox
         v-for="checkbox in item.checkboxContent"
         :key="checkbox.value"
@@ -1096,7 +1398,7 @@ function onPost(item: DataContentItem) {
     font-size: 0.75rem;
     text-align: justify;
   }
-  
+
 }
 
 .ptc-table {
@@ -1164,7 +1466,7 @@ function onPost(item: DataContentItem) {
   right: 0;
   top: -30px; /* visually move border up without layout padding/margin */ //need add blank row on top manually in taxComputation.ts
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.2);
-  
+
   pointer-events: none;
 }
 .ptc-breakdown-name {

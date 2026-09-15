@@ -20,6 +20,7 @@ export interface TemplateField {
   ird_mapping?: string
   tax_return_number?: string
   tax_return_reference?: string
+
   /**
    * UI-only: store user input value for this field.
    * Optional to keep API template definition compatible.
@@ -98,8 +99,10 @@ export type TaxReturnFieldSetupPayload = ApiTemplateRequest
 
 /** Extract fields array from API content object */
 export function parseContentToFields(
-  content?: ApiTemplate['content']
+  content?: ApiTemplate['content'],
 ): TemplateField[] {
-  if (!content) return []
+  if (!content)
+    return []
+
   return content.fields ?? []
 }

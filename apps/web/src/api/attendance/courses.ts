@@ -44,6 +44,7 @@ export interface CourseSku {
   level: string | null
   schedule_note: string | null
   location_id: string | null
+  staff_id: string | null
   capacity: number | null
   price: number | null
   billing_unit: BillingUnit
@@ -61,6 +62,7 @@ export interface CourseSkuPayload {
   level?: string | null
   schedule_note?: string | null
   location_id?: string | null
+  staff_id?: string | null
   capacity?: number | null
   price?: number | null
   billing_unit?: BillingUnit
@@ -70,6 +72,17 @@ export interface CourseSkuPayload {
 
 export type EnrollmentStatus = 'active' | 'completed' | 'cancelled'
 
+export interface EnrollmentPurchase {
+  id: string
+  enrollment_id: string
+  purchased_quantity: number
+  unit_price: number
+  purchased_at: string
+  billed_invoice_line_id: string | null
+  notes: string | null
+  created_at: string
+}
+
 export interface CourseEnrollment {
   id: string
   unit_id: string
@@ -78,9 +91,14 @@ export interface CourseEnrollment {
   enrolled_at: string
   start_date: string | null
   end_date: string | null
+
   /** One-time session count purchased, for per_session (堂費) SKUs only. */
   purchased_quantity: number | null
+
+  /** Per-student price override; billed instead of the class price when set. */
+  unit_price: number | null
   notes: string | null
+  purchases: EnrollmentPurchase[]
   created_at: string
   updated_at: string
 }
@@ -92,6 +110,7 @@ export interface CourseEnrollmentPayload {
   start_date?: string | null
   end_date?: string | null
   purchased_quantity?: number | null
+  unit_price?: number | null
   notes?: string | null
 }
 
@@ -112,10 +131,11 @@ async function fetchAllAttendancePages<T>(
     items.push(...next.items)
     page += 1
   }
+
   return items
 }
 
-export async function listCourseSpus(params?: { is_active?: boolean, search?: string }): Promise<CourseSpu[]> {
+export async function listCourseSpus(params?: { is_active?: boolean; search?: string }): Promise<CourseSpu[]> {
   return await fetchAllAttendancePages<CourseSpu>('/course-spus', params)
 }
 
@@ -169,11 +189,28 @@ export async function createCourseEnrollment(payload: CourseEnrollmentPayload): 
 
 export async function updateCourseEnrollment(
   id: string,
-  payload: Partial<Pick<CourseEnrollmentPayload, 'status' | 'start_date' | 'end_date' | 'purchased_quantity' | 'notes'>>,
+  payload: Partial<Pick<CourseEnrollmentPayload, 'status' | 'start_date' | 'end_date' | 'purchased_quantity' | 'unit_price' | 'notes'>>,
 ): Promise<CourseEnrollment> {
   return await $attendanceApi(`/course-enrollments/${id}`, { method: 'PATCH', body: payload })
 }
 
 export async function deleteCourseEnrollment(id: string): Promise<void> {
   await $attendanceApi(`/course-enrollments/${id}`, { method: 'DELETE' })
+}
+
+export interface EnrollmentPurchasePayload {
+  purchased_quantity: number
+  unit_price: number
+  purchased_at: string
+  notes?: string | null
+}
+
+export async function createEnrollmentPurchase(
+  enrollmentId: string,
+  payload: EnrollmentPurchasePayload,
+): Promise<EnrollmentPurchase> {
+  return await $attendanceApi(`/course-enrollments/${enrollmentId}/purchases`, {
+    method: 'POST',
+    body: payload,
+  })
 }

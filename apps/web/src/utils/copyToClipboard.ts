@@ -8,6 +8,7 @@ function copyViaExecCommand(text: string): boolean {
 
   try {
     const ta = document.createElement('textarea')
+
     ta.value = text
     ta.setAttribute('readonly', '')
     ta.style.position = 'fixed'
@@ -19,7 +20,9 @@ function copyViaExecCommand(text: string): boolean {
     ta.focus()
     ta.select()
     ta.setSelectionRange(0, text.length)
+
     const ok = document.execCommand('copy')
+
     ta.remove()
 
     return ok

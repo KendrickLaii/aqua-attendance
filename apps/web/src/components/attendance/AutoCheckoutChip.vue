@@ -13,6 +13,7 @@ import {
 const props = withDefaults(defineProps<{
   source?: string | null
   notes?: string | null
+
   /** Summary last_check_out — used when notes were not persisted yet */
   lastCheckOut?: string | null
   size?: 'x-small' | 'small' | 'default'

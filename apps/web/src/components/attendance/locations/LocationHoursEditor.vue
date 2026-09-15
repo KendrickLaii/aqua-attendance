@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { applyHoursPreset, type DaySchedule, type HoursPreset } from '@/utils/locationHours'
+import { type DaySchedule, type HoursPreset, applyHoursPreset } from '@/utils/locationHours'
 
 const schedule = defineModel<DaySchedule[]>({ required: true })
 
