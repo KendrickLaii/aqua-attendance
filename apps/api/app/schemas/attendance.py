@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -80,6 +80,10 @@ class AttendanceOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+#: Tolerance for client/server clock skew when checking for future timestamps.
+MANUAL_CORRECTION_FUTURE_TOLERANCE = timedelta(minutes=5)
+
+
 class ManualCorrectionRequest(BaseModel):
     unit_id: uuid.UUID
     event_type: EventType  # 現在必須明確指定 check_in 或 check_out
@@ -94,8 +98,14 @@ class ManualCorrectionRequest(BaseModel):
         if v is None:
             return None
         if v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
-        return v.astimezone(timezone.utc)
+            v = v.replace(tzinfo=timezone.utc)
+        else:
+            v = v.astimezone(timezone.utc)
+        # A corrected event that has not happened yet is always a typo, and it
+        # poisons every later query that orders by or filters on recorded_at.
+        if v > datetime.now(timezone.utc) + MANUAL_CORRECTION_FUTURE_TOLERANCE:
+            raise ValueError("recorded_at cannot be in the future")
+        return v
 
 
 class AttendanceListParams(BaseModel):

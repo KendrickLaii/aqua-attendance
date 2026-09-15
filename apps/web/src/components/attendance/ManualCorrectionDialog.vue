@@ -11,8 +11,10 @@ type CorrectionMode = 'single' | 'full_day'
 const props = withDefaults(
   defineProps<{
     modelValue: boolean
+
     /** When set, the unit field is locked to this unit (Units page quick entry). */
     unit?: Unit | null
+
     /** Seed list for searchable unit picker (Log page). Ignored when `unit` is set. */
     unitCatalog?: Unit[]
   }>(),
@@ -54,6 +56,7 @@ const error = ref('')
 const unitItems = computed(() => {
   const opts = unitOptions.value
   const selected = selectedUnit.value
+
   const list = selected && !opts.some(u => u.id === selected.id)
     ? [selected, ...opts]
     : opts
@@ -82,16 +85,20 @@ const hasDuplicate = computed(() => duplicateEvents.value.length > 0)
 
 const isFullDay = computed(() => form.mode === 'full_day')
 
-const datetimePickerConfig = {
+/** Refreshed each time the dialog opens — corrections can never be in the future. */
+const pickerMaxDate = ref(new Date())
+
+const datetimePickerConfig = computed(() => ({
   enableTime: true,
   dateFormat: 'Y-m-d H:i',
   time_24hr: true,
   allowInput: true,
   minuteIncrement: 5,
-} as const
+  maxDate: pickerMaxDate.value,
+}))
 
 const checkOutPickerConfig = computed(() => ({
-  ...datetimePickerConfig,
+  ...datetimePickerConfig.value,
   minDate: form.check_in_at || undefined,
 }))
 
@@ -238,6 +245,9 @@ watch(
   },
 )
 
+// `checkDuplicates` is a hoisted function declaration, so wrapping it here is safe.
+const debouncedCheckDuplicates = useDebounceFn(checkDuplicates, 400)
+
 watch(
   () => [form.mode, form.event_type, form.recorded_at, form.check_in_at, form.check_out_at] as const,
   () => {
@@ -279,6 +289,7 @@ async function checkDuplicates() {
       ])
 
       duplicateEvents.value = [...ins, ...outs]
+
       const parts: string[] = []
       if (ins.length)
         parts.push(`${ins.length} check-in${ins.length === 1 ? '' : 's'}`)
@@ -303,8 +314,6 @@ async function checkDuplicates() {
     duplicateSummary.value = ''
   }
 }
-
-const debouncedCheckDuplicates = useDebounceFn(checkDuplicates, 400)
 
 function resetForm(presetUnit: Unit | null = null) {
   error.value = ''
@@ -342,6 +351,8 @@ watch(
     if (!open)
       return
 
+    pickerMaxDate.value = new Date()
+
     if (props.unit) {
       resetForm(props.unit)
       await checkDuplicates()
@@ -363,6 +374,17 @@ function close() {
   unitSearch.value = ''
 }
 
+/** Mirrors the API's MANUAL_CORRECTION_FUTURE_TOLERANCE (5 minutes). */
+const FUTURE_TOLERANCE_MS = 5 * 60 * 1000
+
+function futureError(label: string, local: string): string | null {
+  const iso = dateTimeLocalToIso(local)
+  if (iso && new Date(iso).getTime() > Date.now() + FUTURE_TOLERANCE_MS)
+    return `${label} cannot be in the future — check the date`
+
+  return null
+}
+
 function validateForm(): string | null {
   if (!form.unit_id)
     return 'Please select a unit'
@@ -377,9 +399,12 @@ function validateForm(): string | null {
     const outIso = dateTimeLocalToIso(form.check_out_at)
     if (inIso && outIso && new Date(outIso) <= new Date(inIso))
       return 'Check-out must be after check-in'
+
+    return futureError('Check-in', form.check_in_at)
+      ?? futureError('Check-out', form.check_out_at)
   }
 
-  return null
+  return futureError('Date & time', form.recorded_at)
 }
 
 async function handleSave() {

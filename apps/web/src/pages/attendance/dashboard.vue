@@ -56,6 +56,12 @@ const allCandidatesSelected = computed(() =>
 const autoCheckoutSaveLabel = computed(() =>
   `Close day for ${autoCheckoutSelectedIds.value.length} selected`)
 
+/** Auto-checkout off → the same dialog opens as a read-only "who is on site" review. */
+const onSiteReadonly = computed(() => !autoCheckoutEnabled.value)
+
+const onSiteDialogTitle = computed(() =>
+  onSiteReadonly.value ? 'Currently on site' : 'Day-end checkout')
+
 function toggleSelectAllCandidates() {
   autoCheckoutSelectedIds.value = allCandidatesSelected.value
     ? []
@@ -318,9 +324,6 @@ function typeLabel(type: string) {
 }
 
 async function openAutoCheckoutDialog() {
-  if (!autoCheckoutEnabled.value)
-    return
-
   autoCheckoutDialog.value = true
   autoCheckoutDialogError.value = ''
   autoCheckoutCandidatesLoading.value = true
@@ -341,7 +344,9 @@ async function openAutoCheckoutDialog() {
     autoCheckoutCandidates.value = units
 
     // Default-select overnight missed + past-closing; leave in-hours people unchecked.
-    autoCheckoutSelectedIds.value = units.filter(shouldDefaultSelect).map(u => u.id)
+    autoCheckoutSelectedIds.value = onSiteReadonly.value
+      ? []
+      : units.filter(shouldDefaultSelect).map(u => u.id)
   }
   catch (e: unknown) {
     autoCheckoutDialogError.value = formatApiError(e, 'Failed to load checked-in units')
@@ -352,7 +357,7 @@ async function openAutoCheckoutDialog() {
 }
 
 async function confirmAutoCheckout() {
-  if (autoCheckoutSelectedIds.value.length === 0)
+  if (!autoCheckoutEnabled.value || autoCheckoutSelectedIds.value.length === 0)
     return
 
   autoCheckoutLoading.value = true
@@ -522,12 +527,9 @@ async function confirmAutoCheckout() {
             size="small"
             variant="flat"
             color="warning"
-            prepend-icon="ri-time-line"
-            :loading="autoCheckoutLoading"
-            :disabled="!autoCheckoutEnabled"
-            :title="autoCheckoutEnabled
-              ? undefined
-              : 'Auto-checkout is disabled. Use Manual correction instead.'"
+            prepend-icon="ri-map-pin-user-line"
+            :loading="autoCheckoutCandidatesLoading"
+            title="See who is still marked on site"
             @click="openAutoCheckoutDialog"
           >
             Review list
@@ -718,12 +720,14 @@ async function confirmAutoCheckout() {
 
     <AttendanceFormDialog
       v-model="autoCheckoutDialog"
-      title="Day-end checkout"
-      icon="ri-time-line"
+      :title="onSiteDialogTitle"
+      :icon="onSiteReadonly ? 'ri-map-pin-user-line' : 'ri-time-line'"
       :max-width="560"
       :saving="autoCheckoutLoading"
       :error="autoCheckoutDialogError"
       :save-label="autoCheckoutSaveLabel"
+      :hide-save="onSiteReadonly"
+      :cancel-label="onSiteReadonly ? 'Close' : 'Cancel'"
       :form-defaults="false"
       @save="confirmAutoCheckout"
       @cancel="autoCheckoutDialog = false"
@@ -739,10 +743,30 @@ async function confirmAutoCheckout() {
         <strong>On site today</strong> = still within location hours — usually leave them.
         <strong>Past closing</strong> = after that location's close (may be OT or overdue).
         <strong>Possible missed checkout</strong> = overnight reminder.
-        Closing writes a <strong>23:59</strong> check-out (not the location close time).
+        <template v-if="!onSiteReadonly">
+          Closing writes a <strong>23:59</strong> check-out (not the location close time).
+        </template>
       </VAlert>
 
-      <p class="text-body-2 text-medium-emphasis mb-4">
+      <p
+        v-if="onSiteReadonly"
+        class="text-body-2 text-medium-emphasis mb-4"
+      >
+        Read-only — day-end auto-checkout is disabled.
+        To close someone's day, use <strong>Manual correction</strong> on the
+        <RouterLink :to="{ name: 'attendance-log' }">
+          Log
+        </RouterLink>
+        or
+        <RouterLink :to="{ name: 'attendance-units' }">
+          Units
+        </RouterLink>
+        page so the real check-out time is recorded.
+      </p>
+      <p
+        v-else
+        class="text-body-2 text-medium-emphasis mb-4"
+      >
         Unselected people stay on site so you can investigate later.
         Past-closing and overnight names are selected by default.
       </p>
@@ -773,6 +797,7 @@ async function confirmAutoCheckout() {
       <template v-else>
         <div class="d-flex align-center justify-space-between mb-2">
           <VBtn
+            v-if="!onSiteReadonly"
             variant="text"
             size="small"
             @click="toggleSelectAllCandidates"
@@ -780,7 +805,12 @@ async function confirmAutoCheckout() {
             {{ allCandidatesSelected ? 'Deselect all' : 'Select all' }}
           </VBtn>
           <span class="text-caption text-medium-emphasis">
-            {{ autoCheckoutSelectedIds.length }} / {{ autoCheckoutCandidates.length }} selected
+            <template v-if="onSiteReadonly">
+              {{ autoCheckoutCandidates.length }} on site
+            </template>
+            <template v-else>
+              {{ autoCheckoutSelectedIds.length }} / {{ autoCheckoutCandidates.length }} selected
+            </template>
           </span>
         </div>
 
@@ -795,6 +825,7 @@ async function confirmAutoCheckout() {
           >
             <template #prepend>
               <VCheckbox
+                v-if="!onSiteReadonly"
                 v-model="autoCheckoutSelectedIds"
                 :value="unit.id"
                 hide-details

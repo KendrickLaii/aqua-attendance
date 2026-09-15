@@ -1,12 +1,4 @@
 <script setup lang="ts">
-const ATTENDANCE_FORM_FIELD_DEFAULTS = {
-  VTextField: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
-  VSelect: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
-  VAutocomplete: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
-  VTextarea: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
-  VSwitch: { density: 'compact', hideDetails: true },
-} as const
-
 withDefaults(
   defineProps<{
     modelValue: boolean
@@ -16,6 +8,8 @@ withDefaults(
     saving?: boolean
     error?: string | null
     saveLabel?: string
+    hideSave?: boolean
+    cancelLabel?: string
     bodyClass?: string
     bodyStyle?: string | Record<string, string>
     formDefaults?: boolean
@@ -27,6 +21,8 @@ withDefaults(
     saving: false,
     error: '',
     saveLabel: 'Save',
+    hideSave: false,
+    cancelLabel: 'Cancel',
     bodyClass: 'pa-4',
     bodyStyle: undefined,
     formDefaults: true,
@@ -38,8 +34,16 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   save: []
   cancel: []
-  'clear-error': []
+  clearError: []
 }>()
+
+const ATTENDANCE_FORM_FIELD_DEFAULTS = {
+  VTextField: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+  VSelect: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+  VAutocomplete: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+  VTextarea: { density: 'compact', variant: 'outlined', hideDetails: 'auto' },
+  VSwitch: { density: 'compact', hideDetails: true },
+} as const
 
 function close() {
   emit('update:modelValue', false)
@@ -81,7 +85,7 @@ function onSave() {
           density="compact"
           class="mb-4"
           closable
-          @click:close="emit('clear-error')"
+          @click:close="emit('clearError')"
         >
           {{ error }}
         </VAlert>
@@ -101,9 +105,10 @@ function onSave() {
           :disabled="saving"
           @click="close"
         >
-          Cancel
+          {{ cancelLabel }}
         </VBtn>
         <VBtn
+          v-if="!hideSave"
           variant="flat"
           color="primary"
           :loading="saving"

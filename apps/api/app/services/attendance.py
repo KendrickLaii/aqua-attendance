@@ -49,13 +49,20 @@ async def find_recent_event(
 
     When ``event_type`` is set, only debounce duplicate scans of the same action
     (so check-in followed quickly by check-out still creates two events).
+
+    The window is bounded on both sides.  Without the upper bound, a single
+    event dated in the future (e.g. a manual correction with a typo'd date)
+    stays inside ``recorded_at >= now - within_seconds`` forever and silently
+    swallows every later scan of that action for that unit.
     """
     if within_seconds <= 0:
         return None
-    cutoff = _now() - timedelta(seconds=within_seconds)
+    now = _now()
+    cutoff = now - timedelta(seconds=within_seconds)
     conditions = [
         AttendanceEvent.unit_id == unit_id,
         AttendanceEvent.recorded_at >= cutoff,
+        AttendanceEvent.recorded_at <= now,
         AttendanceEvent.voided_at.is_(None),
         AttendanceEvent.event_type.in_(
             [EventType.check_in.value, EventType.check_out.value]

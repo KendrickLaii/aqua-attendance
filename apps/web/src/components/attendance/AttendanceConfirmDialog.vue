@@ -17,11 +17,12 @@ withDefaults(
     maxWidth: 420,
   },
 )
+
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   confirm: []
   cancel: []
-  'clear-error': []
+  clearError: []
 }>()
 
 function close() {
@@ -54,7 +55,7 @@ function onConfirm() {
           density="compact"
           class="mb-3"
           closable
-          @click:close="emit('clear-error')"
+          @click:close="emit('clearError')"
         >
           {{ error }}
         </VAlert>
