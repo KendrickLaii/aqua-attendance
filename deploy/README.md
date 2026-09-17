@@ -26,6 +26,20 @@ cd deploy/
 ./update.sh
 ```
 
+`.env` 嘅 `WEB_IMAGE` / `API_IMAGE` 用 `:main` 時，update.sh 永遠拉最新 build。
+行緊邊版可喺 web footer 或 `GET /api/health`（`version` 欄位）睇到。
+
+### Rollback（改返舊版）
+
+每個 build 除咗 `:main` / `:vX.Y.Z`，仲有一個 `sha-<commit>` tag。
+將 `.env` 嘅 image tag 改做想返去嘅版本，再 `./update.sh`：
+
+```bash
+# .env
+WEB_IMAGE=ghcr.io/<org>/juku-attendance/web:sha-a1b2c3d
+API_IMAGE=ghcr.io/<org>/juku-attendance/api:sha-a1b2c3d
+```
+
 ## 備份
 
 ### 手動備份

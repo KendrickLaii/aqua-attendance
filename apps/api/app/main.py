@@ -30,7 +30,7 @@ from app.routers import (
 
 app = FastAPI(
     title="AQUA Attendance API",
-    version="2.0.0",
+    version=settings.APP_VERSION,
     description="Multi-location QR time & attendance — unit-based tracking for staff and students",
 )
 app.state.limiter = limiter
@@ -74,4 +74,4 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Database unavailable: {exc}",
         ) from exc
-    return {"status": "ok", "database": "ok"}
+    return {"status": "ok", "database": "ok", "version": settings.APP_VERSION}

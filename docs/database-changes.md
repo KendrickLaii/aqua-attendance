@@ -24,8 +24,8 @@
 | 16 | 發票編號與列印 | ✅ `tuition_invoices.invoice_no`/`issued_at`（039）＋每中心獨立編號系列 `invoice_counters`＋`tuition_invoices.location_id`（f5d44789754d）；唯一鍵 `(location_id, invoice_no)` |
 | 17 | SKU 指派教師＋學生個別價 | ✅ `course_skus.staff_id`（040）、`course_enrollments.unit_price`（041）— 私補可班無定價、逐學生定價 |
 | 18 | 手動發票 | ✅ `tuition_invoices.kind`/`manual_student_name`、`unit_id` 改可空、`lines.month_label`（71296d8b9d7f）— 文具什費／私補出單可持久化、重印、付款與作廢 |
-| 20 | 堂費單一來源 | ✅ drop `course_enrollments.purchased_quantity`（c3e7a95b2d10）— 堤數只存在 `enrollment_purchases`；報名 API 仍收 `purchased_quantity` 但僅作建首條 purchase 的輸入 |
-| 19 | 堤費購買記錄 | ✅ `enrollment_purchases`（7d340d0ce7de）— 每次購買/top-up 一列（堂數、單價、日期、billed 連結），取代 `purchased_quantity` 作為計費來源；manual invoice 可直接結算未出單購買 |
+| 20 | 堂費單一來源 | ✅ drop `course_enrollments.purchased_quantity`（c3e7a95b2d10）— 堂數只存在 `enrollment_purchases`；報名 API 仍收 `purchased_quantity` 但僅作建首條 purchase 的輸入 |
+| 19 | 堂費購買記錄 | ✅ `enrollment_purchases`（7d340d0ce7de）— 每次購買/top-up 一列（堂數、單價、日期、billed 連結），取代 `purchased_quantity` 作為計費來源；manual invoice 可直接結算未出單購買 |
 
 ## 完整 ER 圖 (Mermaid)
 
@@ -692,9 +692,9 @@ ot_hours      = ot_slots * 0.25
 24. ✅ 堂費購買價可空（a1c9e4d7f2b3）— `enrollment_purchases.unit_price` 改 nullable；私補 enroll 只記堂數，價錢喺 manual invoice 出單時先定
 
 25. ✅ 手動發票不受一人一期一單限制（b8f2c4d6a1e9）— `(unit_id, period_start, period_end)` 改為 partial unique index，僅 `kind = 'tuition'`；修好同一學生同一日開不到第二張手動發票（作廢後補開）
-26. ✅ 堤數單一來源（c3e7a95b2d10）— drop `course_enrollments.purchased_quantity`；遷移前先把尚未建 purchase 的舊列回填為 purchase，並清掉指向作廢發票的 stale `billed_invoice_line_id`
+26. ✅ 堂數單一來源（c3e7a95b2d10）— drop `course_enrollments.purchased_quantity`；遷移前先把尚未建 purchase 的舊列回填為 purchase，並清掉指向作廢發票的 stale `billed_invoice_line_id`
 
-> **目前 Alembic 版本：c3e7a95b2d10**（堤數單一來源：`enrollment_purchases`）
+> **目前 Alembic 版本：c3e7a95b2d10**（堂數單一來源：`enrollment_purchases`）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

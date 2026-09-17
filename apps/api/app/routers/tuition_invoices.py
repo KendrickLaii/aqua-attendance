@@ -395,7 +395,12 @@ async def create_manual_tuition_invoice(
             quantity=quantity,
             amount=line_in.fee * quantity,
             month_label=line_in.month or purchase.purchased_at.strftime("%Y-%m"),
-            staff_name=sku.staff.full_name if sku and sku.staff else None,
+            # Invoice-level staff (who gets commission) wins; blank falls back
+            # to the class teacher.
+            staff_name=(
+                (line_in.staff_name.strip() if line_in.staff_name else None)
+                or (sku.staff.full_name if sku and sku.staff else None)
+            ),
         )
         lines.append(line)
         purchase_links.append((line, purchase))
@@ -405,6 +410,7 @@ async def create_manual_tuition_invoice(
         unit_id=body.unit_id,
         location_id=body.location_id,
         manual_student_name=body.manual_student_name.strip() if body.manual_student_name else None,
+        staff_name=body.staff_name.strip() if body.staff_name else None,
         period_start=body.date,
         period_end=body.date,
         status=TuitionInvoiceStatus.issued.value,
@@ -467,6 +473,8 @@ async def update_tuition_invoice(
 
     if "invoice_no" in update_data and isinstance(update_data["invoice_no"], str):
         update_data["invoice_no"] = update_data["invoice_no"].strip() or None
+    if "staff_name" in update_data and isinstance(update_data["staff_name"], str):
+        update_data["staff_name"] = update_data["staff_name"].strip() or None
 
     for field, value in update_data.items():
         setattr(invoice, field, value)

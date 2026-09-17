@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-09-17（手動發票不受一人一期一單限制、作廢發票即時释放堤費購買、drop `course_enrollments.purchased_quantity`；Alembic head **c3e7a95b2d10**）。2026-09-15（手動發票落廫、每中心發票編號系列、堤費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堤費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。2026-08-28（§1.9 SKU `meeting_weekdays`、§1.10 堂費按上課日計堂、§1.11 ERP 路線；Alembic head **038**。本地 migration 請用 `python -m alembic upgrade head`）。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`；Alembic head **c3e7a95b2d10**）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。2026-08-28（§1.9 SKU `meeting_weekdays`、§1.10 堂費按上課日計堂、§1.11 ERP 路線；Alembic head **038**。本地 migration 請用 `python -m alembic upgrade head`）。
 
 ---
 
@@ -706,8 +706,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-09-17 更新**：手動發票不再受 `(unit_id, period_start, period_end)` 唯一限制（改 partial unique index，僅 `kind = 'tuition'`；b8f2c4d6a1e9）；發票 PATCH 至 `void` 時會即時清掉`enrollment_purchases.billed_invoice_line_id`，所以「未出單」只有一個判断式；`course_enrollments.purchased_quantity` 已移除（c3e7a95b2d10），堤數只存 `enrollment_purchases`。手動發票拒絕同一張單重複結算同一購買（422）及 walk-in 單結算實名學生購買（422）。Alembic head **c3e7a95b2d10**。測試：全套 **164 passed**。
-> **2026-09-15 更新**：手動發票落廫（`kind=manual`、可結算堂費 `purchase_ids`）；發票編號改每中心系列（`location_id` + `invoice_counters`）；堂費改由 `enrollment_purchases` 記錄追蹤，Generate 出未出單購買。Alembic head **7d340d0ce7de**。
+> **2026-09-17 更新**：手動發票不再受 `(unit_id, period_start, period_end)` 唯一限制（改 partial unique index，僅 `kind = 'tuition'`；b8f2c4d6a1e9）；發票 PATCH 至 `void` 時會即時清掉`enrollment_purchases.billed_invoice_line_id`，所以「未出單」只有一個判斷式；`course_enrollments.purchased_quantity` 已移除（c3e7a95b2d10），堂數只存 `enrollment_purchases`。手動發票拒絕同一張單重複結算同一購買（422）及 walk-in 單結算實名學生購買（422）。Alembic head **c3e7a95b2d10**。測試：全套 **164 passed**。
+> **2026-09-15 更新**：手動發票落庫（`kind=manual`、可結算堂費 `purchase_ids`）；發票編號改每中心系列（`location_id` + `invoice_counters`）；堂費改由 `enrollment_purchases` 記錄追蹤，Generate 出未出單購買。Alembic head **7d340d0ce7de**。
 > **2026-09-04 更新**：堂費（per_session）改為報名時輸入 `purchased_quantity` 一次性收費（Migration 038），不再按出勤∩上課日計算，#M23 已失效。ERP／庫存確認不在本 repo 做，是獨立新專案，見 [erp-roadmap.md](erp-roadmap.md)（#F1）。  
 > **2026-08-28 更新**：SKU `meeting_weekdays` 已上線（Migration 037）；堂費 Generate 按上課日∩出勤計堂。剩餘產品缺口見 [known-gaps.md](known-gaps.md) #M22、#M24。  
 > **2026-08-27 更新**：SKU `billing_unit` 與學費發票已上線（Migration 035／036）。  
@@ -857,7 +857,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 c3e7a95b2d10**（前序含 034 課程、036 學費發票、040 發票編號、71296d8b9d7f 手動發票、f5d44789754d 每中心編號、7d340d0ce7de 堤費購買、bfb6cd4eb3b9 發票行老師名、a1c9e4d7f2b3 購買價可空、b8f2c4d6a1e9 手動發票 partial unique、c3e7a95b2d10 drop `purchased_quantity`）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 c3e7a95b2d10**（前序含 034 課程、036 學費發票、040 發票編號、71296d8b9d7f 手動發票、f5d44789754d 每中心編號、7d340d0ce7de 堂費購買、bfb6cd4eb3b9 發票行老師名、a1c9e4d7f2b3 購買價可空、b8f2c4d6a1e9 手動發票 partial unique、c3e7a95b2d10 drop `purchased_quantity`）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1077,7 +1077,7 @@ apps/mobile/
 ### 7.5 Mobile 發布檢查清單
 
 #### 後端準備
-- [ ] `python -m alembic upgrade head` on production DB（migrations through `c3e7a95b2d10`，含課程計價、學費發票、手動發票、每中心編號系列、堤費購買記錄、手動發票 partial unique、drop `purchased_quantity`）
+- [ ] `python -m alembic upgrade head` on production DB（migrations through `c3e7a95b2d10`，含課程計價、學費發票、手動發票、每中心編號系列、堂費購買記錄、手動發票 partial unique、drop `purchased_quantity`）
 - [ ] `ENV=production` with strong `SECRET_KEY` and `QR_SECRET`
 - [ ] 透過 Web User Management 建立 admin users
 - [ ] Health check：`GET https://<api-host>/api/health` → `{"status":"ok","database":"ok"}`
@@ -1343,7 +1343,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 > 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→80）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
 >
-> **2026-09-17 補記**：Alembic head 為 **c3e7a95b2d10**（手動發票 partial unique b8f2c4d6a1e9；drop `course_enrollments.purchased_quantity` c3e7a95b2d10）。堤數單一來源 = `enrollment_purchases`；作廢發票即時释放購買。
+> **2026-09-17 補記**：Alembic head 為 **c3e7a95b2d10**（手動發票 partial unique b8f2c4d6a1e9；drop `course_enrollments.purchased_quantity` c3e7a95b2d10）。堂數單一來源 = `enrollment_purchases`；作廢發票即時釋放購買。
 > **2026-09-15 補記**：Alembic head 為 **a1c9e4d7f2b3**（`enrollment_purchases.unit_price` 可空；另含手動發票 71296d8b9d7f、每中心編號 f5d44789754d、發票行老師名 bfb6cd4eb3b9）。§1.10 已同步：手動發票落庫、堂費由購買記錄追蹤、私補出單時先定價。
 > **2026-09-04 補記**：Alembic head 為 **038**（`course_enrollments.purchased_quantity`；堂費改一次性收費，不再看出勤）。§1.10／§1.11 已同步。
 > **2026-08-28 補記**：Alembic head 為 **037**（SKU `meeting_weekdays`；堂費按上課日計堂）。§1.9／§1.10／§10 已同步。下表「本次複核」仍為 2026-08-04 當日證據，請以本補記與程式碼為準。

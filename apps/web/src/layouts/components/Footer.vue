@@ -1,3 +1,7 @@
+<script setup lang="ts">
+const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+</script>
+
 <template>
   <div class="h-100 d-flex align-center justify-space-between text-medium-emphasis">
     <!-- 👉 Footer: left content -->
@@ -26,6 +30,9 @@
       <!-- </a> -->
     </span>
     <!-- 👉 Footer: right content -->
+    <span class="text-caption">
+      {{ appVersion }}
+    </span>
     <!--
       <span class="d-md-flex gap-x-4 text-primary d-none">
       <a

@@ -27,6 +27,7 @@ export interface TuitionInvoice {
   unit_name: string | null
   unit_code: string | null
   manual_student_name: string | null
+  staff_name: string | null
   location_id: string
   period_start: string
   period_end: string
@@ -135,6 +136,9 @@ export interface ManualInvoicePayload {
   location_id: string
   unit_id?: string | null
   manual_student_name?: string | null
+
+  /** Invoice-level 開單人 — who issued it, for commission records. */
+  staff_name?: string | null
   invoice_no?: string | null
   notes?: string | null
   lines: ManualInvoiceLine[]
@@ -146,7 +150,7 @@ export async function createManualTuitionInvoice(payload: ManualInvoicePayload):
 
 export async function updateTuitionInvoice(
   invoiceId: string,
-  payload: { status?: TuitionInvoiceStatus; notes?: string | null; invoice_no?: string | null },
+  payload: { status?: TuitionInvoiceStatus; notes?: string | null; invoice_no?: string | null; staff_name?: string | null },
 ): Promise<TuitionInvoice> {
   return await $attendanceApi(`/tuition-invoices/${invoiceId}`, { method: 'PATCH', body: payload })
 }

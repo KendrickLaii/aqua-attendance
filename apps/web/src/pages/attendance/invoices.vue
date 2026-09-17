@@ -24,6 +24,7 @@ import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import {
   type TuitionInvoicePrintHeader,
+  invoiceMonthLabel,
   openTuitionInvoicePrintPlaceholder,
   printTuitionInvoice,
   tuitionInvoicePrintData,
@@ -55,6 +56,7 @@ const issueNoInput = ref('')
 const issueNoEdited = ref(false)
 const issueNoError = ref('')
 const issueRemark = ref('')
+const issueStaff = ref('')
 const manualInvoiceOpen = ref(false)
 const locations = ref<LocationItem[]>([])
 
@@ -65,16 +67,16 @@ const manualLocationId = ref<string | null>(locationId.value)
 interface ManualInvoiceRow {
   month: string
   course: string
-  staff: string
   fee: string
   qty: string
   purchaseId?: string
 }
 
-const manualForm = ref<{ invoiceNo: string; date: string; studentName: string; remark: string; rows: ManualInvoiceRow[] }>({
+const manualForm = ref<{ invoiceNo: string; date: string; studentName: string; staff: string; remark: string; rows: ManualInvoiceRow[] }>({
   invoiceNo: '',
   date: '',
   studentName: '',
+  staff: '',
   remark: '',
   rows: [],
 })
@@ -92,7 +94,14 @@ const manualStaffLoaded = ref(false)
 const staffName = (id: string | null | undefined) =>
   manualStaffUnits.value.find(u => u.id === id)?.full_name ?? ''
 
-const manualClassPick = ref<string | null>(null)
+const manualStaffOptions = computed(() => manualStaffUnits.value.map(u => u.full_name))
+
+// Invoice-level staff (who opened the invoice / gets commission). Picking a
+// class or package offers its teacher as the default, but never overwrites.
+function suggestManualStaff(staffId: string | null | undefined) {
+  if (!(manualForm.value.staff ?? '').trim())
+    manualForm.value.staff = staffName(staffId)
+}
 
 interface UnbilledPackage {
   purchase: EnrollmentPurchase
@@ -108,6 +117,10 @@ const MANUAL_MAX_ROWS = 5
 const manualNoEdited = ref(false)
 const manualPrinting = ref(false)
 
+// Separate from generateError: the manual dialog covers the page-level alert,
+// so its errors must render inside the dialog.
+const manualError = ref('')
+
 const searchQuery = ref('')
 const statusFilter = ref<'all' | TuitionInvoiceStatus>('all')
 
@@ -121,12 +134,19 @@ const statusColor: Record<string, string> = {
   void: 'grey',
 }
 
+const statusLabel: Record<string, string> = {
+  draft: '草稿',
+  issued: '已出單',
+  paid: '已收訖',
+  void: '已作廢',
+}
+
 const statusFilters: { title: string; value: 'all' | TuitionInvoiceStatus }[] = [
-  { title: 'All', value: 'all' },
-  { title: 'Draft', value: 'draft' },
-  { title: 'Issued', value: 'issued' },
-  { title: 'Paid', value: 'paid' },
-  { title: 'Void', value: 'void' },
+  { title: '全部', value: 'all' },
+  { title: '草稿', value: 'draft' },
+  { title: '已出單', value: 'issued' },
+  { title: '已收訖', value: 'paid' },
+  { title: '已作廢', value: 'void' },
 ]
 
 function formatMoney(value: number): string {
@@ -137,7 +157,12 @@ function formatMoney(value: number): string {
 }
 
 function billingLabel(unit: string): string {
-  return unit === 'per_session' ? '堂費' : '月費'
+  if (unit === 'per_session')
+    return '堂費'
+  if (unit === 'manual')
+    return '手動'
+
+  return '月費'
 }
 
 function formatQty(line: TuitionInvoiceLine): string {
@@ -145,6 +170,10 @@ function formatQty(line: TuitionInvoiceLine): string {
   const whole = Number.isInteger(qty) ? String(qty) : qty.toFixed(2)
   if (line.billing_unit === 'per_session')
     return `${whole} ${qty === 1 ? 'session' : 'sessions'}`
+
+  // Free-form manual lines have no unit — 1 could be a month, an item, a fee.
+  if (line.billing_unit === 'manual')
+    return whole
 
   return qty === 1 ? '1 month' : `${whole} months`
 }
@@ -210,6 +239,7 @@ const filteredInvoices = computed(() => {
     const haystack = [
       invoice.unit_name,
       invoice.unit_code,
+      invoice.manual_student_name,
       invoice.invoice_no,
       invoice.notes,
       ...invoice.lines.flatMap(line => [line.sku_code, line.name_zh]),
@@ -313,6 +343,7 @@ async function setStatus(
   status: 'issued' | 'paid' | 'void',
   invoiceNo?: string,
   notes?: string | null,
+  issuerName?: string,
 ): Promise<TuitionInvoice | null> {
   statusUpdatingId.value = invoice.id
   generateError.value = ''
@@ -321,6 +352,7 @@ async function setStatus(
       status,
       ...(status === 'issued' ? { invoice_no: invoiceNo ?? null } : {}),
       ...(notes !== undefined ? { notes } : {}),
+      ...(issuerName !== undefined ? { staff_name: issuerName || null } : {}),
     })
 
     const idx = invoices.value.findIndex(row => row.id === invoice.id)
@@ -359,9 +391,13 @@ function askStatus(invoice: TuitionInvoice, status: 'issued' | 'paid' | 'void') 
   issueNoEdited.value = status === 'issued' && invoice.invoice_no != null
   issueNoError.value = ''
   issueRemark.value = invoice.notes ?? ''
+  issueStaff.value = invoice.staff_name ?? ''
   pendingStatus.value = { invoice, status }
-  if (status === 'issued' && !invoice.invoice_no)
-    suggestIssueNo()
+  if (status === 'issued') {
+    loadManualStaff()
+    if (!invoice.invoice_no)
+      suggestIssueNo()
+  }
 }
 
 const locationOptions = computed(() =>
@@ -450,13 +486,14 @@ async function confirmPendingStatus() {
     }
   }
 
-  const remark = issueRemark.value.trim()
+  const remark = (issueRemark.value ?? '').trim()
 
   const updated = await setStatus(
     pending.invoice,
     pending.status,
     invoiceNo || undefined,
     pending.status === 'paid' ? undefined : remark || null,
+    pending.status === 'issued' ? issueStaff.value.trim() : undefined,
   )
 
   if (!updated) {
@@ -480,16 +517,25 @@ function blankManualRow(): ManualInvoiceRow {
       ? invoiceMonthLabel(`${parsed.year}-${String(parsed.month).padStart(2, '0')}-01`)
       : '',
     course: '',
-    staff: '',
     fee: '',
     qty: '',
   }
 }
 
+function isBlankManualRow(row: ManualInvoiceRow): boolean {
+  return !row.purchaseId && !row.course.trim() && !row.fee.trim() && !row.qty.trim()
+}
+
+const manualCanAddRow = computed(
+  () => manualForm.value.rows.length < MANUAL_MAX_ROWS
+    || manualForm.value.rows.some(isBlankManualRow),
+)
+
 function pushManualRow(row: ManualInvoiceRow): boolean {
-  const first = manualForm.value.rows[0]
-  if (manualForm.value.rows.length === 1 && !first.course.trim() && !first.fee.trim() && !first.qty.trim()) {
-    manualForm.value.rows[0] = row
+  // Fill the first untouched row instead of appending below empty rows.
+  const blankIdx = manualForm.value.rows.findIndex(isBlankManualRow)
+  if (blankIdx !== -1) {
+    manualForm.value.rows[blankIdx] = row
 
     return true
   }
@@ -537,6 +583,10 @@ watch(manualStudentSearch, value => {
 
 watch(manualStudent, picked => {
   manualRemovedPackages.value = []
+
+  // Package rows belong to the previously picked student — drop them so a
+  // stale purchaseId can't be billed on the wrong student's invoice.
+  manualForm.value.rows = manualForm.value.rows.filter(row => !row.purchaseId)
   if (picked && typeof picked !== 'string') {
     manualForm.value.studentName = picked.full_name
     loadManualUnbilledPackages(picked.id)
@@ -590,12 +640,14 @@ async function loadManualUnbilledPackages(unitId: string) {
 function addPurchaseLine(pkg: UnbilledPackage) {
   const row = blankManualRow()
 
-  row.month = pkg.purchase.purchased_at.slice(0, 7)
+  // Same label format as every other row ("Sept-26"), not the raw ISO month.
+  row.month = invoiceMonthLabel(`${pkg.purchase.purchased_at.slice(0, 7)}-01`)
   row.course = pkg.sku?.name_zh ?? 'Sessions'
-  row.staff = staffName(pkg.sku?.staff_id)
   row.fee = pkg.purchase.unit_price != null ? String(pkg.purchase.unit_price) : ''
   row.qty = String(pkg.purchase.purchased_quantity)
   row.purchaseId = pkg.purchase.id
+
+  suggestManualStaff(pkg.sku?.staff_id)
 
   if (!pushManualRow(row))
     return
@@ -639,8 +691,20 @@ const manualClassOptions = computed(() =>
     })),
 )
 
-watch(manualClassPick, id => {
-  manualClassPick.value = null
+// Stateless picker — model stays null so the selected class never sticks in
+// the field; the pick just adds a line.
+function onClassPicked(id: string | null) {
+  if (!id)
+    return
+
+  // If this student has an unbilled package for that class, bill the package
+  // itself — a free line would leave the purchase unbilled and billable again.
+  const pkg = manualUnbilledPackages.value.find(p => p.enrollment.sku_id === id)
+  if (pkg) {
+    addPurchaseLine(pkg)
+
+    return
+  }
 
   const sku = manualSkus.value.find(k => k.id === id)
   if (!sku)
@@ -649,19 +713,22 @@ watch(manualClassPick, id => {
   const row = blankManualRow()
 
   row.course = sku.name_zh
-  row.staff = staffName(sku.staff_id)
   row.fee = sku.price != null ? String(sku.price) : ''
   row.qty = sku.billing_unit === 'per_session' ? '' : '1'
 
+  suggestManualStaff(sku.staff_id)
   pushManualRow(row)
-})
+}
 
 async function suggestManualInvoiceNo() {
   try {
     if (!manualLocationId.value)
       return
     const next = await getNextInvoiceNo(manualLocationId.value)
-    if (manualInvoiceOpen.value && !manualForm.value.invoiceNo.trim())
+
+    // Only overwrite a number the user has not typed — numbers are per campus,
+    // so the preview must follow the selected location.
+    if (manualInvoiceOpen.value && !manualNoEdited.value)
       manualForm.value.invoiceNo = String(next)
   }
   catch {
@@ -669,17 +736,23 @@ async function suggestManualInvoiceNo() {
   }
 }
 
+watch(manualLocationId, () => {
+  if (manualInvoiceOpen.value)
+    suggestManualInvoiceNo()
+})
+
 function openManualInvoice() {
+  manualError.value = ''
   manualForm.value = {
     invoiceNo: '',
     date: new Date().toLocaleDateString('en-CA'),
     studentName: '',
+    staff: '',
     remark: '',
     rows: [blankManualRow()],
   }
   manualStudent.value = null
   manualStudentSearch.value = ''
-  manualClassPick.value = null
   manualUnbilledPackages.value = []
   manualRemovedPackages.value = []
   manualNoEdited.value = false
@@ -715,9 +788,10 @@ const manualTotal = computed(
 
 async function printManualInvoice() {
   manualPrinting.value = true
+  manualError.value = ''
   try {
     if (manualForm.value.rows.some(row => row.purchaseId && manualNumber(row.fee) == null)) {
-      generateError.value = 'Session package lines need a fee — enter the price to charge.'
+      manualError.value = 'Session package lines need a fee — enter the price to charge.'
       manualPrinting.value = false
 
       return
@@ -729,13 +803,26 @@ async function printManualInvoice() {
         course: row.course.trim(),
         fee: manualNumber(row.fee),
         qty: manualNumber(row.qty),
-        staff_name: row.staff.trim() || null,
+        staff_name: (manualForm.value.staff ?? '').trim() || null,
         purchase_id: row.purchaseId || undefined,
       }))
-      .filter(row => row.course && row.fee != null && row.qty != null)
+      .filter(row => row.course && row.fee != null && row.fee >= 0 && row.qty != null && row.qty > 0)
+
+    // A row the user touched but left incomplete/invalid must not be dropped
+    // silently — name the problem instead of a generic "add a line" message.
+    const touchedRows = manualForm.value.rows.filter(
+      row => row.purchaseId || row.course.trim() || row.fee.trim() || row.qty.trim(),
+    ).length
+
+    if (validLines.length < touchedRows) {
+      manualError.value = 'Each filled line needs a course, a fee (0 or more) and a quantity above 0 — fix or remove it.'
+      manualPrinting.value = false
+
+      return
+    }
 
     if (validLines.length === 0) {
-      generateError.value = 'Add at least one line with course, fee and quantity.'
+      manualError.value = 'Add at least one line with course, fee and quantity.'
       manualPrinting.value = false
 
       return
@@ -745,34 +832,59 @@ async function printManualInvoice() {
       ? manualStudent.value.id
       : undefined
 
-    if (!manualLocationId.value) {
-      generateError.value = 'Please select a location for the manual invoice.'
+    if (!unitId && !(manualForm.value.studentName ?? '').trim()) {
+      manualError.value = 'Pick a student, or type a name for a walk-in invoice.'
       manualPrinting.value = false
 
       return
     }
 
-    const created = await createManualTuitionInvoice({
-      date: manualForm.value.date,
-      location_id: manualLocationId.value,
-      unit_id: unitId,
-      manual_student_name: unitId ? null : (manualForm.value.studentName.trim() || null),
-      invoice_no: manualNoEdited.value ? manualForm.value.invoiceNo.trim() || undefined : undefined,
-      notes: manualForm.value.remark.trim() || null,
-      lines: validLines as ManualInvoiceLine[],
-    })
+    if (!manualLocationId.value) {
+      manualError.value = 'Please select a location for the manual invoice.'
+      manualPrinting.value = false
 
-    const printWindow = openTuitionInvoicePrintPlaceholder()
+      return
+    }
 
-    printTuitionInvoice(
-      printWindow,
-      tuitionInvoicePrintData(created, printOptionsFor(created)),
-    )
-    manualInvoiceOpen.value = false
-    await loadInvoices()
+    // Open the print window synchronously — after an await the browser may
+    // treat window.open as a pop-up and block it.
+    let printWindow: Window | null = null
+    try {
+      printWindow = openTuitionInvoicePrintPlaceholder()
+    }
+    catch (e) {
+      manualError.value = formatApiError(e, 'Could not open print window.')
+      manualPrinting.value = false
+
+      return
+    }
+
+    try {
+      const created = await createManualTuitionInvoice({
+        date: manualForm.value.date,
+        location_id: manualLocationId.value,
+        unit_id: unitId,
+        manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
+        staff_name: (manualForm.value.staff ?? '').trim() || null,
+        invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
+        notes: (manualForm.value.remark ?? '').trim() || null,
+        lines: validLines as ManualInvoiceLine[],
+      })
+
+      printTuitionInvoice(
+        printWindow,
+        tuitionInvoicePrintData(created, printOptionsFor(created)),
+      )
+      manualInvoiceOpen.value = false
+      await loadInvoices()
+    }
+    catch (e) {
+      printWindow.close()
+      throw e
+    }
   }
   catch (e) {
-    generateError.value = formatApiError(e, 'Could not create or print manual invoice.')
+    manualError.value = formatApiError(e, 'Could not create or print manual invoice.')
   }
   finally {
     manualPrinting.value = false
@@ -782,11 +894,11 @@ async function printManualInvoice() {
 const statusConfirmTitle = computed(() => {
   const status = pendingStatus.value?.status
   if (status === 'issued')
-    return 'Issue this invoice?'
+    return '出單 Issue this invoice?'
   if (status === 'paid')
-    return 'Mark this invoice paid?'
+    return '收訖 Mark this invoice paid?'
   if (status === 'void')
-    return 'Void this invoice?'
+    return '作廢 Void this invoice?'
 
   return 'Update invoice?'
 })
@@ -794,11 +906,11 @@ const statusConfirmTitle = computed(() => {
 const statusConfirmLabel = computed(() => {
   const status = pendingStatus.value?.status
   if (status === 'issued')
-    return 'Issue'
+    return '出單 Issue'
   if (status === 'paid')
-    return 'Mark paid'
+    return '收訖 Paid'
   if (status === 'void')
-    return 'Void'
+    return '作廢 Void'
 
   return 'Confirm'
 })
@@ -1008,9 +1120,10 @@ watch(yearMonth, () => {
               <ul class="text-body-2 ps-4 mb-0">
                 <li>One draft per student whose enrollments overlap this month.</li>
                 <li>月費: flat SKU price once per month, even if they miss days.</li>
-                <li>堂費: price × sessions purchased (set on enrollment), billed once in the first month Generate runs. Not based on attendance.</li>
-                <li>私補 / variable-rate classes: leave the class price empty and set each student's price on their enrollment in Courses.</li>
-                <li>Inactive classes and classes with no price at all are skipped. Issued / paid bills are not overwritten.</li>
+                <li>堂費: each session package bought (recorded on enrollment) is billed once, never monthly. Not based on attendance.</li>
+                <li>私補 / variable-rate classes: leave the class price empty. Enrollment records how many sessions were bought; set the price when you bill it with <strong>Manual invoice</strong>.</li>
+                <li>Packages with no price yet are skipped by Generate — they wait for a manual invoice.</li>
+                <li>Inactive classes and monthly classes with no price are skipped. Issued / paid bills are not overwritten.</li>
                 <li>留意: the Location filter shows invoices under the campus they were issued for.</li>
               </ul>
             </VExpansionPanelText>
@@ -1095,7 +1208,7 @@ watch(yearMonth, () => {
                     size="x-small"
                     :color="statusColor[invoice.status] ?? 'grey'"
                   >
-                    {{ invoice.status }}
+                    {{ statusLabel[invoice.status] ?? invoice.status }}
                   </VChip>
                 </td>
                 <td class="text-end font-weight-medium text-no-wrap">
@@ -1125,49 +1238,57 @@ watch(yearMonth, () => {
                     icon="ri-printer-line"
                     size="x-small"
                     variant="text"
-                    title="Print invoice"
+                    title="列印 Print / reprint"
                     @click="printInvoice(invoice)"
                   />
                   <VBtn
                     v-if="invoice.status === 'draft'"
                     size="x-small"
                     variant="text"
+                    color="primary"
+                    prepend-icon="ri-file-check-line"
+                    title="出單 — assign invoice no. and print"
                     :loading="statusUpdatingId === invoice.id"
                     @click="askStatus(invoice, 'issued')"
                   >
-                    Issue
+                    出單
                   </VBtn>
                   <VBtn
                     v-if="invoice.status === 'issued'"
                     size="x-small"
                     variant="text"
+                    color="success"
+                    prepend-icon="ri-money-dollar-circle-line"
+                    title="收訖 — payment received"
                     :loading="statusUpdatingId === invoice.id"
                     @click="askStatus(invoice, 'paid')"
                   >
-                    Mark paid
+                    收訖
                   </VBtn>
                   <VBtn
                     v-if="invoice.status === 'draft' || invoice.status === 'issued'"
                     size="x-small"
                     variant="text"
                     color="error"
+                    prepend-icon="ri-close-circle-line"
+                    title="作廢 — cancel this invoice"
                     :loading="statusUpdatingId === invoice.id"
                     @click="askStatus(invoice, 'void')"
                   >
-                    Void
+                    作廢
                   </VBtn>
                 </td>
               </tr>
               <tr v-if="expandedId === invoice.id">
                 <td colspan="8">
                   <div class="text-caption text-medium-emphasis mb-2">
-                    Snapshot of SKU price at Generate. Changing the class later does not rewrite issued or paid bills.
+                    {{ invoice.kind === 'manual'
+                      ? 'Manual invoice — lines were typed when it was issued.'
+                      : 'Snapshot of SKU price at Generate. Changing the class later does not rewrite issued or paid bills.' }}
                   </div>
-                  <div
-                    v-if="invoice.notes"
-                    class="text-caption mb-2"
-                  >
-                    備註: {{ invoice.notes }}
+                  <div class="text-caption mb-2 d-flex flex-wrap gap-3">
+                    <span v-if="invoice.staff_name">開單人: {{ invoice.staff_name }}</span>
+                    <span v-if="invoice.notes">備註: {{ invoice.notes }}</span>
                   </div>
                   <VTable density="compact">
                     <thead>
@@ -1274,6 +1395,16 @@ watch(yearMonth, () => {
           autofocus
           @update:model-value="issueNoEdited = true; issueNoError = ''"
         />
+        <VCombobox
+          v-model="issueStaff"
+          :items="manualStaffOptions"
+          label="開單人 Staff"
+          density="compact"
+          class="mt-2"
+          hint="Who issued this invoice — for commission; not printed."
+          persistent-hint
+          clearable
+        />
         <VTextField
           v-model="issueRemark"
           label="Remark (備註)"
@@ -1291,8 +1422,14 @@ watch(yearMonth, () => {
         ({{ formatMoney(Number(pendingStatus.invoice.total)) }}) as paid?
       </template>
       <template v-else-if="pendingStatus?.status === 'void'">
-        {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.unit_code }} will be marked void.
-        Generate will restore it to draft if the student is still enrolled this month.
+        {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.manual_student_name ?? pendingStatus.invoice.unit_code }}
+        will be marked void. The invoice number is not reused.
+        <template v-if="pendingStatus.invoice.kind === 'manual'">
+          Any session package billed on it becomes unbilled again, so you can re-issue it.
+        </template>
+        <template v-else>
+          Generate will restore it to draft if the student is still enrolled this month, with a new number.
+        </template>
         <VTextField
           v-model="issueRemark"
           label="Remark (備註)"
@@ -1320,6 +1457,7 @@ watch(yearMonth, () => {
     <VDialog
       v-model="manualInvoiceOpen"
       max-width="960"
+      persistent
     >
       <VCard>
         <VCardTitle class="text-h6 py-4">
@@ -1330,6 +1468,17 @@ watch(yearMonth, () => {
           <div class="text-caption text-medium-emphasis mb-3">
             Creates an issued invoice saved for reprint / payment tracking — for ad-hoc sales and 私補 session packages not billed through Generate.
           </div>
+          <VAlert
+            v-if="manualError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+            closable
+            @click:close="manualError = ''"
+          >
+            {{ manualError }}
+          </VAlert>
           <VRow dense>
             <VCol
               cols="12"
@@ -1369,7 +1518,10 @@ watch(yearMonth, () => {
                 clearable
               />
             </VCol>
-            <VCol cols="12">
+            <VCol
+              cols="12"
+              sm="7"
+            >
               <VCombobox
                 v-model="manualStudent"
                 v-model:search="manualStudentSearch"
@@ -1394,7 +1546,23 @@ watch(yearMonth, () => {
               </VCombobox>
             </VCol>
             <VCol
-              v-if="manualUnbilledPackages.length && manualForm.rows.length < MANUAL_MAX_ROWS"
+              cols="12"
+              sm="5"
+            >
+              <VCombobox
+                v-model="manualForm.staff"
+                :items="manualStaffOptions"
+                label="開單人 Staff"
+                placeholder="Who issued this — for commission"
+                prepend-inner-icon="ri-user-star-line"
+                density="compact"
+                hint="Applies to every line; not printed on the invoice."
+                persistent-hint
+                clearable
+              />
+            </VCol>
+            <VCol
+              v-if="manualUnbilledPackages.length && manualCanAddRow"
               cols="12"
             >
               <div class="text-caption text-medium-emphasis mb-1">
@@ -1424,30 +1592,6 @@ watch(yearMonth, () => {
                 · {{ pkg.purchase.purchased_at }}
               </VChip>
             </VCol>
-            <VCol cols="12">
-              <VAutocomplete
-                v-model="manualClassPick"
-                :items="manualClassOptions"
-                item-title="title"
-                item-value="id"
-                label="Add a class line"
-                placeholder="Search class code or name"
-                prepend-inner-icon="ri-add-circle-line"
-                density="compact"
-                hint="Picking a class adds a line with its price — you can still edit it."
-                persistent-hint
-                clearable
-                :disabled="manualClassOptions.length === 0 || manualForm.rows.length >= MANUAL_MAX_ROWS"
-              >
-                <template #item="{ props: itemProps, item }">
-                  <VListItem
-                    v-bind="itemProps"
-                    :title="item.raw.title"
-                    :subtitle="item.raw.subtitle"
-                  />
-                </template>
-              </VAutocomplete>
-            </VCol>
           </VRow>
 
           <VTable
@@ -1458,14 +1602,11 @@ watch(yearMonth, () => {
               <tr>
                 <th>月份</th>
                 <th>課程</th>
-                <th style="width: 140px;">
-                  老師
-                </th>
                 <th style="width: 110px;">
-                  堂費
+                  單價
                 </th>
                 <th style="width: 90px;">
-                  堂數
+                  數量
                 </th>
                 <th
                   class="text-end"
@@ -1510,16 +1651,6 @@ watch(yearMonth, () => {
                 </td>
                 <td>
                   <VTextField
-                    v-model="row.staff"
-                    density="compact"
-                    hide-details
-                    placeholder="—"
-                    :disabled="Boolean(row.purchaseId)"
-                    :title="row.purchaseId ? 'Teacher comes from the class — change it under Courses' : undefined"
-                  />
-                </td>
-                <td>
-                  <VTextField
                     v-model="row.fee"
                     density="compact"
                     hide-details
@@ -1553,16 +1684,38 @@ watch(yearMonth, () => {
               </tr>
             </tbody>
           </VTable>
-          <div class="d-flex align-center mt-2">
+          <div class="d-flex flex-wrap align-center gap-2 mt-2">
             <VBtn
               size="small"
               variant="text"
               prepend-icon="ri-add-line"
-              :disabled="manualForm.rows.length >= MANUAL_MAX_ROWS"
+              :disabled="manualForm.rows.length >= MANUAL_MAX_ROWS || manualForm.rows.some(isBlankManualRow)"
               @click="manualForm.rows.push(blankManualRow())"
             >
               Add line
             </VBtn>
+            <VAutocomplete
+              :model-value="null"
+              :items="manualClassOptions"
+              item-title="title"
+              item-value="id"
+              label="Add a class line"
+              prepend-inner-icon="ri-add-circle-line"
+              density="compact"
+              hide-details
+              clearable
+              style="max-width: 320px; min-width: 200px;"
+              :disabled="manualClassOptions.length === 0 || !manualCanAddRow"
+              @update:model-value="onClassPicked"
+            >
+              <template #item="{ props: itemProps, item }">
+                <VListItem
+                  v-bind="itemProps"
+                  :title="item.raw.title"
+                  :subtitle="item.raw.subtitle"
+                />
+              </template>
+            </VAutocomplete>
             <VSpacer />
             <div class="font-weight-medium">
               Total: {{ formatMoney(manualTotal) }}
@@ -1593,7 +1746,7 @@ watch(yearMonth, () => {
             :loading="manualPrinting"
             @click="printManualInvoice"
           >
-            Print
+            Create &amp; print
           </VBtn>
         </DialogFooter>
       </VCard>

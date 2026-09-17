@@ -13,7 +13,10 @@ from tests.conftest import _insert_test_user, scan_body
 async def test_health_includes_database(client: AsyncClient) -> None:
     resp = await client.get("/api/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "database": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["database"] == "ok"
+    assert body["version"]
 
 
 @pytest.mark.asyncio

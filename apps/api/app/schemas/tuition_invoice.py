@@ -32,6 +32,7 @@ class TuitionInvoiceOut(BaseModel):
     unit_name: str | None = None
     unit_code: str | None = None
     manual_student_name: str | None = None
+    staff_name: str | None = None
     location_id: uuid.UUID
     period_start: date
     period_end: date
@@ -52,6 +53,7 @@ class TuitionInvoiceUpdate(BaseModel):
     status: TuitionInvoiceStatusLiteral | None = None
     notes: str | None = None
     invoice_no: str | None = Field(default=None, max_length=50)
+    staff_name: str | None = Field(default=None, max_length=255)
 
 
 class TuitionInvoiceGenerateResult(BaseModel):
@@ -82,6 +84,8 @@ class TuitionInvoiceManualCreate(BaseModel):
     location_id: uuid.UUID
     unit_id: uuid.UUID | None = None
     manual_student_name: str | None = Field(default=None, max_length=255)
+    # 開單人 — staff/teacher who opened the invoice (commission record).
+    staff_name: str | None = Field(default=None, max_length=255)
     invoice_no: str | None = Field(default=None, max_length=50)
     notes: str | None = None
     lines: list[TuitionInvoiceManualLine] = Field(default_factory=list)

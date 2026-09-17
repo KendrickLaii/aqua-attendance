@@ -14,6 +14,10 @@ COPY . .
 ARG VITE_ATTENDANCE_API_URL
 ENV VITE_ATTENDANCE_API_URL=$VITE_ATTENDANCE_API_URL
 
+# Release version baked in by CI (tag name or branch-sha); shown in the footer.
+ARG VITE_APP_VERSION=dev
+ENV VITE_APP_VERSION=$VITE_APP_VERSION
+
 RUN \
   if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
   elif [ -f package-lock.json ]; then npm i; \

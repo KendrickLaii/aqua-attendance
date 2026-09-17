@@ -46,12 +46,21 @@ jobs:
     outputs:
       api: ${{ steps.names.outputs.api }}
       web: ${{ steps.names.outputs.web }}
+      version: ${{ steps.names.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+
       - id: names
         run: |
           repo_lower=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "api=${{ env.REGISTRY }}/${repo_lower}/api" >> "$GITHUB_OUTPUT"
           echo "web=${{ env.REGISTRY }}/${repo_lower}/web" >> "$GITHUB_OUTPUT"
+          # Version = tag name on releases (v1.1.0), branch + short sha otherwise (main-a1b2c3d).
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.ref_name }}-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
   push-api:
     name: Build & push API image
@@ -84,6 +93,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ needs.image-names.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -120,5 +131,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VITE_ATTENDANCE_API_URL=${{ vars.VITE_ATTENDANCE_API_URL }}
+            VITE_APP_VERSION=${{ needs.image-names.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

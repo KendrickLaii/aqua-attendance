@@ -71,6 +71,10 @@ class Settings(BaseSettings):
 
     ENV: str = "development"
 
+    # Baked in at image build time (docker-publish.yml: tag name or
+    # branch-sha). Surfaced on /api/health and the Swagger docs.
+    APP_VERSION: str = "dev"
+
     LOGIN_RATE_LIMIT: str = "5/minute"
     SCAN_RATE_LIMIT: str = "30/minute"
 
