@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -20,7 +20,19 @@ class TuitionInvoice(Base):
 
     __tablename__ = "tuition_invoices"
     __table_args__ = (
-        UniqueConstraint("unit_id", "period_start", "period_end", name="uq_tuition_invoices_unit_period"),
+        # One invoice per student per billing period — for generated tuition
+        # invoices only. Manual invoices set period_start == period_end ==
+        # issue date, so they must be exempt or a student could never get two
+        # manual invoices on the same day (e.g. re-bill after a void).
+        Index(
+            "uq_tuition_invoices_unit_period",
+            "unit_id",
+            "period_start",
+            "period_end",
+            unique=True,
+            postgresql_where=text("kind = 'tuition'"),
+            sqlite_where=text("kind = 'tuition'"),
+        ),
         UniqueConstraint("location_id", "invoice_no", name="uq_tuition_invoices_location_invoice_no"),
     )
 

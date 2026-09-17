@@ -125,6 +125,9 @@ export interface ManualInvoiceLine {
   fee: number
   qty: number
   staff_name?: string | null
+
+  /** Set to settle an unbilled per-session purchase; qty comes from the purchase. */
+  purchase_id?: string
 }
 
 export interface ManualInvoicePayload {
@@ -135,9 +138,6 @@ export interface ManualInvoicePayload {
   invoice_no?: string | null
   notes?: string | null
   lines: ManualInvoiceLine[]
-
-  /** Unbilled per-session purchase ids to bill on this invoice. */
-  purchase_ids?: string[]
 }
 
 export async function createManualTuitionInvoice(payload: ManualInvoicePayload): Promise<TuitionInvoice> {

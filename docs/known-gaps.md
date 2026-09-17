@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-09-15（手動發票落庫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
+> 最後更新：2026-09-17（手動發票不受一人一期一單限制、作廢發票即時释放堤費購買、堤數單一來源（drop `purchased_quantity`））。2026-09-15（手動發票落廫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -24,7 +24,7 @@
 | # | 尚未做 | 現況 | 影響 |
 |---|--------|------|------|
 | **#M22** | 下學年重報同一班號 | `(unit_id, sku_id)` **永久唯一**；取消後再報仍 409 | 不能保留舊報名又開新學年 A1 |
-| ~~#M23~~ | ~~堂費扣公眾假期~~ | **2026-09-04 已失效**：堂費不再按出勤∩上課日計算，改用報名時輸入的 `purchased_quantity` 一次性收費，無假期扣除的必要 | 無 |
+| ~~#M23~~ | ~~堤費扣公眾假期~~ | **2026-09-04 已失效**：堤費不再按出勤∩上課日計算；2026-09-17 起堤數只存於 `enrollment_purchases`（每次購買一列，一次性收費），無假期扣除的必要 | 無 |
 | **#M24** | 把帳單發給家長 | 後台 `draft` → `issued` → `paid`；列印發票已做（2026-09-15） | 沒有 WhatsApp／電郵發送 |
 | — | Vuexy `/apps/invoice` | AQUA 模板假資料 | **不是**學費系統（見 **D5**） |
 
@@ -245,7 +245,7 @@
 > **2026-08-28 更新** — SKU `meeting_weekdays`（Migration 037）計該月堂數；Generate 再與該據點非作廢出勤相交。剩餘是假期日曆。
 > **2026-09-04 更新** — 產品決定堂費改成「報名時輸入固定購買堂數、一次性收費」，不再依出勤／上課日計算，本項目直接失效，不需要假期日曆。
 
-- **位置**：`apps/api/app/services/tuition_invoice_generator.py`、`app/models/course_enrollment.py`（`purchased_quantity`，Migration 038）、`app/models/course_enrollment.py`（`EnrollmentPurchase` → `enrollment_purchases`，Migration 7d340d0ce7de）
+- **位置**：`apps/api/app/services/tuition_invoice_generator.py`、`app/models/course_enrollment.py`（`EnrollmentPurchase` → `enrollment_purchases`，Migration 7d340d0ce7de；`purchased_quantity` 已於 c3e7a95b2d10 移除）
 - **現況**：堂費由 `enrollment_purchases` 追蹤 — 報名時建首條購買（堂數 × 單價），之後可 top-up；Generate 為每條 `billed_invoice_line_id` 為空且 `purchased_at <=` 月末的購買出一行，行與購買連結防重複收費；void 發票的購買回復可出單。手動發票可用 `purchase_ids` 結算指定購買。`meeting_weekdays` 只保留給課表顯示參考，不影響計費。
 - **結論**：既然堂費不再由出勤／上課日推算，公眾假期扣除不再有意義，本項目從待辦移除。
 

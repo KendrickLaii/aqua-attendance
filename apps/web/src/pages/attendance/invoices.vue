@@ -101,6 +101,9 @@ interface UnbilledPackage {
 }
 
 const manualUnbilledPackages = ref<UnbilledPackage[]>([])
+
+// Packages already pulled into a row — kept so removing that row restores the chip.
+const manualRemovedPackages = ref<UnbilledPackage[]>([])
 const MANUAL_MAX_ROWS = 5
 const manualNoEdited = ref(false)
 const manualPrinting = ref(false)
@@ -533,6 +536,7 @@ watch(manualStudentSearch, value => {
 })
 
 watch(manualStudent, picked => {
+  manualRemovedPackages.value = []
   if (picked && typeof picked !== 'string') {
     manualForm.value.studentName = picked.full_name
     loadManualUnbilledPackages(picked.id)
@@ -564,7 +568,9 @@ async function loadManualUnbilledPackages(unitId: string) {
     await loadManualSkus()
     await loadManualStaff()
 
-    const enrollments = await listAllCourseEnrollments({ unit_id: unitId, status: 'active' })
+    // No status filter — an unbilled package stays billable even if the
+    // enrollment was cancelled (the student still owes for what they bought).
+    const enrollments = await listAllCourseEnrollments({ unit_id: unitId })
 
     manualUnbilledPackages.value = enrollments.flatMap(enrollment =>
       enrollment.purchases
@@ -587,7 +593,7 @@ function addPurchaseLine(pkg: UnbilledPackage) {
   row.month = pkg.purchase.purchased_at.slice(0, 7)
   row.course = pkg.sku?.name_zh ?? 'Sessions'
   row.staff = staffName(pkg.sku?.staff_id)
-  row.fee = String(pkg.purchase.unit_price)
+  row.fee = pkg.purchase.unit_price != null ? String(pkg.purchase.unit_price) : ''
   row.qty = String(pkg.purchase.purchased_quantity)
   row.purchaseId = pkg.purchase.id
 
@@ -597,6 +603,18 @@ function addPurchaseLine(pkg: UnbilledPackage) {
   manualUnbilledPackages.value = manualUnbilledPackages.value.filter(
     x => x.purchase.id !== pkg.purchase.id,
   )
+  manualRemovedPackages.value.push(pkg)
+}
+
+function removeManualRow(idx: number) {
+  const [removed] = manualForm.value.rows.splice(idx, 1)
+  if (!removed?.purchaseId)
+    return
+
+  // Put the package chip back so it can be re-added or billed later.
+  const restoredIdx = manualRemovedPackages.value.findIndex(p => p.purchase.id === removed.purchaseId)
+  if (restoredIdx !== -1)
+    manualUnbilledPackages.value.push(...manualRemovedPackages.value.splice(restoredIdx, 1))
 }
 
 async function loadManualSkus() {
@@ -663,6 +681,7 @@ function openManualInvoice() {
   manualStudentSearch.value = ''
   manualClassPick.value = null
   manualUnbilledPackages.value = []
+  manualRemovedPackages.value = []
   manualNoEdited.value = false
   manualLocationId.value = locationId.value
   manualInvoiceOpen.value = true
@@ -697,22 +716,25 @@ const manualTotal = computed(
 async function printManualInvoice() {
   manualPrinting.value = true
   try {
+    if (manualForm.value.rows.some(row => row.purchaseId && manualNumber(row.fee) == null)) {
+      generateError.value = 'Session package lines need a fee — enter the price to charge.'
+      manualPrinting.value = false
+
+      return
+    }
+
     const validLines = manualForm.value.rows
-      .filter(row => !row.purchaseId)
       .map(row => ({
         month: row.month.trim(),
         course: row.course.trim(),
         fee: manualNumber(row.fee),
         qty: manualNumber(row.qty),
         staff_name: row.staff.trim() || null,
+        purchase_id: row.purchaseId || undefined,
       }))
       .filter(row => row.course && row.fee != null && row.qty != null)
 
-    const purchaseIds = manualForm.value.rows
-      .map(row => row.purchaseId)
-      .filter((id): id is string => Boolean(id))
-
-    if (validLines.length === 0 && purchaseIds.length === 0) {
+    if (validLines.length === 0) {
       generateError.value = 'Add at least one line with course, fee and quantity.'
       manualPrinting.value = false
 
@@ -738,7 +760,6 @@ async function printManualInvoice() {
       invoice_no: manualNoEdited.value ? manualForm.value.invoiceNo.trim() || undefined : undefined,
       notes: manualForm.value.remark.trim() || null,
       lines: validLines as ManualInvoiceLine[],
-      purchase_ids: purchaseIds,
     })
 
     const printWindow = openTuitionInvoicePrintPlaceholder()
@@ -1393,7 +1414,13 @@ watch(yearMonth, () => {
                   start
                 />
                 {{ pkg.sku ? `${pkg.sku.code} · ${pkg.sku.name_zh}` : 'Sessions' }}
-                · {{ pkg.purchase.purchased_quantity }} 堂 × HK${{ Number(pkg.purchase.unit_price).toFixed(2) }}
+                · {{ pkg.purchase.purchased_quantity }} 堂
+                <template v-if="pkg.purchase.unit_price != null">
+                  × HK${{ Number(pkg.purchase.unit_price).toFixed(2) }}
+                </template>
+                <template v-else>
+                  · 價錢待定
+                </template>
                 · {{ pkg.purchase.purchased_at }}
               </VChip>
             </VCol>
@@ -1507,6 +1534,8 @@ watch(yearMonth, () => {
                     hide-details
                     type="number"
                     min="0"
+                    :disabled="Boolean(row.purchaseId)"
+                    :title="row.purchaseId ? 'Bills the whole purchased package' : undefined"
                   />
                 </td>
                 <td class="text-end text-no-wrap">
@@ -1518,7 +1547,7 @@ watch(yearMonth, () => {
                     size="x-small"
                     variant="text"
                     :disabled="manualForm.rows.length <= 1"
-                    @click="manualForm.rows.splice(idx, 1)"
+                    @click="removeManualRow(idx)"
                   />
                 </td>
               </tr>

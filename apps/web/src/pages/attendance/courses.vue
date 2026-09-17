@@ -49,9 +49,78 @@ const staffOptions = computed(() =>
 
 const staffName = (id: string | null | undefined) => staffUnits.value.find(u => u.id === id)?.full_name ?? ''
 
+// Natural sort for codes — F2 before F10.
+const compareCodes = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })
+
+// ---- sortable table headers ----
+interface TableSort<K extends string> {
+  key: K
+  dir: 1 | -1
+}
+
+type SortValue = string | number | null | undefined
+
+function compareSortValues(a: SortValue, b: SortValue): number {
+  if (a == null && b == null)
+    return 0
+  if (a == null)
+    return 1
+  if (b == null)
+    return -1
+  if (typeof a === 'number' && typeof b === 'number')
+    return a - b
+
+  return String(a).localeCompare(String(b), undefined, { numeric: true })
+}
+
+function toggleSort<K extends string>(state: TableSort<K>, key: K) {
+  if (state.key === key) {
+    state.dir = state.dir === 1 ? -1 : 1
+  }
+  else {
+    state.key = key
+    state.dir = 1
+  }
+}
+
+function sortIconFor<K extends string>(state: TableSort<K>, key: K): string {
+  if (state.key !== key)
+    return 'ri-arrow-up-down-line'
+
+  return state.dir === 1 ? 'ri-arrow-up-line' : 'ri-arrow-down-line'
+}
+
 const selectedSpuId = ref<string | null>(null)
 const selectedSpu = computed(() => spus.value.find(s => s.id === selectedSpuId.value) ?? null)
-const skusForSelectedSpu = computed(() => skus.value.filter(k => k.spu_id === selectedSpuId.value))
+
+type SpuSortKey = 'code' | 'name' | 'subject'
+type SkuSortKey = 'code' | 'name' | 'billing' | 'price'
+
+const spuSort = reactive<TableSort<SpuSortKey>>({ key: 'code', dir: 1 })
+const skuSort = reactive<TableSort<SkuSortKey>>({ key: 'code', dir: 1 })
+
+const sortedSpus = computed(() => {
+  const pick: Record<SpuSortKey, (s: CourseSpu) => SortValue> = {
+    code: s => s.code,
+    name: s => s.name_zh,
+    subject: s => s.subject,
+  }
+
+  return [...spus.value].sort((a, b) => compareSortValues(pick[spuSort.key](a), pick[spuSort.key](b)) * spuSort.dir)
+})
+
+const skusForSelectedSpu = computed(() => {
+  const pick: Record<SkuSortKey, (k: CourseSku) => SortValue> = {
+    code: k => k.code,
+    name: k => k.name_zh,
+    billing: k => k.billing_unit,
+    price: k => k.price,
+  }
+
+  return skus.value
+    .filter(k => k.spu_id === selectedSpuId.value)
+    .sort((a, b) => compareSortValues(pick[skuSort.key](a), pick[skuSort.key](b)) * skuSort.dir)
+})
 
 const locationName = (id: string | null) => locations.value.find(l => l.id === id)?.name_en ?? '—'
 
@@ -109,9 +178,9 @@ async function loadAll() {
       listUnits({ unit_type: 'staff', page_size: 200 }),
     ])
 
-    spus.value = spuList
-    skus.value = skuList
-    locations.value = locationList
+    spus.value = [...spuList].sort((a, b) => compareCodes(a.code, b.code))
+    skus.value = [...skuList].sort((a, b) => compareCodes(a.code, b.code))
+    locations.value = [...locationList].sort((a, b) => a.name_en.localeCompare(b.name_en))
     staffUnits.value = staffList
     if (!selectedSpuId.value && spuList.length > 0)
       selectedSpuId.value = spuList[0].id
@@ -541,7 +610,9 @@ async function loadStudentOptions(search?: string) {
     })
 
     if (requestId === studentSearchRequestId) {
-      studentOptions.value = students.filter(u => u.status === 'active')
+      studentOptions.value = students
+        .filter(u => u.status === 'active')
+        .sort((a, b) => a.full_name.localeCompare(b.full_name))
       cacheStudents(studentOptions.value)
     }
   }
@@ -605,12 +676,6 @@ const enrollPriceHint = computed(() => {
   const sku = rosterSku.value
   if (!sku)
     return ''
-  if (sku.billing_unit === 'per_session') {
-    if (sku.price == null)
-      return 'No class price — enter the price for the sessions bought now.'
-
-    return `Leave empty to use the class price (${rosterPriceLabel(sku)}).`
-  }
   if (sku.price == null)
     return 'No class price — enter this student\'s monthly price, or Generate will skip them.'
 
@@ -628,10 +693,10 @@ const enrollBillPreview = computed(() => {
     const qty = enrollPurchasedQuantity.value
     if (qty == null || qty <= 0)
       return 'Per-session class — enter how many sessions this student bought. Billed once, not monthly.'
-    if (price == null)
-      return 'This class has no set price — enter the price per session to bill it.'
+    if (sku.price != null)
+      return `${qty} session${qty === 1 ? '' : 's'} recorded — bill it from the Manual invoice (default HK$${sku.price.toFixed(2)}/session, adjustable when issuing).`
 
-    return `One-time charge: ${qty} × HK$${price.toFixed(2)} = HK$${(qty * price).toFixed(2)} — bill it from the Manual invoice dialog or Generate.`
+    return `${qty} session${qty === 1 ? '' : 's'} recorded — set the price when you issue the manual invoice.`
   }
   if (price == null)
     return 'No class price — this student will be skipped at Generate until a price is set.'
@@ -640,12 +705,38 @@ const enrollBillPreview = computed(() => {
 })
 
 const classOptions = computed(() =>
-  skus.value.map(k => ({ ...k, title: `${k.code} · ${k.name_zh}` })),
+  skus.value
+    .slice()
+    .sort((a, b) => compareCodes(a.code, b.code))
+    .map(k => ({ ...k, title: `${k.code} · ${k.name_zh}` })),
 )
 
 const activeRosterUnitIds = computed(
   () => new Set(enrollments.value.filter(e => e.status === 'active').map(e => e.unit_id)),
 )
+
+type RosterSortKey = 'student' | 'status' | 'sessions' | 'price' | 'start' | 'end' | 'added'
+
+const rosterSort = reactive<TableSort<RosterSortKey>>({ key: 'student', dir: 1 })
+
+// Roster rows sort by the selected column; rows with a missing value sink to the bottom (asc).
+const rosterRows = computed(() => {
+  const sku = rosterSku.value
+
+  const pick: Record<RosterSortKey, (e: CourseEnrollment) => SortValue> = {
+    student: e => studentById[e.unit_id]?.full_name ?? null,
+    status: e => e.status,
+    sessions: e => purchaseSummary(e).total,
+    price: e => e.unit_price ?? sku?.price ?? null,
+    start: e => e.start_date ?? null,
+    end: e => e.end_date ?? null,
+    added: e => e.enrolled_at ?? null,
+  }
+
+  return [...enrollments.value].sort(
+    (a, b) => compareSortValues(pick[rosterSort.key](a), pick[rosterSort.key](b)) * rosterSort.dir,
+  )
+})
 
 async function enrollStudent() {
   if (!selectedStudentId.value || !rosterSkuId.value || rosterSku.value?.is_active === false || rosterAtCapacity.value)
@@ -683,7 +774,7 @@ async function enrollStudent() {
       start_date: startDate,
       end_date: endDate,
       purchased_quantity: enrollNeedsPurchasedQuantity() ? enrollPurchasedQuantity.value : null,
-      unit_price: enrollUnitPrice.value,
+      unit_price: enrollNeedsPurchasedQuantity() ? null : enrollUnitPrice.value,
     })
 
     enrollments.value = [created, ...enrollments.value]
@@ -762,23 +853,48 @@ async function saveEnrollmentDates(enrollment: CourseEnrollment) {
   }
 }
 
-async function cancelEnrollment(enrollment: CourseEnrollment) {
+function cancelEnrollment(enrollment: CourseEnrollment) {
+  const unbilledQty = purchaseSummary(enrollment).unbilledQty
+
+  openDeleteConfirm({
+    kind: 'enrollment',
+    title: `Unenroll ${studentLabel(enrollment.unit_id)}?`,
+    detail: unbilledQty > 0
+      ? `Stops billing going forward — issued invoices stay. Note: ${unbilledQty} session${unbilledQty === 1 ? '' : 's'} not yet billed; you can still bill them via a manual invoice.`
+      : 'Stops billing going forward — issued invoices stay. You can re-activate later.',
+    run: async () => {
+      const updated = await updateCourseEnrollment(enrollment.id, { status: 'cancelled' })
+      const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
+      if (idx !== -1)
+        enrollments.value[idx] = updated
+    },
+  })
+}
+
+async function reactivateEnrollment(enrollment: CourseEnrollment) {
   try {
-    const updated = await updateCourseEnrollment(enrollment.id, { status: 'cancelled' })
+    const updated = await updateCourseEnrollment(enrollment.id, { status: 'active' })
     const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
     if (idx !== -1)
       enrollments.value[idx] = updated
+    enrollSuccess.value = `${studentLabel(enrollment.unit_id)} re-activated.`
   }
   catch (e) {
-    enrollError.value = formatApiError(e, 'Could not update enrollment.')
+    enrollError.value = formatApiError(e, 'Could not re-activate enrollment.')
   }
 }
 
 function removeEnrollment(enrollment: CourseEnrollment) {
+  const { total, unbilledQty } = purchaseSummary(enrollment)
+
+  const purchaseNote = total > 0
+    ? ` This also removes ${total} session purchase record${total === 1 ? '' : 's'}${unbilledQty > 0 ? ` (${unbilledQty} never billed)` : ''} — issued invoices keep their snapshots.`
+    : ''
+
   openDeleteConfirm({
     kind: 'enrollment',
     title: 'Remove enrollment?',
-    detail: 'Remove this enrollment record?',
+    detail: `Remove this enrollment record entirely?${purchaseNote} For a student who is just leaving, Unenroll keeps the record instead.`,
     run: async () => {
       await deleteCourseEnrollment(enrollment.id)
       enrollments.value = enrollments.value.filter(e => e.id !== enrollment.id)
@@ -835,10 +951,11 @@ const enrollmentStatusColor: Record<string, string> = {
 
 function purchaseSummary(e: CourseEnrollment) {
   const purchases = e.purchases ?? []
+  const unbilled = purchases.filter(p => p.billed_invoice_line_id === null)
 
   return {
     total: purchases.reduce((sum, p) => sum + p.purchased_quantity, 0),
-    unbilled: purchases.filter(p => p.billed_invoice_line_id === null).length,
+    unbilledQty: unbilled.reduce((sum, p) => sum + p.purchased_quantity, 0),
   }
 }
 
@@ -846,7 +963,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
   return (e.purchases ?? [])
     .map(p => [
       formatRosterDate(p.purchased_at),
-      `${p.purchased_quantity} × ${Number(p.unit_price).toFixed(2)}`,
+      p.unit_price != null ? `${p.purchased_quantity} × ${Number(p.unit_price).toFixed(2)}` : `${p.purchased_quantity} 堂 · 價錢待定`,
       p.billed_invoice_line_id === null ? 'unbilled' : 'billed',
       p.notes ?? '',
     ].filter(Boolean).join(' · '))
@@ -930,17 +1047,49 @@ function purchaseTooltip(e: CourseEnrollment): string {
             >
               <thead>
                 <tr>
-                  <th>Code</th>
-                  <th style="min-width: 8rem;">
-                    Name
+                  <th
+                    class="sortable"
+                    @click="toggleSort(spuSort, 'code')"
+                  >
+                    Code
+                    <VIcon
+                      :icon="sortIconFor(spuSort, 'code')"
+                      size="14"
+                      class="ms-1 sort-icon"
+                      :class="{ 'sort-icon--active': spuSort.key === 'code' }"
+                    />
                   </th>
-                  <th>Subject</th>
+                  <th
+                    class="sortable"
+                    style="min-width: 8rem;"
+                    @click="toggleSort(spuSort, 'name')"
+                  >
+                    Name
+                    <VIcon
+                      :icon="sortIconFor(spuSort, 'name')"
+                      size="14"
+                      class="ms-1 sort-icon"
+                      :class="{ 'sort-icon--active': spuSort.key === 'name' }"
+                    />
+                  </th>
+                  <th
+                    class="sortable"
+                    @click="toggleSort(spuSort, 'subject')"
+                  >
+                    Subject
+                    <VIcon
+                      :icon="sortIconFor(spuSort, 'subject')"
+                      size="14"
+                      class="ms-1 sort-icon"
+                      :class="{ 'sort-icon--active': spuSort.key === 'subject' }"
+                    />
+                  </th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="spu in spus"
+                  v-for="spu in sortedSpus"
                   :key="spu.id"
                   :class="{ 'bg-primary-lighten-5': spu.id === selectedSpuId }"
                   style="cursor: pointer;"
@@ -1031,13 +1180,54 @@ function purchaseTooltip(e: CourseEnrollment): string {
             >
               <thead>
                 <tr>
-                  <th>Code</th>
-                  <th style="min-width: 10rem;">
+                  <th
+                    class="sortable"
+                    @click="toggleSort(skuSort, 'code')"
+                  >
+                    Code
+                    <VIcon
+                      :icon="sortIconFor(skuSort, 'code')"
+                      size="14"
+                      class="ms-1 sort-icon"
+                      :class="{ 'sort-icon--active': skuSort.key === 'code' }"
+                    />
+                  </th>
+                  <th
+                    class="sortable"
+                    style="min-width: 10rem;"
+                    @click="toggleSort(skuSort, 'name')"
+                  >
                     Name
+                    <VIcon
+                      :icon="sortIconFor(skuSort, 'name')"
+                      size="14"
+                      class="ms-1 sort-icon"
+                      :class="{ 'sort-icon--active': skuSort.key === 'name' }"
+                    />
                   </th>
                   <th>Schedule</th>
-                  <th>Billing</th>
-                  <th class="text-end">
+                  <th
+                    class="sortable"
+                    @click="toggleSort(skuSort, 'billing')"
+                  >
+                    Billing
+                    <VIcon
+                      :icon="sortIconFor(skuSort, 'billing')"
+                      size="14"
+                      class="ms-1 sort-icon"
+                      :class="{ 'sort-icon--active': skuSort.key === 'billing' }"
+                    />
+                  </th>
+                  <th
+                    class="sortable text-end"
+                    @click="toggleSort(skuSort, 'price')"
+                  >
+                    <VIcon
+                      :icon="sortIconFor(skuSort, 'price')"
+                      size="14"
+                      class="me-1 sort-icon"
+                      :class="{ 'sort-icon--active': skuSort.key === 'price' }"
+                    />
                     Price
                   </th>
                   <th class="text-end col-actions" />
@@ -1198,219 +1388,226 @@ function purchaseTooltip(e: CourseEnrollment): string {
               </template>
             </VCardItem>
             <VCardText>
-              <div class="text-subtitle-2 mb-1">
-                Enroll a student
-              </div>
-              <div class="text-caption text-medium-emphasis mb-3">
-                First / last billed days are inclusive. Leave first blank if already started, last blank if ongoing.
-                Generate only bills months that overlap this window.
-              </div>
-              <VRow>
-                <VCol
-                  cols="12"
-                  md="6"
-                >
-                  <VAutocomplete
-                    v-model="rosterSkuId"
-                    :items="classOptions"
-                    item-title="title"
-                    item-value="id"
-                    label="Class"
-                    placeholder="Search class code or name"
-                    prepend-inner-icon="ri-search-line"
-                    density="comfortable"
-                    hide-details
-                    clearable
-                    :disabled="classOptions.length === 0"
+              <VSheet
+                class="enroll-sheet pa-4 mb-4"
+                rounded="lg"
+                border
+              >
+                <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
+                  <span class="text-subtitle-2">Enroll a student</span>
+                  <span class="text-caption text-medium-emphasis">
+                    Billed days are inclusive — leave blank for already-started / ongoing.
+                  </span>
+                </div>
+                <VRow dense>
+                  <VCol
+                    cols="12"
+                    md="6"
                   >
-                    <template #item="{ props: itemProps, item }">
-                      <VListItem
-                        v-bind="itemProps"
-                        :title="`${item.raw.code} · ${item.raw.name_zh}`"
-                        :subtitle="`${spuName(item.raw.spu_id)} · ${billingUnitLabel(item.raw.billing_unit ?? 'monthly')} · ${rosterPriceLabel(item.raw)}`"
-                      >
-                        <template
-                          v-if="!item.raw.is_active"
-                          #append
+                    <VAutocomplete
+                      v-model="rosterSkuId"
+                      :items="classOptions"
+                      item-title="title"
+                      item-value="id"
+                      label="Class"
+                      placeholder="Search class code or name"
+                      prepend-inner-icon="ri-search-line"
+                      density="comfortable"
+                      hide-details
+                      clearable
+                      :disabled="classOptions.length === 0"
+                    >
+                      <template #item="{ props: itemProps, item }">
+                        <VListItem
+                          v-bind="itemProps"
+                          :title="`${item.raw.code} · ${item.raw.name_zh}`"
+                          :subtitle="`${spuName(item.raw.spu_id)} · ${billingUnitLabel(item.raw.billing_unit ?? 'monthly')} · ${rosterPriceLabel(item.raw)}`"
                         >
-                          <VChip
-                            size="x-small"
-                            color="grey"
+                          <template
+                            v-if="!item.raw.is_active"
+                            #append
                           >
-                            inactive
-                          </VChip>
-                        </template>
-                      </VListItem>
-                    </template>
-                    <template #selection="{ item }">
-                      {{ item.raw.code }} · {{ item.raw.name_zh }}
-                    </template>
-                  </VAutocomplete>
-                </VCol>
-                <VCol
-                  cols="12"
-                  md="6"
-                >
-                  <VAutocomplete
-                    v-model="selectedStudentId"
-                    v-model:search="studentSearch"
-                    :items="studentOptions"
-                    :loading="studentSearchLoading"
-                    item-title="full_name"
-                    item-value="id"
-                    label="Student"
-                    placeholder="Search name or code"
-                    prepend-inner-icon="ri-search-line"
-                    density="comfortable"
-                    hide-details
-                    clearable
-                    no-filter
-                    :disabled="!rosterSkuId"
+                            <VChip
+                              size="x-small"
+                              color="grey"
+                            >
+                              inactive
+                            </VChip>
+                          </template>
+                        </VListItem>
+                      </template>
+                      <template #selection="{ item }">
+                        {{ item.raw.code }} · {{ item.raw.name_zh }}
+                      </template>
+                    </VAutocomplete>
+                  </VCol>
+                  <VCol
+                    cols="12"
+                    md="6"
                   >
-                    <template #item="{ props: itemProps, item }">
-                      <VListItem
-                        v-bind="itemProps"
-                        :subtitle="item.raw.code"
-                      >
-                        <template
-                          v-if="activeRosterUnitIds.has(item.raw.id)"
-                          #append
+                    <VAutocomplete
+                      v-model="selectedStudentId"
+                      v-model:search="studentSearch"
+                      :items="studentOptions"
+                      :loading="studentSearchLoading"
+                      item-title="full_name"
+                      item-value="id"
+                      label="Student"
+                      placeholder="Search name or code"
+                      prepend-inner-icon="ri-search-line"
+                      density="comfortable"
+                      hide-details
+                      clearable
+                      no-filter
+                      :disabled="!rosterSkuId"
+                    >
+                      <template #item="{ props: itemProps, item }">
+                        <VListItem
+                          v-bind="itemProps"
+                          :subtitle="item.raw.code"
                         >
-                          <VChip
-                            size="x-small"
-                            variant="tonal"
-                            color="success"
+                          <template
+                            v-if="activeRosterUnitIds.has(item.raw.id)"
+                            #append
                           >
-                            in roster
-                          </VChip>
-                        </template>
-                      </VListItem>
-                    </template>
-                  </VAutocomplete>
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="enrollStartDate"
-                    label="First billed day"
-                    type="date"
-                    density="comfortable"
-                    hide-details
-                    :disabled="!rosterSkuId"
-                    clearable
-                  />
-                </VCol>
-                <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model="enrollEndDate"
-                    label="Last billed day"
-                    type="date"
-                    density="comfortable"
-                    hide-details
-                    :disabled="!rosterSkuId"
-                    clearable
-                  />
-                </VCol>
-                <VCol
-                  v-if="enrollNeedsPurchasedQuantity()"
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model.number="enrollPurchasedQuantity"
-                    label="Sessions bought"
-                    type="number"
-                    min="1"
-                    density="comfortable"
-                    :hint="enrollPurchasedQuantity ? `${enrollPurchasedQuantity} session${enrollPurchasedQuantity === 1 ? '' : 's'}` : 'One-time purchase, billed once'"
-                    persistent-hint
-                    :disabled="!rosterSkuId"
-                  />
-                </VCol>
-                <!--                 <VCol
-                  cols="12"
-                  sm="6"
-                  md="4"
-                >
-                  <VTextField
-                    v-model.number="enrollUnitPrice"
-                    :label="rosterSku?.billing_unit === 'per_session' ? 'Price / session' : 'Price / month'"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    prefix="HK$"
-                    density="comfortable"
-                    :hint="enrollPriceHint"
-                    persistent-hint
-                    :disabled="!rosterSkuId"
-                  />
-                </VCol> -->
-                <VCol
-                  cols="12"
-                  md="4"
-                  class="d-flex align-center"
-                >
-                  <VBtn
-                    color="primary"
-                    block
-                    height="48"
-                    :loading="enrolling"
-                    :disabled="!selectedStudentId || !rosterSkuId || rosterSku?.is_active === false || rosterAtCapacity || (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity)"
-                    @click="enrollStudent"
+                            <VChip
+                              size="x-small"
+                              variant="tonal"
+                              color="success"
+                            >
+                              in roster
+                            </VChip>
+                          </template>
+                        </VListItem>
+                      </template>
+                    </VAutocomplete>
+                  </VCol>
+                  <VCol
+                    cols="6"
+                    md="3"
                   >
-                    Enroll
-                  </VBtn>
-                </VCol>
-              </VRow>
+                    <VTextField
+                      v-model="enrollStartDate"
+                      label="First billed day"
+                      type="date"
+                      density="comfortable"
+                      hide-details
+                      :disabled="!rosterSkuId"
+                      clearable
+                    />
+                  </VCol>
+                  <VCol
+                    cols="6"
+                    md="3"
+                  >
+                    <VTextField
+                      v-model="enrollEndDate"
+                      label="Last billed day"
+                      type="date"
+                      density="comfortable"
+                      hide-details
+                      :disabled="!rosterSkuId"
+                      clearable
+                    />
+                  </VCol>
+                  <VCol
+                    v-if="enrollNeedsPurchasedQuantity()"
+                    cols="6"
+                    md="3"
+                  >
+                    <VTextField
+                      v-model.number="enrollPurchasedQuantity"
+                      label="Sessions bought"
+                      type="number"
+                      min="1"
+                      density="comfortable"
+                      :hint="enrollPurchasedQuantity ? `${enrollPurchasedQuantity} session${enrollPurchasedQuantity === 1 ? '' : 's'}` : 'One-time purchase, billed once'"
+                      persistent-hint
+                      :disabled="!rosterSkuId"
+                    />
+                  </VCol>
+                  <VCol
+                    v-if="rosterSku?.billing_unit !== 'per_session'"
+                    cols="6"
+                    md="3"
+                  >
+                    <VTextField
+                      v-model.number="enrollUnitPrice"
+                      label="Price / month"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      prefix="HK$"
+                      density="comfortable"
+                      :hint="enrollPriceHint"
+                      persistent-hint
+                      :disabled="!rosterSkuId"
+                    />
+                  </VCol>
+                  <VCol
+                    cols="12"
+                    :md="rosterSku ? 3 : 6"
+                    class="d-flex align-start"
+                  >
+                    <VBtn
+                      color="primary"
+                      block
+                      height="48"
+                      :loading="enrolling"
+                      :disabled="!selectedStudentId || !rosterSkuId || rosterSku?.is_active === false || rosterAtCapacity || (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity)"
+                      @click="enrollStudent"
+                    >
+                      Enroll
+                    </VBtn>
+                  </VCol>
+                </VRow>
 
-              <div
-                v-if="enrollBillPreview"
-                class="text-caption text-medium-emphasis mt-2 d-flex align-center"
-              >
-                <VIcon
-                  icon="ri-bill-line"
-                  size="14"
-                  class="me-1"
-                />
-                {{ enrollBillPreview }}
-              </div>
+                <div
+                  v-if="enrollBillPreview"
+                  class="text-caption text-medium-emphasis mt-2 d-flex align-center"
+                >
+                  <VIcon
+                    icon="ri-bill-line"
+                    size="14"
+                    class="me-1"
+                  />
+                  {{ enrollBillPreview }}
+                </div>
 
-              <VAlert
-                v-if="enrollError"
-                type="error"
-                variant="tonal"
-                density="compact"
-                class="mt-3"
-                closable
-                @click:close="enrollError = ''"
-              >
-                {{ enrollError }}
-              </VAlert>
-              <VAlert
-                v-if="enrollSuccess"
-                type="success"
-                variant="tonal"
-                density="compact"
-                class="mt-3"
-                closable
-                @click:close="enrollSuccess = ''"
-              >
-                {{ enrollSuccess }}
-              </VAlert>
+                <VAlert
+                  v-if="enrollError"
+                  type="error"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                  closable
+                  @click:close="enrollError = ''"
+                >
+                  {{ enrollError }}
+                </VAlert>
+                <VAlert
+                  v-if="enrollSuccess"
+                  type="success"
+                  variant="tonal"
+                  density="compact"
+                  class="mt-3"
+                  closable
+                  @click:close="enrollSuccess = ''"
+                >
+                  {{ enrollSuccess }}
+                </VAlert>
+              </VSheet>
 
               <div
                 v-if="!rosterSkuId"
                 class="text-center text-medium-emphasis py-8"
               >
-                Select a class to see who is enrolled and add students with a start and end date.
+                <VIcon
+                  icon="ri-group-line"
+                  size="32"
+                  class="mb-2"
+                />
+                <div>Select a class above to see who is enrolled.</div>
               </div>
 
               <VProgressLinear
@@ -1422,28 +1619,103 @@ function purchaseTooltip(e: CourseEnrollment): string {
 
               <VTable
                 v-else
-                density="compact"
-                class="mt-3"
+                density="comfortable"
+                hover
+                class="roster-table"
               >
                 <thead>
                   <tr>
-                    <th>Student</th>
-                    <th>Status</th>
-                    <th v-if="rosterSku?.billing_unit === 'per_session'">
-                      Sessions purchased
+                    <th
+                      class="sortable"
+                      @click="toggleSort(rosterSort, 'student')"
+                    >
+                      Student
+                      <VIcon
+                        :icon="sortIconFor(rosterSort, 'student')"
+                        size="14"
+                        class="ms-1 sort-icon"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'student' }"
+                      />
                     </th>
-                    <th class="text-end">
+                    <th
+                      class="sortable"
+                      @click="toggleSort(rosterSort, 'status')"
+                    >
+                      Status
+                      <VIcon
+                        :icon="sortIconFor(rosterSort, 'status')"
+                        size="14"
+                        class="ms-1 sort-icon"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'status' }"
+                      />
+                    </th>
+                    <th
+                      v-if="rosterSku?.billing_unit === 'per_session'"
+                      class="sortable"
+                      @click="toggleSort(rosterSort, 'sessions')"
+                    >
+                      Sessions
+                      <VIcon
+                        :icon="sortIconFor(rosterSort, 'sessions')"
+                        size="14"
+                        class="ms-1 sort-icon"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'sessions' }"
+                      />
+                    </th>
+                    <th
+                      class="sortable text-end"
+                      @click="toggleSort(rosterSort, 'price')"
+                    >
+                      <VIcon
+                        :icon="sortIconFor(rosterSort, 'price')"
+                        size="14"
+                        class="me-1 sort-icon"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'price' }"
+                      />
                       Price
                     </th>
-                    <th>First billed</th>
-                    <th>Last billed</th>
-                    <th>Added</th>
-                    <th />
+                    <th
+                      class="sortable"
+                      @click="toggleSort(rosterSort, 'start')"
+                    >
+                      First billed
+                      <VIcon
+                        :icon="sortIconFor(rosterSort, 'start')"
+                        size="14"
+                        class="ms-1 sort-icon"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'start' }"
+                      />
+                    </th>
+                    <th
+                      class="sortable"
+                      @click="toggleSort(rosterSort, 'end')"
+                    >
+                      Last billed
+                      <VIcon
+                        :icon="sortIconFor(rosterSort, 'end')"
+                        size="14"
+                        class="ms-1 sort-icon"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'end' }"
+                      />
+                    </th>
+                    <th
+                      class="sortable"
+                      @click="toggleSort(rosterSort, 'added')"
+                    >
+                      Added
+                      <VIcon
+                        :icon="sortIconFor(rosterSort, 'added')"
+                        size="14"
+                        class="ms-1 sort-icon"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'added' }"
+                      />
+                    </th>
+                    <th class="text-end col-actions" />
                   </tr>
                 </thead>
                 <tbody>
                   <tr
-                    v-for="e in enrollments"
+                    v-for="e in rosterRows"
                     :key="e.id"
                   >
                     <td>
@@ -1468,21 +1740,21 @@ function purchaseTooltip(e: CourseEnrollment): string {
                       >
                         <template #activator="{ props: tooltipProps }">
                           <span v-bind="tooltipProps">
-                            {{ purchaseSummary(e).total }}
+                            {{ purchaseSummary(e).total }} 堂
                             <VChip
-                              v-if="purchaseSummary(e).unbilled > 0"
+                              v-if="purchaseSummary(e).unbilledQty > 0"
                               size="x-small"
                               color="warning"
                               variant="tonal"
                               class="ms-1"
                             >
-                              {{ purchaseSummary(e).unbilled }} unbilled
+                              {{ purchaseSummary(e).unbilledQty }} 堂未收
                             </VChip>
                           </span>
                         </template>
                       </VTooltip>
                       <template v-else>
-                        {{ e.purchased_quantity ?? '—' }}
+                        —
                       </template>
                     </td>
                     <td class="text-end">
@@ -1495,16 +1767,24 @@ function purchaseTooltip(e: CourseEnrollment): string {
                         prefix="HK$"
                         density="compact"
                         hide-details
-                        style="max-width: 140px; margin-inline-start: auto;"
+                        style="width: 170px; margin-inline-start: auto;"
                       />
                       <template v-else>
-                        {{ e.unit_price != null ? Number(e.unit_price).toFixed(2) : (rosterSku?.price != null ? rosterSku.price : '—') }}
-                        <div
-                          v-if="e.unit_price != null"
-                          class="text-caption text-medium-emphasis"
-                        >
-                          per-student
-                        </div>
+                        <template v-if="e.unit_price != null">
+                          HK${{ Number(e.unit_price).toFixed(2) }}
+                          <div class="text-caption text-medium-emphasis">
+                            per-student
+                          </div>
+                        </template>
+                        <template v-else-if="rosterSku?.price != null">
+                          HK${{ Number(rosterSku.price).toFixed(2) }}
+                          <div class="text-caption text-medium-emphasis">
+                            {{ rosterSku.billing_unit === 'per_session' ? 'class default / session' : 'class default / month' }}
+                          </div>
+                        </template>
+                        <template v-else>
+                          —
+                        </template>
                       </template>
                     </td>
                     <td>
@@ -1514,7 +1794,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                         type="date"
                         density="compact"
                         hide-details
-                        style="max-width: 160px;"
+                        style="width: 180px;"
                       />
                       <span v-else>{{ formatRosterDate(e.start_date, 'Already started') }}</span>
                     </td>
@@ -1525,12 +1805,12 @@ function purchaseTooltip(e: CourseEnrollment): string {
                         type="date"
                         density="compact"
                         hide-details
-                        style="max-width: 160px;"
+                        style="width: 180px;"
                       />
                       <span v-else>{{ formatRosterDate(e.end_date, 'Ongoing') }}</span>
                     </td>
                     <td>{{ formatRosterDate(e.enrolled_at) }}</td>
-                    <td class="text-end text-no-wrap">
+                    <td class="text-end text-no-wrap col-actions">
                       <template v-if="rosterEditingId === e.id">
                         <VBtn
                           size="x-small"
@@ -1566,6 +1846,15 @@ function purchaseTooltip(e: CourseEnrollment): string {
                           Unenroll
                         </VBtn>
                         <VBtn
+                          v-else
+                          size="x-small"
+                          variant="text"
+                          color="primary"
+                          @click="reactivateEnrollment(e)"
+                        >
+                          Re-activate
+                        </VBtn>
+                        <VBtn
                           v-if="topUpEnabled && rosterSku?.billing_unit === 'per_session' && e.status === 'active'"
                           size="x-small"
                           variant="text"
@@ -1592,9 +1881,14 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   <tr v-if="enrollments.length === 0">
                     <td
                       :colspan="rosterSku?.billing_unit === 'per_session' ? 8 : 7"
-                      class="text-center text-medium-emphasis py-6"
+                      class="text-center text-medium-emphasis py-8"
                     >
-                      No students in this class yet. Search a name, set billed days, then Enroll.
+                      <VIcon
+                        icon="ri-user-add-line"
+                        size="32"
+                        class="mb-2"
+                      />
+                      <div>No students yet — search a name above and hit Enroll.</div>
                     </td>
                   </tr>
                 </tbody>
@@ -1952,7 +2246,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
               <VNumberInput
                 v-model="topUpQuantity"
                 label="Sessions purchased"
-                min="1"
+                :min="1"
                 density="compact"
                 hide-details
               />
@@ -1961,7 +2255,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
               <VNumberInput
                 v-model="topUpPrice"
                 label="Price per session"
-                min="0"
+                :min="0"
                 density="compact"
                 hide-details
               />
@@ -2020,7 +2314,8 @@ function purchaseTooltip(e: CourseEnrollment): string {
   background: rgba(var(--v-theme-primary), 0.08);
 }
 
-.offerings-table :deep(.col-actions) {
+.offerings-table :deep(.col-actions),
+.roster-table :deep(.col-actions) {
   position: sticky;
   inset-inline-end: 0;
   z-index: 1;
@@ -2030,9 +2325,33 @@ function purchaseTooltip(e: CourseEnrollment): string {
   border-inline-start: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
-.offerings-table :deep(tr.bg-primary-lighten-5 td.col-actions) {
+.offerings-table :deep(tr.bg-primary-lighten-5 td.col-actions),
+.roster-table :deep(tr.bg-primary-lighten-5 td.col-actions) {
   background:
     linear-gradient(rgba(var(--v-theme-primary), 0.08), rgba(var(--v-theme-primary), 0.08)),
     rgb(var(--v-theme-surface));
+}
+
+.enroll-sheet {
+  background: rgba(var(--v-theme-primary), 0.04);
+}
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th.sortable:hover {
+  color: rgb(var(--v-theme-primary));
+}
+
+.sort-icon {
+  opacity: 0.3;
+}
+
+.sort-icon--active {
+  opacity: 1;
+  color: rgb(var(--v-theme-primary));
 }
 </style>

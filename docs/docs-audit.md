@@ -184,7 +184,7 @@
 | # | 問題 | 狀態 |
 |---|------|------|
 | DB3 | ~~ER 圖未反映實際 DB 狀態~~ | ✅ 已修 — ER 圖已更新為 2026-07-28 實際 DB 狀態 |
-| DB4 | ~~Migration 歷史未包含 032~~ | ✅ 已修 — 已更新至 032；2026-08-28 再更新至 **037**；2026-09-15 再更新至 **7d340d0ce7de**（手動發票、每中心編號、`enrollment_purchases`） |
+| DB4 | ~~Migration 歷史未包含 032~~ | ✅ 已修 — 已更新至 032；2026-08-28 再更新至 **037**；2026-09-15 再更新至 **7d340d0ce7de**（手動發票、每中心編號、`enrollment_purchases`）；2026-09-17 再更新至 **c3e7a95b2d10**（手動發票 partial unique、drop `purchased_quantity`） |
 | DB5 | ~~缺少 Legacy constraint/index 名稱清單~~ | ✅ 已修 — 新增 § Legacy 約束與索引名稱 |
 | DB6 | ~~缺少個人資料搬移狀態追蹤~~ | ✅ 已修 — 新增 § 個人資料欄位搬移狀態；migration `f8e65b7cf82b` 已於 2026-07-28 執行完畢 |
 
@@ -202,7 +202,7 @@
 |---|------|------|
 | F3 | Migration 編號仍為 026，應更新至 032 | ✅ 已修 — 已更新至 032，並補上 `f8e65b7cf82b` 個人資料欄位調整 migration |
 | F4 | §10 ER 圖可能與 database-changes.md 不一致（需同步更新） | ✅ 已修 — 兩份文件 ER 圖已同步，且與實際 DB 一致 |
-| F5 | 手冊／README 仍寫 Alembic head `034`、課程頁為學生優先、無學費發票 | ✅ 已修（2026-08-28）— head **037**；§1.9 班次名冊 + 上課日；§1.10 學費發票。2026-09-15 再同步：head **7d340d0ce7de**；堂費改 `enrollment_purchases` 購買追蹤；手動發票落庫＋每中心編號 |
+| F5 | 手冊／README 仍寫 Alembic head `034`、課程頁為學生優先、無學費發票 | ✅ 已修（2026-08-28）— head **037**；§1.9 班次名冊 + 上課日；§1.10 學費發票。2026-09-15 再同步：head **7d340d0ce7de**；堤費改 `enrollment_purchases` 購買追蹤；手動發票落廫＋每中心編號。2026-09-17 再同步：head **c3e7a95b2d10**；堤數單一來源；作廢即釋放購買 |
 | F6 | 本地 `alembic upgrade head` 在 Windows PATH 上經常失敗 | ✅ 已修（2026-08-27）— 手冊／README／API README 改為 `python -m alembic upgrade head` |
 
 ### 8.4 程式碼審計結果

@@ -29,10 +29,9 @@ class CourseEnrollment(Base):
     enrolled_at: Mapped[date] = mapped_column(Date, nullable=False, default=lambda: datetime.now(timezone.utc).date())
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # One-time purchased session count for per_session (堂費) SKUs. Billed
-    # once as a flat charge, not derived from attendance. Ignored for
-    # monthly (月費) SKUs.
-    purchased_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Session counts for per_session (堂費) SKUs live on EnrollmentPurchase —
+    # the enrollment itself stores no quantity, so there is one source of
+    # truth for what was bought and what has been billed.
     # Per-student price override (e.g. 私補 variable pricing). When set,
     # billing uses this instead of the SKU price — lets price-less classes
     # still be billed.
@@ -65,7 +64,9 @@ class EnrollmentPurchase(Base):
         ForeignKey("course_enrollments.id", ondelete="CASCADE"), nullable=False, index=True
     )
     purchased_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    # NULL = price decided at invoice time (私補: enroll sessions first, set
+    # the price on the manual invoice line that bills this purchase).
+    unit_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     purchased_at: Mapped[date] = mapped_column(Date, nullable=False)
     billed_invoice_line_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("tuition_invoice_lines.id", ondelete="SET NULL"), nullable=True, index=True

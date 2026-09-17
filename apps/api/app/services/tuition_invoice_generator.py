@@ -21,7 +21,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -95,7 +95,17 @@ def _lines_from_enrollment(
             quantity = _money(p.purchased_quantity)
             if quantity <= 0:
                 continue
-            unit_price = _money(p.unit_price)
+            # NULL purchase price = "price set at invoice time" (私補).
+            # Fall back to the enrollment/SKU price if one exists; otherwise
+            # leave the purchase unbilled for the manual invoice flow.
+            raw_price = p.unit_price
+            if raw_price is None:
+                fallback = _enrollment_price(enrollment, sku)
+                if fallback is None:
+                    continue
+                unit_price = fallback
+            else:
+                unit_price = _money(raw_price)
             line = _new_line(enrollment, sku, unit_price, quantity)
             lines.append(line)
             purchase_links.append((line, p))
@@ -114,9 +124,13 @@ async def _unbilled_line_ids(
     first_day: date,
     last_day: date,
 ) -> set[UUID]:
-    """Line ids that must not block a purchase from being billed again:
-    lines on voided invoices (any period), plus lines on this period's
-    draft/void invoices, which get cleared and rebuilt below."""
+    """Line ids that must not block a purchase from being billed again.
+
+    Only this period's draft/void invoices matter: their lines are cleared and
+    rebuilt below, so a purchase linked to one of them is really unbilled.
+    Voiding an invoice already clears its purchase links (see the invoice PATCH
+    route), so voids from other periods need no special case here.
+    """
     if not enrollment_ids:
         return set()
     result = await db.execute(
@@ -124,16 +138,9 @@ async def _unbilled_line_ids(
         .join(TuitionInvoice, TuitionInvoiceLine.invoice_id == TuitionInvoice.id)
         .where(
             TuitionInvoiceLine.enrollment_id.in_(enrollment_ids),
-            or_(
-                TuitionInvoice.status == TuitionInvoiceStatus.void.value,
-                and_(
-                    TuitionInvoice.period_start == first_day,
-                    TuitionInvoice.period_end == last_day,
-                    TuitionInvoice.status.in_(
-                        [TuitionInvoiceStatus.draft.value, TuitionInvoiceStatus.void.value]
-                    ),
-                ),
-            ),
+            TuitionInvoice.period_start == first_day,
+            TuitionInvoice.period_end == last_day,
+            TuitionInvoice.status.in_([TuitionInvoiceStatus.draft.value, TuitionInvoiceStatus.void.value]),
         )
     )
     return {row[0] for row in result.all()}

@@ -101,25 +101,19 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     await _require_enrollable_sku(db, sku)
     _require_purchased_quantity_for_per_session(sku, body.purchased_quantity)
 
-    initial_purchase_price: float | None = None
-    if sku.billing_unit == "per_session":
-        initial_purchase_price = body.unit_price if body.unit_price is not None else sku.price
-        if initial_purchase_price is None:
-            raise HTTPException(
-                status_code=422,
-                detail="This class has no fixed price — enter a price for this student.",
-            )
-
-    enrollment = CourseEnrollment(**body.model_dump())
+    # purchased_quantity is create-input only — it seeds the first purchase.
+    enrollment = CourseEnrollment(**body.model_dump(exclude={"purchased_quantity"}))
     db.add(enrollment)
     try:
-        if initial_purchase_price is not None:
+        if sku.billing_unit == "per_session":
             await db.flush()
+            # unit_price may stay NULL — the price is set on the manual
+            # invoice line that bills this purchase (私補 flow).
             db.add(
                 EnrollmentPurchase(
                     enrollment_id=enrollment.id,
                     purchased_quantity=body.purchased_quantity,
-                    unit_price=initial_purchase_price,
+                    unit_price=body.unit_price if body.unit_price is not None else sku.price,
                     purchased_at=body.start_date or enrollment.enrolled_at,
                 )
             )
@@ -162,11 +156,6 @@ async def update_course_enrollment(
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
     update_data = body.model_dump(exclude_unset=True)
-    if "purchased_quantity" in update_data and len(enrollment.purchases) > 0:
-        raise HTTPException(
-            status_code=422,
-            detail="Use Top up to add sessions; purchases are billed individually.",
-        )
     new_start = update_data["start_date"] if "start_date" in update_data else enrollment.start_date
     new_end = update_data["end_date"] if "end_date" in update_data else enrollment.end_date
     try:
@@ -185,8 +174,7 @@ async def update_course_enrollment(
         if not sku:
             raise HTTPException(status_code=404, detail="Course SKU not found")
         await _require_enrollable_sku(db, sku, exclude_enrollment_id=enrollment.id)
-        new_quantity = update_data.get("purchased_quantity", enrollment.purchased_quantity)
-        _require_purchased_quantity_for_per_session(sku, new_quantity)
+        # Re-activating never needs a quantity — existing purchases carry it.
     for field, value in update_data.items():
         setattr(enrollment, field, value)
     await db.commit()

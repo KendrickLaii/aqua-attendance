@@ -445,7 +445,10 @@ async def test_per_session_enrollment_with_purchased_quantity(
         headers=_auth(admin_token),
     )
     assert resp.status_code == 201, resp.text
-    assert resp.json()["purchased_quantity"] == 8
+    # The quantity lands on the seeded purchase, not on the enrollment itself.
+    body = resp.json()
+    assert "purchased_quantity" not in body
+    assert [p["purchased_quantity"] for p in body["purchases"]] == [8]
 
 
 @pytest.mark.asyncio

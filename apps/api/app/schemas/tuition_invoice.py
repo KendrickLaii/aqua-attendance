@@ -71,6 +71,10 @@ class TuitionInvoiceManualLine(BaseModel):
     fee: float = Field(..., ge=0)
     qty: float = Field(..., gt=0)
     staff_name: str | None = Field(default=None, max_length=255)
+    # Set when this line settles an unbilled per-session EnrollmentPurchase:
+    # the typed `fee` is the charged price (purchases may have no price yet);
+    # quantity always comes from the purchase so a package is billed whole.
+    purchase_id: uuid.UUID | None = None
 
 
 class TuitionInvoiceManualCreate(BaseModel):
@@ -81,14 +85,11 @@ class TuitionInvoiceManualCreate(BaseModel):
     invoice_no: str | None = Field(default=None, max_length=50)
     notes: str | None = None
     lines: list[TuitionInvoiceManualLine] = Field(default_factory=list)
-    # Unbilled per-session EnrollmentPurchase ids to bill on this invoice.
-    # Each becomes a frozen line and is marked billed.
-    purchase_ids: list[uuid.UUID] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def student_or_name(self):
         if self.unit_id is None and not (self.manual_student_name and self.manual_student_name.strip()):
             raise ValueError("Either unit_id or manual_student_name is required")
-        if not self.lines and not self.purchase_ids:
-            raise ValueError("At least one line or purchase is required")
+        if not self.lines:
+            raise ValueError("At least one line is required")
         return self

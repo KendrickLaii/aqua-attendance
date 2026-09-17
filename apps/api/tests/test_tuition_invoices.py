@@ -1432,9 +1432,10 @@ async def test_zero_price_topup_creates_zero_line(
 
 
 @pytest.mark.asyncio
-async def test_patch_purchased_quantity_rejected_when_purchases_exist(
+async def test_patch_purchased_quantity_is_not_an_enrollment_field(
     client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
+    """Session counts live only on purchases — PATCHing the old field is a no-op."""
     spu = await _create_spu(client, admin_token)
     sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
     enrollment = await _enroll(
@@ -1447,13 +1448,17 @@ async def test_patch_purchased_quantity_rejected_when_purchases_exist(
         json={"purchased_quantity": 10},
         headers=_auth(admin_token),
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "purchased_quantity" not in body
+    assert [p["purchased_quantity"] for p in body["purchases"]] == [8]
 
 
 @pytest.mark.asyncio
-async def test_enroll_per_session_without_any_price_rejected(
+async def test_enroll_per_session_without_price_creates_unpriced_purchase(
     client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
+    """私補 flow: enroll records the sessions only — price is set at invoice time."""
     spu = await _create_spu(client, admin_token)
     sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=None)
     resp = await client.post(
@@ -1461,11 +1466,87 @@ async def test_enroll_per_session_without_any_price_rejected(
         json={
             "unit_id": sample_unit["id"],
             "sku_id": sku["id"],
-            "purchased_quantity": 2,
+            "purchased_quantity": 10,
         },
         headers=_auth(admin_token),
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 201, resp.text
+    purchases = resp.json()["purchases"]
+    assert len(purchases) == 1
+    assert purchases[0]["purchased_quantity"] == 10
+    assert purchases[0]["unit_price"] is None
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_unpriced_purchase(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    """Generate cannot price a purchase with no price anywhere — leave it for manual invoice."""
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=None)
+    await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=10,
+    )
+
+    result = await _generate(client, admin_token, 2026, 6)
+    assert result["created"] == 0
+    assert (await _june_invoices(client, admin_token)) == []
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_sets_price_for_unpriced_purchase(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    """私補 flow: enroll sessions only → manual invoice line carries the price."""
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=None)
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=10,
+    )
+    fetched = await client.get(
+        f"/api/course-enrollments/{enrollment['id']}",
+        headers=_auth(admin_token),
+    )
+    purchase = fetched.json()["purchases"][0]
+    assert purchase["unit_price"] is None
+
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-06-10",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [
+                {
+                    "month": "2026-06",
+                    "course": "私補",
+                    "fee": 199,
+                    "qty": 10,
+                    "purchase_id": purchase["id"],
+                }
+            ],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    invoice = resp.json()
+    assert len(invoice["lines"]) == 1
+    line = invoice["lines"][0]
+    assert line["billing_unit"] == "per_session"
+    assert float(line["unit_price"]) == 199
+    assert float(line["quantity"]) == 10
+    assert float(line["amount"]) == 1990
+
+    async with TestSessionLocal() as session:
+        stored = (
+            await session.execute(
+                select(EnrollmentPurchase).where(EnrollmentPurchase.id == uuid.UUID(purchase["id"]))
+            )
+        ).scalars().one()
+        assert stored.billed_invoice_line_id == uuid.UUID(line["id"])
+        assert float(stored.unit_price) == 199
 
 
 @pytest.mark.asyncio
@@ -1517,7 +1598,15 @@ async def test_manual_invoice_bills_unbilled_purchase(
             "date": "2026-06-10",
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
-            "purchase_ids": [purchase_id],
+            "lines": [
+                {
+                    "month": "2026-06",
+                    "course": "Test sessions",
+                    "fee": 150,
+                    "qty": 8,
+                    "purchase_id": purchase_id,
+                }
+            ],
         },
         headers=_auth(admin_token),
     )
@@ -1567,11 +1656,134 @@ async def test_manual_invoice_rejects_already_billed_purchase(
             "date": "2026-06-10",
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
-            "purchase_ids": [purchase_id],
+            "lines": [
+                {
+                    "month": "2026-06",
+                    "course": "Test sessions",
+                    "fee": 150,
+                    "qty": 8,
+                    "purchase_id": purchase_id,
+                }
+            ],
         },
         headers=_auth(admin_token),
     )
     assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_rejects_duplicate_purchase_on_one_invoice(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=8,
+    )
+    fetched = await client.get(
+        f"/api/course-enrollments/{enrollment['id']}",
+        headers=_auth(admin_token),
+    )
+    purchase_id = fetched.json()["purchases"][0]["id"]
+
+    line = {"month": "2026-06", "course": "Test sessions", "fee": 150, "qty": 8, "purchase_id": purchase_id}
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-06-10",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [line, dict(line)],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_rejects_purchase_on_walk_in_invoice(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=8,
+    )
+    fetched = await client.get(
+        f"/api/course-enrollments/{enrollment['id']}",
+        headers=_auth(admin_token),
+    )
+    purchase_id = fetched.json()["purchases"][0]["id"]
+
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-06-10",
+            "location_id": sample_location["id"],
+            "manual_student_name": "Walk-in guest",
+            "lines": [
+                {"month": "2026-06", "course": "Sessions", "fee": 150, "qty": 8, "purchase_id": purchase_id}
+            ],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_rebills_purchase_after_void(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=8,
+    )
+    fetched = await client.get(
+        f"/api/course-enrollments/{enrollment['id']}",
+        headers=_auth(admin_token),
+    )
+    purchase_id = fetched.json()["purchases"][0]["id"]
+
+    payload = {
+        "date": "2026-06-10",
+        "location_id": sample_location["id"],
+        "unit_id": sample_unit["id"],
+        "lines": [
+            {
+                "month": "2026-06",
+                "course": "Test sessions",
+                "fee": 150,
+                "qty": 8,
+                "purchase_id": purchase_id,
+            }
+        ],
+    }
+    first = await client.post("/api/tuition-invoices/manual", json=payload, headers=_auth(admin_token))
+    assert first.status_code == 201, first.text
+
+    voided = await client.patch(
+        f"/api/tuition-invoices/{first.json()['id']}",
+        json={"status": "void"},
+        headers=_auth(admin_token),
+    )
+    assert voided.status_code == 200, voided.text
+
+    async with TestSessionLocal() as session:
+        purchase = (
+            await session.execute(
+                select(EnrollmentPurchase).where(EnrollmentPurchase.id == uuid.UUID(purchase_id))
+            )
+        ).scalars().one()
+        assert purchase.billed_invoice_line_id is None
+
+    # The package can be billed again on a new manual invoice.
+    second = await client.post("/api/tuition-invoices/manual", json=payload, headers=_auth(admin_token))
+    assert second.status_code == 201, second.text
+    assert second.json()["invoice_no"] != first.json()["invoice_no"]
 
 
 @pytest.mark.asyncio

@@ -76,7 +76,9 @@ export interface EnrollmentPurchase {
   id: string
   enrollment_id: string
   purchased_quantity: number
-  unit_price: number
+
+  /** NULL = price decided at invoice time (私補 manual invoice flow). */
+  unit_price: number | null
   purchased_at: string
   billed_invoice_line_id: string | null
   notes: string | null
@@ -92,9 +94,6 @@ export interface CourseEnrollment {
   start_date: string | null
   end_date: string | null
 
-  /** One-time session count purchased, for per_session (堂費) SKUs only. */
-  purchased_quantity: number | null
-
   /** Per-student price override; billed instead of the class price when set. */
   unit_price: number | null
   notes: string | null
@@ -109,6 +108,8 @@ export interface CourseEnrollmentPayload {
   status?: EnrollmentStatus
   start_date?: string | null
   end_date?: string | null
+
+  /** Create only: seeds the first EnrollmentPurchase for per_session SKUs. */
   purchased_quantity?: number | null
   unit_price?: number | null
   notes?: string | null
@@ -189,7 +190,7 @@ export async function createCourseEnrollment(payload: CourseEnrollmentPayload): 
 
 export async function updateCourseEnrollment(
   id: string,
-  payload: Partial<Pick<CourseEnrollmentPayload, 'status' | 'start_date' | 'end_date' | 'purchased_quantity' | 'unit_price' | 'notes'>>,
+  payload: Partial<Pick<CourseEnrollmentPayload, 'status' | 'start_date' | 'end_date' | 'unit_price' | 'notes'>>,
 ): Promise<CourseEnrollment> {
   return await $attendanceApi(`/course-enrollments/${id}`, { method: 'PATCH', body: payload })
 }

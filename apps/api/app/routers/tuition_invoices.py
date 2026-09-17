@@ -302,10 +302,16 @@ async def create_manual_tuition_invoice(
         if not unit:
             raise HTTPException(status_code=422, detail="unit_id does not reference an existing unit")
 
-    # Validate and build purchase lines before allocating an invoice number —
+    # Validate purchase-linked lines before allocating an invoice number —
     # a failed create must not consume a number.
-    purchase_links: list[tuple[TuitionInvoiceLine, EnrollmentPurchase]] = []
-    if body.purchase_ids:
+    purchase_ids = [line.purchase_id for line in body.lines if line.purchase_id]
+    if len(purchase_ids) != len(set(purchase_ids)):
+        raise HTTPException(
+            status_code=422,
+            detail="The same session package cannot be billed twice on one invoice.",
+        )
+    purchases: dict[uuid.UUID, EnrollmentPurchase] = {}
+    if purchase_ids:
         result = await db.execute(
             select(EnrollmentPurchase)
             .options(
@@ -313,37 +319,40 @@ async def create_manual_tuition_invoice(
                 .selectinload(CourseEnrollment.sku)
                 .selectinload(CourseSku.staff)
             )
-            .where(EnrollmentPurchase.id.in_(body.purchase_ids))
+            .where(EnrollmentPurchase.id.in_(purchase_ids))
         )
         purchases = {p.id: p for p in result.scalars().all()}
-        if len(purchases) != len(set(body.purchase_ids)):
-            raise HTTPException(status_code=422, detail="Unknown purchase id in purchase_ids")
-        for purchase_id in body.purchase_ids:
-            purchase = purchases[purchase_id]
-            if purchase.billed_invoice_line_id is not None:
+        if len(purchases) != len(set(purchase_ids)):
+            raise HTTPException(status_code=422, detail="Unknown purchase id")
+        linked_line_ids = [
+            p.billed_invoice_line_id for p in purchases.values() if p.billed_invoice_line_id is not None
+        ]
+        blocking_line_ids: set[uuid.UUID] = set()
+        if linked_line_ids:
+            # A purchase only counts as billed while its linked line sits on a
+            # live invoice — a voided invoice frees the package for re-billing.
+            blocking = await db.execute(
+                select(TuitionInvoiceLine.id)
+                .join(TuitionInvoice, TuitionInvoiceLine.invoice_id == TuitionInvoice.id)
+                .where(
+                    TuitionInvoiceLine.id.in_(linked_line_ids),
+                    TuitionInvoice.status != TuitionInvoiceStatus.void.value,
+                )
+            )
+            blocking_line_ids = {row[0] for row in blocking.all()}
+        for purchase in purchases.values():
+            if purchase.billed_invoice_line_id in blocking_line_ids:
                 raise HTTPException(
                     status_code=409,
                     detail="This session package has already been billed on another invoice.",
                 )
-            if body.unit_id is not None and purchase.enrollment.unit_id != body.unit_id:
+            # A package always belongs to a real student, so it can never be
+            # settled on an anonymous walk-in invoice.
+            if body.unit_id is None or purchase.enrollment.unit_id != body.unit_id:
                 raise HTTPException(
                     status_code=422,
                     detail="This session package belongs to a different student.",
                 )
-            sku: CourseSku | None = purchase.enrollment.sku
-            line = TuitionInvoiceLine(
-                enrollment_id=purchase.enrollment_id,
-                sku_id=sku.id if sku else None,
-                sku_code=sku.code if sku else "manual",
-                name_zh=sku.name_zh if sku else "Sessions",
-                billing_unit="per_session",
-                unit_price=purchase.unit_price,
-                quantity=purchase.purchased_quantity,
-                amount=purchase.unit_price * purchase.purchased_quantity,
-                month_label=purchase.purchased_at.strftime("%Y-%m"),
-                staff_name=sku.staff.full_name if sku and sku.staff else None,
-            )
-            purchase_links.append((line, purchase))
 
     invoice_no = body.invoice_no.strip() if body.invoice_no and body.invoice_no.strip() else None
     if invoice_no:
@@ -353,20 +362,43 @@ async def create_manual_tuition_invoice(
     else:
         invoice_no = str(await _allocate_invoice_no(db, body.location_id))
 
-    lines = [
-        TuitionInvoiceLine(
-            name_zh=line.course,
-            sku_code="manual",
-            billing_unit="manual",
-            unit_price=line.fee,
-            quantity=line.qty,
-            amount=line.fee * line.qty,
-            month_label=line.month,
-            staff_name=line.staff_name.strip() if line.staff_name else None,
+    lines: list[TuitionInvoiceLine] = []
+    purchase_links: list[tuple[TuitionInvoiceLine, EnrollmentPurchase]] = []
+    for line_in in body.lines:
+        purchase = purchases.get(line_in.purchase_id) if line_in.purchase_id else None
+        if purchase is None:
+            lines.append(
+                TuitionInvoiceLine(
+                    name_zh=line_in.course,
+                    sku_code="manual",
+                    billing_unit="manual",
+                    unit_price=line_in.fee,
+                    quantity=line_in.qty,
+                    amount=line_in.fee * line_in.qty,
+                    month_label=line_in.month,
+                    staff_name=line_in.staff_name.strip() if line_in.staff_name else None,
+                )
+            )
+            continue
+        sku: CourseSku | None = purchase.enrollment.sku
+        # The typed fee is the charged price — purchases may carry no price
+        # yet (私補). Quantity always comes from the purchase so a package is
+        # billed whole.
+        quantity = float(purchase.purchased_quantity)
+        line = TuitionInvoiceLine(
+            enrollment_id=purchase.enrollment_id,
+            sku_id=sku.id if sku else None,
+            sku_code=sku.code if sku else "manual",
+            name_zh=line_in.course,
+            billing_unit="per_session",
+            unit_price=line_in.fee,
+            quantity=quantity,
+            amount=line_in.fee * quantity,
+            month_label=line_in.month or purchase.purchased_at.strftime("%Y-%m"),
+            staff_name=sku.staff.full_name if sku and sku.staff else None,
         )
-        for line in body.lines
-    ]
-    lines = [line for line, _ in purchase_links] + lines
+        lines.append(line)
+        purchase_links.append((line, purchase))
     total = sum(line.amount for line in lines)
 
     invoice = TuitionInvoice(
@@ -388,6 +420,8 @@ async def create_manual_tuition_invoice(
         await db.flush()
         for line, purchase in purchase_links:
             purchase.billed_invoice_line_id = line.id
+            if purchase.unit_price is None:
+                purchase.unit_price = line.unit_price
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -447,6 +481,18 @@ async def update_tuition_invoice(
             if manual_no is not None:
                 await _bump_invoice_counter(db, manual_no, location_id)
         invoice.issued_at = datetime.now(timezone.utc)
+    if new_status == TuitionInvoiceStatus.void.value:
+        # Free every session package billed on this invoice so it can be
+        # billed again on a new one. NULL = unbilled is the single rule.
+        await db.execute(
+            update(EnrollmentPurchase)
+            .where(
+                EnrollmentPurchase.billed_invoice_line_id.in_(
+                    select(TuitionInvoiceLine.id).where(TuitionInvoiceLine.invoice_id == invoice.id)
+                )
+            )
+            .values(billed_invoice_line_id=None)
+        )
     try:
         await db.commit()
     except IntegrityError:
