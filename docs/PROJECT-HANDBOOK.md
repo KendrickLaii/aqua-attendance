@@ -415,6 +415,8 @@ Windows 無 OpenSSL：使用 WSL/Git Bash，或 PowerShell：
 | `SECRET_KEY` / `QR_SECRET` | 兩組 `openssl rand -hex 32` |
 | `CORS_ORIGINS` | `https://app.yourdomain.com` |
 
+API 會把上傳圖片寫進 Docker volume `uploads`（container 內 `/data/uploads`）。重新套用 `docker-compose.prod.yml` 後才會掛上；未掛 volume 則下次佈署圖會消失。
+
 **僅用 IP（無域名）**：`APP_DOMAIN` 與 `API_DOMAIN` 都設為公開 IP。Caddy 會將 `/api/*` 導到 API，其餘導到 Web。
 
 若 API container 啟動後立即退出，檢查 log（通常是佔位符密鑰）：
@@ -1292,30 +1294,39 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 ## 9. 附錄
 
-### 9.1 Location 照片（v1 — URL only）
+### 9.1 Location 照片（URL + admin 上傳）
 
-目前 Locations 僅儲存 **image URL**，admin UI **不**上傳檔案到伺服器。
+Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 Photos tab 選檔，系統把圖寫進 API 那台機的硬碟，再把網址填回欄位；Save 之後卡片／發票用這條網址把圖載下來。也可繼續貼外部 URL（例如舊的 `…/assets/…`）。
 
 | 欄位 | 用途 |
 | ------ | ------ |
-| `icon_url` | 列表 / map pin 小圖示 |
-| `main_photo_url` | 封面 / hero image |
+| `icon_url` | 列表小圖；**發票左上角 logo** 也用這個 |
+| `main_photo_url` | 封面 / hero image（沒有 icon 時發票才會拿它頂替） |
 | `detail_photos` | Gallery array：`[{ "url", "caption", "sort_order" }]` |
 
-圖片必須已託管在其他地方（公司 CDN、S3 public URL、Google Drive public link）。
+**Admin 怎麼傳**
 
-**資料庫**：`locations.icon_url`、`locations.main_photo_url`、`locations.detail_photos`（JSON）。
+1. Location Management → 編輯／新增 → **Photos**。
+2. Icon / Main photo / Detail 每一格按 **Upload**（或點虛線框）選 JPEG / PNG / WebP / GIF。
+3. 瀏覽器立刻 `POST /api/uploads`（需登入 admin；`multipart/form-data` 帶檔，不是 JSON base64）。
+4. API 檢查副檔名與 magic bytes、大小上限（預設 5MB），寫入硬碟：  
+   `{UPLOAD_DIR}/{yyyy}/{mm}/{uuid}.png`  
+   - 本機跑 API：專案裡 `apps/api/uploads/`  
+   - Docker／production：volume `uploads` → container `/data/uploads`
+5. 回傳相對路徑 `/api/uploads/2026/09/{uuid}.png`，自動填進該格。IP／網域不寫死在資料庫。
+6. 按 **Save**：既有 `POST`／`PATCH /api/locations` 把 URL 字串存進 `icon_url` / `main_photo_url` / `detail_photos`。  
+   新建中心也可以先上傳再 Save（上傳不需要 location id）。
+
+**顯示／發票怎麼讀**
+
+- 瀏覽器 `<img src>` 與發票列印打 `GET /api/uploads/{key}`（**不必** Bearer；檔名是 UUID，無法枚舉）。
+- 本機 Vite（5173）與 API 不同 origin 時，前端 `resolveMediaUrl()` 會補上 `VITE_ATTENDANCE_API_URL` 的 host。
+- 生產 Caddy 已把 `/api/*` 轉去 API，相對路徑即可。
+- 發票 logo = 該 invoice 所屬中心的 `icon_url`，沒有才用 `main_photo_url`。沒圖就不印 logo 格。
+
+**限制**：不上 S3/R2。換圖不刪舊檔。Production 必須掛 `uploads` volume，否則下次佈署圖會消失。
 
 **Migration note**：Legacy single `photo_url` 於 migration `007` 遷移到 `main_photo_url`。
-
-**延後 — admin file upload（未實作）**
-
-| 項目 | 計劃 |
-| ------ | ------ |
-| Admin upload | Location Management 改用 file picker（非貼 URL） |
-| Storage（dev） | 可選 local `uploads/locations/{id}/` + static serve |
-| Storage（prod） | S3 or Cloudflare R2 + signed URLs |
-| API | `POST /api/locations/{id}/photos` with `multipart/form-data` |
 
 ### 9.2 技術債追蹤（精簡版）
 
@@ -1335,7 +1346,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | API | ~~Summaries/Payroll endpoints~~ | ✅ Done — generate + overview + 薪資率計算 |
 | API | RBAC tests | 後端測試含 `test_courses.py`、`test_tuition_invoices.py`（2026-08-28 兩檔共 38 項）；無 full permission matrix |
 | API | 結構化 logging | 待實作 |
-| Data | Location photo upload | v1 URL-only；upload + S3/R2 later |
+| Data | Location photo upload | ✅ Done — `POST/GET /api/uploads` + Photos tab picker；S3/R2 仍延後 |
 | API / Web | 課程資料（SPU/SKU/Enrollment） | Done — 模型、Router、Migration 034；SKU `billing_unit`（035）、`meeting_weekdays`（037，僅供顯示）、`staff_id`（041）；`course_enrollments.unit_price`（041）；`enrollment_purchases`（7d340d0ce7de）；Web 班次名冊 + 起迄日 + 購買堂數 + unbilled 標示 |
 | API / Web | 學費發票 | Done — `tuition_invoices` / lines、Generate、`/attendance/invoices`；發票編號＋列印（040）、手動發票落庫＋`purchase_ids` 結算（71296d8b9d7f）、每中心編號系列（f5d44789754d）。堂費經 `enrollment_purchases` 追蹤（#M23 已失效）；Vuexy `/apps/invoice` 仍非真實帳單 |
 

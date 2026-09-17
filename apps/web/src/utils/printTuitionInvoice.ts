@@ -133,68 +133,70 @@ function invoiceCopyHtml(
   header: TuitionInvoicePrintHeader,
 ): string {
   return `  <article class="copy">
-    <div class="header">
-      ${logoCell}
-      <div class="cell centre">
-        <div class="name-en">${escapeHtml(header.nameEn)}</div>
-        <div class="name-zh">${escapeHtml(header.nameZh)}</div>
-        ${centreLines}
+    <div class="copy-inner">
+      <div class="header">
+        ${logoCell}
+        <div class="cell centre">
+          <div class="name-en">${escapeHtml(header.nameEn)}</div>
+          <div class="name-zh">${escapeHtml(header.nameZh)}</div>
+          ${centreLines}
+        </div>
+        <div class="cell title-cell">
+          <div class="title">INVOICE</div>
+          ${copyLabel ? `<div class="copy-label">${escapeHtml(copyLabel)}</div>` : ''}
+        </div>
       </div>
-      <div class="cell title-cell">
-        <div class="title">INVOICE</div>
-        ${copyLabel ? `<div class="copy-label">${escapeHtml(copyLabel)}</div>` : ''}
+
+      <div class="idrow">
+        <div class="right"><span class="label">編號:</span><span class="fill">${escapeHtml(data.invoiceNo)}</span></div>
       </div>
-    </div>
+      <div class="student">
+        <div class="right" style="float:right"><span class="label">日期:</span><span class="fill">${escapeHtml(formatInvoiceDate(data.issueDate))}</span></div>
+        <span class="label">學生姓名:</span><span class="fill wide">${escapeHtml(data.studentName)}</span>
+      </div>
 
-    <div class="idrow">
-      <div class="right"><span class="label">編號:</span><span class="fill">${escapeHtml(data.invoiceNo)}</span></div>
-    </div>
-    <div class="student">
-      <div class="right" style="float:right"><span class="label">日期:</span><span class="fill">${escapeHtml(formatInvoiceDate(data.issueDate))}</span></div>
-      <span class="label">學生姓名:</span><span class="fill wide">${escapeHtml(data.studentName)}</span>
-    </div>
-
-    <table class="items">
-      <colgroup>
-        <col class="col-month">
-        <col class="col-course">
-        <col class="col-fee">
-        <col class="col-qty">
-        <col class="col-amount">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>月份</th>
-          <th>課程</th>
-          <th class="num">堂費</th>
-          <th class="num">堂數</th>
-          <th class="num">總額</th>
-        </tr>
-      </thead>
-      <tbody>
+      <table class="items">
+        <colgroup>
+          <col class="col-month">
+          <col class="col-course">
+          <col class="col-fee">
+          <col class="col-qty">
+          <col class="col-amount">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>月份</th>
+            <th>課程</th>
+            <th class="num">堂費</th>
+            <th class="num">堂數</th>
+            <th class="num">總額</th>
+          </tr>
+        </thead>
+        <tbody>
 ${lineRows}
-      </tbody>
-    </table>
-    <div class="total-row">
-      <div class="amount">${escapeHtml(formatMoney(total))}</div>
-    </div>
-    ${data.remark ? `<div class="remark"><span class="label">備註:</span>${escapeHtml(data.remark)}</div>` : ''}
-
-    <div class="foot">
-      <div class="cell payinfo">
-        費用可以現金或支票支付 或存入Wealth Impact Enterprise Limited<br>
-        匯豐銀行(#004)戶口 #801-784430-838 或 轉數快 #114782808
+        </tbody>
+      </table>
+      <div class="total-row">
+        <div class="amount">${escapeHtml(formatMoney(total))}</div>
       </div>
-      <div class="cell issuedby">
-        Issued by:
-        <div class="box"></div>
-      </div>
-    </div>
+      ${data.remark ? `<div class="remark"><span class="label">備註:</span>${escapeHtml(data.remark)}</div>` : ''}
 
-    <div class="note">
-      註: 上述費用是按照《教育(豁免)(提供非正規課程的私立學校)令》所訂明的條件收取。<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;所收取的費用是按每月等額計算。如學校未能按預訂安排開辦課程，<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;便會按照課程單張所載的退款政策及程序，向上述學生退回全部或部分費用。
+      <div class="foot">
+        <div class="cell payinfo">
+          費用可以現金或支票支付 或存入Wealth Impact Enterprise Limited<br>
+          匯豐銀行(#004)戶口 #801-784430-838 或 轉數快 #114782808
+        </div>
+        <div class="cell issuedby">
+          Issued by:
+          <div class="box"></div>
+        </div>
+      </div>
+
+      <div class="note">
+        註: 上述費用是按照《教育(豁免)(提供非正規課程的私立學校)令》所訂明的條件收取。<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;所收取的費用是按每月等額計算。如學校未能按預訂安排開辦課程，<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;便會按照課程單張所載的退款政策及程序，向上述學生退回全部或部分費用。
+      </div>
     </div>
   </article>`
 }
@@ -230,7 +232,7 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
 
   const copies = COPIES.map(copy =>
     invoiceCopyHtml(data, copy.label, lineRows, total, logoCell, centreLines, header),
-  ).join('\n  <div class="tear" aria-hidden="true"></div>\n')
+  ).join('\n')
 
   const html = `<!DOCTYPE html>
 <html>
@@ -241,24 +243,44 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
     * { box-sizing: border-box; }
     @page {
       size: A4 portrait;
-      margin: 8mm 10mm;
+      margin: 0;
     }
     html, body {
       background: #fff;
       color: #000;
+      width: 210mm;
+      height: 297mm;
+      margin: 0;
+      padding: 0;
     }
     body {
       font-family: "DFKai-SB", "標楷體", KaiTi, "Microsoft JhengHei", "PMingLiU", serif;
-      margin: 0;
-      padding: 12px 20px;
       font-size: 13px;
     }
     .sheet {
+      position: relative;
+      width: 210mm;
+      height: 297mm;
+      margin: 0 auto;
+      padding: 8mm 12mm;
       display: flex;
       flex-direction: column;
     }
     .copy {
-      flex: 0 0 auto;
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .copy-inner {
+      width: 100%;
+    }
+    .copy:first-of-type {
+      padding-bottom: 10mm;
+    }
+    .copy:last-of-type {
+      padding-top: 10mm;
     }
     .header {
       display: table;
@@ -411,12 +433,27 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
       line-height: 1.45;
     }
     .tear {
-      flex: 0 0 auto;
-      margin: 8px 0 10px;
-      border-bottom: 2px dotted #000;
+      position: absolute;
+      left: 12mm;
+      right: 12mm;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8mm;
+      pointer-events: none;
+    }
+    .tear-line {
+      border-top: 2px dotted #000;
+      width: 100%;
     }
     @media print {
-      body { padding: 0; }
+      html, body, .sheet {
+        width: 210mm;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
       .sheet {
         page-break-inside: avoid;
         page-break-after: avoid;
@@ -427,6 +464,10 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
 <body>
 <div class="sheet">
 ${copies}
+  <div class="tear" aria-hidden="true">
+    <div class="tear-line"></div>
+    <div class="tear-line"></div>
+  </div>
 </div>
 </body>
 </html>`

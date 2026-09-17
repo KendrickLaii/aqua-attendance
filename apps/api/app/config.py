@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # multiple API replicas behind a load balancer.
     REDIS_URL: str | None = None
 
+    # Local image uploads (location photos, later unit photos). Docker prod
+    # should mount a volume at /data/uploads and set UPLOAD_DIR accordingly.
+    UPLOAD_DIR: str = "uploads"
+    UPLOAD_MAX_BYTES: int = 5 * 1024 * 1024
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

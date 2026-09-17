@@ -25,6 +25,7 @@ from app.routers import (
     student_profiles,
     tuition_invoices,
     units,
+    uploads,
     users,
 )
 
@@ -49,6 +50,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(units.router, prefix="/api")
 app.include_router(locations.router, prefix="/api")
+app.include_router(uploads.router, prefix="/api")
 app.include_router(qr.router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
 app.include_router(student_profiles.router, prefix="/api")

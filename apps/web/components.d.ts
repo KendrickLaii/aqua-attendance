@@ -381,6 +381,7 @@ declare module 'vue' {
     LocationContactTab: typeof import('./src/components/attendance/locations/LocationContactTab.vue')['default']
     LocationExtraTab: typeof import('./src/components/attendance/locations/LocationExtraTab.vue')['default']
     LocationHoursEditor: typeof import('./src/components/attendance/locations/LocationHoursEditor.vue')['default']
+    LocationPhotoSlot: typeof import('./src/components/attendance/locations/LocationPhotoSlot.vue')['default']
     LocationPhotosTab: typeof import('./src/components/attendance/locations/LocationPhotosTab.vue')['default']
     ManualCorrectionDialog: typeof import('./src/components/attendance/ManualCorrectionDialog.vue')['default']
     MoreBtn: typeof import('./src/@core/components/MoreBtn.vue')['default']

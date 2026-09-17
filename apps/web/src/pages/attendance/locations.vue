@@ -558,15 +558,6 @@ function displayName(l: LocationItem) {
         </VTabs>
         <VDivider />
       </template>
-      <VAlert
-        type="info"
-        variant="tonal"
-        density="compact"
-        class="mb-4"
-        icon="ri-information-line"
-      >
-        Photos use external URLs in v1. File upload is planned later.
-      </VAlert>
 
       <VWindow v-model="formTab">
         <VWindowItem value="basic">

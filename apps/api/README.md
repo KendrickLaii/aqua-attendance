@@ -77,9 +77,9 @@ app/
   routers/          # auth、users、units、locations、qr、attendance、
                     # student-profiles、staff-profiles、notifications、
                     # attendance-summaries、payroll-records、audit-logs、auto-checkout、
-                    # course-spus、course-skus、course-enrollments、tuition-invoices
+                    # course-spus、course-skus、course-enrollments、tuition-invoices、uploads
   services/         # auth、qr、attendance、unit、overtime、auto_checkout、
-                    # summary_generator、payroll_generator、tuition_invoice_generator
+                    # media_storage、summary_generator、payroll_generator、tuition_invoice_generator
   utils/            # 搜尋輔助（safe ILIKE）
 alembic/            # Migrations（使用 DATABASE_URL_SYNC）
 tests/              # pytest（SQLite in-memory）

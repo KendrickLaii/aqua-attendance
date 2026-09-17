@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { type DetailPhotoRow, addDetailPhotoRow, removeDetailPhotoRow } from '@/utils/locationPhotos'
+import LocationPhotoSlot from '@/components/attendance/locations/LocationPhotoSlot.vue'
 
 export interface LocationPhotosForm {
   icon_url: string
@@ -18,85 +19,24 @@ const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: tr
 <template>
   <VRow class="mt-1">
     <VCol cols="12">
-      <div class="text-subtitle-2 mb-2">
-        <VIcon
-          icon="ri-image-circle-line"
-          size="16"
-          class="me-1"
-        />Icon URL
-        <span class="text-caption text-medium-emphasis ml-1">— small image for lists</span>
-      </div>
-      <VTextField
-        v-model="form.icon_url"
-        placeholder="https://..."
-        density="compact"
-        @update:model-value="iconPreviewError = false"
+      <LocationPhotoSlot
+        v-model:url="form.icon_url"
+        v-model:preview-error="iconPreviewError"
+        title="Icon"
+        hint="small image for lists"
+        :preview-max-height="100"
       />
-      <div
-        v-if="form.icon_url.trim()"
-        class="mt-2 mb-3"
-      >
-        <VImg
-          v-if="!iconPreviewError"
-          :src="form.icon_url.trim()"
-          max-height="100"
-          max-width="100"
-          rounded="lg"
-          class="border"
-          @error="iconPreviewError = true"
-        />
-        <div
-          v-else
-          class="text-caption text-error"
-        >
-          <VIcon
-            icon="ri-error-warning-line"
-            size="14"
-            class="me-1"
-          />Cannot load image
-        </div>
-      </div>
     </VCol>
 
     <VCol cols="12">
       <VDivider class="mb-3" />
-      <div class="text-subtitle-2 mb-2">
-        <VIcon
-          icon="ri-image-2-line"
-          size="16"
-          class="me-1"
-        />Main Photo URL
-        <span class="text-caption text-medium-emphasis ml-1">— cover / hero image</span>
-      </div>
-      <VTextField
-        v-model="form.main_photo_url"
-        placeholder="https://..."
-        density="compact"
-        @update:model-value="mainPreviewError = false"
+      <LocationPhotoSlot
+        v-model:url="form.main_photo_url"
+        v-model:preview-error="mainPreviewError"
+        title="Main photo"
+        hint="cover / hero image"
+        :preview-max-height="200"
       />
-      <div
-        v-if="form.main_photo_url.trim()"
-        class="mt-2 mb-3"
-      >
-        <VImg
-          v-if="!mainPreviewError"
-          :src="form.main_photo_url.trim()"
-          max-height="200"
-          rounded="lg"
-          class="border"
-          @error="mainPreviewError = true"
-        />
-        <div
-          v-else
-          class="text-caption text-error"
-        >
-          <VIcon
-            icon="ri-error-warning-line"
-            size="14"
-            class="me-1"
-          />Cannot load image
-        </div>
-      </div>
     </VCol>
 
     <VCol cols="12">
@@ -106,7 +46,7 @@ const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: tr
           icon="ri-gallery-line"
           size="16"
           class="me-1"
-        />Detail Photos
+        />Detail photos
         <span class="text-caption text-medium-emphasis ml-1">— gallery / additional images</span>
       </div>
       <div
@@ -118,69 +58,29 @@ const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: tr
           variant="outlined"
           class="pa-3"
         >
-          <VRow
-            dense
-            align="center"
-          >
-            <VCol
-              cols="12"
-              sm="7"
+          <LocationPhotoSlot
+            v-model:url="row.url"
+            v-model:preview-error="row.previewError"
+            :title="`Photo ${index + 1}`"
+            :preview-max-height="120"
+          />
+          <VTextField
+            v-model="row.caption"
+            class="mt-3"
+            label="Caption"
+            density="compact"
+            hide-details
+          />
+          <div class="d-flex justify-end mt-2">
+            <VBtn
+              size="small"
+              variant="text"
+              color="error"
+              prepend-icon="ri-delete-bin-line"
+              @click="removeDetailPhotoRow(detailPhotoRows, index)"
             >
-              <VTextField
-                v-model="row.url"
-                label="Photo URL"
-                density="compact"
-                hide-details
-                placeholder="https://..."
-                @update:model-value="row.previewError = false"
-              />
-            </VCol>
-            <VCol
-              cols="12"
-              sm="4"
-            >
-              <VTextField
-                v-model="row.caption"
-                label="Caption"
-                density="compact"
-                hide-details
-              />
-            </VCol>
-            <VCol cols="auto">
-              <VBtn
-                icon
-                size="small"
-                variant="text"
-                color="error"
-                @click="removeDetailPhotoRow(detailPhotoRows, index)"
-              >
-                <VIcon icon="ri-delete-bin-line" />
-              </VBtn>
-            </VCol>
-          </VRow>
-          <div
-            v-if="row.url.trim()"
-            class="mt-2"
-          >
-            <VImg
-              v-if="!row.previewError"
-              :src="row.url.trim()"
-              max-height="120"
-              max-width="180"
-              rounded="md"
-              class="border"
-              @error="row.previewError = true"
-            />
-            <div
-              v-else
-              class="text-caption text-error"
-            >
-              <VIcon
-                icon="ri-error-warning-line"
-                size="14"
-                class="me-1"
-              />Cannot load image
-            </div>
+              Remove photo
+            </VBtn>
           </div>
         </VCard>
       </div>

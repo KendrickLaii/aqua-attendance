@@ -21,6 +21,7 @@ import {
 import { type Unit, listUnits } from '@/api/attendance/units'
 import StatCards from '@/components/attendance/StatCards.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { resolveMediaUrl } from '@/utils/mediaUrl'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import {
   type TuitionInvoicePrintHeader,
@@ -432,7 +433,7 @@ function printOptionsFor(invoice: TuitionInvoice) {
   const location = locations.value.find(l => l.id === invoice.location_id)
 
   return {
-    logoUrl: location?.icon_url || location?.main_photo_url || '',
+    logoUrl: resolveMediaUrl(location?.icon_url || location?.main_photo_url || ''),
     header: location ? headerFromLocation(location) : undefined,
   }
 }

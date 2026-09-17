@@ -23,6 +23,9 @@ web-build/
 .DS_Store
 Thumbs.db
 
+# Local API uploads (when API is run outside Docker)
+uploads/
+
 # Build
 *.jks
 *.p8

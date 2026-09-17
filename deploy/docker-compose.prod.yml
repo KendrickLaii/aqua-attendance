@@ -40,7 +40,10 @@ services:
       LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5/minute}
       SCAN_RATE_LIMIT: ${SCAN_RATE_LIMIT:-30/minute}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      UPLOAD_DIR: /data/uploads
       PYTHONPATH: /app
+    volumes:
+      - uploads:/data/uploads
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     expose:
@@ -80,3 +83,4 @@ volumes:
   redisdata:
   caddy_data:
   caddy_config:
+  uploads:

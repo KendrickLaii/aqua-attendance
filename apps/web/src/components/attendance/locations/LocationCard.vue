@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { LocationItem } from '@/api/attendance/locations'
 import { cardCoverUrl, formatCardBusinessHours, showCardIcon } from '@/utils/locationHours'
+import { resolveMediaUrl } from '@/utils/mediaUrl'
 
 defineProps<{
   location: LocationItem
@@ -22,7 +23,7 @@ const emit = defineEmits<{
     <div class="location-card__cover">
       <img
         v-if="cardCoverUrl(location)"
-        :src="cardCoverUrl(location) || ''"
+        :src="resolveMediaUrl(cardCoverUrl(location))"
         alt=""
         class="location-card__cover-img"
       >
@@ -77,7 +78,7 @@ const emit = defineEmits<{
           class="location-card__avatar flex-shrink-0"
         >
           <VImg
-            :src="location.icon_url || ''"
+            :src="resolveMediaUrl(location.icon_url)"
             cover
           />
         </VAvatar>

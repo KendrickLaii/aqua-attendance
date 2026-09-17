@@ -240,6 +240,7 @@ declare global {
   const renderUnitQrPrintWindow: typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
+  const resolveMediaUrl: typeof import('./src/utils/mediaUrl')['resolveMediaUrl']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const resolveVuetifyTheme: typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']
@@ -736,6 +737,7 @@ declare module 'vue' {
     readonly renderUnitQrPrintWindow: UnwrapRef<typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
+    readonly resolveMediaUrl: UnwrapRef<typeof import('./src/utils/mediaUrl')['resolveMediaUrl']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveUnref: UnwrapRef<typeof import('@vueuse/core')['resolveUnref']>
     readonly resolveVuetifyTheme: UnwrapRef<typeof import('./src/@core/utils/vuetify')['resolveVuetifyTheme']>

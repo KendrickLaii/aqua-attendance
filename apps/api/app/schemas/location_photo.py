@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class LocationDetailPhoto(BaseModel):
-    """One gallery/detail image for a location (URL only in v1)."""
+    """One gallery/detail image for a location (hosted upload URL or external URL)."""
 
     url: str = Field(min_length=1, max_length=500)
     caption: str | None = Field(default=None, max_length=255)

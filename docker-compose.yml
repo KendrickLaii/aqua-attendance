@@ -46,6 +46,9 @@ services:
       QR_SECRET: ${QR_SECRET:-change-me-qr-secret}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8081}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
     ports:
       - "${API_PORT:-8000}:8000"
     command: >
@@ -53,3 +56,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:
