@@ -40,6 +40,11 @@ const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
 
 const MIN_ROWS = 5
 
+const COPIES = [
+  { key: 'client', label: '客戶聯 Client' },
+  { key: 'staff', label: '職員聯 Staff' },
+] as const
+
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec']
 
 function escapeHtml(value: string) {
@@ -118,6 +123,82 @@ export function openTuitionInvoicePrintPlaceholder(): Window {
   return printWindow
 }
 
+function invoiceCopyHtml(
+  data: TuitionInvoicePrintData,
+  copyLabel: string,
+  lineRows: string,
+  total: number,
+  logoCell: string,
+  centreLines: string,
+  header: TuitionInvoicePrintHeader,
+): string {
+  return `  <article class="copy">
+    <div class="header">
+      ${logoCell}
+      <div class="cell centre">
+        <div class="name-en">${escapeHtml(header.nameEn)}</div>
+        <div class="name-zh">${escapeHtml(header.nameZh)}</div>
+        ${centreLines}
+      </div>
+      <div class="cell title-cell">
+        <div class="title">INVOICE</div>
+        <div class="copy-label">${escapeHtml(copyLabel)}</div>
+      </div>
+    </div>
+
+    <div class="idrow">
+      <div class="right"><span class="label">編號:</span><span class="fill">${escapeHtml(data.invoiceNo)}</span></div>
+    </div>
+    <div class="student">
+      <div class="right" style="float:right"><span class="label">日期:</span><span class="fill">${escapeHtml(formatInvoiceDate(data.issueDate))}</span></div>
+      <span class="label">學生姓名:</span><span class="fill wide">${escapeHtml(data.studentName)}</span>
+    </div>
+
+    <table class="items">
+      <colgroup>
+        <col class="col-month">
+        <col class="col-course">
+        <col class="col-fee">
+        <col class="col-qty">
+        <col class="col-amount">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>月份</th>
+          <th>課程</th>
+          <th class="num">堂費</th>
+          <th class="num">堂數</th>
+          <th class="num">總額</th>
+        </tr>
+      </thead>
+      <tbody>
+${lineRows}
+      </tbody>
+    </table>
+    <div class="total-row">
+      <div class="amount">${escapeHtml(formatMoney(total))}</div>
+    </div>
+    ${data.remark ? `<div class="remark"><span class="label">備註:</span>${escapeHtml(data.remark)}</div>` : ''}
+
+    <div class="foot">
+      <div class="cell payinfo">
+        費用可以現金或支票支付 或存入Wealth Impact Enterprise Limited<br>
+        匯豐銀行(#004)戶口 #801-784430-838 或 轉數快 #114782808
+      </div>
+      <div class="cell issuedby">
+        Issued by:
+        <div class="box"></div>
+      </div>
+    </div>
+
+    <div class="note">
+      註: 上述費用是按照《教育(豁免)(提供非正規課程的私立學校)令》所訂明的條件收取。<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;所收取的費用是按每月等額計算。如學校未能按預訂安排開辦課程，<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;便會按照課程單張所載的退款政策及程序，向上述學生退回全部或部分費用。
+    </div>
+  </article>`
+}
+
 export function renderTuitionInvoicePrintWindow(printWindow: Window, data: TuitionInvoicePrintData) {
   const rows = [...data.lines]
   while (rows.length < MIN_ROWS)
@@ -125,13 +206,13 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
 
   const total = data.lines.reduce((sum, line) => sum + (line.amount ?? 0), 0)
 
-  const lineRows = rows.map(line => `      <tr>
-        <td>${escapeHtml(line.month)}</td>
-        <td>${escapeHtml(line.course)}</td>
-        <td class="num">${escapeHtml(formatMoney(line.fee))}</td>
-        <td class="num">${escapeHtml(formatMoney(line.qty))}</td>
-        <td class="num">${escapeHtml(formatMoney(line.amount))}</td>
-      </tr>`).join('\n')
+  const lineRows = rows.map(line => `        <tr>
+          <td>${escapeHtml(line.month)}</td>
+          <td>${escapeHtml(line.course)}</td>
+          <td class="num">${escapeHtml(formatMoney(line.fee))}</td>
+          <td class="num">${escapeHtml(formatMoney(line.qty))}</td>
+          <td class="num">${escapeHtml(formatMoney(line.amount))}</td>
+        </tr>`).join('\n')
 
   const logoUrl = data.logoUrl || INVOICE_LOGO_URL
 
@@ -145,7 +226,11 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
     header.regNo ? `<div class="reg">學校註冊編號: ${escapeHtml(header.regNo)}</div>` : '',
     header.address ? `<div>地址: ${escapeHtml(header.address)}</div>` : '',
     header.phone ? `<div>電話: ${escapeHtml(header.phone)}</div>` : '',
-  ].filter(Boolean).join('\n      ')
+  ].filter(Boolean).join('\n        ')
+
+  const copies = COPIES.map(copy =>
+    invoiceCopyHtml(data, copy.label, lineRows, total, logoCell, centreLines, header),
+  ).join('\n  <div class="tear" aria-hidden="true"></div>\n')
 
   const html = `<!DOCTYPE html>
 <html>
@@ -154,12 +239,26 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
   <title>Invoice ${escapeHtml(data.invoiceNo)} — ${escapeHtml(data.studentName)}</title>
   <style>
     * { box-sizing: border-box; }
+    @page {
+      size: A4 portrait;
+      margin: 8mm 10mm;
+    }
+    html, body {
+      background: #fff;
+      color: #000;
+    }
     body {
       font-family: "DFKai-SB", "標楷體", KaiTi, "Microsoft JhengHei", "PMingLiU", serif;
       margin: 0;
-      padding: 24px 32px;
-      color: #000;
-      font-size: 15px;
+      padding: 12px 20px;
+      font-size: 13px;
+    }
+    .sheet {
+      display: flex;
+      flex-direction: column;
+    }
+    .copy {
+      flex: 0 0 auto;
     }
     .header {
       display: table;
@@ -170,41 +269,49 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
       vertical-align: top;
     }
     .logo-cell {
-      width: 120px;
-      padding-right: 12px;
+      width: 88px;
+      padding-right: 10px;
     }
     .logo-cell img {
-      max-width: 110px;
-      max-height: 110px;
+      max-width: 78px;
+      max-height: 78px;
     }
     .centre {
-      line-height: 1.45;
+      line-height: 1.35;
     }
     .centre .name-en {
       font-family: Arial, "Microsoft JhengHei", sans-serif;
-      font-size: 19px;
+      font-size: 17px;
       font-weight: 700;
       letter-spacing: 0.02em;
     }
     .centre .name-zh {
-      font-size: 17px;
+      font-size: 15px;
       font-weight: 700;
     }
     .centre .reg {
-      font-size: 12px;
+      font-size: 11px;
     }
     .title-cell {
       font-family: Arial, "Microsoft JhengHei", sans-serif;
-      font-size: 30px;
-      font-weight: 700;
       text-align: right;
       white-space: nowrap;
       width: 1%;
     }
+    .title-cell .title {
+      font-size: 26px;
+      font-weight: 700;
+    }
+    .copy-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-top: 2px;
+    }
     .idrow {
       width: 100%;
-      margin-top: 6px;
-      line-height: 1.9;
+      margin-top: 4px;
+      line-height: 1.7;
     }
     .idrow .right {
       float: right;
@@ -227,19 +334,19 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
     }
     .student {
       clear: both;
-      margin-top: 4px;
-      line-height: 1.9;
+      margin-top: 2px;
+      line-height: 1.7;
     }
     table.items {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 8px;
-      font-size: 15px;
+      margin-top: 6px;
+      font-size: 13px;
     }
     table.items th, table.items td {
       border: 1px solid #000;
-      padding: 4px 8px;
-      height: 26px;
+      padding: 3px 8px;
+      height: 22px;
     }
     table.items th {
       font-weight: 700;
@@ -264,13 +371,13 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
       border: 1px solid #000;
       border-top: none;
       text-align: right;
-      padding: 4px 8px;
+      padding: 3px 8px;
       font-weight: 700;
     }
     .remark {
       clear: both;
-      margin-top: 6px;
-      line-height: 1.6;
+      margin-top: 4px;
+      line-height: 1.5;
     }
     .remark .label {
       display: inline-block;
@@ -280,14 +387,14 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
       clear: both;
       display: table;
       width: 100%;
-      margin-top: 28px;
+      margin-top: 10px;
     }
     .foot > .cell {
       display: table-cell;
       vertical-align: top;
     }
     .payinfo {
-      line-height: 1.7;
+      line-height: 1.55;
       width: 70%;
     }
     .issuedby {
@@ -295,85 +402,32 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
     }
     .issuedby .box {
       border: 1px solid #000;
-      height: 90px;
+      height: 52px;
       margin-top: 4px;
     }
     .note {
-      margin-top: 16px;
-      font-size: 12.5px;
-      line-height: 1.6;
+      margin-top: 8px;
+      font-size: 11px;
+      line-height: 1.45;
     }
     .tear {
-      margin-top: 22px;
+      flex: 0 0 auto;
+      margin: 8px 0 10px;
       border-bottom: 2px dotted #000;
     }
     @media print {
-      body { padding: 10mm 14mm; }
+      body { padding: 0; }
+      .sheet {
+        page-break-inside: avoid;
+        page-break-after: avoid;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    ${logoCell}
-    <div class="cell centre">
-      <div class="name-en">${escapeHtml(header.nameEn)}</div>
-      <div class="name-zh">${escapeHtml(header.nameZh)}</div>
-      ${centreLines}
-    </div>
-    <div class="cell title-cell">INVOICE</div>
-  </div>
-
-  <div class="idrow">
-    <div class="right"><span class="label">編號:</span><span class="fill">${escapeHtml(data.invoiceNo)}</span></div>
-  </div>
-  <div class="student">
-    <div class="right" style="float:right"><span class="label">日期:</span><span class="fill">${escapeHtml(formatInvoiceDate(data.issueDate))}</span></div>
-    <span class="label">學生姓名:</span><span class="fill wide">${escapeHtml(data.studentName)}</span>
-  </div>
-
-  <table class="items">
-    <colgroup>
-      <col class="col-month">
-      <col class="col-course">
-      <col class="col-fee">
-      <col class="col-qty">
-      <col class="col-amount">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>月份</th>
-        <th>課程</th>
-        <th class="num">堂費</th>
-        <th class="num">堂數</th>
-        <th class="num">總額</th>
-      </tr>
-    </thead>
-    <tbody>
-${lineRows}
-    </tbody>
-  </table>
-  <div class="total-row">
-    <div class="amount">${escapeHtml(formatMoney(total))}</div>
-  </div>
-  ${data.remark ? `<div class="remark"><span class="label">備註:</span>${escapeHtml(data.remark)}</div>` : ''}
-
-  <div class="foot">
-    <div class="cell payinfo">
-      費用可以現金或支票支付 或存入Wealth Impact Enterprise Limited<br>
-      匯豐銀行(#004)戶口 #801-784430-838 或 轉數快 #114782808
-    </div>
-    <div class="cell issuedby">
-      Issued by:
-      <div class="box"></div>
-    </div>
-  </div>
-
-  <div class="note">
-    註: 上述費用是按照《教育(豁免)(提供非正規課程的私立學校)令》所訂明的條件收取。<br>
-    &nbsp;&nbsp;&nbsp;&nbsp;所收取的費用是按每月等額計算。如學校未能按預訂安排開辦課程，<br>
-    &nbsp;&nbsp;&nbsp;&nbsp;便會按照課程單張所載的退款政策及程序，向上述學生退回全部或部分費用。
-  </div>
-  <div class="tear"></div>
+<div class="sheet">
+${copies}
+</div>
 </body>
 </html>`
 
