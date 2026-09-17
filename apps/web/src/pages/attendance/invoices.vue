@@ -135,18 +135,18 @@ const statusColor: Record<string, string> = {
 }
 
 const statusLabel: Record<string, string> = {
-  draft: '草稿',
-  issued: '已出單',
-  paid: '已收訖',
-  void: '已作廢',
+  draft: 'Draft',
+  issued: 'Issued',
+  paid: 'Paid',
+  void: 'Cancelled',
 }
 
 const statusFilters: { title: string; value: 'all' | TuitionInvoiceStatus }[] = [
-  { title: '全部', value: 'all' },
-  { title: '草稿', value: 'draft' },
-  { title: '已出單', value: 'issued' },
-  { title: '已收訖', value: 'paid' },
-  { title: '已作廢', value: 'void' },
+  { title: 'All', value: 'all' },
+  { title: 'Draft', value: 'draft' },
+  { title: 'Issued', value: 'issued' },
+  { title: 'Paid', value: 'paid' },
+  { title: 'Cancelled', value: 'void' },
 ]
 
 function formatMoney(value: number): string {
@@ -158,11 +158,11 @@ function formatMoney(value: number): string {
 
 function billingLabel(unit: string): string {
   if (unit === 'per_session')
-    return '堂費'
+    return 'Per class'
   if (unit === 'manual')
-    return '手動'
+    return 'Manual'
 
-  return '月費'
+  return 'Monthly'
 }
 
 function formatQty(line: TuitionInvoiceLine): string {
@@ -190,10 +190,17 @@ function classPreview(invoice: TuitionInvoice): string {
   const names = classNames(invoice)
   if (names.length === 0)
     return 'No lines'
-  if (names.length <= 2)
-    return names.join(' · ')
+  if (names.length === 1)
+    return names[0]
 
-  return `${names.slice(0, 2).join(' · ')} +${names.length - 2}`
+  return `${names[0]} +${names.length - 1}`
+}
+
+function periodLabel(invoice: TuitionInvoice): string {
+  if (invoice.period_start === invoice.period_end)
+    return invoice.period_start
+
+  return `${invoice.period_start} – ${invoice.period_end}`
 }
 
 const statusTotals = computed(() => {
@@ -274,7 +281,7 @@ const statCards = computed(() => [
   {
     label: 'Bills',
     value: String(invoices.value.length),
-    hint: statusTotals.value.void.count ? `${statusTotals.value.void.count} void excluded from collect` : monthLabel.value,
+    hint: statusTotals.value.void.count ? `${statusTotals.value.void.count} cancelled — not in to collect` : monthLabel.value,
     icon: 'ri-file-list-3-line',
     color: 'info',
   },
@@ -687,7 +694,7 @@ const manualClassOptions = computed(() =>
     .map(k => ({
       ...k,
       title: `${k.code} · ${k.name_zh}`,
-      subtitle: `${k.billing_unit === 'per_session' ? '堂費' : '月費'}${k.price != null ? ` · HK$${Number(k.price).toFixed(2)}` : ''}`,
+      subtitle: `${k.billing_unit === 'per_session' ? 'Per class' : 'Monthly'}${k.price != null ? ` · HK$${Number(k.price).toFixed(2)}` : ''}`,
     })),
 )
 
@@ -894,11 +901,11 @@ async function printManualInvoice() {
 const statusConfirmTitle = computed(() => {
   const status = pendingStatus.value?.status
   if (status === 'issued')
-    return '出單 Issue this invoice?'
+    return 'Issue this bill?'
   if (status === 'paid')
-    return '收訖 Mark this invoice paid?'
+    return 'Mark this bill as paid?'
   if (status === 'void')
-    return '作廢 Void this invoice?'
+    return 'Cancel this bill?'
 
   return 'Update invoice?'
 })
@@ -906,11 +913,11 @@ const statusConfirmTitle = computed(() => {
 const statusConfirmLabel = computed(() => {
   const status = pendingStatus.value?.status
   if (status === 'issued')
-    return '出單 Issue'
+    return 'Issue bill'
   if (status === 'paid')
-    return '收訖 Paid'
+    return 'Mark paid'
   if (status === 'void')
-    return '作廢 Void'
+    return 'Cancel'
 
   return 'Confirm'
 })
@@ -1072,6 +1079,7 @@ watch(yearMonth, () => {
           size="small"
           variant="outlined"
           filter
+          class="text-no-wrap"
         >
           {{ chip.title }} ({{ statusCounts[chip.value] ?? 0 }})
         </VChip>
@@ -1115,16 +1123,16 @@ watch(yearMonth, () => {
           variant="accordion"
           class="mb-4"
         >
-          <VExpansionPanel title="How Generate bills this month">
+          <VExpansionPanel title="How billing works this month">
             <VExpansionPanelText>
               <ul class="text-body-2 ps-4 mb-0">
-                <li>One draft per student whose enrollments overlap this month.</li>
-                <li>月費: flat SKU price once per month, even if they miss days.</li>
-                <li>堂費: each session package bought (recorded on enrollment) is billed once, never monthly. Not based on attendance.</li>
-                <li>私補 / variable-rate classes: leave the class price empty. Enrollment records how many sessions were bought; set the price when you bill it with <strong>Manual invoice</strong>.</li>
-                <li>Packages with no price yet are skipped by Generate — they wait for a manual invoice.</li>
-                <li>Inactive classes and monthly classes with no price are skipped. Issued / paid bills are not overwritten.</li>
-                <li>留意: the Location filter shows invoices under the campus they were issued for.</li>
+                <li>One draft bill per student whose classes overlap this month.</li>
+                <li>Monthly classes: billed once for the month, even if they miss days.</li>
+                <li>Per-class packages: billed once for the package they bought — not from attendance.</li>
+                <li>Private / variable-price classes: leave the class price empty. Record how many sessions were bought, then set the price on a <strong>Manual invoice</strong>.</li>
+                <li>Packages with no price yet are skipped by Generate — bill them with a manual invoice.</li>
+                <li>Inactive classes and monthly classes with no price are skipped. Issued and paid bills are not changed.</li>
+                <li>The Location filter shows bills for that campus.</li>
               </ul>
             </VExpansionPanelText>
           </VExpansionPanel>
@@ -1140,26 +1148,39 @@ watch(yearMonth, () => {
           />
         </div>
 
-        <VTable
+        <div
           v-else
-          density="compact"
-          hover
+          class="invoices-table-scroll"
         >
+          <VTable
+            class="invoices-table"
+            density="compact"
+            hover
+          >
           <thead>
             <tr>
-              <th>Student</th>
-              <th>編號</th>
-              <th>Classes</th>
-              <th>Period</th>
-              <th>Status</th>
-              <th class="text-end">
+              <th class="col-student">
+                Student
+              </th>
+              <th class="col-no">
+                Invoice no.
+              </th>
+              <th class="col-classes">
+                Classes
+              </th>
+              <th class="col-period">
+                Period
+              </th>
+              <th class="col-status">
+                Status
+              </th>
+              <th class="col-total text-end">
                 Total
               </th>
-              <th>備註</th>
-              <th
-                class="text-no-wrap"
-                style="width: 1%;"
-              />
+              <th class="col-remark">
+                Remark
+              </th>
+              <th class="col-actions" />
             </tr>
           </thead>
           <tbody>
@@ -1171,7 +1192,7 @@ watch(yearMonth, () => {
                 style="cursor: pointer;"
                 @click="toggleExpand(invoice.id)"
               >
-                <td>
+                <td class="col-student">
                   {{ invoice.unit_name ?? invoice.manual_student_name ?? '—' }}
                   <div class="text-caption text-medium-emphasis">
                     {{ invoice.unit_code }}
@@ -1181,15 +1202,20 @@ watch(yearMonth, () => {
                       color="info"
                       class="ms-1"
                     >
-                      manual
+                      Manual
                     </VChip>
                   </div>
                 </td>
-                <td class="text-caption text-no-wrap">
+                <td class="col-no text-caption">
                   {{ invoice.invoice_no ?? '—' }}
                 </td>
-                <td>
-                  <div>{{ classPreview(invoice) }}</div>
+                <td class="col-classes">
+                  <div
+                    class="class-preview"
+                    :title="classNames(invoice).join(' · ') || undefined"
+                  >
+                    {{ classPreview(invoice) }}
+                  </div>
                   <div class="text-caption text-medium-emphasis">
                     {{ invoice.lines.length }} line{{ invoice.lines.length === 1 ? '' : 's' }}
                     <VIcon
@@ -1200,10 +1226,10 @@ watch(yearMonth, () => {
                     </VIcon>
                   </div>
                 </td>
-                <td class="text-caption text-medium-emphasis text-no-wrap">
-                  {{ invoice.period_start }} – {{ invoice.period_end }}
+                <td class="col-period text-caption text-medium-emphasis">
+                  {{ periodLabel(invoice) }}
                 </td>
-                <td>
+                <td class="col-status">
                   <VChip
                     size="x-small"
                     :color="statusColor[invoice.status] ?? 'grey'"
@@ -1211,17 +1237,13 @@ watch(yearMonth, () => {
                     {{ statusLabel[invoice.status] ?? invoice.status }}
                   </VChip>
                 </td>
-                <td class="text-end font-weight-medium text-no-wrap">
+                <td class="col-total text-end font-weight-medium">
                   {{ formatMoney(Number(invoice.total)) }}
                 </td>
-                <td
-                  class="text-caption text-medium-emphasis"
-                  style="max-width: 220px;"
-                >
+                <td class="col-remark text-caption text-medium-emphasis">
                   <span
                     v-if="invoice.notes"
-                    class="d-inline-block text-truncate align-middle"
-                    style="max-width: 200px;"
+                    class="remark-preview"
                     :title="invoice.notes"
                   >{{ invoice.notes }}</span>
                   <span
@@ -1230,7 +1252,7 @@ watch(yearMonth, () => {
                   >—</span>
                 </td>
                 <td
-                  class="text-end text-no-wrap"
+                  class="col-actions text-end"
                   @click.stop
                 >
                   <VBtn
@@ -1238,7 +1260,7 @@ watch(yearMonth, () => {
                     icon="ri-printer-line"
                     size="x-small"
                     variant="text"
-                    title="列印 Print / reprint"
+                    title="Print / reprint"
                     @click="printInvoice(invoice)"
                   />
                   <VBtn
@@ -1247,11 +1269,11 @@ watch(yearMonth, () => {
                     variant="text"
                     color="primary"
                     prepend-icon="ri-file-check-line"
-                    title="出單 — assign invoice no. and print"
+                    title="Give a number and print"
                     :loading="statusUpdatingId === invoice.id"
                     @click="askStatus(invoice, 'issued')"
                   >
-                    出單
+                    Issue bill
                   </VBtn>
                   <VBtn
                     v-if="invoice.status === 'issued'"
@@ -1259,11 +1281,11 @@ watch(yearMonth, () => {
                     variant="text"
                     color="success"
                     prepend-icon="ri-money-dollar-circle-line"
-                    title="收訖 — payment received"
+                    title="Payment received"
                     :loading="statusUpdatingId === invoice.id"
                     @click="askStatus(invoice, 'paid')"
                   >
-                    收訖
+                    Mark paid
                   </VBtn>
                   <VBtn
                     v-if="invoice.status === 'draft' || invoice.status === 'issued'"
@@ -1271,11 +1293,11 @@ watch(yearMonth, () => {
                     variant="text"
                     color="error"
                     prepend-icon="ri-close-circle-line"
-                    title="作廢 — cancel this invoice"
+                    title="Cancel this bill"
                     :loading="statusUpdatingId === invoice.id"
                     @click="askStatus(invoice, 'void')"
                   >
-                    作廢
+                    Cancel
                   </VBtn>
                 </td>
               </tr>
@@ -1284,11 +1306,11 @@ watch(yearMonth, () => {
                   <div class="text-caption text-medium-emphasis mb-2">
                     {{ invoice.kind === 'manual'
                       ? 'Manual invoice — lines were typed when it was issued.'
-                      : 'Snapshot of SKU price at Generate. Changing the class later does not rewrite issued or paid bills.' }}
+                      : 'Prices were copied when this bill was made. Changing the class later does not change issued or paid bills.' }}
                   </div>
                   <div class="text-caption mb-2 d-flex flex-wrap gap-3">
-                    <span v-if="invoice.staff_name">開單人: {{ invoice.staff_name }}</span>
-                    <span v-if="invoice.notes">備註: {{ invoice.notes }}</span>
+                    <span v-if="invoice.staff_name">Issued by: {{ invoice.staff_name }}</span>
+                    <span v-if="invoice.notes">Remark: {{ invoice.notes }}</span>
                   </div>
                   <VTable density="compact">
                     <thead>
@@ -1347,7 +1369,7 @@ watch(yearMonth, () => {
                 class="text-center text-medium-emphasis py-8"
               >
                 <template v-if="invoices.length === 0">
-                  No bills this month. Enroll students with billed dates (and sessions purchased for 堂費 classes), then Generate.
+                  No bills this month. Enroll students with billed dates (and packages bought for per-class courses), then Generate.
                 </template>
                 <template v-else>
                   No bills match this search or status.
@@ -1365,6 +1387,7 @@ watch(yearMonth, () => {
             </tr>
           </tbody>
         </VTable>
+        </div>
       </VCardText>
     </VCard>
 
@@ -1383,11 +1406,11 @@ watch(yearMonth, () => {
       <template v-if="pendingStatus?.status === 'issued'">
         <div class="mb-3">
           Issuing locks {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.unit_code }}
-          at {{ formatMoney(Number(pendingStatus.invoice.total)) }}. Generate will no longer change this month.
+          at {{ formatMoney(Number(pendingStatus.invoice.total)) }}. Generate will not change this bill after that.
         </div>
         <VTextField
           v-model="issueNoInput"
-          label="Invoice no. (編號)"
+          label="Invoice no."
           density="compact"
           hint="Auto-generated — change only if you need a different number."
           persistent-hint
@@ -1398,16 +1421,16 @@ watch(yearMonth, () => {
         <VCombobox
           v-model="issueStaff"
           :items="manualStaffOptions"
-          label="開單人 Staff"
+          label="Staff"
           density="compact"
           class="mt-2"
-          hint="Who issued this invoice — for commission; not printed."
+          hint="Who opened this bill — for commission. Not printed."
           persistent-hint
           clearable
         />
         <VTextField
           v-model="issueRemark"
-          label="Remark (備註)"
+          label="Remark"
           density="compact"
           class="mt-2"
           placeholder="Optional — printed on the invoice"
@@ -1423,19 +1446,19 @@ watch(yearMonth, () => {
       </template>
       <template v-else-if="pendingStatus?.status === 'void'">
         {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.manual_student_name ?? pendingStatus.invoice.unit_code }}
-        will be marked void. The invoice number is not reused.
+        will be cancelled. The invoice number is not used again.
         <template v-if="pendingStatus.invoice.kind === 'manual'">
-          Any session package billed on it becomes unbilled again, so you can re-issue it.
+          Any class package on it can be billed again.
         </template>
         <template v-else>
-          Generate will restore it to draft if the student is still enrolled this month, with a new number.
+          Generate will make a new draft if the student is still in class this month, with a new number.
         </template>
         <VTextField
           v-model="issueRemark"
-          label="Remark (備註)"
+          label="Remark"
           density="compact"
           class="mt-3"
-          placeholder="Optional — e.g. why it was voided"
+          placeholder="Optional — e.g. why it was cancelled"
           clearable
         />
       </template>
@@ -1451,7 +1474,7 @@ watch(yearMonth, () => {
       @confirm="confirmGenerate"
       @cancel="pendingGenerate = false"
     >
-      Replaces drafts, skips issued and paid, deletes leftover drafts, and may restore void bills if the student is still enrolled.
+      Replaces drafts, skips issued and paid bills, and may bring back cancelled bills if the student is still in class.
     </AttendanceConfirmDialog>
 
     <VDialog
@@ -1466,7 +1489,7 @@ watch(yearMonth, () => {
         <VDivider />
         <VCardText class="pa-4">
           <div class="text-caption text-medium-emphasis mb-3">
-            Creates an issued invoice saved for reprint / payment tracking — for ad-hoc sales and 私補 session packages not billed through Generate.
+            Creates an issued bill you can reprint and track payment for — use this for one-off sales and private-class packages that Generate skips.
           </div>
           <VAlert
             v-if="manualError"
@@ -1486,7 +1509,7 @@ watch(yearMonth, () => {
             >
               <VTextField
                 v-model="manualForm.invoiceNo"
-                label="編號 Invoice no."
+                label="Invoice no."
                 density="compact"
                 hint="Auto-generated — editable"
                 persistent-hint
@@ -1499,7 +1522,7 @@ watch(yearMonth, () => {
             >
               <VTextField
                 v-model="manualForm.date"
-                label="日期 Date"
+                label="Date"
                 type="date"
                 density="compact"
                 hide-details
@@ -1512,7 +1535,7 @@ watch(yearMonth, () => {
               <VSelect
                 v-model="manualLocationId"
                 :items="locationOptions"
-                label="中心 Location (logo)"
+                label="Location (logo)"
                 density="compact"
                 hide-details
                 clearable
@@ -1529,7 +1552,7 @@ watch(yearMonth, () => {
                 :loading="manualStudentLoading"
                 item-title="full_name"
                 return-object
-                label="學生姓名 Student"
+                label="Student name"
                 placeholder="Search student name or code — or type any name"
                 prepend-inner-icon="ri-search-line"
                 density="compact"
@@ -1552,8 +1575,8 @@ watch(yearMonth, () => {
               <VCombobox
                 v-model="manualForm.staff"
                 :items="manualStaffOptions"
-                label="開單人 Staff"
-                placeholder="Who issued this — for commission"
+                label="Staff"
+                placeholder="Who opened this bill — for commission"
                 prepend-inner-icon="ri-user-star-line"
                 density="compact"
                 hint="Applies to every line; not printed on the invoice."
@@ -1566,7 +1589,7 @@ watch(yearMonth, () => {
               cols="12"
             >
               <div class="text-caption text-medium-emphasis mb-1">
-                Unbilled session packages — click to add a line (marks the package as billed):
+                Unbilled class packages — click to add a line:
               </div>
               <VChip
                 v-for="pkg in manualUnbilledPackages"
@@ -1582,12 +1605,12 @@ watch(yearMonth, () => {
                   start
                 />
                 {{ pkg.sku ? `${pkg.sku.code} · ${pkg.sku.name_zh}` : 'Sessions' }}
-                · {{ pkg.purchase.purchased_quantity }} 堂
+                · {{ pkg.purchase.purchased_quantity }} {{ pkg.purchase.purchased_quantity === 1 ? 'class' : 'classes' }}
                 <template v-if="pkg.purchase.unit_price != null">
                   × HK${{ Number(pkg.purchase.unit_price).toFixed(2) }}
                 </template>
                 <template v-else>
-                  · 價錢待定
+                  · price not set
                 </template>
                 · {{ pkg.purchase.purchased_at }}
               </VChip>
@@ -1600,19 +1623,19 @@ watch(yearMonth, () => {
           >
             <thead>
               <tr>
-                <th>月份</th>
-                <th>課程</th>
+                <th>Month</th>
+                <th>Class</th>
                 <th style="width: 110px;">
-                  單價
+                  Price
                 </th>
                 <th style="width: 90px;">
-                  數量
+                  Qty
                 </th>
                 <th
                   class="text-end"
                   style="width: 110px;"
                 >
-                  總額
+                  Total
                 </th>
                 <th style="width: 40px;" />
               </tr>
@@ -1636,7 +1659,7 @@ watch(yearMonth, () => {
                       v-model="row.course"
                       density="compact"
                       hide-details
-                      placeholder="功課輔導班"
+                      placeholder="Homework class"
                     />
                     <VChip
                       v-if="row.purchaseId"
@@ -1645,7 +1668,7 @@ watch(yearMonth, () => {
                       variant="tonal"
                       class="ms-1 flex-shrink-0"
                     >
-                      堂費
+                      Per class
                     </VChip>
                   </div>
                 </td>
@@ -1699,7 +1722,7 @@ watch(yearMonth, () => {
               :items="manualClassOptions"
               item-title="title"
               item-value="id"
-              label="Add a class line"
+              label="Add a class"
               prepend-inner-icon="ri-add-circle-line"
               density="compact"
               hide-details
@@ -1723,7 +1746,7 @@ watch(yearMonth, () => {
           </div>
           <VTextField
             v-model="manualForm.remark"
-            label="備註 Remark"
+            label="Remark"
             density="compact"
             class="mt-3"
             placeholder="Optional — printed on the invoice"
@@ -1764,5 +1787,64 @@ watch(yearMonth, () => {
 .no-number-spin :deep(input[type='number']::-webkit-inner-spin-button) {
   -webkit-appearance: none;
   margin: 0;
+}
+
+.invoices-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.invoices-table {
+  min-width: 960px;
+}
+
+.invoices-table :deep(thead th),
+.invoices-table :deep(tbody td) {
+  vertical-align: middle;
+}
+
+.invoices-table :deep(thead th) {
+  white-space: nowrap;
+}
+
+.invoices-table :deep(.col-student) {
+  min-width: 8.5rem;
+}
+
+.invoices-table :deep(.col-no),
+.invoices-table :deep(.col-period),
+.invoices-table :deep(.col-status),
+.invoices-table :deep(.col-total) {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.invoices-table :deep(.col-classes) {
+  min-width: 12rem;
+  max-width: 18rem;
+}
+
+.invoices-table :deep(.class-preview),
+.invoices-table :deep(.remark-preview) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoices-table :deep(.col-remark) {
+  max-width: 8rem;
+}
+
+.invoices-table :deep(.col-actions) {
+  position: sticky;
+  right: 0;
+  background: rgb(var(--v-theme-surface));
+  white-space: nowrap;
+  width: 1%;
+  z-index: 2;
+}
+
+.invoices-table :deep(thead th.col-actions) {
+  z-index: 3;
 }
 </style>

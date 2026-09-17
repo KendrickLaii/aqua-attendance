@@ -41,8 +41,8 @@ const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
 const MIN_ROWS = 5
 
 const COPIES = [
-  { key: 'client', label: '客戶聯 Client' },
-  { key: 'staff', label: '職員聯 Staff' },
+  { key: 'client', label: '' },
+  { key: 'staff', label: '(ADMIN COPY)' },
 ] as const
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec']
@@ -142,7 +142,7 @@ function invoiceCopyHtml(
       </div>
       <div class="cell title-cell">
         <div class="title">INVOICE</div>
-        <div class="copy-label">${escapeHtml(copyLabel)}</div>
+        ${copyLabel ? `<div class="copy-label">${escapeHtml(copyLabel)}</div>` : ''}
       </div>
     </div>
 
