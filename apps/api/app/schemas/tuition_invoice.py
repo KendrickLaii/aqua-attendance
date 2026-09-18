@@ -41,6 +41,7 @@ class TuitionInvoiceOut(BaseModel):
     total: float
     notes: str | None = None
     invoice_no: str | None = None
+    receipt_no: str | None = None
     issued_at: datetime | None = None
     lines: list[TuitionInvoiceLineOut] = Field(default_factory=list)
     created_at: datetime

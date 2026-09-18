@@ -36,6 +36,7 @@ export interface TuitionInvoice {
   total: number
   notes: string | null
   invoice_no: string | null
+  receipt_no?: string | null
   issued_at: string | null
   lines: TuitionInvoiceLine[]
   created_at: string

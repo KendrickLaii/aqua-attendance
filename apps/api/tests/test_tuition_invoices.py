@@ -574,7 +574,7 @@ async def test_issued_line_keeps_snapshot_after_sku_price_change(
 
 @pytest.mark.asyncio
 async def test_paid_invoice_cannot_change_status(
-    client: AsyncClient, admin_token: str, sample_unit: dict
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:
     spu = await _create_spu(client, admin_token)
     sku = await _create_sku(client, admin_token, spu["id"])
@@ -605,13 +605,29 @@ async def test_paid_invoice_cannot_change_status(
         json={"status": "paid"},
         headers=_auth(admin_token),
     )
-    assert paid.status_code == 200
+    assert paid.status_code == 422
+
+    created = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice_id],
+        },
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+
     blocked = await client.patch(
         f"/api/tuition-invoices/{invoice_id}",
         json={"status": "void"},
         headers=_auth(admin_token),
     )
     assert blocked.status_code == 422
+    fetched = await client.get(f"/api/tuition-invoices/{invoice_id}", headers=_auth(admin_token))
+    assert fetched.json()["status"] == "paid"
 
 
 @pytest.mark.asyncio

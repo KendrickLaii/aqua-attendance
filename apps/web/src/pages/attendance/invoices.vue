@@ -33,6 +33,7 @@ import {
 
 definePage({ meta: {} })
 
+const router = useRouter()
 const { ensureAccess } = useAttendanceAdminGate()
 
 const {
@@ -61,7 +62,7 @@ const generateError = ref('')
 const generateSuccess = ref('')
 const expandedId = ref<string | null>(null)
 const statusUpdatingId = ref<string | null>(null)
-const pendingStatus = ref<{ invoice: TuitionInvoice; status: 'issued' | 'paid' | 'void' } | null>(null)
+const pendingStatus = ref<{ invoice: TuitionInvoice; status: 'issued' | 'void' } | null>(null)
 const pendingGenerate = ref(false)
 const issueNoInput = ref('')
 const issueNoEdited = ref(false)
@@ -275,6 +276,7 @@ const filteredInvoices = computed(() => {
       invoice.unit_code,
       invoice.manual_student_name,
       invoice.invoice_no,
+      invoice.receipt_no,
       invoice.staff_name,
       invoice.notes,
       ...invoice.lines.flatMap(line => [line.sku_code, line.name_zh, line.staff_name]),
@@ -424,7 +426,7 @@ async function generate() {
 
 async function setStatus(
   invoice: TuitionInvoice,
-  status: 'issued' | 'paid' | 'void',
+  status: 'issued' | 'void',
   invoiceNo?: string,
   notes?: string | null,
   issuerName?: string,
@@ -470,7 +472,18 @@ async function suggestIssueNo() {
   }
 }
 
-function askStatus(invoice: TuitionInvoice, status: 'issued' | 'paid' | 'void') {
+function goMarkPaid(invoice: TuitionInvoice) {
+  router.push({
+    path: '/attendance/receipts/new',
+    query: {
+      invoice_id: invoice.id,
+      location_id: invoice.location_id,
+      ...(invoice.unit_id ? { unit_id: invoice.unit_id } : {}),
+    },
+  })
+}
+
+function askStatus(invoice: TuitionInvoice, status: 'issued' | 'void') {
   issueNoInput.value = status === 'issued' ? (invoice.invoice_no ?? '') : ''
   issueNoEdited.value = status === 'issued' && invoice.invoice_no != null
   issueNoError.value = ''
@@ -980,8 +993,6 @@ const statusConfirmTitle = computed(() => {
   const status = pendingStatus.value?.status
   if (status === 'issued')
     return 'Issue this bill?'
-  if (status === 'paid')
-    return 'Mark this bill as paid?'
   if (status === 'void')
     return 'Cancel this bill?'
 
@@ -992,8 +1003,6 @@ const statusConfirmLabel = computed(() => {
   const status = pendingStatus.value?.status
   if (status === 'issued')
     return 'Issue bill'
-  if (status === 'paid')
-    return 'Mark paid'
   if (status === 'void')
     return 'Cancel bill'
 
@@ -1406,7 +1415,13 @@ watch(yearMonth, () => {
                     </div>
                   </td>
                   <td class="col-no invoice-no">
-                    {{ invoice.invoice_no ?? '—' }}
+                    <div>{{ invoice.invoice_no ?? '—' }}</div>
+                    <div
+                      v-if="invoice.receipt_no"
+                      class="text-caption text-medium-emphasis"
+                    >
+                      {{ invoice.receipt_no }}
+                    </div>
                   </td>
                   <td class="col-staff">
                     <div
@@ -1483,9 +1498,8 @@ watch(yearMonth, () => {
                       variant="text"
                       color="success"
                       aria-label="Mark paid"
-                      title="Mark paid"
-                      :loading="statusUpdatingId === invoice.id"
-                      @click="askStatus(invoice, 'paid')"
+                      title="Mark paid — open a receipt"
+                      @click="goMarkPaid(invoice)"
                     />
                     <VBtn
                       v-if="invoice.status === 'draft' || invoice.status === 'issued'"
@@ -1701,12 +1715,6 @@ watch(yearMonth, () => {
         <div class="text-caption text-medium-emphasis mt-1">
           The printed invoice opens in a new window after issuing.
         </div>
-      </template>
-      <template v-else-if="pendingStatus?.status === 'paid'">
-        <p class="text-body-2 mb-0">
-          Mark <strong>{{ studentLabel(pendingStatus.invoice) }}</strong>
-          ({{ formatMoney(Number(pendingStatus.invoice.total)) }}) as paid?
-        </p>
       </template>
       <template v-else-if="pendingStatus?.status === 'void'">
         <p class="text-body-2 mb-0">

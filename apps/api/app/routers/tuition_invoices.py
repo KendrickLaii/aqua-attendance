@@ -14,6 +14,7 @@ from app.models.course_sku import CourseSku
 from app.models.invoice_counter import InvoiceCounter
 from app.models.location import Location
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
+from app.models.tuition_receipt import TuitionReceipt, TuitionReceiptInvoice, TuitionReceiptStatus
 from app.models.unit import Unit
 from app.schemas.tuition_invoice import (
     TuitionInvoiceGenerateResult,
@@ -29,14 +30,15 @@ router = APIRouter(prefix="/tuition-invoices", tags=["tuition-invoices"])
 
 _ALLOWED_STATUS = {
     TuitionInvoiceStatus.draft.value: {TuitionInvoiceStatus.issued.value, TuitionInvoiceStatus.void.value},
-    TuitionInvoiceStatus.issued.value: {TuitionInvoiceStatus.paid.value, TuitionInvoiceStatus.void.value},
+    TuitionInvoiceStatus.issued.value: {TuitionInvoiceStatus.void.value},
     TuitionInvoiceStatus.paid.value: set(),
     TuitionInvoiceStatus.void.value: set(),
 }
 
 
-def _invoice_to_out(invoice: TuitionInvoice) -> TuitionInvoiceOut:
+def _invoice_to_out(invoice: TuitionInvoice, receipt_no: str | None = None) -> TuitionInvoiceOut:
     out = TuitionInvoiceOut.model_validate(invoice)
+    out.receipt_no = receipt_no
     if invoice.unit:
         out.unit_name = invoice.unit.full_name
         out.unit_code = invoice.unit.code
@@ -48,6 +50,26 @@ def _invoice_to_out(invoice: TuitionInvoice) -> TuitionInvoiceOut:
         staff = line.sku.staff if line.sku else None
         line_out.staff_name = staff.full_name if staff else None
     return out
+
+
+async def _receipt_no_map(db: AsyncSession, invoice_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not invoice_ids:
+        return {}
+    result = await db.execute(
+        select(TuitionReceiptInvoice.invoice_id, TuitionReceipt.receipt_no)
+        .join(TuitionReceipt, TuitionReceiptInvoice.receipt_id == TuitionReceipt.id)
+        .where(
+            TuitionReceiptInvoice.invoice_id.in_(invoice_ids),
+            TuitionReceiptInvoice.is_posted.is_(True),
+            TuitionReceipt.status == TuitionReceiptStatus.posted.value,
+        )
+    )
+    return {row[0]: row[1] for row in result.all()}
+
+
+async def _invoices_to_out(db: AsyncSession, invoices: list[TuitionInvoice]) -> list[TuitionInvoiceOut]:
+    nos = await _receipt_no_map(db, [invoice.id for invoice in invoices])
+    return [_invoice_to_out(invoice, nos.get(invoice.id)) for invoice in invoices]
 
 
 _INVOICE_LOAD = (
@@ -95,7 +117,7 @@ async def list_tuition_invoices(
     q = q.order_by(TuitionInvoice.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return [_invoice_to_out(invoice) for invoice in result.scalars().all()]
+    return await _invoices_to_out(db, list(result.scalars().all()))
 
 
 @router.post("/generate", response_model=TuitionInvoiceGenerateResult)
@@ -436,7 +458,7 @@ async def create_manual_tuition_invoice(
     result = await db.execute(
         select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice.id)
     )
-    return _invoice_to_out(result.scalar_one())
+    return (await _invoices_to_out(db, [result.scalar_one()]))[0]
 
 
 @router.get("/{invoice_id}", response_model=TuitionInvoiceOut)
@@ -447,7 +469,7 @@ async def get_tuition_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) 
     invoice = result.scalar_one_or_none()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    return _invoice_to_out(invoice)
+    return (await _invoices_to_out(db, [invoice]))[0]
 
 
 @router.patch("/{invoice_id}", response_model=TuitionInvoiceOut)
@@ -455,7 +477,10 @@ async def update_tuition_invoice(
     invoice_id: uuid.UUID, body: TuitionInvoiceUpdate, _admin: AdminOnly, db: DB
 ) -> TuitionInvoiceOut:
     result = await db.execute(
-        select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice_id)
+        select(TuitionInvoice)
+        .options(*_INVOICE_LOAD)
+        .where(TuitionInvoice.id == invoice_id)
+        .with_for_update()
     )
     invoice = result.scalar_one_or_none()
     if not invoice:
@@ -470,6 +495,22 @@ async def update_tuition_invoice(
                 status_code=422,
                 detail=f"Cannot change invoice status from '{invoice.status}' to '{new_status}'",
             )
+        if new_status == TuitionInvoiceStatus.void.value:
+            posted = await db.scalar(
+                select(TuitionReceiptInvoice.id)
+                .join(TuitionReceipt, TuitionReceiptInvoice.receipt_id == TuitionReceipt.id)
+                .where(
+                    TuitionReceiptInvoice.invoice_id == invoice.id,
+                    TuitionReceiptInvoice.is_posted.is_(True),
+                    TuitionReceipt.status == TuitionReceiptStatus.posted.value,
+                )
+                .limit(1)
+            )
+            if posted:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Void the receipt before voiding this invoice",
+                )
 
     if "invoice_no" in update_data and isinstance(update_data["invoice_no"], str):
         update_data["invoice_no"] = update_data["invoice_no"].strip() or None
@@ -510,4 +551,4 @@ async def update_tuition_invoice(
     result = await db.execute(
         select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice.id)
     )
-    return _invoice_to_out(result.scalar_one())
+    return (await _invoices_to_out(db, [result.scalar_one()]))[0]

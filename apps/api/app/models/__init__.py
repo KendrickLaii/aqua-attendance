@@ -14,9 +14,11 @@ from app.models.course_sku import CourseSku
 from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
 from app.models.tuition_invoice import TuitionInvoice
 from app.models.invoice_counter import InvoiceCounter
+from app.models.tuition_receipt import TuitionReceipt
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
     "Notification", "AttendanceSummary", "PayrollRecord", "AuditLog",
     "CourseSpu", "CourseSku", "CourseEnrollment", "EnrollmentPurchase", "TuitionInvoice", "InvoiceCounter",
+    "TuitionReceipt",
 ]

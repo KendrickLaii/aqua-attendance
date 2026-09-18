@@ -40,6 +40,11 @@ export default [
     to: 'attendance-invoices',
   },
   {
+    title: 'Receipts',
+    icon: { icon: 'ri-receipt-line' },
+    to: 'attendance-receipts',
+  },
+  {
     title: 'Notifications',
     icon: { icon: 'ri-notification-3-line' },
     to: 'attendance-notifications',
