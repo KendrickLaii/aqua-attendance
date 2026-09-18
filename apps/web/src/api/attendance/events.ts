@@ -59,6 +59,7 @@ export interface AttendanceDayStats {
 export async function getAttendanceDayStats(params?: {
   date_from?: string
   date_to?: string
+  include_voided?: boolean
 }): Promise<AttendanceDayStats> {
   return await $attendanceApi<AttendanceDayStats>('/attendance/stats', { params })
 }

@@ -454,8 +454,8 @@ const studentSearchLoading = ref(false)
 let studentSearchRequestId = 0
 const selectedStudentId = ref<string | null>(null)
 const rosterSkuId = ref<string | null>(null)
-const enrollStartDate = ref('')
-const enrollEndDate = ref('')
+const enrollStartDate = ref<string | null>('')
+const enrollEndDate = ref<string | null>('')
 const enrollPurchasedQuantity = ref<number | null>(null)
 const enrollUnitPrice = ref<number | null>(null)
 const enrolling = ref(false)
@@ -539,8 +539,8 @@ function studentCode(unitId: string): string {
   return studentById[unitId]?.code ?? ''
 }
 
-function emptyToNull(value: string): string | null {
-  const trimmed = value.trim()
+function emptyToNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim()
 
   return trimmed || null
 }
@@ -647,6 +647,8 @@ watch(skusForSelectedSpu, list => {
 watch(rosterSkuId, id => {
   enrollError.value = ''
   rosterEditingId.value = null
+  rosterSearch.value = ''
+  rosterStatusFilter.value = 'active'
 
   const sku = skus.value.find(k => k.id === id)
   if (sku && sku.spu_id !== selectedSpuId.value)
@@ -715,9 +717,111 @@ const activeRosterUnitIds = computed(
   () => new Set(enrollments.value.filter(e => e.status === 'active').map(e => e.unit_id)),
 )
 
-type RosterSortKey = 'student' | 'status' | 'sessions' | 'price' | 'start' | 'end' | 'added'
+type RosterSortKey = 'student' | 'status' | 'sessions' | 'price' | 'window'
+type RosterStatusFilter = 'active' | 'ended' | 'all'
 
 const rosterSort = reactive<TableSort<RosterSortKey>>({ key: 'student', dir: 1 })
+const rosterSearch = ref('')
+const rosterStatusFilter = ref<RosterStatusFilter>('active')
+const rosterSection = ref<HTMLElement | null>(null)
+
+const rosterStatusCounts = computed(() => {
+  let active = 0
+  let ended = 0
+  for (const e of enrollments.value) {
+    if (e.status === 'active')
+      active++
+    else
+      ended++
+  }
+
+  return { active, ended, all: enrollments.value.length }
+})
+
+const rosterStatusFilters = computed(() => [
+  { value: 'active' as const, title: 'In class', count: rosterStatusCounts.value.active },
+  { value: 'ended' as const, title: 'Left', count: rosterStatusCounts.value.ended },
+  { value: 'all' as const, title: 'All', count: rosterStatusCounts.value.all },
+])
+
+const rosterCapacityPercent = computed(() => {
+  const cap = rosterSku.value?.capacity
+  if (!cap)
+    return 0
+
+  return Math.min(100, Math.round((activeRosterCount.value / cap) * 100))
+})
+
+const rosterMetaLine = computed(() => {
+  const sku = rosterSku.value
+  if (!sku)
+    return ''
+
+  return [
+    sku.schedule_note,
+    sku.meeting_weekdays?.length ? meetingDaysLabel(sku.meeting_weekdays) : '',
+    staffName(sku.staff_id),
+    sku.location_id ? locationName(sku.location_id) : '',
+    `${billingUnitLabel(sku.billing_unit ?? 'monthly')} · ${rosterPriceLabel(sku)}`,
+  ].filter(Boolean).join(' · ')
+})
+
+const editingEnrollment = computed(() =>
+  enrollments.value.find(e => e.id === rosterEditingId.value) ?? null,
+)
+
+const editDialogOpen = computed({
+  get: () => rosterEditingId.value != null,
+  set: (open: boolean) => {
+    if (!open && rosterEditingId.value) {
+      const current = editingEnrollment.value
+      if (current)
+        cancelEditEnrollmentDates(current)
+      else
+        rosterEditingId.value = null
+    }
+  },
+})
+
+function enrollmentStatusLabel(status: string): string {
+  if (status === 'active')
+    return 'In class'
+  if (status === 'completed')
+    return 'Completed'
+  if (status === 'cancelled')
+    return 'Left'
+
+  return status
+}
+
+function billingWindowLabel(enrollment: CourseEnrollment): string {
+  return `${formatRosterDate(enrollment.start_date, 'Already started')} → ${formatRosterDate(enrollment.end_date, 'Ongoing')}`
+}
+
+function enrollmentPriceParts(enrollment: CourseEnrollment): { amount: string; hint: string } | null {
+  const sku = rosterSku.value
+  if (enrollment.unit_price != null) {
+    return {
+      amount: `HK$${Number(enrollment.unit_price).toFixed(2)}`,
+      hint: 'this student',
+    }
+  }
+  if (sku?.price != null) {
+    return {
+      amount: `HK$${Number(sku.price).toFixed(2)}`,
+      hint: sku.billing_unit === 'per_session' ? 'class / session' : 'class / month',
+    }
+  }
+
+  return null
+}
+
+function matchesRosterSearch(enrollment: CourseEnrollment, query: string): boolean {
+  const name = (studentById[enrollment.unit_id]?.full_name ?? '').toLowerCase()
+  const code = (studentById[enrollment.unit_id]?.code ?? '').toLowerCase()
+
+  return name.includes(query) || code.includes(query)
+}
 
 // Roster rows sort by the selected column; rows with a missing value sink to the bottom (asc).
 const rosterRows = computed(() => {
@@ -728,15 +832,58 @@ const rosterRows = computed(() => {
     status: e => e.status,
     sessions: e => purchaseSummary(e).total,
     price: e => e.unit_price ?? sku?.price ?? null,
-    start: e => e.start_date ?? null,
-    end: e => e.end_date ?? null,
-    added: e => e.enrolled_at ?? null,
+    window: e => e.start_date ?? e.end_date ?? null,
   }
 
-  return [...enrollments.value].sort(
-    (a, b) => compareSortValues(pick[rosterSort.key](a), pick[rosterSort.key](b)) * rosterSort.dir,
-  )
+  return [...enrollments.value].sort((a, b) => {
+    if (rosterSort.key === 'student') {
+      const byStatus = Number(b.status === 'active') - Number(a.status === 'active')
+      if (byStatus)
+        return byStatus
+    }
+
+    return compareSortValues(pick[rosterSort.key](a), pick[rosterSort.key](b)) * rosterSort.dir
+  })
 })
+
+const filteredRosterRows = computed(() => {
+  const query = rosterSearch.value.trim().toLowerCase()
+
+  return rosterRows.value.filter(e => {
+    if (rosterStatusFilter.value === 'active' && e.status !== 'active')
+      return false
+    if (rosterStatusFilter.value === 'ended' && e.status === 'active')
+      return false
+    if (query && !matchesRosterSearch(e, query))
+      return false
+
+    return true
+  })
+})
+
+const enrollDisabledReason = computed(() => {
+  if (!rosterSkuId.value)
+    return 'Pick a class first.'
+  if (rosterSku.value?.is_active === false)
+    return 'This class is inactive — Generate skips it.'
+  if (rosterAtCapacity.value)
+    return 'This class is full.'
+  if (!selectedStudentId.value)
+    return 'Search and pick a student.'
+  if (activeRosterUnitIds.value.has(selectedStudentId.value))
+    return 'This student is already in the class.'
+  if (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity.value)
+    return 'Enter how many sessions this student bought.'
+
+  return ''
+})
+
+async function selectClass(skuId: string) {
+  rosterSkuId.value = skuId
+  await nextTick()
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  rosterSection.value?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+}
 
 async function enrollStudent() {
   if (!selectedStudentId.value || !rosterSkuId.value || rosterSku.value?.is_active === false || rosterAtCapacity.value)
@@ -794,6 +941,7 @@ async function enrollStudent() {
     enrollEndDate.value = ''
     enrollPurchasedQuantity.value = null
     enrollUnitPrice.value = null
+    rosterStatusFilter.value = 'active'
   }
   catch (e) {
     enrollError.value = formatApiError(e, 'Could not enroll student.')
@@ -963,7 +1111,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
   return (e.purchases ?? [])
     .map(p => [
       formatRosterDate(p.purchased_at),
-      p.unit_price != null ? `${p.purchased_quantity} × ${Number(p.unit_price).toFixed(2)}` : `${p.purchased_quantity} 堂 · 價錢待定`,
+      p.unit_price != null ? `${p.purchased_quantity} × ${Number(p.unit_price).toFixed(2)}` : `${p.purchased_quantity} session${p.purchased_quantity === 1 ? '' : 's'} · price TBD`,
       p.billed_invoice_line_id === null ? 'unbilled' : 'billed',
       p.notes ?? '',
     ].filter(Boolean).join(' · '))
@@ -982,8 +1130,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
           Course Management
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          Pick a class to see its roster. Billing is on the SKU (月費 or 堂費).
-          Same student cannot re-enroll the same class code later without deleting the old row.
+          Pick a course, then a class. The roster below is who is in that class.
         </div>
       </VCol>
       <VCol
@@ -1239,11 +1386,20 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   :key="sku.id"
                   :class="{ 'bg-primary-lighten-5': sku.id === rosterSkuId }"
                   style="cursor: pointer;"
-                  @click="rosterSkuId = sku.id"
+                  @click="selectClass(sku.id)"
                 >
                   <td>{{ sku.code }}</td>
                   <td class="text-no-wrap">
                     {{ sku.name_zh }}
+                    <VChip
+                      v-if="sku.id === rosterSkuId"
+                      size="x-small"
+                      color="primary"
+                      variant="tonal"
+                      class="ms-1"
+                    >
+                      roster
+                    </VChip>
                     <VChip
                       v-if="!sku.is_active"
                       size="x-small"
@@ -1320,305 +1476,351 @@ function purchaseTooltip(e: CourseEnrollment): string {
       <!-- Class roster -->
       <VRow class="mt-4">
         <VCol cols="12">
-          <VCard>
-            <VCardItem>
-              <VCardTitle>
-                Class roster
-                <span class="text-body-2 text-medium-emphasis ms-1">班次名冊</span>
-              </VCardTitle>
-              <VCardSubtitle>
-                <template v-if="rosterSku">
-                  {{ rosterSku.code }} · {{ rosterSku.name_zh }}
-                  <span v-if="rosterSku.schedule_note"> · {{ rosterSku.schedule_note }}</span>
-                </template>
-                <template v-else>
-                  Click a class above, or pick one here.
-                </template>
-              </VCardSubtitle>
-              <template #append>
+          <div
+            ref="rosterSection"
+            class="roster-anchor"
+          >
+          <VCard class="roster-board">
+            <div class="roster-identity">
+              <div class="roster-identity__main">
+                <div class="text-caption text-medium-emphasis text-uppercase roster-kicker">
+                  Class roster · 班次名冊
+                </div>
                 <div
                   v-if="rosterSku"
-                  class="d-flex flex-wrap align-center ga-2 justify-end"
+                  class="roster-identity__title"
                 >
-                  <VChip
-                    size="small"
-                    variant="tonal"
-                    color="primary"
-                  >
-                    {{ billingUnitLabel(rosterSku.billing_unit ?? 'monthly') }}
-                    · {{ rosterPriceLabel(rosterSku) }}
-                  </VChip>
-                  <VChip
-                    v-if="staffName(rosterSku.staff_id)"
-                    size="small"
-                    variant="tonal"
-                  >
-                    {{ staffName(rosterSku.staff_id) }}
-                  </VChip>
-                  <VChip
-                    v-if="rosterSku.meeting_weekdays?.length"
-                    size="small"
-                    variant="tonal"
-                  >
-                    {{ meetingDaysLabel(rosterSku.meeting_weekdays) }}
-                  </VChip>
-                  <VChip
-                    size="small"
-                    variant="tonal"
-                  >
-                    {{ activeRosterCount }}{{ rosterSku.capacity != null ? ` / ${rosterSku.capacity}` : '' }} enrolled
-                  </VChip>
-                  <VChip
-                    v-if="rosterAtCapacity"
-                    size="small"
-                    variant="tonal"
-                    color="warning"
-                  >
-                    Full
-                  </VChip>
-                  <VChip
-                    v-if="!rosterSku.is_active"
-                    size="small"
-                    variant="tonal"
-                    color="warning"
-                  >
-                    Inactive — Generate skips this class
-                  </VChip>
+                  <span class="roster-code">{{ rosterSku.code }}</span>
+                  <span>{{ rosterSku.name_zh }}</span>
                 </div>
-              </template>
-            </VCardItem>
-            <VCardText>
-              <VSheet
-                class="enroll-sheet pa-4 mb-4"
-                rounded="lg"
-                border
-              >
-                <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
-                  <span class="text-subtitle-2">Enroll a student</span>
-                  <span class="text-caption text-medium-emphasis">
-                    Billed days are inclusive — leave blank for already-started / ongoing.
-                  </span>
-                </div>
-                <VRow dense>
-                  <VCol
-                    cols="12"
-                    md="6"
-                  >
-                    <VAutocomplete
-                      v-model="rosterSkuId"
-                      :items="classOptions"
-                      item-title="title"
-                      item-value="id"
-                      label="Class"
-                      placeholder="Search class code or name"
-                      prepend-inner-icon="ri-search-line"
-                      density="comfortable"
-                      hide-details
-                      clearable
-                      :disabled="classOptions.length === 0"
-                    >
-                      <template #item="{ props: itemProps, item }">
-                        <VListItem
-                          v-bind="itemProps"
-                          :title="`${item.raw.code} · ${item.raw.name_zh}`"
-                          :subtitle="`${spuName(item.raw.spu_id)} · ${billingUnitLabel(item.raw.billing_unit ?? 'monthly')} · ${rosterPriceLabel(item.raw)}`"
-                        >
-                          <template
-                            v-if="!item.raw.is_active"
-                            #append
-                          >
-                            <VChip
-                              size="x-small"
-                              color="grey"
-                            >
-                              inactive
-                            </VChip>
-                          </template>
-                        </VListItem>
-                      </template>
-                      <template #selection="{ item }">
-                        {{ item.raw.code }} · {{ item.raw.name_zh }}
-                      </template>
-                    </VAutocomplete>
-                  </VCol>
-                  <VCol
-                    cols="12"
-                    md="6"
-                  >
-                    <VAutocomplete
-                      v-model="selectedStudentId"
-                      v-model:search="studentSearch"
-                      :items="studentOptions"
-                      :loading="studentSearchLoading"
-                      item-title="full_name"
-                      item-value="id"
-                      label="Student"
-                      placeholder="Search name or code"
-                      prepend-inner-icon="ri-search-line"
-                      density="comfortable"
-                      hide-details
-                      clearable
-                      no-filter
-                      :disabled="!rosterSkuId"
-                    >
-                      <template #item="{ props: itemProps, item }">
-                        <VListItem
-                          v-bind="itemProps"
-                          :subtitle="item.raw.code"
-                        >
-                          <template
-                            v-if="activeRosterUnitIds.has(item.raw.id)"
-                            #append
-                          >
-                            <VChip
-                              size="x-small"
-                              variant="tonal"
-                              color="success"
-                            >
-                              in roster
-                            </VChip>
-                          </template>
-                        </VListItem>
-                      </template>
-                    </VAutocomplete>
-                  </VCol>
-                  <VCol
-                    cols="6"
-                    md="3"
-                  >
-                    <VTextField
-                      v-model="enrollStartDate"
-                      label="First billed day"
-                      type="date"
-                      density="comfortable"
-                      hide-details
-                      :disabled="!rosterSkuId"
-                      clearable
-                    />
-                  </VCol>
-                  <VCol
-                    cols="6"
-                    md="3"
-                  >
-                    <VTextField
-                      v-model="enrollEndDate"
-                      label="Last billed day"
-                      type="date"
-                      density="comfortable"
-                      hide-details
-                      :disabled="!rosterSkuId"
-                      clearable
-                    />
-                  </VCol>
-                  <VCol
-                    v-if="enrollNeedsPurchasedQuantity()"
-                    cols="6"
-                    md="3"
-                  >
-                    <VTextField
-                      v-model.number="enrollPurchasedQuantity"
-                      label="Sessions bought"
-                      type="number"
-                      min="1"
-                      density="comfortable"
-                      :hint="enrollPurchasedQuantity ? `${enrollPurchasedQuantity} session${enrollPurchasedQuantity === 1 ? '' : 's'}` : 'One-time purchase, billed once'"
-                      persistent-hint
-                      :disabled="!rosterSkuId"
-                    />
-                  </VCol>
-                  <VCol
-                    v-if="rosterSku?.billing_unit !== 'per_session'"
-                    cols="6"
-                    md="3"
-                  >
-                    <VTextField
-                      v-model.number="enrollUnitPrice"
-                      label="Price / month"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      prefix="HK$"
-                      density="comfortable"
-                      :hint="enrollPriceHint"
-                      persistent-hint
-                      :disabled="!rosterSkuId"
-                    />
-                  </VCol>
-                  <VCol
-                    cols="12"
-                    :md="rosterSku ? 3 : 6"
-                    class="d-flex align-start"
-                  >
-                    <VBtn
-                      color="primary"
-                      block
-                      height="48"
-                      :loading="enrolling"
-                      :disabled="!selectedStudentId || !rosterSkuId || rosterSku?.is_active === false || rosterAtCapacity || (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity)"
-                      @click="enrollStudent"
-                    >
-                      Enroll
-                    </VBtn>
-                  </VCol>
-                </VRow>
-
                 <div
-                  v-if="enrollBillPreview"
-                  class="text-caption text-medium-emphasis mt-2 d-flex align-center"
+                  v-else
+                  class="text-h6"
                 >
-                  <VIcon
-                    icon="ri-bill-line"
-                    size="14"
-                    class="me-1"
-                  />
-                  {{ enrollBillPreview }}
+                  Pick a class to open its roll
                 </div>
-
-                <VAlert
-                  v-if="enrollError"
-                  type="error"
-                  variant="tonal"
-                  density="compact"
-                  class="mt-3"
-                  closable
-                  @click:close="enrollError = ''"
+                <div
+                  v-if="rosterMetaLine"
+                  class="roster-identity__meta"
                 >
-                  {{ enrollError }}
-                </VAlert>
-                <VAlert
-                  v-if="enrollSuccess"
-                  type="success"
-                  variant="tonal"
+                  {{ rosterMetaLine }}
+                </div>
+              </div>
+              <div class="roster-identity__aside">
+                <VAutocomplete
+                  v-model="rosterSkuId"
+                  :items="classOptions"
+                  item-title="title"
+                  item-value="id"
+                  label="Jump to class"
+                  placeholder="Code or name"
+                  prepend-inner-icon="ri-search-line"
                   density="compact"
-                  class="mt-3"
-                  closable
-                  @click:close="enrollSuccess = ''"
+                  hide-details
+                  clearable
+                  :disabled="classOptions.length === 0"
+                  class="roster-class-switcher"
                 >
-                  {{ enrollSuccess }}
-                </VAlert>
-              </VSheet>
+                  <template #item="{ props: itemProps, item }">
+                    <VListItem
+                      v-bind="itemProps"
+                      :title="`${item.raw.code} · ${item.raw.name_zh}`"
+                      :subtitle="`${spuName(item.raw.spu_id)} · ${billingUnitLabel(item.raw.billing_unit ?? 'monthly')}`"
+                    >
+                      <template
+                        v-if="!item.raw.is_active"
+                        #append
+                      >
+                        <VChip
+                          size="x-small"
+                          color="grey"
+                        >
+                          inactive
+                        </VChip>
+                      </template>
+                    </VListItem>
+                  </template>
+                  <template #selection="{ item }">
+                    {{ item.raw.code }} · {{ item.raw.name_zh }}
+                  </template>
+                </VAutocomplete>
+                <div
+                  v-if="rosterSku"
+                  class="roster-capacity"
+                >
+                  <div class="d-flex align-center justify-space-between">
+                    <span class="text-subtitle-2">
+                      {{ activeRosterCount }}{{ rosterSku.capacity != null ? ` / ${rosterSku.capacity}` : '' }} in class
+                    </span>
+                    <VChip
+                      v-if="rosterAtCapacity"
+                      size="x-small"
+                      color="warning"
+                      variant="tonal"
+                    >
+                      Full
+                    </VChip>
+                    <VChip
+                      v-else-if="!rosterSku.is_active"
+                      size="x-small"
+                      color="warning"
+                      variant="tonal"
+                    >
+                      Inactive
+                    </VChip>
+                  </div>
+                  <VProgressLinear
+                    v-if="rosterSku.capacity != null"
+                    :model-value="rosterCapacityPercent"
+                    :color="rosterAtCapacity ? 'warning' : 'primary'"
+                    height="6"
+                    rounded
+                    class="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
 
+            <VDivider />
+
+            <VSheet
+              v-if="rosterSku"
+              class="enroll-sheet pa-4 mx-4 mt-4"
+              rounded="lg"
+              border
+            >
+              <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
+                <span class="text-subtitle-2">Enroll a student</span>
+                <span class="text-caption text-medium-emphasis">
+                  Billing days are inclusive — leave dates blank for already-started / ongoing.
+                </span>
+              </div>
+              <VRow dense>
+                <VCol
+                  cols="12"
+                  md="6"
+                >
+                  <VAutocomplete
+                    v-model="selectedStudentId"
+                    v-model:search="studentSearch"
+                    :items="studentOptions"
+                    :loading="studentSearchLoading"
+                    item-title="full_name"
+                    item-value="id"
+                    label="Student"
+                    placeholder="Search name or code"
+                    prepend-inner-icon="ri-search-line"
+                    density="comfortable"
+                    hide-details
+                    clearable
+                    no-filter
+                    :disabled="!rosterSkuId"
+                  >
+                    <template #item="{ props: itemProps, item }">
+                      <VListItem
+                        v-bind="itemProps"
+                        :subtitle="item.raw.code"
+                      >
+                        <template
+                          v-if="activeRosterUnitIds.has(item.raw.id)"
+                          #append
+                        >
+                          <VChip
+                            size="x-small"
+                            variant="tonal"
+                            color="success"
+                          >
+                            in roster
+                          </VChip>
+                        </template>
+                      </VListItem>
+                    </template>
+                  </VAutocomplete>
+                </VCol>
+                <VCol
+                  cols="6"
+                  md="3"
+                >
+                  <VTextField
+                    v-model="enrollStartDate"
+                    label="Start date"
+                    type="date"
+                    density="comfortable"
+                    hide-details
+                    :disabled="!rosterSkuId"
+                    clearable
+                  />
+                </VCol>
+                <VCol
+                  cols="6"
+                  md="3"
+                >
+                  <VTextField
+                    v-model="enrollEndDate"
+                    label="End date"
+                    type="date"
+                    density="comfortable"
+                    hide-details
+                    :disabled="!rosterSkuId"
+                    clearable
+                  />
+                </VCol>
+                <VCol
+                  v-if="enrollNeedsPurchasedQuantity()"
+                  cols="6"
+                  md="3"
+                >
+                  <VTextField
+                    v-model.number="enrollPurchasedQuantity"
+                    label="Sessions bought"
+                    type="number"
+                    min="1"
+                    density="comfortable"
+                    :hint="enrollPurchasedQuantity ? `${enrollPurchasedQuantity} session${enrollPurchasedQuantity === 1 ? '' : 's'}` : 'One-time purchase, billed once'"
+                    persistent-hint
+                    :disabled="!rosterSkuId"
+                  />
+                </VCol>
+                <VCol
+                  v-if="rosterSku?.billing_unit !== 'per_session'"
+                  cols="6"
+                  md="3"
+                >
+                  <VTextField
+                    v-model.number="enrollUnitPrice"
+                    label="Price / month"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    prefix="HK$"
+                    density="comfortable"
+                    :hint="enrollPriceHint"
+                    persistent-hint
+                    :disabled="!rosterSkuId"
+                  />
+                </VCol>
+                <VCol
+                  cols="12"
+                  md="3"
+                  class="d-flex align-start"
+                >
+                  <VBtn
+                    color="primary"
+                    block
+                    height="48"
+                    :loading="enrolling"
+                    :disabled="Boolean(enrollDisabledReason)"
+                    :title="enrollDisabledReason || undefined"
+                    @click="enrollStudent"
+                  >
+                    Enroll
+                  </VBtn>
+                </VCol>
+              </VRow>
               <div
-                v-if="!rosterSkuId"
-                class="text-center text-medium-emphasis py-8"
+                v-if="enrollBillPreview"
+                class="text-caption text-medium-emphasis mt-2 d-flex align-center"
               >
                 <VIcon
-                  icon="ri-group-line"
-                  size="32"
-                  class="mb-2"
+                  icon="ri-bill-line"
+                  size="14"
+                  class="me-1"
                 />
-                <div>Select a class above to see who is enrolled.</div>
+                {{ enrollBillPreview }}
               </div>
+              <div
+                v-if="enrollDisabledReason && selectedStudentId"
+                class="text-caption text-medium-emphasis mt-1"
+              >
+                {{ enrollDisabledReason }}
+              </div>
+            </VSheet>
 
-              <VProgressLinear
-                v-else-if="enrollmentsLoading"
-                indeterminate
-                color="primary"
-                class="my-4"
+            <div class="roster-toolbar">
+              <VChipGroup
+                v-model="rosterStatusFilter"
+                mandatory
+                selected-class="text-primary"
+              >
+                <VChip
+                  v-for="chip in rosterStatusFilters"
+                  :key="chip.value"
+                  :value="chip.value"
+                  size="small"
+                  variant="outlined"
+                  filter
+                  class="text-no-wrap"
+                >
+                  {{ chip.title }} ({{ chip.count }})
+                </VChip>
+              </VChipGroup>
+              <VTextField
+                v-model="rosterSearch"
+                label="Find student"
+                placeholder="Name or code"
+                prepend-inner-icon="ri-search-line"
+                density="compact"
+                hide-details
+                clearable
+                autocomplete="off"
+                spellcheck="false"
+                :disabled="!rosterSkuId"
+                class="roster-search"
               />
+            </div>
 
+            <VAlert
+              v-if="enrollError"
+              type="error"
+              variant="tonal"
+              density="compact"
+              class="mx-4 mb-3"
+              closable
+              @click:close="enrollError = ''"
+            >
+              {{ enrollError }}
+            </VAlert>
+            <VAlert
+              v-if="enrollSuccess"
+              type="success"
+              variant="tonal"
+              density="compact"
+              class="mx-4 mb-3"
+              closable
+              @click:close="enrollSuccess = ''"
+            >
+              {{ enrollSuccess }}
+            </VAlert>
+
+            <div
+              v-if="!rosterSkuId"
+              class="roster-empty"
+            >
+              <VIcon
+                icon="ri-group-line"
+                size="36"
+                class="mb-2"
+              />
+              <div class="text-subtitle-1">
+                No class selected
+              </div>
+              <div class="text-body-2 text-medium-emphasis">
+                Click a class above, or search by code in Jump to class.
+              </div>
+            </div>
+
+            <VProgressLinear
+              v-else-if="enrollmentsLoading"
+              indeterminate
+              color="primary"
+              class="my-4"
+            />
+
+            <div
+              v-else
+              class="roster-table-wrap"
+            >
               <VTable
-                v-else
                 density="comfortable"
                 hover
                 class="roster-table"
@@ -1676,60 +1878,40 @@ function purchaseTooltip(e: CourseEnrollment): string {
                     </th>
                     <th
                       class="sortable"
-                      @click="toggleSort(rosterSort, 'start')"
+                      @click="toggleSort(rosterSort, 'window')"
                     >
-                      First billed
+                      Billing window
                       <VIcon
-                        :icon="sortIconFor(rosterSort, 'start')"
+                        :icon="sortIconFor(rosterSort, 'window')"
                         size="14"
                         class="ms-1 sort-icon"
-                        :class="{ 'sort-icon--active': rosterSort.key === 'start' }"
+                        :class="{ 'sort-icon--active': rosterSort.key === 'window' }"
                       />
                     </th>
-                    <th
-                      class="sortable"
-                      @click="toggleSort(rosterSort, 'end')"
-                    >
-                      Last billed
-                      <VIcon
-                        :icon="sortIconFor(rosterSort, 'end')"
-                        size="14"
-                        class="ms-1 sort-icon"
-                        :class="{ 'sort-icon--active': rosterSort.key === 'end' }"
-                      />
+                    <th class="text-end col-actions">
+                      <span class="text-caption text-medium-emphasis">Actions</span>
                     </th>
-                    <th
-                      class="sortable"
-                      @click="toggleSort(rosterSort, 'added')"
-                    >
-                      Added
-                      <VIcon
-                        :icon="sortIconFor(rosterSort, 'added')"
-                        size="14"
-                        class="ms-1 sort-icon"
-                        :class="{ 'sort-icon--active': rosterSort.key === 'added' }"
-                      />
-                    </th>
-                    <th class="text-end col-actions" />
                   </tr>
                 </thead>
                 <tbody>
                   <tr
-                    v-for="e in rosterRows"
+                    v-for="e in filteredRosterRows"
                     :key="e.id"
+                    :class="{ 'roster-row--left': e.status !== 'active' }"
                   >
                     <td>
-                      {{ studentLabel(e.unit_id) }}
-                      <div class="text-caption text-medium-emphasis">
-                        {{ studentCode(e.unit_id) }}
+                      <div class="roster-student">
+                        <span class="roster-student__name">{{ studentLabel(e.unit_id) }}</span>
+                        <span class="roster-student__code">{{ studentCode(e.unit_id) }}</span>
                       </div>
                     </td>
                     <td>
                       <VChip
-                        size="x-small"
+                        size="small"
+                        variant="tonal"
                         :color="enrollmentStatusColor[e.status] ?? 'grey'"
                       >
-                        {{ e.status }}
+                        {{ enrollmentStatusLabel(e.status) }}
                       </VChip>
                     </td>
                     <td v-if="rosterSku?.billing_unit === 'per_session'">
@@ -1740,7 +1922,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                       >
                         <template #activator="{ props: tooltipProps }">
                           <span v-bind="tooltipProps">
-                            {{ purchaseSummary(e).total }} 堂
+                            {{ purchaseSummary(e).total }} session{{ purchaseSummary(e).total === 1 ? '' : 's' }}
                             <VChip
                               v-if="purchaseSummary(e).unbilledQty > 0"
                               size="x-small"
@@ -1748,7 +1930,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                               variant="tonal"
                               class="ms-1"
                             >
-                              {{ purchaseSummary(e).unbilledQty }} 堂未收
+                              {{ purchaseSummary(e).unbilledQty }} unbilled
                             </VChip>
                           </span>
                         </template>
@@ -1758,146 +1940,207 @@ function purchaseTooltip(e: CourseEnrollment): string {
                       </template>
                     </td>
                     <td class="text-end">
-                      <VTextField
-                        v-if="rosterEditingId === e.id && enrollmentDates[e.id]"
-                        v-model="enrollmentDates[e.id].price"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        prefix="HK$"
-                        density="compact"
-                        hide-details
-                        style="width: 170px; margin-inline-start: auto;"
-                      />
+                      <template v-if="enrollmentPriceParts(e)">
+                        <div>{{ enrollmentPriceParts(e)?.amount }}</div>
+                        <div class="text-caption text-medium-emphasis">
+                          {{ enrollmentPriceParts(e)?.hint }}
+                        </div>
+                      </template>
                       <template v-else>
-                        <template v-if="e.unit_price != null">
-                          HK${{ Number(e.unit_price).toFixed(2) }}
-                          <div class="text-caption text-medium-emphasis">
-                            per-student
-                          </div>
-                        </template>
-                        <template v-else-if="rosterSku?.price != null">
-                          HK${{ Number(rosterSku.price).toFixed(2) }}
-                          <div class="text-caption text-medium-emphasis">
-                            {{ rosterSku.billing_unit === 'per_session' ? 'class default / session' : 'class default / month' }}
-                          </div>
-                        </template>
-                        <template v-else>
-                          —
-                        </template>
+                        —
                       </template>
                     </td>
                     <td>
-                      <VTextField
-                        v-if="rosterEditingId === e.id && enrollmentDates[e.id]"
-                        v-model="enrollmentDates[e.id].start"
-                        type="date"
-                        density="compact"
-                        hide-details
-                        style="width: 180px;"
-                      />
-                      <span v-else>{{ formatRosterDate(e.start_date, 'Already started') }}</span>
+                      <div>{{ billingWindowLabel(e) }}</div>
+                      <div class="text-caption text-medium-emphasis">
+                        Added {{ formatRosterDate(e.enrolled_at) }}
+                      </div>
                     </td>
-                    <td>
-                      <VTextField
-                        v-if="rosterEditingId === e.id && enrollmentDates[e.id]"
-                        v-model="enrollmentDates[e.id].end"
-                        type="date"
-                        density="compact"
-                        hide-details
-                        style="width: 180px;"
-                      />
-                      <span v-else>{{ formatRosterDate(e.end_date, 'Ongoing') }}</span>
-                    </td>
-                    <td>{{ formatRosterDate(e.enrolled_at) }}</td>
                     <td class="text-end text-no-wrap col-actions">
-                      <template v-if="rosterEditingId === e.id">
-                        <VBtn
-                          size="x-small"
-                          variant="text"
-                          color="primary"
-                          :loading="enrollmentDateSavingId === e.id"
-                          @click="saveEnrollmentDates(e)"
-                        >
-                          Save
-                        </VBtn>
-                        <VBtn
-                          size="x-small"
-                          variant="text"
-                          @click="cancelEditEnrollmentDates(e)"
-                        >
-                          Cancel
-                        </VBtn>
-                      </template>
-                      <template v-else>
-                        <VBtn
-                          size="x-small"
-                          variant="text"
-                          @click="beginEditEnrollmentDates(e)"
-                        >
-                          Edit
-                        </VBtn>
-                        <VBtn
-                          v-if="e.status === 'active'"
-                          size="x-small"
-                          variant="text"
-                          @click="cancelEnrollment(e)"
-                        >
-                          Unenroll
-                        </VBtn>
-                        <VBtn
-                          v-else
-                          size="x-small"
-                          variant="text"
-                          color="primary"
-                          @click="reactivateEnrollment(e)"
-                        >
-                          Re-activate
-                        </VBtn>
-                        <VBtn
-                          v-if="topUpEnabled && rosterSku?.billing_unit === 'per_session' && e.status === 'active'"
-                          size="x-small"
-                          variant="text"
-                          color="primary"
-                          @click="openTopUp(e)"
-                        >
-                          Top up
-                        </VBtn>
-                        <VBtn
-                          icon
-                          size="x-small"
-                          variant="text"
-                          color="error"
-                          @click="removeEnrollment(e)"
-                        >
-                          <VIcon
-                            icon="ri-delete-bin-line"
-                            size="16"
-                          />
-                        </VBtn>
-                      </template>
+                      <VBtn
+                        size="small"
+                        variant="text"
+                        @click="beginEditEnrollmentDates(e)"
+                      >
+                        Edit
+                      </VBtn>
+                      <VBtn
+                        icon
+                        size="small"
+                        variant="text"
+                        aria-label="More actions"
+                      >
+                        <VIcon
+                          icon="ri-more-2-line"
+                          size="18"
+                        />
+                        <VMenu activator="parent">
+                          <VList density="compact">
+                            <VListItem
+                              v-if="e.status === 'active'"
+                              prepend-icon="ri-user-unfollow-line"
+                              title="Unenroll"
+                              @click="cancelEnrollment(e)"
+                            />
+                            <VListItem
+                              v-else
+                              prepend-icon="ri-user-follow-line"
+                              title="Re-activate"
+                              @click="reactivateEnrollment(e)"
+                            />
+                            <VListItem
+                              v-if="topUpEnabled && rosterSku?.billing_unit === 'per_session' && e.status === 'active'"
+                              prepend-icon="ri-add-circle-line"
+                              title="Top up sessions"
+                              @click="openTopUp(e)"
+                            />
+                            <VListItem
+                              prepend-icon="ri-delete-bin-line"
+                              title="Remove record"
+                              class="text-error"
+                              @click="removeEnrollment(e)"
+                            />
+                          </VList>
+                        </VMenu>
+                      </VBtn>
                     </td>
                   </tr>
-                  <tr v-if="enrollments.length === 0">
+                  <tr v-if="filteredRosterRows.length === 0">
                     <td
-                      :colspan="rosterSku?.billing_unit === 'per_session' ? 8 : 7"
-                      class="text-center text-medium-emphasis py-8"
+                      :colspan="rosterSku?.billing_unit === 'per_session' ? 6 : 5"
+                      class="text-center py-10"
                     >
-                      <VIcon
-                        icon="ri-user-add-line"
-                        size="32"
-                        class="mb-2"
-                      />
-                      <div>No students yet — search a name above and hit Enroll.</div>
+                      <template v-if="enrollments.length === 0">
+                        <VIcon
+                          icon="ri-user-add-line"
+                          size="32"
+                          class="mb-2"
+                        />
+                        <div class="text-subtitle-1">
+                          Nobody on this roll yet
+                        </div>
+                        <div class="text-body-2 text-medium-emphasis">
+                          Enroll the first student with the form above.
+                        </div>
+                      </template>
+                      <template v-else-if="rosterSearch.trim()">
+                        <div class="text-body-2 text-medium-emphasis">
+                          No student matches “{{ rosterSearch.trim() }}”.
+                        </div>
+                      </template>
+                      <template v-else-if="rosterStatusFilter === 'active' && rosterStatusCounts.ended > 0">
+                        <div class="text-body-2 text-medium-emphasis mb-3">
+                          No one currently in this class.
+                        </div>
+                        <VBtn
+                          variant="tonal"
+                          size="small"
+                          @click="rosterStatusFilter = 'ended'"
+                        >
+                          Show {{ rosterStatusCounts.ended }} who left
+                        </VBtn>
+                      </template>
+                      <template v-else>
+                        <div class="text-body-2 text-medium-emphasis">
+                          No students in this filter.
+                        </div>
+                      </template>
                     </td>
                   </tr>
                 </tbody>
               </VTable>
-            </VCardText>
+            </div>
           </VCard>
+          </div>
         </VCol>
       </VRow>
     </template>
+
+    <VDialog
+      v-model="editDialogOpen"
+      max-width="480"
+    >
+      <VCard v-if="editingEnrollment && enrollmentDates[editingEnrollment.id]">
+        <VCardTitle>Edit {{ studentLabel(editingEnrollment.unit_id) }}</VCardTitle>
+        <VCardSubtitle>
+          {{ studentCode(editingEnrollment.unit_id) }}
+          · {{ enrollmentStatusLabel(editingEnrollment.status) }}
+        </VCardSubtitle>
+        <VCardText>
+          <VRow dense>
+            <VCol cols="12">
+              <VTextField
+                v-model="enrollmentDates[editingEnrollment.id].price"
+                label="Price"
+                type="number"
+                min="0"
+                step="0.01"
+                prefix="HK$"
+                density="comfortable"
+                :hint="rosterSku ? `Blank uses the class price (${rosterPriceLabel(rosterSku)}).` : 'Blank uses the class price.'"
+                persistent-hint
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="enrollmentDates[editingEnrollment.id].start"
+                label="Start date"
+                hint="First billed day. Blank = already started."
+                persistent-hint
+                type="date"
+                density="comfortable"
+                clearable
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="enrollmentDates[editingEnrollment.id].end"
+                label="End date"
+                hint="Last billed day. Blank = ongoing."
+                persistent-hint
+                type="date"
+                density="comfortable"
+                clearable
+              />
+            </VCol>
+          </VRow>
+          <VAlert
+            v-if="enrollError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-3"
+            closable
+            @click:close="enrollError = ''"
+          >
+            {{ enrollError }}
+          </VAlert>
+        </VCardText>
+        <VDivider />
+        <DialogFooter>
+          <VBtn
+            variant="outlined"
+            color="primary"
+            @click="editDialogOpen = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            :loading="enrollmentDateSavingId === editingEnrollment.id"
+            @click="saveEnrollmentDates(editingEnrollment)"
+          >
+            Save
+          </VBtn>
+        </DialogFooter>
+      </VCard>
+    </VDialog>
 
     <!-- SPU create/edit dialog -->
     <VDialog
@@ -2332,8 +2575,121 @@ function purchaseTooltip(e: CourseEnrollment): string {
     rgb(var(--v-theme-surface));
 }
 
+.roster-anchor {
+  scroll-margin-top: 12px;
+}
+
+.roster-board {
+  overflow: hidden;
+}
+
 .enroll-sheet {
   background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.roster-identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 24px 16px;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(var(--v-theme-primary), 0.14) 0,
+      rgba(var(--v-theme-primary), 0.14) 5px,
+      rgba(var(--v-theme-primary), 0.045) 5px
+    );
+}
+
+.roster-kicker {
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.roster-identity__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.roster-code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  color: rgb(var(--v-theme-primary));
+}
+
+.roster-identity__meta {
+  margin-top: 8px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.roster-identity__main {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.roster-identity__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 0 1 280px;
+  min-width: min(100%, 240px);
+}
+
+.roster-class-switcher {
+  width: 280px;
+  max-width: 100%;
+}
+
+.roster-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+  padding: 12px 24px 16px;
+}
+
+.roster-search {
+  width: 220px;
+  max-width: 100%;
+}
+
+.roster-empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+
+.roster-table-wrap {
+  overflow-x: auto;
+}
+
+.roster-student {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.roster-student__name {
+  font-weight: 600;
+}
+
+.roster-student__code {
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-row--left td {
+  opacity: 0.58;
 }
 
 th.sortable {
@@ -2353,5 +2709,17 @@ th.sortable:hover {
 .sort-icon--active {
   opacity: 1;
   color: rgb(var(--v-theme-primary));
+}
+
+@media (max-width: 600px) {
+  .roster-identity,
+  .roster-toolbar {
+    padding-inline: 16px;
+  }
+
+  .roster-class-switcher,
+  .roster-search {
+    width: 100%;
+  }
 }
 </style>

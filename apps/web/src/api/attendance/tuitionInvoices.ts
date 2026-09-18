@@ -61,11 +61,11 @@ export async function listTuitionInvoicesWithTotal(params?: {
 }
 
 export async function listAllTuitionInvoices(params: {
-  year: number
-  month: number
+  year?: number
+  month?: number
   status?: string
   location_id?: string
-}): Promise<AttendanceListResult<TuitionInvoice>> {
+} = {}): Promise<AttendanceListResult<TuitionInvoice>> {
   const pageSize = 200
 
   const first = await listTuitionInvoicesWithTotal({

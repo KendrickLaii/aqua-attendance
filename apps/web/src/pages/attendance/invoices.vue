@@ -43,6 +43,16 @@ const {
   toCurrentMonth,
 } = useYearMonth()
 
+const {
+  page,
+  pageSize,
+  pageSizeOptions,
+  totalCount,
+  totalPages,
+  listCaption: pagedListCaption,
+  resetPage,
+} = usePagedList({ pageSize: 40 })
+
 const invoices = ref<TuitionInvoice[]>([])
 const loading = ref(true)
 const generating = ref(false)
@@ -124,9 +134,11 @@ const manualError = ref('')
 
 const searchQuery = ref('')
 const statusFilter = ref<'all' | TuitionInvoiceStatus>('all')
+const showBillingHelp = ref(false)
 
 useAutoClearAlerts(loadError)
 useAutoClearAlerts(generateError)
+useAutoClearAlerts(generateSuccess)
 
 const statusColor: Record<string, string> = {
   draft: 'warning',
@@ -204,6 +216,20 @@ function periodLabel(invoice: TuitionInvoice): string {
   return `${invoice.period_start} – ${invoice.period_end}`
 }
 
+function studentLabel(invoice: TuitionInvoice): string {
+  return invoice.unit_name ?? invoice.manual_student_name ?? '—'
+}
+
+function openedBy(invoice: TuitionInvoice): string {
+  return (invoice.staff_name ?? '').trim()
+}
+
+function locationName(id: string): string {
+  const location = locations.value.find(item => item.id === id)
+
+  return location ? (location.name_zh || location.name_en) : ''
+}
+
 const statusTotals = computed(() => {
   const totals = {
     draft: { count: 0, amount: 0 },
@@ -249,12 +275,58 @@ const filteredInvoices = computed(() => {
       invoice.unit_code,
       invoice.manual_student_name,
       invoice.invoice_no,
+      invoice.staff_name,
       invoice.notes,
-      ...invoice.lines.flatMap(line => [line.sku_code, line.name_zh]),
+      ...invoice.lines.flatMap(line => [line.sku_code, line.name_zh, line.staff_name]),
     ].join(' ').toLowerCase()
 
     return haystack.includes(query)
   })
+})
+
+const pagedInvoices = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+
+  return filteredInvoices.value.slice(start, start + pageSize.value)
+})
+
+const billsCaption = computed(() => pagedListCaption(pagedInvoices.value.length, 'bill'))
+
+const allMonths = computed(() => !parsedYearMonth.value)
+const allLocations = computed(() => !locationId.value)
+
+const locationOptions = computed(() =>
+  locations.value
+    .filter(location => location.is_active)
+    .map(location => ({
+      value: location.id,
+      title: location.name_zh || location.name_en,
+    })),
+)
+
+const locationSelectItems = computed(() => [
+  { value: 'all', title: 'All locations' },
+  ...locationOptions.value,
+])
+
+const locationFilter = computed({
+  get: () => locationId.value ?? 'all',
+  set: (value: string | null) => {
+    locationId.value = !value || value === 'all' ? null : value
+  },
+})
+
+const locationLabel = computed(() => {
+  if (!locationId.value)
+    return 'All locations'
+
+  return locationOptions.value.find(item => item.value === locationId.value)?.title ?? 'All locations'
+})
+
+const scopeLabel = computed(() => {
+  const month = parsedYearMonth.value ? monthLabel.value : 'All months'
+
+  return `${month} · ${locationLabel.value}`
 })
 
 const statCards = computed(() => [
@@ -268,7 +340,9 @@ const statCards = computed(() => [
   {
     label: 'Paid',
     value: formatMoney(statusTotals.value.paid.amount),
-    hint: `${statusTotals.value.paid.count} paid this month`,
+    hint: parsedYearMonth.value
+      ? `${statusTotals.value.paid.count} paid this month`
+      : `${statusTotals.value.paid.count} paid`,
     icon: 'ri-checkbox-circle-line',
     color: 'success',
   },
@@ -282,22 +356,24 @@ const statCards = computed(() => [
   {
     label: 'Bills',
     value: String(invoices.value.length),
-    hint: statusTotals.value.void.count ? `${statusTotals.value.void.count} cancelled — not in to collect` : monthLabel.value,
+    hint: statusTotals.value.void.count
+      ? `${statusTotals.value.void.count} cancelled — not in to collect`
+      : scopeLabel.value,
     icon: 'ri-file-list-3-line',
     color: 'info',
   },
 ])
 
 async function loadInvoices() {
-  if (!parsedYearMonth.value)
-    return
-
   loading.value = true
   loadError.value = ''
   try {
+    const period = parsedYearMonth.value
+      ? { year: parsedYearMonth.value.year, month: parsedYearMonth.value.month }
+      : {}
+
     const result = await listAllTuitionInvoices({
-      year: parsedYearMonth.value.year,
-      month: parsedYearMonth.value.month,
+      ...period,
       location_id: locationId.value ?? undefined,
     })
 
@@ -408,15 +484,6 @@ function askStatus(invoice: TuitionInvoice, status: 'issued' | 'paid' | 'void') 
   }
 }
 
-const locationOptions = computed(() =>
-  locations.value
-    .filter(location => location.is_active)
-    .map(location => ({
-      value: location.id,
-      title: location.name_zh || location.name_en,
-    })),
-)
-
 function headerFromLocation(location: LocationItem): TuitionInvoicePrintHeader {
   const details = (location.details ?? {}) as Record<string, unknown>
 
@@ -443,6 +510,8 @@ watch(locationId, id => {
     localStorage.setItem(LOCATION_FILTER_KEY, id)
   else
     localStorage.removeItem(LOCATION_FILTER_KEY)
+  resetPage()
+  expandedId.value = null
   loadInvoices()
 })
 
@@ -500,7 +569,7 @@ async function confirmPendingStatus() {
     pending.invoice,
     pending.status,
     invoiceNo || undefined,
-    pending.status === 'paid' ? undefined : remark || null,
+    pending.status === 'issued' ? remark || null : undefined,
     pending.status === 'issued' ? issueStaff.value.trim() : undefined,
   )
 
@@ -692,6 +761,14 @@ async function loadManualSkus() {
 const manualClassOptions = computed(() =>
   manualSkus.value
     .filter(k => k.is_active)
+    .slice()
+    .sort((a, b) => {
+      const byCode = a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
+      if (byCode !== 0)
+        return byCode
+
+      return a.name_zh.localeCompare(b.name_zh, undefined, { numeric: true, sensitivity: 'base' })
+    })
     .map(k => ({
       ...k,
       title: `${k.code} · ${k.name_zh}`,
@@ -918,20 +995,59 @@ const statusConfirmLabel = computed(() => {
   if (status === 'paid')
     return 'Mark paid'
   if (status === 'void')
-    return 'Cancel'
+    return 'Cancel bill'
 
   return 'Confirm'
 })
 
+const statusConfirmCancelLabel = computed(() =>
+  pendingStatus.value?.status === 'void' ? 'Keep bill' : 'Cancel',
+)
+
 const statusConfirmColor = computed(() => pendingStatus.value?.status === 'void' ? 'error' : 'primary')
+
+const statusConfirmMaxWidth = computed(() =>
+  pendingStatus.value?.status === 'issued' ? 520 : 420,
+)
 
 function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
+function onInvoiceRowKeydown(event: KeyboardEvent, invoiceId: string) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    toggleExpand(invoiceId)
+  }
+}
+
+const hasActiveFilters = computed(
+  () => Boolean(searchQuery.value.trim()) || statusFilter.value !== 'all',
+)
+
 function clearFilters() {
   searchQuery.value = ''
   statusFilter.value = 'all'
+}
+
+watch(filteredInvoices, list => {
+  totalCount.value = list.length
+  if (page.value > totalPages.value)
+    page.value = totalPages.value
+}, { immediate: true })
+
+watch([searchQuery, statusFilter], () => {
+  resetPage()
+  expandedId.value = null
+})
+
+watch(page, () => {
+  expandedId.value = null
+})
+
+function showAllMonths() {
+  if (yearMonth.value)
+    yearMonth.value = ''
 }
 
 onMounted(async () => {
@@ -947,6 +1063,7 @@ onMounted(async () => {
 watch(yearMonth, () => {
   generateSuccess.value = ''
   expandedId.value = null
+  resetPage()
   loadInvoices()
 })
 </script>
@@ -958,11 +1075,11 @@ watch(yearMonth, () => {
       align="center"
     >
       <VCol>
-        <div class="text-h5 font-weight-medium">
+        <div class="text-h5 font-weight-medium invoice-page-title">
           Tuition invoices
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          {{ monthLabel }}
+          {{ scopeLabel }}
           <span v-if="invoices.length">
             · {{ invoices.length }} bill{{ invoices.length === 1 ? '' : 's' }}
             · {{ formatMoney(collectibleTotal) }} to collect
@@ -978,9 +1095,13 @@ watch(yearMonth, () => {
           icon
           variant="tonal"
           size="small"
+          aria-label="Previous month"
+          :disabled="allMonths"
           @click="changeMonth(-1)"
         >
-          <VIcon>ri-arrow-left-s-line</VIcon>
+          <VIcon aria-hidden="true">
+            ri-arrow-left-s-line
+          </VIcon>
         </VBtn>
         <VTextField
           v-model="yearMonth"
@@ -988,48 +1109,125 @@ watch(yearMonth, () => {
           type="month"
           density="compact"
           hide-details
+          autocomplete="off"
           style="max-width: 180px;"
         />
         <VBtn
           icon
           variant="tonal"
           size="small"
+          aria-label="Next month"
+          :disabled="allMonths"
           @click="changeMonth(1)"
         >
-          <VIcon>ri-arrow-right-s-line</VIcon>
+          <VIcon aria-hidden="true">
+            ri-arrow-right-s-line
+          </VIcon>
+        </VBtn>
+        <VBtn
+          :variant="allMonths ? 'flat' : 'tonal'"
+          :color="allMonths ? 'primary' : undefined"
+          :prepend-icon="allMonths ? 'ri-check-line' : 'ri-calendar-line'"
+          @click="showAllMonths"
+        >
+          All months
         </VBtn>
       </VCol>
     </VRow>
 
-    <div class="d-flex flex-wrap align-center justify-space-between gap-3 mb-4">
-      <div class="d-flex flex-wrap align-center gap-2">
-        <VBtn
-          color="primary"
-          prepend-icon="ri-magic-line"
-          :loading="generating"
-          :disabled="!parsedYearMonth"
-          @click="askGenerate"
-        >
-          Generate
-        </VBtn>
-        <VBtn
-          variant="tonal"
-          prepend-icon="ri-printer-line"
-          @click="openManualInvoice"
-        >
-          Manual invoice
-        </VBtn>
-      </div>
-      <VSelect
-        v-model="locationId"
-        :items="locationOptions"
-        label="Location"
-        density="compact"
-        hide-details
-        clearable
-        style="max-width: 200px; min-width: 160px;"
-      />
-    </div>
+    <VCard class="mb-4">
+      <VCardText class="pa-4">
+        <div class="invoice-actions">
+          <VBtn
+            color="primary"
+            prepend-icon="ri-magic-line"
+            :loading="generating"
+            :disabled="allMonths"
+            :title="allMonths ? 'Pick a month to generate bills' : undefined"
+            @click="askGenerate"
+          >
+            Generate
+          </VBtn>
+          <VBtn
+            variant="tonal"
+            prepend-icon="ri-file-add-line"
+            @click="openManualInvoice"
+          >
+            Manual invoice
+          </VBtn>
+          <VSpacer />
+          <VBtn
+            variant="tonal"
+            color="primary"
+            prepend-icon="ri-refresh-line"
+            :loading="loading"
+            @click="loadInvoices"
+          >
+            Refresh
+          </VBtn>
+        </div>
+
+        <div class="invoice-filters">
+          <VSelect
+            v-model="locationFilter"
+            :items="locationSelectItems"
+            item-title="title"
+            item-value="value"
+            label="Location"
+            prepend-inner-icon="ri-building-line"
+            density="compact"
+            hide-details
+            autocomplete="off"
+            class="invoice-filter-location"
+          />
+          <VTextField
+            v-model="searchQuery"
+            label="Search"
+            placeholder="Student, staff, invoice no., class…"
+            prepend-inner-icon="ri-search-line"
+            density="compact"
+            hide-details
+            clearable
+            autocomplete="off"
+            spellcheck="false"
+            class="invoice-filter-search"
+          />
+        </div>
+
+        <div class="invoice-status-row">
+          <div class="filter-chip-block">
+            <span class="text-caption text-medium-emphasis">Status</span>
+            <VChipGroup
+              v-model="statusFilter"
+              mandatory
+              selected-class="text-primary"
+            >
+              <VChip
+                v-for="chip in statusFilters"
+                :key="chip.value"
+                :value="chip.value"
+                size="small"
+                variant="outlined"
+                filter
+                class="text-no-wrap"
+                :color="chip.value === 'all' ? undefined : statusColor[chip.value]"
+              >
+                {{ chip.title }} ({{ statusCounts[chip.value] ?? 0 }})
+              </VChip>
+            </VChipGroup>
+          </div>
+          <VBtn
+            v-if="hasActiveFilters"
+            size="small"
+            variant="text"
+            prepend-icon="ri-filter-off-line"
+            @click="clearFilters"
+          >
+            Reset
+          </VBtn>
+        </div>
+      </VCardText>
+    </VCard>
 
     <VAlert
       v-if="loadError"
@@ -1037,6 +1235,7 @@ watch(yearMonth, () => {
       variant="tonal"
       class="mb-4"
       closable
+      role="alert"
       @click:close="loadError = ''"
     >
       {{ loadError }}
@@ -1047,6 +1246,7 @@ watch(yearMonth, () => {
       variant="tonal"
       class="mb-4"
       closable
+      role="alert"
       @click:close="generateError = ''"
     >
       {{ generateError }}
@@ -1057,6 +1257,8 @@ watch(yearMonth, () => {
       variant="tonal"
       class="mb-4"
       closable
+      role="status"
+      aria-live="polite"
       @click:close="generateSuccess = ''"
     >
       {{ generateSuccess }}
@@ -1067,77 +1269,54 @@ watch(yearMonth, () => {
       :cards="statCards"
     />
 
-    <div class="d-flex flex-wrap align-center justify-space-between gap-3 mb-4">
-      <VChipGroup
-        v-model="statusFilter"
-        mandatory
-        selected-class="text-primary"
-      >
-        <VChip
-          v-for="chip in statusFilters"
-          :key="chip.value"
-          :value="chip.value"
-          size="small"
-          variant="outlined"
-          filter
-          class="text-no-wrap"
-        >
-          {{ chip.title }} ({{ statusCounts[chip.value] ?? 0 }})
-        </VChip>
-      </VChipGroup>
-      <div class="d-flex flex-wrap align-center gap-2">
-        <VTextField
-          v-model="searchQuery"
-          label="Search"
-          placeholder="Student, code, invoice no., class, or remark"
-          prepend-inner-icon="ri-search-line"
-          density="compact"
-          hide-details
-          clearable
-          style="min-width: 260px;"
-        />
-        <VBtn
-          icon
-          variant="tonal"
-          size="small"
-          :loading="loading"
-          title="Refresh"
-          @click="loadInvoices"
-        >
-          <VIcon>ri-refresh-line</VIcon>
-        </VBtn>
-      </div>
-    </div>
-
     <VCard>
       <VCardItem>
-        <VCardTitle>Bills</VCardTitle>
-        <VCardSubtitle>
-          One bill per student for this calendar month. Click a row for line items.
-          <span v-if="filteredInvoices.length !== invoices.length">
-            · Showing {{ filteredInvoices.length }} of {{ invoices.length }}
+        <VCardTitle class="d-flex align-center flex-wrap gap-2">
+          <span>Bills</span>
+          <span
+            v-if="billsCaption"
+            class="text-caption text-medium-emphasis font-weight-regular"
+          >
+            {{ billsCaption }}
+            <template v-if="filteredInvoices.length !== invoices.length">
+              matching · {{ invoices.length }} total
+            </template>
           </span>
+        </VCardTitle>
+        <template #append>
+          <VBtn
+            variant="text"
+            size="small"
+            :prepend-icon="showBillingHelp ? 'ri-question-fill' : 'ri-question-line'"
+            @click="showBillingHelp = !showBillingHelp"
+          >
+            How billing works
+          </VBtn>
+        </template>
+        <VCardSubtitle>
+          {{ allMonths ? 'All bills. Open a row for line items.' : 'One bill per student for this calendar month. Open a row for line items.' }}
         </VCardSubtitle>
       </VCardItem>
       <VCardText>
-        <VExpansionPanels
-          variant="accordion"
+        <VAlert
+          v-if="showBillingHelp"
+          variant="tonal"
+          color="info"
+          density="compact"
           class="mb-4"
+          closable
+          @click:close="showBillingHelp = false"
         >
-          <VExpansionPanel title="How billing works this month">
-            <VExpansionPanelText>
-              <ul class="text-body-2 ps-4 mb-0">
-                <li>One draft bill per student whose classes overlap this month.</li>
-                <li>Monthly classes: billed once for the month, even if they miss days.</li>
-                <li>Per-class packages: billed once for the package they bought — not from attendance.</li>
-                <li>Private / variable-price classes: leave the class price empty. Record how many sessions were bought, then set the price on a <strong>Manual invoice</strong>.</li>
-                <li>Packages with no price yet are skipped by Generate — bill them with a manual invoice.</li>
-                <li>Inactive classes and monthly classes with no price are skipped. Issued and paid bills are not changed.</li>
-                <li>The Location filter shows bills for that campus.</li>
-              </ul>
-            </VExpansionPanelText>
-          </VExpansionPanel>
-        </VExpansionPanels>
+          <ul class="text-body-2 ps-4 mb-0">
+            <li>One draft bill per student whose classes overlap this month.</li>
+            <li>Monthly classes: billed once for the month, even if they miss days.</li>
+            <li>Per-class packages: billed once for the package they bought — not from attendance.</li>
+            <li>Private / variable-price classes: leave the class price empty. Record how many sessions were bought, then set the price on a <strong>Manual invoice</strong>.</li>
+            <li>Packages with no price yet are skipped by Generate — bill them with a manual invoice.</li>
+            <li>Inactive classes and monthly classes with no price are skipped. Issued and paid bills are not changed.</li>
+            <li>The Location filter shows bills for that campus. All months and All locations show every bill.</li>
+          </ul>
+        </VAlert>
 
         <div
           v-if="loading"
@@ -1147,6 +1326,9 @@ watch(yearMonth, () => {
             indeterminate
             color="primary"
           />
+          <div class="text-caption text-medium-emphasis mt-3">
+            Loading bills…
+          </div>
         </div>
 
         <div
@@ -1158,237 +1340,298 @@ watch(yearMonth, () => {
             density="compact"
             hover
           >
-          <thead>
-            <tr>
-              <th class="col-student">
-                Student
-              </th>
-              <th class="col-no">
-                Invoice no.
-              </th>
-              <th class="col-classes">
-                Classes
-              </th>
-              <th class="col-period">
-                Period
-              </th>
-              <th class="col-status">
-                Status
-              </th>
-              <th class="col-total text-end">
-                Total
-              </th>
-              <th class="col-remark">
-                Remark
-              </th>
-              <th class="col-actions" />
-            </tr>
-          </thead>
-          <tbody>
-            <template
-              v-for="invoice in filteredInvoices"
-              :key="invoice.id"
-            >
-              <tr
-                style="cursor: pointer;"
-                @click="toggleExpand(invoice.id)"
+            <thead>
+              <tr>
+                <th class="col-student">
+                  Student
+                </th>
+                <th class="col-no">
+                  No.
+                </th>
+                <th class="col-staff">
+                  Opened by
+                </th>
+                <th class="col-classes">
+                  Classes
+                </th>
+                <th class="col-status">
+                  Status
+                </th>
+                <th class="col-total text-end">
+                  Total
+                </th>
+                <th class="col-actions">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <template
+                v-for="invoice in pagedInvoices"
+                :key="invoice.id"
               >
-                <td class="col-student">
-                  {{ invoice.unit_name ?? invoice.manual_student_name ?? '—' }}
-                  <div class="text-caption text-medium-emphasis">
-                    {{ invoice.unit_code }}
-                    <VChip
-                      v-if="invoice.kind === 'manual'"
-                      size="x-small"
-                      color="info"
-                      class="ms-1"
-                    >
-                      Manual
-                    </VChip>
-                  </div>
-                </td>
-                <td class="col-no text-caption">
-                  {{ invoice.invoice_no ?? '—' }}
-                </td>
-                <td class="col-classes">
-                  <div
-                    class="class-preview"
-                    :title="classNames(invoice).join(' · ') || undefined"
-                  >
-                    {{ classPreview(invoice) }}
-                  </div>
-                  <div class="text-caption text-medium-emphasis">
-                    {{ invoice.lines.length }} line{{ invoice.lines.length === 1 ? '' : 's' }}
-                    <VIcon
-                      size="14"
-                      class="ms-1"
-                    >
-                      {{ expandedId === invoice.id ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line' }}
-                    </VIcon>
-                  </div>
-                </td>
-                <td class="col-period text-caption text-medium-emphasis">
-                  {{ periodLabel(invoice) }}
-                </td>
-                <td class="col-status">
-                  <VChip
-                    size="x-small"
-                    :color="statusColor[invoice.status] ?? 'grey'"
-                  >
-                    {{ statusLabel[invoice.status] ?? invoice.status }}
-                  </VChip>
-                </td>
-                <td class="col-total text-end font-weight-medium">
-                  {{ formatMoney(Number(invoice.total)) }}
-                </td>
-                <td class="col-remark text-caption text-medium-emphasis">
-                  <span
-                    v-if="invoice.notes"
-                    class="remark-preview"
-                    :title="invoice.notes"
-                  >{{ invoice.notes }}</span>
-                  <span
-                    v-else
-                    class="text-disabled"
-                  >—</span>
-                </td>
-                <td
-                  class="col-actions text-end"
-                  @click.stop
+                <tr
+                  class="invoice-row"
+                  :class="[
+                    `invoice-row--${invoice.status}`,
+                    { 'invoice-row--expanded': expandedId === invoice.id },
+                  ]"
+                  tabindex="0"
+                  :aria-expanded="expandedId === invoice.id"
+                  :aria-label="`${studentLabel(invoice)}, ${statusLabel[invoice.status] ?? invoice.status}`"
+                  @click="toggleExpand(invoice.id)"
+                  @keydown="onInvoiceRowKeydown($event, invoice.id)"
                 >
-                  <VBtn
-                    v-if="invoice.status !== 'void'"
-                    icon="ri-printer-line"
-                    size="x-small"
-                    variant="text"
-                    title="Print / reprint"
-                    @click="printInvoice(invoice)"
-                  />
-                  <VBtn
-                    v-if="invoice.status === 'draft'"
-                    size="x-small"
-                    variant="text"
-                    color="primary"
-                    prepend-icon="ri-file-check-line"
-                    title="Give a number and print"
-                    :loading="statusUpdatingId === invoice.id"
-                    @click="askStatus(invoice, 'issued')"
-                  >
-                    Issue bill
-                  </VBtn>
-                  <VBtn
-                    v-if="invoice.status === 'issued'"
-                    size="x-small"
-                    variant="text"
-                    color="success"
-                    prepend-icon="ri-money-dollar-circle-line"
-                    title="Payment received"
-                    :loading="statusUpdatingId === invoice.id"
-                    @click="askStatus(invoice, 'paid')"
-                  >
-                    Mark paid
-                  </VBtn>
-                  <VBtn
-                    v-if="invoice.status === 'draft' || invoice.status === 'issued'"
-                    size="x-small"
-                    variant="text"
-                    color="error"
-                    prepend-icon="ri-close-circle-line"
-                    title="Cancel this bill"
-                    :loading="statusUpdatingId === invoice.id"
-                    @click="askStatus(invoice, 'void')"
-                  >
-                    Cancel
-                  </VBtn>
-                </td>
-              </tr>
-              <tr v-if="expandedId === invoice.id">
-                <td colspan="8">
-                  <div class="text-caption text-medium-emphasis mb-2">
-                    {{ invoice.kind === 'manual'
-                      ? 'Manual invoice — lines were typed when it was issued.'
-                      : 'Prices were copied when this bill was made. Changing the class later does not change issued or paid bills.' }}
-                  </div>
-                  <div class="text-caption mb-2 d-flex flex-wrap gap-3">
-                    <span v-if="invoice.staff_name">Issued by: {{ invoice.staff_name }}</span>
-                    <span v-if="invoice.notes">Remark: {{ invoice.notes }}</span>
-                  </div>
-                  <VTable density="compact">
-                    <thead>
-                      <tr>
-                        <th>Class</th>
-                        <th>How billed</th>
-                        <th>Calculation</th>
-                        <th class="text-end">
-                          Amount
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr
-                        v-for="line in invoice.lines"
-                        :key="line.id"
-                      >
-                        <td>
-                          {{ line.name_zh }}
-                          <div class="text-caption text-medium-emphasis">
-                            {{ line.sku_code }}
-                            <span v-if="line.staff_name"> · {{ line.staff_name }}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <VChip
-                            size="x-small"
-                            variant="tonal"
-                          >
-                            {{ billingLabel(line.billing_unit) }}
-                          </VChip>
-                        </td>
-                        <td class="text-medium-emphasis">
-                          {{ lineFormula(line) }}
-                        </td>
-                        <td class="text-end font-weight-medium text-no-wrap">
-                          {{ formatMoney(Number(line.amount)) }}
-                        </td>
-                      </tr>
-                      <tr v-if="invoice.lines.length === 0">
-                        <td
-                          colspan="4"
-                          class="text-medium-emphasis"
-                        >
-                          No chargeable classes this month.
-                        </td>
-                      </tr>
-                    </tbody>
-                  </VTable>
-                </td>
-              </tr>
-            </template>
-            <tr v-if="!loading && filteredInvoices.length === 0">
-              <td
-                colspan="8"
-                class="text-center text-medium-emphasis py-8"
-              >
-                <template v-if="invoices.length === 0">
-                  No bills this month. Enroll students with billed dates (and packages bought for per-class courses), then Generate.
-                </template>
-                <template v-else>
-                  No bills match this search or status.
-                  <div class="mt-2">
-                    <VBtn
-                      size="small"
-                      variant="text"
-                      @click="clearFilters"
+                  <td class="col-student">
+                    <div
+                      class="student-name"
+                      :title="studentLabel(invoice)"
                     >
-                      Clear filters
-                    </VBtn>
+                      {{ studentLabel(invoice) }}
+                    </div>
+                    <div class="text-caption text-medium-emphasis d-flex align-center flex-wrap gap-1">
+                      <span v-if="invoice.unit_code">{{ invoice.unit_code }}</span>
+                      <VChip
+                        v-if="invoice.kind === 'manual'"
+                        size="x-small"
+                        color="info"
+                        label
+                      >
+                        Manual
+                      </VChip>
+                      <span
+                        v-if="allLocations && locationName(invoice.location_id)"
+                        class="text-no-wrap"
+                      >{{ locationName(invoice.location_id) }}</span>
+                    </div>
+                  </td>
+                  <td class="col-no invoice-no">
+                    {{ invoice.invoice_no ?? '—' }}
+                  </td>
+                  <td class="col-staff">
+                    <div
+                      v-if="openedBy(invoice)"
+                      class="staff-name"
+                      :title="openedBy(invoice)"
+                    >
+                      {{ openedBy(invoice) }}
+                    </div>
+                    <span
+                      v-else
+                      class="text-disabled"
+                    >—</span>
+                  </td>
+                  <td class="col-classes">
+                    <div
+                      class="class-preview"
+                      :title="classNames(invoice).join(' · ') || undefined"
+                    >
+                      {{ classPreview(invoice) }}
+                    </div>
+                    <div class="text-caption text-medium-emphasis text-truncate">
+                      {{ periodLabel(invoice) }}
+                      · {{ invoice.lines.length }} line{{ invoice.lines.length === 1 ? '' : 's' }}
+                      <VIcon
+                        size="14"
+                        class="ms-1"
+                        aria-hidden="true"
+                      >
+                        {{ expandedId === invoice.id ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line' }}
+                      </VIcon>
+                    </div>
+                  </td>
+                  <td class="col-status">
+                    <VChip
+                      size="x-small"
+                      label
+                      :color="statusColor[invoice.status] ?? 'grey'"
+                    >
+                      {{ statusLabel[invoice.status] ?? invoice.status }}
+                    </VChip>
+                  </td>
+                  <td class="col-total text-end font-weight-medium tabular-nums">
+                    {{ formatMoney(Number(invoice.total)) }}
+                  </td>
+                  <td
+                    class="col-actions text-end"
+                    @click.stop
+                  >
+                    <VBtn
+                      v-if="invoice.status !== 'void'"
+                      icon="ri-printer-line"
+                      size="x-small"
+                      variant="text"
+                      aria-label="Print invoice"
+                      title="Print / reprint"
+                      @click="printInvoice(invoice)"
+                    />
+                    <VBtn
+                      v-if="invoice.status === 'draft'"
+                      icon="ri-file-check-line"
+                      size="x-small"
+                      variant="text"
+                      color="primary"
+                      aria-label="Issue bill"
+                      title="Issue bill"
+                      :loading="statusUpdatingId === invoice.id"
+                      @click="askStatus(invoice, 'issued')"
+                    />
+                    <VBtn
+                      v-if="invoice.status === 'issued'"
+                      icon="ri-money-dollar-circle-line"
+                      size="x-small"
+                      variant="text"
+                      color="success"
+                      aria-label="Mark paid"
+                      title="Mark paid"
+                      :loading="statusUpdatingId === invoice.id"
+                      @click="askStatus(invoice, 'paid')"
+                    />
+                    <VBtn
+                      v-if="invoice.status === 'draft' || invoice.status === 'issued'"
+                      icon="ri-close-circle-line"
+                      size="x-small"
+                      variant="text"
+                      color="error"
+                      aria-label="Cancel this bill"
+                      title="Cancel this bill"
+                      :loading="statusUpdatingId === invoice.id"
+                      @click="askStatus(invoice, 'void')"
+                    />
+                  </td>
+                </tr>
+                <tr
+                  v-if="expandedId === invoice.id"
+                  class="invoice-detail-row"
+                >
+                  <td colspan="7">
+                    <div class="invoice-slip">
+                      <div class="invoice-slip__meta">
+                        <span>
+                          {{ invoice.kind === 'manual'
+                            ? 'Manual invoice — lines were typed when it was issued.'
+                            : 'Prices were copied when this bill was made. Changing the class later does not change issued or paid bills.' }}
+                        </span>
+                        <span>Period: {{ periodLabel(invoice) }}</span>
+                        <span v-if="openedBy(invoice)">
+                          Opened by <strong>{{ openedBy(invoice) }}</strong>
+                        </span>
+                        <span v-if="invoice.notes">
+                          Remark: {{ invoice.notes }}
+                        </span>
+                      </div>
+                      <VTable
+                        density="compact"
+                        class="invoice-lines"
+                      >
+                        <thead>
+                          <tr>
+                            <th>Class</th>
+                            <th>Teacher</th>
+                            <th>How billed</th>
+                            <th>Calculation</th>
+                            <th class="text-end">
+                              Amount
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="line in invoice.lines"
+                            :key="line.id"
+                          >
+                            <td>
+                              {{ line.name_zh }}
+                              <div class="text-caption text-medium-emphasis">
+                                {{ line.sku_code }}
+                              </div>
+                            </td>
+                            <td class="text-body-2">
+                              {{ line.staff_name || '—' }}
+                            </td>
+                            <td>
+                              <VChip
+                                size="x-small"
+                                variant="tonal"
+                                label
+                              >
+                                {{ billingLabel(line.billing_unit) }}
+                              </VChip>
+                            </td>
+                            <td class="text-medium-emphasis tabular-nums">
+                              {{ lineFormula(line) }}
+                            </td>
+                            <td class="text-end font-weight-medium text-no-wrap tabular-nums">
+                              {{ formatMoney(Number(line.amount)) }}
+                            </td>
+                          </tr>
+                          <tr v-if="invoice.lines.length === 0">
+                            <td
+                              colspan="5"
+                              class="text-medium-emphasis"
+                            >
+                              No chargeable classes this month.
+                            </td>
+                          </tr>
+                        </tbody>
+                      </VTable>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+              <tr v-if="!loading && filteredInvoices.length === 0">
+                <td
+                  colspan="7"
+                  class="text-center py-10"
+                >
+                  <div class="invoice-empty">
+                    <VIcon
+                      size="36"
+                      class="mb-2 text-medium-emphasis"
+                      aria-hidden="true"
+                    >
+                      ri-file-list-3-line
+                    </VIcon>
+                    <template v-if="invoices.length === 0">
+                      <div class="text-body-1 font-weight-medium">
+                        {{ allMonths ? 'No bills yet' : 'No bills this month' }}
+                      </div>
+                      <div class="text-medium-emphasis mt-1">
+                        <template v-if="allMonths">
+                          Pick a month and generate, or create a manual invoice.
+                        </template>
+                        <template v-else>
+                          Enroll students with billed dates (and packages bought for per-class courses), then Generate.
+                        </template>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div class="text-body-1 font-weight-medium">
+                        No bills match this search or status
+                      </div>
+                      <VBtn
+                        class="mt-3"
+                        size="small"
+                        variant="tonal"
+                        prepend-icon="ri-filter-off-line"
+                        @click="clearFilters"
+                      >
+                        Clear filters
+                      </VBtn>
+                    </template>
                   </div>
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </VTable>
+                </td>
+              </tr>
+            </tbody>
+          </VTable>
         </div>
+        <AttendancePaginationBar
+          v-if="!loading && filteredInvoices.length > 0"
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :total-pages="totalPages"
+          :page-size-options="pageSizeOptions"
+        />
       </VCardText>
     </VCard>
 
@@ -1396,7 +1639,9 @@ watch(yearMonth, () => {
       :model-value="pendingStatus != null"
       :title="statusConfirmTitle"
       :confirm-label="statusConfirmLabel"
+      :cancel-label="statusConfirmCancelLabel"
       :confirm-color="statusConfirmColor"
+      :max-width="statusConfirmMaxWidth"
       :loading="statusUpdatingId === pendingStatus?.invoice.id"
       :error="generateError"
       @update:model-value="value => { if (!value) pendingStatus = null }"
@@ -1405,63 +1650,75 @@ watch(yearMonth, () => {
       @clear-error="generateError = ''"
     >
       <template v-if="pendingStatus?.status === 'issued'">
-        <div class="mb-3">
-          Issuing locks {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.unit_code }}
-          at {{ formatMoney(Number(pendingStatus.invoice.total)) }}. Generate will not change this bill after that.
-        </div>
+        <p class="text-body-2 mb-4">
+          Issuing locks <strong>{{ studentLabel(pendingStatus.invoice) }}</strong>
+          at <strong>{{ formatMoney(Number(pendingStatus.invoice.total)) }}</strong>.
+          Generate will not change this bill after that.
+        </p>
         <VTextField
           v-model="issueNoInput"
           label="Invoice no."
           density="compact"
-          hint="Auto-generated — change only if you need a different number."
-          persistent-hint
-          :error-messages="issueNoError"
+          hide-details
+          autocomplete="off"
+          spellcheck="false"
           autofocus
           @update:model-value="issueNoEdited = true; issueNoError = ''"
         />
+        <div class="text-caption text-medium-emphasis mt-1 mb-4">
+          Auto-generated — change only if you need a different number.
+        </div>
+        <VAlert
+          v-if="issueNoError"
+          type="error"
+          variant="text"
+          density="compact"
+          class="mb-3"
+        >
+          {{ issueNoError }}
+        </VAlert>
         <VCombobox
           v-model="issueStaff"
           :items="manualStaffOptions"
-          label="Staff"
+          label="Opened by"
           density="compact"
-          class="mt-2"
-          hint="Who opened this bill — for commission. Not printed."
-          persistent-hint
+          hide-details
+          autocomplete="off"
           clearable
         />
+        <div class="text-caption text-medium-emphasis mt-1 mb-4">
+          Who opened this bill — for commission. Not printed.
+        </div>
         <VTextField
           v-model="issueRemark"
           label="Remark"
           density="compact"
-          class="mt-2"
+          hide-details
           placeholder="Optional — printed on the invoice"
+          autocomplete="off"
           clearable
         />
-        <div class="text-caption text-medium-emphasis">
+        <div class="text-caption text-medium-emphasis mt-1">
           The printed invoice opens in a new window after issuing.
         </div>
       </template>
       <template v-else-if="pendingStatus?.status === 'paid'">
-        Mark {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.unit_code }}
-        ({{ formatMoney(Number(pendingStatus.invoice.total)) }}) as paid?
+        <p class="text-body-2 mb-0">
+          Mark <strong>{{ studentLabel(pendingStatus.invoice) }}</strong>
+          ({{ formatMoney(Number(pendingStatus.invoice.total)) }}) as paid?
+        </p>
       </template>
       <template v-else-if="pendingStatus?.status === 'void'">
-        {{ pendingStatus.invoice.unit_name ?? pendingStatus.invoice.manual_student_name ?? pendingStatus.invoice.unit_code }}
-        will be cancelled. The invoice number is not used again.
-        <template v-if="pendingStatus.invoice.kind === 'manual'">
-          Any class package on it can be billed again.
-        </template>
-        <template v-else>
-          Generate will make a new draft if the student is still in class this month, with a new number.
-        </template>
-        <VTextField
-          v-model="issueRemark"
-          label="Remark"
-          density="compact"
-          class="mt-3"
-          placeholder="Optional — e.g. why it was cancelled"
-          clearable
-        />
+        <p class="text-body-2 mb-0">
+          <strong>{{ studentLabel(pendingStatus.invoice) }}</strong>
+          will be cancelled. The invoice number is not used again.
+          <template v-if="pendingStatus.invoice.kind === 'manual'">
+            Any class package on it can be billed again.
+          </template>
+          <template v-else>
+            Generate will make a new draft if the student is still in class this month, with a new number.
+          </template>
+        </p>
       </template>
     </AttendanceConfirmDialog>
 
@@ -1554,7 +1811,7 @@ watch(yearMonth, () => {
                 item-title="full_name"
                 return-object
                 label="Student name"
-                placeholder="Search student name or code — or type any name"
+                placeholder="Search student name or code — or type any name…"
                 prepend-inner-icon="ri-search-line"
                 density="compact"
                 hide-details
@@ -1576,8 +1833,8 @@ watch(yearMonth, () => {
               <VCombobox
                 v-model="manualForm.staff"
                 :items="manualStaffOptions"
-                label="Staff"
-                placeholder="Who opened this bill — for commission"
+                label="Opened by"
+                placeholder="Who opened this bill — for commission…"
                 prepend-inner-icon="ri-user-star-line"
                 density="compact"
                 hint="Applies to every line; not printed on the invoice."
@@ -1651,7 +1908,7 @@ watch(yearMonth, () => {
                     v-model="row.month"
                     density="compact"
                     hide-details
-                    placeholder="Sept-26"
+                    placeholder="Sept-26…"
                   />
                 </td>
                 <td>
@@ -1660,7 +1917,7 @@ watch(yearMonth, () => {
                       v-model="row.course"
                       density="compact"
                       hide-details
-                      placeholder="Homework class"
+                      placeholder="Homework class…"
                     />
                     <VChip
                       v-if="row.purchaseId"
@@ -1701,6 +1958,7 @@ watch(yearMonth, () => {
                     icon="ri-close-line"
                     size="x-small"
                     variant="text"
+                    aria-label="Remove line"
                     :disabled="manualForm.rows.length <= 1"
                     @click="removeManualRow(idx)"
                   />
@@ -1778,7 +2036,52 @@ watch(yearMonth, () => {
   </VContainer>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+.invoice-page-title {
+  text-wrap: balance;
+}
+
+.invoice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.invoice-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.invoice-filter-location {
+  width: 220px;
+  max-width: 100%;
+}
+
+.invoice-filter-search {
+  width: 240px;
+  max-width: 100%;
+}
+
+.invoice-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.filter-chip-block {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  min-width: 0;
+}
+
 .no-number-spin :deep(input[type='number']) {
   appearance: textfield;
   -moz-appearance: textfield;
@@ -1791,12 +2094,12 @@ watch(yearMonth, () => {
 }
 
 .invoices-table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
 }
 
 .invoices-table {
-  min-width: 960px;
+  width: 100%;
+  table-layout: fixed;
 }
 
 .invoices-table :deep(thead th),
@@ -1809,43 +2112,139 @@ watch(yearMonth, () => {
 }
 
 .invoices-table :deep(.col-student) {
-  min-width: 8.5rem;
+  width: 18%;
+  padding-left: 12px;
 }
 
-.invoices-table :deep(.col-no),
-.invoices-table :deep(.col-period),
-.invoices-table :deep(.col-status),
-.invoices-table :deep(.col-total) {
-  white-space: nowrap;
-  width: 1%;
+.invoices-table :deep(.col-no) {
+  width: 7%;
+}
+
+.invoices-table :deep(.col-staff) {
+  width: 12%;
 }
 
 .invoices-table :deep(.col-classes) {
-  min-width: 12rem;
-  max-width: 18rem;
+  width: 28%;
 }
 
+.invoices-table :deep(.col-status) {
+  width: 9%;
+}
+
+.invoices-table :deep(.col-total) {
+  width: 12%;
+}
+
+.invoices-table :deep(.col-actions) {
+  width: 14%;
+  white-space: nowrap;
+}
+
+.invoices-table :deep(.student-name),
 .invoices-table :deep(.class-preview),
-.invoices-table :deep(.remark-preview) {
+.invoices-table :deep(.staff-name) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.invoices-table :deep(.col-remark) {
-  max-width: 8rem;
+.invoices-table :deep(.student-name) {
+  font-weight: 500;
 }
 
-.invoices-table :deep(.col-actions) {
-  position: sticky;
-  right: 0;
-  background: rgb(var(--v-theme-surface));
+.invoices-table :deep(.col-no),
+.invoices-table :deep(.col-status),
+.invoices-table :deep(.col-total) {
   white-space: nowrap;
-  width: 1%;
-  z-index: 2;
 }
 
-.invoices-table :deep(thead th.col-actions) {
-  z-index: 3;
+.invoice-no,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.invoice-no {
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.invoice-row {
+  cursor: pointer;
+}
+
+.invoice-row td:first-child {
+  box-shadow: inset 3px 0 0 rgba(var(--v-theme-on-surface), 0.16);
+}
+
+.invoice-row--draft td:first-child {
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-warning));
+}
+
+.invoice-row--issued td:first-child {
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-info));
+}
+
+.invoice-row--paid td:first-child {
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-success));
+}
+
+.invoice-row--void {
+  opacity: 0.72;
+}
+
+.invoice-row--void td:first-child {
+  box-shadow: inset 3px 0 0 rgba(var(--v-theme-on-surface), 0.28);
+}
+
+.invoice-row--expanded {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.invoice-row:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+}
+
+.invoice-detail-row td {
+  background: rgba(var(--v-theme-on-surface), 0.03);
+  padding-block: 12px !important;
+}
+
+.invoice-slip {
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.16);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-on-surface), 0.02), transparent 48px),
+    rgb(var(--v-theme-surface));
+}
+
+.invoice-slip__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+  color: rgba(var(--v-theme-on-surface), 0.64);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.invoice-lines {
+  background: transparent;
+}
+
+.invoice-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .invoice-row {
+    transition: none;
+  }
 }
 </style>

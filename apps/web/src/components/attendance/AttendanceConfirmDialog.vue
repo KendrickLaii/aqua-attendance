@@ -4,6 +4,7 @@ withDefaults(
     modelValue: boolean
     title: string
     confirmLabel?: string
+    cancelLabel?: string
     confirmColor?: string
     loading?: boolean
     error?: string
@@ -11,6 +12,7 @@ withDefaults(
   }>(),
   {
     confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
     confirmColor: 'error',
     loading: false,
     error: '',
@@ -69,7 +71,7 @@ function onConfirm() {
           :disabled="loading"
           @click="close"
         >
-          Cancel
+          {{ cancelLabel }}
         </VBtn>
         <VBtn
           variant="flat"

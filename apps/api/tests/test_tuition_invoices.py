@@ -118,6 +118,43 @@ async def test_generate_monthly_invoice_from_enrollment(
 
 
 @pytest.mark.asyncio
+async def test_list_invoices_without_year_month_returns_all_months(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-06-01",
+        end_date="2026-07-31",
+    )
+    await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=7",
+        headers=_auth(admin_token),
+    )
+
+    june = await client.get("/api/tuition-invoices?year=2026&month=6", headers=_auth(admin_token))
+    july = await client.get("/api/tuition-invoices?year=2026&month=7", headers=_auth(admin_token))
+    all_listed = await client.get("/api/tuition-invoices", headers=_auth(admin_token))
+
+    assert june.status_code == 200, june.text
+    assert july.status_code == 200, july.text
+    assert all_listed.status_code == 200, all_listed.text
+    assert len(june.json()) == 1
+    assert len(july.json()) == 1
+    ids = {row["id"] for row in all_listed.json()}
+    assert june.json()[0]["id"] in ids
+    assert july.json()[0]["id"] in ids
+
+
+@pytest.mark.asyncio
 async def test_generate_skips_enrollment_outside_month(
     client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
