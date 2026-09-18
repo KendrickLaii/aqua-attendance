@@ -2,7 +2,7 @@
   "expo": {
     "name": "AQUA Attendance",
     "slug": "aqua-attendance",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
@@ -48,7 +48,7 @@
         "backgroundColor": "#160D47"
       },
       "package": "com.aqua.attendance",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.CAMERA"
       ]

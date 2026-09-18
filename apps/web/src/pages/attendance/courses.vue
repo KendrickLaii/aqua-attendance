@@ -1207,7 +1207,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
     </VRow>
 
     <template v-else>
-      <VRow>
+      <VRow class="catalog-row">
         <!-- Courses (SPU) -->
         <VCol
           cols="12"
@@ -1434,34 +1434,42 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   @click="selectClass(sku.id)"
                 >
                   <td>{{ sku.code }}</td>
-                  <td class="text-no-wrap">
-                    {{ sku.name_zh }}
-                    <VChip
-                      v-if="sku.id === rosterSkuId"
-                      size="x-small"
-                      color="primary"
-                      variant="tonal"
-                      class="ms-1"
-                    >
-                      roster
-                    </VChip>
-                    <VChip
-                      v-if="!sku.is_active"
-                      size="x-small"
-                      color="grey"
-                      class="ms-1"
-                    >
-                      inactive
-                    </VChip>
-                    <div class="text-caption text-medium-emphasis">
+                  <td>
+                    <div class="catalog-cell">
+                      <span class="catalog-cell__primary">
+                        {{ sku.name_zh }}
+                      </span>
+                      <VChip
+                        v-if="sku.id === rosterSkuId"
+                        size="x-small"
+                        color="primary"
+                        variant="tonal"
+                      >
+                        roster
+                      </VChip>
+                      <VChip
+                        v-if="!sku.is_active"
+                        size="x-small"
+                        color="grey"
+                      >
+                        inactive
+                      </VChip>
+                    </div>
+                    <div class="catalog-cell__secondary">
                       {{ [sku.level, meetingDaysLabel(sku.meeting_weekdays)].filter(v => v && v !== '—').join(' · ') || '—' }}
                     </div>
                   </td>
                   <td>
-                    {{ sku.schedule_note ?? '—' }}
+                    <div
+                      class="catalog-cell__primary"
+                      :title="sku.schedule_note || undefined"
+                    >
+                      {{ sku.schedule_note ?? '—' }}
+                    </div>
                     <div
                       v-if="sku.location_id || staffName(sku.staff_id)"
-                      class="text-caption text-medium-emphasis"
+                      class="catalog-cell__secondary"
+                      :title="[sku.location_id ? locationName(sku.location_id) : '', staffName(sku.staff_id)].filter(Boolean).join(' · ')"
                     >
                       {{ [sku.location_id ? locationName(sku.location_id) : '', staffName(sku.staff_id)].filter(Boolean).join(' · ') }}
                     </div>
@@ -1587,7 +1595,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                     </VListItem>
                   </template>
                   <template #selection="{ item }">
-                    {{ item.raw.code }} · {{ item.raw.name_zh }}
+                    <span class="roster-class-switcher__selection">{{ item.raw.code }} · {{ item.raw.name_zh }}</span>
                   </template>
                 </VAutocomplete>
                 <div
@@ -2599,21 +2607,54 @@ function purchaseTooltip(e: CourseEnrollment): string {
 </template>
 
 <style scoped>
+.catalog-row {
+  align-items: stretch;
+}
+
+.catalog-row > .v-col {
+  display: flex;
+}
+
 .catalog-card {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  width: 100%;
+  height: 20rem;
+  overflow: hidden;
+}
+
+.catalog-card :deep(.v-card-item) {
+  flex: 0 0 auto;
 }
 
 .catalog-scroll {
-  max-height: 24rem;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
 }
 
+.catalog-scroll :deep(.v-table) {
+  width: 100%;
+}
+
 .catalog-scroll :deep(table) {
+  width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+}
+
+.catalog-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.catalog-cell > .catalog-cell__primary {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .catalog-scroll :deep(thead th) {
@@ -2626,6 +2667,26 @@ function purchaseTooltip(e: CourseEnrollment): string {
 
 .catalog-scroll :deep(thead .col-actions) {
   z-index: 4;
+}
+
+.catalog-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.catalog-cell__primary,
+.catalog-cell__secondary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-cell__secondary {
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.75rem;
+  line-height: 1.2;
 }
 
 :deep(tr.bg-primary-lighten-5) td {
@@ -2715,13 +2776,25 @@ function purchaseTooltip(e: CourseEnrollment): string {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  flex: 0 1 280px;
-  min-width: min(100%, 240px);
+  flex: 1 1 28rem;
+  max-width: 36rem;
+  min-width: min(100%, 20rem);
 }
 
 .roster-class-switcher {
-  width: 280px;
-  max-width: 100%;
+  width: 100%;
+}
+
+.roster-class-switcher :deep(.v-field__input) {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.roster-class-switcher__selection {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .roster-toolbar {
@@ -2792,9 +2865,12 @@ th.sortable:hover {
     padding-inline: 16px;
   }
 
+  .roster-identity__aside,
   .roster-class-switcher,
   .roster-search {
     width: 100%;
+    max-width: none;
+    min-width: 0;
   }
 }
 </style>
