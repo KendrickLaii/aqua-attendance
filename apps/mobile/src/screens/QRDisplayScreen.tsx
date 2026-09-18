@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView } from 'react-native';
 import LanguagePicker from '../components/LanguagePicker';
 import Badge from '../components/ui/Badge';
+import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import { useI18n } from '../i18n/I18nContext';
 import { APP_DIAGNOSTICS } from '../services/api';
@@ -10,6 +11,7 @@ import { colors, layout, spacing, typography } from '../theme';
 
 interface Props {
   user: User;
+  onLogout: () => void;
 }
 
 function initials(user: User): string {
@@ -19,15 +21,22 @@ function initials(user: User): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function HelpScreen({ user }: Props) {
+export default function HelpScreen({ user, onLogout }: Props) {
   const { t } = useI18n();
   const roleTone = user.role === 'superadmin' ? 'warning' : 'info';
+
+  function confirmLogout() {
+    Alert.alert(t('common.logoutConfirmTitle'), t('common.logoutConfirmBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.logout'), style: 'destructive', onPress: onLogout },
+    ]);
+  }
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
       <Card style={styles.profileCard}>
         <View style={styles.profileRow}>
-          <View style={styles.avatar}>
+          <View style={styles.avatar} accessibilityLabel={user.full_name || user.username}>
             <Text style={styles.avatarText}>{initials(user)}</Text>
           </View>
           <View style={styles.profileMeta}>
@@ -77,6 +86,10 @@ export default function HelpScreen({ user }: Props) {
           {t('diagnostics.api', { api: APP_DIAGNOSTICS.apiHost })}
         </Text>
       </Card>
+
+      <View style={styles.logoutWrap}>
+        <Button label={t('common.logout')} onPress={confirmLogout} variant="danger" />
+      </View>
     </ScrollView>
   );
 }
@@ -119,4 +132,5 @@ const styles = StyleSheet.create({
   stepBody: { ...typography.body, flex: 1, paddingTop: 2 },
   langCard: { marginTop: spacing.md, marginBottom: spacing.xxl },
   diagnosticText: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.xs },
+  logoutWrap: { marginTop: spacing.xxl },
 });

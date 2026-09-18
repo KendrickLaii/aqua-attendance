@@ -1,18 +1,17 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HelpScreen from '../screens/QRDisplayScreen';
 import ScannerScreen from '../screens/ScannerScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import { useI18n } from '../i18n/I18nContext';
 import { canScanAttendance, type User } from '../services/auth';
-import { colors, hitSlop, spacing } from '../theme';
+import { colors, spacing } from '../theme';
 
 const Tab = createBottomTabNavigator();
-
-/** Label area height (safe inset added separately) */
-const TAB_BAR_CONTENT_HEIGHT = 58;
+const TAB_BAR_CONTENT_HEIGHT = 62;
 
 interface Props {
   user: User;
@@ -33,73 +32,55 @@ export default function AppNavigator({ user, onLogout }: Props) {
         headerTitleStyle: { fontWeight: '700', fontSize: 17 },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.tabInactive,
-        tabBarIcon: () => null,
-        tabBarIconStyle: styles.tabIconHidden,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarItemStyle: styles.tabItem,
         tabBarStyle: {
           height: TAB_BAR_CONTENT_HEIGHT + tabBarBottom,
-          paddingTop: 0,
+          paddingTop: spacing.xs,
           paddingBottom: tabBarBottom,
-          justifyContent: 'center',
         },
-        headerRight: () => (
-          <Pressable
-            onPress={onLogout}
-            hitSlop={hitSlop(12)}
-            style={styles.logoutBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t('common.logout')}
-          >
-            <Text style={styles.logoutText}>{t('common.logout')}</Text>
-          </Pressable>
-        ),
       }}
     >
-      <Tab.Screen name="Help" options={{ title: t('tabs.help') }}>
-        {() => <HelpScreen user={user} />}
+      <Tab.Screen
+        name="Help"
+        options={{
+          title: t('tabs.help'),
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="information-circle-outline" size={size} color={color} />
+          ),
+        }}
+      >
+        {() => <HelpScreen user={user} onLogout={onLogout} />}
       </Tab.Screen>
       {showScan ? (
         <Tab.Screen
           name="Scanner"
           component={ScannerScreen}
-          options={{ title: t('tabs.scan') }}
+          options={{
+            title: t('tabs.scan'),
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="qr-code-outline" size={size} color={color} />
+            ),
+          }}
         />
       ) : null}
       <Tab.Screen
         name="History"
         component={HistoryScreen}
-        options={{ title: t('tabs.history') }}
+        options={{
+          title: t('tabs.history'),
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="time-outline" size={size} color={color} />
+          ),
+        }}
       />
     </Tab.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  tabIconHidden: {
-    height: 0,
-    width: 0,
-    margin: 0,
-  },
-  tabItem: {
-    height: TAB_BAR_CONTENT_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   tabLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  logoutBtn: {
-    marginRight: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  logoutText: {
-    color: colors.headerText,
-    fontSize: 15,
-    fontWeight: '600',
   },
 });

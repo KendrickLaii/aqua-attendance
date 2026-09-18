@@ -15,7 +15,9 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow AQUA Attendance to use the camera for QR code scanning."
+          "cameraPermission": "Allow AQUA Attendance to use the camera for QR code scanning.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       "expo-asset",
@@ -48,8 +50,7 @@
       "package": "com.aqua.attendance",
       "versionCode": 3,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "scheme": "aqua-attendance",

@@ -92,6 +92,8 @@ function sortIconFor<K extends string>(state: TableSort<K>, key: K): string {
 
 const selectedSpuId = ref<string | null>(null)
 const selectedSpu = computed(() => spus.value.find(s => s.id === selectedSpuId.value) ?? null)
+const coursesScroll = ref<HTMLElement | null>(null)
+const offeringsScroll = ref<HTMLElement | null>(null)
 
 type SpuSortKey = 'code' | 'name' | 'subject'
 type SkuSortKey = 'code' | 'name' | 'billing' | 'price'
@@ -881,9 +883,33 @@ const enrollDisabledReason = computed(() => {
 async function selectClass(skuId: string) {
   rosterSkuId.value = skuId
   await nextTick()
+  scrollCatalogSelection()
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   rosterSection.value?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
 }
+
+function scrollRowInCatalog(container: HTMLElement | null) {
+  const row = container?.querySelector('tr.bg-primary-lighten-5') as HTMLElement | null
+  if (!container || !row)
+    return
+
+  const box = container.getBoundingClientRect()
+  const rowBox = row.getBoundingClientRect()
+  if (rowBox.top < box.top)
+    container.scrollTop -= box.top - rowBox.top
+  else if (rowBox.bottom > box.bottom)
+    container.scrollTop += rowBox.bottom - box.bottom
+}
+
+function scrollCatalogSelection() {
+  scrollRowInCatalog(coursesScroll.value)
+  scrollRowInCatalog(offeringsScroll.value)
+}
+
+watch([selectedSpuId, rosterSkuId], async () => {
+  await nextTick()
+  scrollCatalogSelection()
+})
 
 async function enrollStudent() {
   if (!selectedStudentId.value || !rosterSkuId.value || rosterSku.value?.is_active === false || rosterAtCapacity.value)
@@ -1187,10 +1213,21 @@ function purchaseTooltip(e: CourseEnrollment): string {
           cols="12"
           md="5"
         >
-          <VCard title="Courses">
+          <VCard class="catalog-card">
+            <VCardItem>
+              <VCardTitle>Courses</VCardTitle>
+              <VCardSubtitle v-if="sortedSpus.length">
+                {{ sortedSpus.length }} course{{ sortedSpus.length === 1 ? '' : 's' }}
+              </VCardSubtitle>
+            </VCardItem>
+            <div
+              ref="coursesScroll"
+              class="catalog-scroll"
+            >
             <VTable
               density="compact"
               hover
+              class="courses-table"
             >
               <thead>
                 <tr>
@@ -1291,6 +1328,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                 </tr>
               </tbody>
             </VTable>
+            </div>
           </VCard>
         </VCol>
 
@@ -1299,7 +1337,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
           cols="12"
           md="7"
         >
-          <VCard>
+          <VCard class="catalog-card">
             <VCardItem>
               <VCardTitle>
                 Class Offerings
@@ -1308,6 +1346,9 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   class="text-body-2 text-medium-emphasis"
                 >— {{ selectedSpu.name_zh }}</span>
               </VCardTitle>
+              <VCardSubtitle v-if="skusForSelectedSpu.length">
+                {{ skusForSelectedSpu.length }} class{{ skusForSelectedSpu.length === 1 ? '' : 'es' }}
+              </VCardSubtitle>
               <template #append>
                 <VBtn
                   size="small"
@@ -1320,6 +1361,10 @@ function purchaseTooltip(e: CourseEnrollment): string {
                 </VBtn>
               </template>
             </VCardItem>
+            <div
+              ref="offeringsScroll"
+              class="catalog-scroll"
+            >
             <VTable
               density="compact"
               hover
@@ -1469,6 +1514,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                 </tr>
               </tbody>
             </VTable>
+            </div>
           </VCard>
         </VCol>
       </VRow>
@@ -2553,6 +2599,35 @@ function purchaseTooltip(e: CourseEnrollment): string {
 </template>
 
 <style scoped>
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.catalog-scroll {
+  max-height: 24rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.catalog-scroll :deep(table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.catalog-scroll :deep(thead th) {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: inset 0 -1px 0 rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.catalog-scroll :deep(thead .col-actions) {
+  z-index: 4;
+}
+
 :deep(tr.bg-primary-lighten-5) td {
   background: rgba(var(--v-theme-primary), 0.08);
 }

@@ -1,3 +1,4 @@
+import { locationDisplayName as formatLocationName, type LocationNameLocale } from '../utils/locationName';
 import { apiRequest } from './api';
 
 export interface LocationItem {
@@ -9,8 +10,11 @@ export interface LocationItem {
   is_active: boolean;
 }
 
-export function locationDisplayName(loc: LocationItem): string {
-  return loc.name_en || loc.name_zh || loc.code || loc.id;
+export function locationDisplayName(
+  loc: LocationItem,
+  locale: LocationNameLocale = 'en',
+): string {
+  return formatLocationName(loc, locale);
 }
 
 export async function listLocations(params?: {

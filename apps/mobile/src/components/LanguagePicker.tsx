@@ -25,6 +25,7 @@ export default function LanguagePicker({ compact }: Props) {
               onPress={() => setLocale(opt.code as Locale)}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
+              accessibilityLabel={opt.code === 'en' ? 'English' : '繁體中文'}
             >
               <Text
                 style={[

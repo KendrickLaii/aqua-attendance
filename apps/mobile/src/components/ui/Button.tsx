@@ -4,6 +4,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  View,
   ViewStyle,
   TextStyle,
 } from 'react-native';
@@ -31,11 +32,15 @@ export default function Button({
   fullWidth = true,
 }: Props) {
   const isDisabled = disabled || loading;
+  const spinnerColor = variant === 'secondary' || variant === 'ghost' ? colors.primary : '#fff';
 
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy: Boolean(loading) }}
       style={({ pressed }) => [
         styles.base,
         fullWidth && styles.fullWidth,
@@ -46,7 +51,10 @@ export default function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'secondary' || variant === 'ghost' ? colors.primary : '#fff'} />
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color={spinnerColor} />
+          <Text style={[styles.label, labelStyles[variant]]}>{label}</Text>
+        </View>
       ) : (
         <Text style={[styles.label, labelStyles[variant]]}>{label}</Text>
       )}
@@ -67,6 +75,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.88 },
   disabled: { opacity: 0.5 },
   label: { ...typography.button },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });
 
 const variantStyles = StyleSheet.create({
@@ -77,7 +86,7 @@ const variantStyles = StyleSheet.create({
     borderColor: colors.border,
   },
   ghost: { backgroundColor: 'transparent' },
-  danger: { backgroundColor: colors.errorSoft, borderWidth: 1, borderColor: '#F5C2C0' },
+  danger: { backgroundColor: colors.errorSoft, borderWidth: 1, borderColor: colors.errorSoft },
 });
 
 const labelStyles: Record<Variant, TextStyle> = {

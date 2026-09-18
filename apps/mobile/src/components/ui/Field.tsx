@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme';
 
@@ -6,18 +6,25 @@ interface Props extends TextInputProps {
   label: string;
 }
 
-export default function Field({ label, style, ...rest }: Props) {
+const Field = forwardRef<TextInput, Props>(function Field(
+  { label, style, accessibilityLabel, ...rest },
+  ref,
+) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        ref={ref}
         style={[styles.input, style]}
         placeholderTextColor={colors.textMuted}
+        accessibilityLabel={accessibilityLabel ?? label}
         {...rest}
       />
     </View>
   );
-}
+});
+
+export default Field;
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: spacing.lg },

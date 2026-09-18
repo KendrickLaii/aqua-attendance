@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Pressable,
   Modal,
   Platform,
@@ -12,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Button from '../components/ui/Button';
 import { colors, layout, radius, spacing, typography } from '../theme';
 import { previewScanQR, scanQR, type AttendanceEvent, type ScanPreview } from '../services/attendance';
@@ -35,7 +35,8 @@ import {
 type Phase = 'setup' | 'camera';
 
 export default function ScannerScreen() {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, locale } = useI18n();
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [phase, setPhase] = useState<Phase>('setup');
   const [scanning, setScanning] = useState(true);
@@ -43,7 +44,6 @@ export default function ScannerScreen() {
   const [locations, setLocations] = useState<LocationItem[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(true);
   const [locationsError, setLocationsError] = useState('');
-  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [hasDefaultLocation, setHasDefaultLocation] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
@@ -59,6 +59,7 @@ export default function ScannerScreen() {
 
   const selectedLocation = locations.find((l) => l.id === selectedLocationId) ?? null;
   const canStartCamera = Boolean(selectedLocationId) && !locationsLoading && !locationsError;
+  const locName = (loc: LocationItem) => locationDisplayName(loc, locale);
 
   const loadLocations = useCallback(async () => {
     setLocationsLoading(true);
@@ -196,7 +197,7 @@ export default function ScannerScreen() {
     if (!pendingToken || processing) return;
     setProcessing(true);
     setConfirmVisible(false);
-    setError('');
+    clearScanError();
     setResult(null);
 
     try {
@@ -208,7 +209,7 @@ export default function ScannerScreen() {
       setResult(evt);
       setResultVisible(true);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '掃描失敗');
+      applyScanError(e);
       setResultVisible(true);
     } finally {
       setProcessing(false);
@@ -235,8 +236,19 @@ export default function ScannerScreen() {
     return unitType ?? '';
   }
 
+  function attendanceStatusLabel(status: string | null): string {
+    if (status === 'checked_in') return t('attendanceStatus.checked_in');
+    if (status === 'checked_out') return t('attendanceStatus.checked_out');
+    return '';
+  }
+
   const locationPickerModal = (
-    <Modal visible={locationPickerOpen} transparent animationType="slide">
+    <Modal
+      visible={locationPickerOpen}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setLocationPickerOpen(false)}
+    >
       <View style={styles.modalBg}>
         <View style={[styles.modalCard, styles.pickerCard]}>
           <Text style={styles.pickerTitle}>{t('scanner.pickLocationTitle')}</Text>
@@ -244,18 +256,18 @@ export default function ScannerScreen() {
             data={locations}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <TouchableOpacity
+              <Pressable
                 style={[
                   styles.pickerRow,
                   item.id === selectedLocationId && styles.pickerRowSelected,
                 ]}
                 onPress={() => selectLocation(item.id)}
               >
-                <Text style={styles.pickerRowText}>{locationDisplayName(item)}</Text>
+                <Text style={styles.pickerRowText}>{locName(item)}</Text>
                 {item.region ? (
                   <Text style={styles.pickerRowSub}>{item.region}</Text>
                 ) : null}
-              </TouchableOpacity>
+              </Pressable>
             )}
             ListEmptyComponent={
               <Text style={styles.pickerEmpty}>
@@ -263,9 +275,9 @@ export default function ScannerScreen() {
               </Text>
             }
           />
-          <TouchableOpacity style={styles.okBtn} onPress={() => setLocationPickerOpen(false)}>
+          <Pressable style={styles.okBtn} onPress={() => setLocationPickerOpen(false)}>
             <Text style={styles.okBtnText}>{t('common.close')}</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -322,7 +334,7 @@ export default function ScannerScreen() {
             <View style={styles.defaultBanner}>
               <Text style={styles.defaultBannerText}>
                 {t('scanner.defaultLocationActive', {
-                  name: locationDisplayName(selectedLocation),
+                  name: locName(selectedLocation),
                 })}
               </Text>
             </View>
@@ -339,7 +351,7 @@ export default function ScannerScreen() {
                 </Text>
                 <Text style={styles.setupLocationValue} numberOfLines={2}>
                   {selectedLocation
-                    ? locationDisplayName(selectedLocation)
+                    ? locName(selectedLocation)
                     : locationsLoading
                       ? t('common.loading')
                       : t('scanner.selectLocation')}
@@ -360,7 +372,7 @@ export default function ScannerScreen() {
           ) : null}
         </ScrollView>
 
-        <View style={styles.setupFooter}>
+        <View style={[styles.setupFooter, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
           <Button
             label={t('scanner.startScan')}
             onPress={handleStartCamera}
@@ -384,13 +396,16 @@ export default function ScannerScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.centered}>
-        <TouchableOpacity style={styles.backLink} onPress={handleBackToSetup}>
+        <Pressable
+          style={[styles.backLink, { top: insets.top + spacing.lg }]}
+          onPress={handleBackToSetup}
+        >
           <Text style={styles.backLinkText}>{t('scanner.backToSetup')}</Text>
-        </TouchableOpacity>
+        </Pressable>
         <Text style={styles.permText}>{t('scanner.cameraPermission')}</Text>
-        <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
+        <Pressable style={styles.permBtn} onPress={requestPermission}>
           <Text style={styles.permBtnText}>{t('scanner.grantPermission')}</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     );
   }
@@ -405,13 +420,13 @@ export default function ScannerScreen() {
       />
 
       <View style={styles.overlay}>
-        <View style={styles.cameraTopBar}>
-          <TouchableOpacity style={styles.backBtn} onPress={handleBackToSetup} disabled={processing}>
+        <View style={[styles.cameraTopBar, { top: insets.top + spacing.md }]}>
+          <Pressable style={styles.backBtn} onPress={handleBackToSetup} disabled={processing}>
             <Text style={styles.backBtnText}>{t('scanner.backSetupShort')}</Text>
-          </TouchableOpacity>
+          </Pressable>
           <View style={styles.cameraSummary}>
             <Text style={styles.cameraSummaryLine}>
-              {eventLabel} · {selectedLocation ? locationDisplayName(selectedLocation) : t('common.dash')}
+              {eventLabel} · {selectedLocation ? locName(selectedLocation) : t('common.dash')}
             </Text>
           </View>
         </View>
@@ -428,7 +443,12 @@ export default function ScannerScreen() {
         </Text>
       </View>
 
-      <Modal visible={confirmVisible} transparent animationType="fade">
+      <Modal
+        visible={confirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelConfirm}
+      >
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             <Text style={styles.confirmTitle}>{t('scanner.confirmTitle', { action: eventLabel })}</Text>
@@ -447,23 +467,30 @@ export default function ScannerScreen() {
                     {t('scanner.codeLabel', { code: pendingPreview.unit_code })}
                   </Text>
                 ) : null}
+                {pendingPreview.attendance_status ? (
+                  <Text style={styles.confirmStatus}>
+                    {t('scanner.currentStatus', {
+                      status: attendanceStatusLabel(pendingPreview.attendance_status),
+                    })}
+                  </Text>
+                ) : null}
               </>
             ) : null}
             <Text style={styles.confirmBody}>{t('scanner.confirmRecord', { action: eventLabel })}</Text>
             {selectedLocation ? (
               <Text style={styles.confirmDetail}>
-                {t('scanner.locationLabel', { name: locationDisplayName(selectedLocation) })}
+                {t('scanner.locationLabel', { name: locName(selectedLocation) })}
               </Text>
             ) : null}
             <View style={styles.confirmRow}>
-              <TouchableOpacity
+              <Pressable
                 style={styles.cancelBtn}
                 onPress={handleCancelConfirm}
                 disabled={processing}
               >
                 <Text style={styles.cancelBtnText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Pressable>
+              <Pressable
                 style={[styles.confirmBtn, selectedEventType === 'check_in' ? styles.confirmBtnIn : styles.confirmBtnOut]}
                 onPress={handleConfirmScan}
                 disabled={processing}
@@ -473,13 +500,18 @@ export default function ScannerScreen() {
                 ) : (
                   <Text style={styles.confirmBtnText}>{t('scanner.confirmAction', { action: eventLabel })}</Text>
                 )}
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal visible={resultVisible} transparent animationType="slide">
+      <Modal
+        visible={resultVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={handleDismissResult}
+      >
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             {result ? (
@@ -549,16 +581,16 @@ export default function ScannerScreen() {
                     </Text>
                     {errorAllowedLocations.map((loc) => (
                       <Text key={loc.id} style={styles.allowedItem}>
-                        • {allowedLocationLabel(loc)}
+                        • {allowedLocationLabel(loc, locale)}
                       </Text>
                     ))}
                   </View>
                 ) : null}
               </>
             ) : null}
-            <TouchableOpacity style={styles.okBtn} onPress={handleDismissResult}>
+            <Pressable style={styles.okBtn} onPress={handleDismissResult}>
               <Text style={styles.okBtnText}>{t('scanner.continueScan')}</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -644,7 +676,6 @@ const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
   cameraTopBar: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 56 : 16,
     left: 16,
     right: 16,
     flexDirection: 'row',
@@ -674,7 +705,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
   },
   hint: { color: '#fff', fontSize: 14, marginTop: 20, textAlign: 'center', paddingHorizontal: 24 },
-  backLink: { position: 'absolute', top: Platform.OS === 'ios' ? 56 : 24, left: 24 },
+  backLink: { position: 'absolute', left: 24 },
   backLinkText: { color: colors.primary, fontSize: 15, fontWeight: '600' },
   permText: { color: colors.primary, fontSize: 16, textAlign: 'center', marginBottom: 16 },
   permBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
@@ -694,29 +725,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
     width: '100%',
   },
   pickerRowSelected: { backgroundColor: colors.primaryMuted },
-  pickerRowText: { fontSize: 16, color: '#333' },
-  pickerRowSub: { fontSize: 12, color: '#888', marginTop: 2 },
-  pickerEmpty: { textAlign: 'center', color: '#999', padding: 16 },
+  pickerRowText: { fontSize: 16, color: colors.text },
+  pickerRowSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  pickerEmpty: { textAlign: 'center', color: colors.textMuted, padding: 16 },
   confirmTitle: { fontSize: 22, fontWeight: '700', color: colors.primary, marginBottom: 12 },
-  confirmName: { fontSize: 20, fontWeight: '700', color: '#333', textAlign: 'center', marginBottom: 4 },
+  confirmName: { fontSize: 20, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 4 },
   confirmType: { fontSize: 15, color: colors.primary, fontWeight: '600', marginBottom: 4 },
-  confirmCode: { fontSize: 13, color: '#888', marginBottom: 12 },
-  confirmBody: { fontSize: 15, color: '#555', textAlign: 'center', marginBottom: 8 },
-  confirmDetail: { fontSize: 14, color: '#555', marginBottom: 24, textAlign: 'center' },
+  confirmCode: { fontSize: 13, color: colors.textMuted, marginBottom: 8 },
+  confirmStatus: { fontSize: 15, color: colors.text, fontWeight: '600', marginBottom: 12, textAlign: 'center' },
+  confirmBody: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginBottom: 8 },
+  confirmDetail: { fontSize: 14, color: colors.textSecondary, marginBottom: 24, textAlign: 'center' },
   confirmRow: { flexDirection: 'row', gap: 12, width: '100%' },
   cancelBtn: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: colors.border,
     alignItems: 'center',
   },
-  cancelBtnText: { color: '#666', fontWeight: '600', fontSize: 15 },
+  cancelBtnText: { color: colors.textSecondary, fontWeight: '600', fontSize: 15 },
   confirmBtn: {
     flex: 1,
     paddingVertical: 12,
@@ -738,10 +770,10 @@ const styles = StyleSheet.create({
   },
   resultGlyph: { fontSize: 36, fontWeight: '700' },
   resultType: { fontSize: 22, fontWeight: '700', color: colors.primary, marginBottom: 8 },
-  resultName: { fontSize: 18, color: '#333', marginBottom: 4 },
-  resultLocation: { fontSize: 14, color: '#555', marginBottom: 6 },
-  resultStatus: { fontSize: 13, color: '#555', marginBottom: 6, fontWeight: '600' },
-  resultTime: { fontSize: 14, color: '#888', marginBottom: 20 },
+  resultName: { fontSize: 18, color: colors.text, marginBottom: 4 },
+  resultLocation: { fontSize: 14, color: colors.textSecondary, marginBottom: 6 },
+  resultStatus: { fontSize: 13, color: colors.textSecondary, marginBottom: 6, fontWeight: '600' },
+  resultTime: { fontSize: 14, color: colors.textMuted, marginBottom: 20 },
   errorMsg: { fontSize: 14, color: colors.error, textAlign: 'center', marginBottom: 12 },
   allowedBox: {
     width: '100%',
@@ -754,7 +786,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   allowedTitle: { fontSize: 13, fontWeight: '600', color: colors.primary, marginBottom: 8 },
-  allowedItem: { fontSize: 14, color: '#444', marginBottom: 4, textAlign: 'left' },
+  allowedItem: { fontSize: 14, color: colors.text, marginBottom: 4, textAlign: 'left' },
   okBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 32, paddingVertical: 12 },
   okBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
 });

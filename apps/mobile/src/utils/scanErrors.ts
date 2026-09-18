@@ -1,4 +1,5 @@
 import { ApiError } from '../services/api';
+import { locationDisplayName, type LocationNameLocale } from './locationName';
 
 export interface AllowedLocationRef {
   id: string;
@@ -7,8 +8,11 @@ export interface AllowedLocationRef {
   name_en: string;
 }
 
-export function allowedLocationLabel(loc: AllowedLocationRef): string {
-  return loc.name_en || loc.name_zh || loc.code || loc.id;
+export function allowedLocationLabel(
+  loc: AllowedLocationRef,
+  locale: LocationNameLocale = 'en',
+): string {
+  return locationDisplayName(loc, locale);
 }
 
 export function isLocationNotAllowedError(error: unknown): error is ApiError {

@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { colors } from '../theme';
 import {
   dateLocaleTag,
   loadStoredLocale,
@@ -50,8 +51,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   if (!value) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F4F8' }}>
-        <ActivityIndicator size="large" color="#160D47" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }

@@ -4,6 +4,8 @@ export const zhHant = {
   common: {
     language: '語言',
     logout: '登出',
+    logoutConfirmTitle: '確定登出？',
+    logoutConfirmBody: '登出後需重新登入才能掃描或查看紀錄。',
     retry: '重試',
     close: '關閉',
     cancel: '取消',
@@ -17,6 +19,7 @@ export const zhHant = {
     password: '密碼',
     signIn: '登入',
     failed: '登入失敗',
+    emptyFields: '請輸入使用者名稱與密碼。',
   },
   diagnostics: {
     title: 'App 資訊',
@@ -61,6 +64,7 @@ export const zhHant = {
     last30Days: '30 天',
     loadMore: '載入更多',
     noMore: '沒有更多紀錄',
+    voided: '已作廢',
   },
   scanner: {
     setupTitle: '掃描設定',
@@ -104,6 +108,7 @@ export const zhHant = {
     checkInSuccess: '簽到成功',
     checkOutSuccess: '簽退成功',
     statusLabel: '狀態：{{status}}',
+    currentStatus: '目前狀態：{{status}}',
     continueScan: '確定 — 繼續掃描',
   },
 } satisfies TranslationMessages;

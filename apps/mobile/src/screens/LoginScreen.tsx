@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LanguagePicker from '../components/LanguagePicker';
@@ -14,7 +15,6 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Field from '../components/ui/Field';
 import { useI18n } from '../i18n/I18nContext';
-import { API_URL, APP_DIAGNOSTICS } from '../services/api';
 import { login, type User } from '../services/auth';
 import { colors, layout, spacing, typography } from '../theme';
 
@@ -25,13 +25,17 @@ interface Props {
 export default function LoginScreen({ onLoginSuccess }: Props) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  const passwordRef = useRef<TextInput>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function handleLogin() {
-    if (!username.trim() || !password.trim()) return;
+    if (!username.trim() || !password.trim()) {
+      setError(t('login.emptyFields'));
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -47,15 +51,16 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={[styles.hero, { paddingTop: insets.top + spacing.xxl }]}>
         <Image
           source={require('../../assets/logo.png')}
           style={styles.logo}
           resizeMode="contain"
+          accessibilityLabel={t('login.title')}
         />
-        <Text style={styles.heroTitle}>AQUA Attendance</Text>
+        <Text style={styles.heroTitle}>{t('login.title')}</Text>
         <Text style={styles.heroSubtitle}>{t('login.subtitle')}</Text>
       </View>
 
@@ -70,7 +75,7 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
         <Card style={styles.formCard}>
           <LanguagePicker />
           {error ? (
-            <View style={styles.errorBox}>
+            <View style={styles.errorBox} accessibilityLiveRegion="polite">
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
@@ -81,26 +86,25 @@ export default function LoginScreen({ onLoginSuccess }: Props) {
             onChangeText={setUsername}
             autoCapitalize="none"
             autoCorrect={false}
+            spellCheck={false}
+            autoComplete="username"
+            textContentType="username"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
           />
           <Field
+            ref={passwordRef}
             label={t('login.password')}
             placeholder={t('login.password')}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            autoComplete="password"
+            textContentType="password"
+            returnKeyType="go"
+            onSubmitEditing={handleLogin}
           />
           <Button label={t('login.signIn')} onPress={handleLogin} loading={loading} />
-          {/* <Text style={styles.apiHint} selectable>
-            API: {API_URL}
-          </Text> */}
-          <Text style={styles.apiHint} selectable>
-            {t('diagnostics.summary', {
-              version: APP_DIAGNOSTICS.version,
-              build: APP_DIAGNOSTICS.build,
-              environment: APP_DIAGNOSTICS.environment,
-              api: APP_DIAGNOSTICS.apiHost,
-            })}
-          </Text>
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -147,13 +151,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: '#F5C2C0',
+    borderColor: colors.errorSoft,
   },
   errorText: { color: colors.error, fontSize: 14, textAlign: 'center' },
-  apiHint: {
-    marginTop: spacing.lg,
-    fontSize: 11,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
 });

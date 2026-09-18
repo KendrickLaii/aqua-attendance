@@ -2,6 +2,8 @@ export const en = {
   common: {
     language: 'Language',
     logout: 'Logout',
+    logoutConfirmTitle: 'Sign out?',
+    logoutConfirmBody: 'You will need to sign in again to scan or view history.',
     retry: 'Retry',
     close: 'Close',
     cancel: 'Cancel',
@@ -15,6 +17,7 @@ export const en = {
     password: 'Password',
     signIn: 'Sign In',
     failed: 'Login failed',
+    emptyFields: 'Enter username and password.',
   },
   diagnostics: {
     title: 'App information',
@@ -59,6 +62,7 @@ export const en = {
     last30Days: '30 days',
     loadMore: 'Load more',
     noMore: 'No more records',
+    voided: 'Voided',
   },
   scanner: {
     setupTitle: 'Scan setup',
@@ -103,6 +107,7 @@ export const en = {
     checkInSuccess: 'Check-in successful',
     checkOutSuccess: 'Check-out successful',
     statusLabel: 'Status: {{status}}',
+    currentStatus: 'Currently: {{status}}',
     continueScan: 'OK — scan again',
   },
 };

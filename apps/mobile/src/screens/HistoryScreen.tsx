@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,9 +19,12 @@ import {
   getAttendanceDateRangeIso,
   shiftAttendanceDateKey,
 } from '../utils/attendanceTimezone';
+import { historyListView } from '../utils/historyListView';
+import { createRequestGate } from '../utils/requestGate';
 
 type EventTypeFilter = '' | 'check_in' | 'check_out';
 type DateRangeFilter = 'today' | 'yesterday' | '7d' | '30d';
+type LoadMode = 'replace' | 'append' | 'refresh';
 
 const PAGE_SIZE = 25;
 
@@ -60,10 +63,9 @@ function Chip({ label, active, onPress }: ChipProps) {
   return (
     <Pressable
       onPress={onPress}
-      style={[
-        styles.chip,
-        active && styles.chipActive,
-      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={[styles.chip, active && styles.chipActive]}
     >
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
     </Pressable>
@@ -72,11 +74,13 @@ function Chip({ label, active, onPress }: ChipProps) {
 
 export default function HistoryScreen() {
   const { t, dateLocale } = useI18n();
+  const gateRef = useRef(createRequestGate());
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [eventFilter, setEventFilter] = useState<EventTypeFilter>('');
   const [dateFilter, setDateFilter] = useState<DateRangeFilter>('today');
@@ -89,45 +93,61 @@ export default function HistoryScreen() {
         page_size: String(PAGE_SIZE),
         date_from: range.from,
         date_to: range.to,
+        include_voided: 'true',
       };
       if (eventFilter) params.event_type = eventFilter;
       return params;
     },
-    [eventFilter, dateFilter]
+    [eventFilter, dateFilter],
   );
 
   const load = useCallback(
-    async (targetPage: number, append = false) => {
-      setLoadError('');
+    async (targetPage: number, mode: LoadMode) => {
+      const req = gateRef.current.start();
+      if (mode === 'replace') {
+        setInitialLoading(true);
+        setLoadingMore(false);
+        setLoadError('');
+        setEvents([]);
+        setTotal(0);
+      } else if (mode === 'refresh') {
+        setLoadError('');
+      }
       try {
         const { events: data, total: totalCount } = await listAttendance(buildParams(targetPage));
-        setEvents((prev) => (append ? [...prev, ...data] : data));
+        if (!req.isCurrent()) return;
+        setEvents((prev) => (mode === 'append' ? [...prev, ...data] : data));
         setTotal(totalCount);
         setPage(targetPage);
+        setLoadError('');
       } catch (e: unknown) {
+        if (!req.isCurrent()) return;
         const msg = e instanceof Error ? e.message : t('history.loadFailed');
         setLoadError(msg);
-        if (!append) setEvents([]);
+        if (mode !== 'append') setEvents([]);
+      } finally {
+        if (!req.isCurrent()) return;
+        setInitialLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
       }
     },
-    [buildParams, t]
+    [buildParams, t],
   );
 
   useEffect(() => {
-    load(1, false);
-  }, [load, eventFilter, dateFilter]);
+    void load(1, 'replace');
+  }, [load]);
 
   async function onRefresh() {
     setRefreshing(true);
-    await load(1, false);
-    setRefreshing(false);
+    await load(1, 'refresh');
   }
 
   async function onLoadMore() {
-    if (loadingMore || events.length >= total) return;
+    if (initialLoading || loadingMore || refreshing || events.length >= total) return;
     setLoadingMore(true);
-    await load(page + 1, true);
-    setLoadingMore(false);
+    await load(page + 1, 'append');
   }
 
   function eventTypeLabel(eventType: string): string {
@@ -139,7 +159,7 @@ export default function HistoryScreen() {
 
   function sourceLabel(source: string): string {
     if (!source) return '';
-    return source.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+    return source.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
   }
 
   function renderItem({ item }: { item: AttendanceEvent }) {
@@ -153,49 +173,77 @@ export default function HistoryScreen() {
           <View style={styles.rowTop}>
             <View style={styles.badgeGroup}>
               <Badge label={eventTypeLabel(item.event_type)} tone={isIn ? 'success' : 'warning'} />
-              {item.source ? <Badge label={sourceLabel(item.source)} tone="neutral" style={{ marginLeft: spacing.sm }} /> : null}
-              {isVoided ? <Badge label="VOIDED" tone="error" style={{ marginLeft: spacing.sm }} /> : null}
+              {item.source ? (
+                <Badge label={sourceLabel(item.source)} tone="neutral" style={styles.badgeGap} />
+              ) : null}
+              {isVoided ? (
+                <Badge label={t('history.voided')} tone="error" style={styles.badgeGap} />
+              ) : null}
             </View>
             <Text style={styles.time}>{time}</Text>
           </View>
-          <Text style={[styles.unitName, isVoided && styles.textVoided]}>{item.unit_name || item.unit_code || t('common.dash')}</Text>
-          {item.location ? <Text style={[styles.location, isVoided && styles.textVoided]}>{item.location}</Text> : null}
+          <Text style={[styles.unitName, isVoided && styles.textVoided]}>
+            {item.unit_name || item.unit_code || t('common.dash')}
+          </Text>
+          {item.location ? (
+            <Text style={[styles.location, isVoided && styles.textVoided]}>{item.location}</Text>
+          ) : null}
           <Text style={[styles.date, isVoided && styles.textVoided]}>{date}</Text>
         </View>
       </View>
     );
   }
 
-  const canLoadMore = events.length < total && !loadingMore;
+  const view = historyListView({
+    initialLoading,
+    error: loadError,
+    eventCount: events.length,
+  });
+  const canLoadMore = events.length < total && !loadingMore && !initialLoading;
 
   return (
     <View style={styles.container}>
-      {/* Filters */}
       <View style={styles.filterWrap}>
         <Text style={styles.filterTitle}>{t('history.filterTitle')}</Text>
-
-        {/* Event type chips */}
         <View style={styles.chipRow}>
           <Chip label={t('history.all')} active={eventFilter === ''} onPress={() => setEventFilter('')} />
-          <Chip label={t('eventType.check_in')} active={eventFilter === 'check_in'} onPress={() => setEventFilter('check_in')} />
-          <Chip label={t('eventType.check_out')} active={eventFilter === 'check_out'} onPress={() => setEventFilter('check_out')} />
+          <Chip
+            label={t('eventType.check_in')}
+            active={eventFilter === 'check_in'}
+            onPress={() => setEventFilter('check_in')}
+          />
+          <Chip
+            label={t('eventType.check_out')}
+            active={eventFilter === 'check_out'}
+            onPress={() => setEventFilter('check_out')}
+          />
         </View>
-
-        {/* Date range chips */}
         <View style={styles.chipRow}>
           <Chip label={t('history.today')} active={dateFilter === 'today'} onPress={() => setDateFilter('today')} />
-          <Chip label={t('history.yesterday')} active={dateFilter === 'yesterday'} onPress={() => setDateFilter('yesterday')} />
-          <Chip label={t('history.last7Days')} active={dateFilter === '7d'} onPress={() => setDateFilter('7d')} />
-          <Chip label={t('history.last30Days')} active={dateFilter === '30d'} onPress={() => setDateFilter('30d')} />
+          <Chip
+            label={t('history.yesterday')}
+            active={dateFilter === 'yesterday'}
+            onPress={() => setDateFilter('yesterday')}
+          />
+          <Chip
+            label={t('history.last7Days')}
+            active={dateFilter === '7d'}
+            onPress={() => setDateFilter('7d')}
+          />
+          <Chip
+            label={t('history.last30Days')}
+            active={dateFilter === '30d'}
+            onPress={() => setDateFilter('30d')}
+          />
         </View>
       </View>
 
-      {loadError ? (
+      {view.kind === 'error' ? (
         <View style={styles.errorWrap}>
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{loadError}</Text>
           </View>
-          <Button label={t('common.retry')} onPress={() => load(1, false)} variant="secondary" />
+          <Button label={t('common.retry')} onPress={() => load(1, 'replace')} variant="secondary" />
         </View>
       ) : null}
 
@@ -210,7 +258,7 @@ export default function HistoryScreen() {
         onEndReachedThreshold={0.5}
         ListFooterComponent={
           loadingMore ? (
-            <ActivityIndicator style={{ margin: spacing.lg }} color={colors.primary} />
+            <ActivityIndicator style={styles.footerSpinner} color={colors.primary} />
           ) : canLoadMore ? (
             <View style={styles.loadMoreWrap}>
               <Button label={t('history.loadMore')} onPress={onLoadMore} variant="secondary" />
@@ -220,11 +268,16 @@ export default function HistoryScreen() {
           ) : null
         }
         ListEmptyComponent={
-          loadError ? null : (
+          view.kind === 'loading' ? (
+            <View style={styles.empty}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.emptyText}>{t('common.loading')}</Text>
+            </View>
+          ) : view.kind === 'empty' ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>{t('history.empty')}</Text>
             </View>
-          )
+          ) : null
         }
         contentContainerStyle={styles.listContent}
       />
@@ -243,18 +296,20 @@ const styles = StyleSheet.create({
   filterTitle: { ...typography.label, marginBottom: spacing.xs },
   chipRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    justifyContent: 'center',
   },
   chipActive: {
     backgroundColor: colors.primaryMuted,
     borderColor: colors.primarySoft,
   },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  chipText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   chipTextActive: { color: colors.primary },
   listContent: { padding: layout.screenPadding, flexGrow: 1, paddingBottom: spacing.xxxl },
   errorWrap: { padding: layout.screenPadding, paddingBottom: 0, gap: spacing.md },
@@ -263,7 +318,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#F5C2C0',
+    borderColor: colors.errorSoft,
   },
   errorText: { ...typography.body, color: colors.error },
   row: {
@@ -289,9 +344,11 @@ const styles = StyleSheet.create({
   date: { ...typography.caption },
   rowVoided: { opacity: 0.6 },
   textVoided: { textDecorationLine: 'line-through' as const },
-  badgeGroup: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  empty: { alignItems: 'center', marginTop: 64 },
+  badgeGroup: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', flex: 1, marginRight: spacing.sm },
+  badgeGap: { marginLeft: spacing.sm },
+  empty: { alignItems: 'center', marginTop: 64, gap: spacing.md },
   emptyText: { ...typography.body, textAlign: 'center' },
   loadMoreWrap: { alignItems: 'center', marginVertical: spacing.lg },
+  footerSpinner: { margin: spacing.lg },
   noMore: { ...typography.caption, textAlign: 'center', marginVertical: spacing.lg, color: colors.textMuted },
 });
