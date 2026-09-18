@@ -92,6 +92,7 @@ function sortIconFor<K extends string>(state: TableSort<K>, key: K): string {
 
 const selectedSpuId = ref<string | null>(null)
 const selectedSpu = computed(() => spus.value.find(s => s.id === selectedSpuId.value) ?? null)
+const catalogPanel = ref<'courses' | 'offerings' | undefined>('courses')
 const coursesScroll = ref<HTMLElement | null>(null)
 const offeringsScroll = ref<HTMLElement | null>(null)
 
@@ -664,6 +665,7 @@ function applySkuFromRoute() {
     return
   selectedSpuId.value = selection.spuId
   rosterSkuId.value = selection.skuId
+  catalogPanel.value = undefined
 }
 
 watch(() => route.query.sku, () => {
@@ -880,12 +882,25 @@ const enrollDisabledReason = computed(() => {
   return ''
 })
 
+function selectCourse(spuId: string) {
+  selectedSpuId.value = spuId
+  catalogPanel.value = 'offerings'
+}
+
 async function selectClass(skuId: string) {
   rosterSkuId.value = skuId
+  catalogPanel.value = undefined
   await nextTick()
   scrollCatalogSelection()
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   rosterSection.value?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+}
+
+function onJumpToClass(skuId: string | null) {
+  if (skuId)
+    void selectClass(skuId)
+  else
+    rosterSkuId.value = null
 }
 
 function scrollRowInCatalog(container: HTMLElement | null) {
@@ -909,6 +924,11 @@ function scrollCatalogSelection() {
 watch([selectedSpuId, rosterSkuId], async () => {
   await nextTick()
   scrollCatalogSelection()
+})
+
+watch(catalogPanel, async () => {
+  await nextTick()
+  requestAnimationFrame(() => scrollCatalogSelection())
 })
 
 async function enrollStudent() {
@@ -1156,7 +1176,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
           Course Management
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          Pick a course, then a class. The roster below is who is in that class.
+          Expand Courses to pick a course, then Class Offerings to pick a class. The roster below is who is in that class.
         </div>
       </VCol>
       <VCol
@@ -1173,6 +1193,25 @@ function purchaseTooltip(e: CourseEnrollment): string {
           Refresh
         </VBtn>
         <VBtn
+          v-if="catalogPanel === 'offerings'"
+          variant="tonal"
+          color="primary"
+          prepend-icon="ri-add-line"
+          @click="openCreateSpu"
+        >
+          Add Course
+        </VBtn>
+        <VBtn
+          v-if="catalogPanel === 'offerings'"
+          color="primary"
+          prepend-icon="ri-add-line"
+          :disabled="!selectedSpuId"
+          @click="openCreateSku"
+        >
+          Add Class
+        </VBtn>
+        <VBtn
+          v-else
           color="primary"
           prepend-icon="ri-add-line"
           @click="openCreateSpu"
@@ -1207,19 +1246,29 @@ function purchaseTooltip(e: CourseEnrollment): string {
     </VRow>
 
     <template v-else>
-      <VRow class="catalog-row">
-        <!-- Courses (SPU) -->
-        <VCol
-          cols="12"
-          md="5"
-        >
-          <VCard class="catalog-card">
-            <VCardItem>
-              <VCardTitle>Courses</VCardTitle>
-              <VCardSubtitle v-if="sortedSpus.length">
-                {{ sortedSpus.length }} course{{ sortedSpus.length === 1 ? '' : 's' }}
-              </VCardSubtitle>
-            </VCardItem>
+      <VExpansionPanels
+        v-model="catalogPanel"
+        variant="accordion"
+        class="catalog-panels mb-4"
+        :mandatory="false"
+      >
+        <VExpansionPanel value="courses">
+          <template #title>
+            <div class="catalog-panel__heading">
+              <div class="text-subtitle-1">
+                Courses
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                <template v-if="selectedSpu">
+                  {{ selectedSpu.code }} · {{ selectedSpu.name_zh }}
+                </template>
+                <template v-else>
+                  {{ sortedSpus.length }} course{{ sortedSpus.length === 1 ? '' : 's' }}
+                </template>
+              </div>
+            </div>
+          </template>
+          <template #text>
             <div
               ref="coursesScroll"
               class="catalog-scroll"
@@ -1232,7 +1281,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
               <thead>
                 <tr>
                   <th
-                    class="sortable"
+                    class="sortable col-code"
                     @click="toggleSort(spuSort, 'code')"
                   >
                     Code
@@ -1245,7 +1294,6 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   </th>
                   <th
                     class="sortable"
-                    style="min-width: 8rem;"
                     @click="toggleSort(spuSort, 'name')"
                   >
                     Name
@@ -1277,9 +1325,9 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   :key="spu.id"
                   :class="{ 'bg-primary-lighten-5': spu.id === selectedSpuId }"
                   style="cursor: pointer;"
-                  @click="selectedSpuId = spu.id"
+                  @click="selectCourse(spu.id)"
                 >
-                  <td>{{ spu.code }}</td>
+                  <td class="col-code">{{ spu.code }}</td>
                   <td class="text-no-wrap">
                     {{ spu.name_zh }}
                     <VChip
@@ -1329,38 +1377,48 @@ function purchaseTooltip(e: CourseEnrollment): string {
               </tbody>
             </VTable>
             </div>
-          </VCard>
-        </VCol>
+          </template>
+        </VExpansionPanel>
 
-        <!-- Class offerings (SKU) for selected SPU -->
-        <VCol
-          cols="12"
-          md="7"
-        >
-          <VCard class="catalog-card">
-            <VCardItem>
-              <VCardTitle>
+        <VExpansionPanel value="offerings">
+          <template #title>
+            <div class="catalog-panel__heading">
+              <div class="text-subtitle-1">
                 Class Offerings
-                <span
-                  v-if="selectedSpu"
-                  class="text-body-2 text-medium-emphasis"
-                >— {{ selectedSpu.name_zh }}</span>
-              </VCardTitle>
-              <VCardSubtitle v-if="skusForSelectedSpu.length">
-                {{ skusForSelectedSpu.length }} class{{ skusForSelectedSpu.length === 1 ? '' : 'es' }}
-              </VCardSubtitle>
-              <template #append>
-                <VBtn
-                  size="small"
-                  color="primary"
-                  prepend-icon="ri-add-line"
-                  :disabled="!selectedSpuId"
-                  @click="openCreateSku"
-                >
-                  Add Class
-                </VBtn>
-              </template>
-            </VCardItem>
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                <template v-if="rosterSku">
+                  {{ rosterSku.code }} · {{ rosterSku.name_zh }}
+                </template>
+                <template v-else-if="selectedSpu">
+                  {{ skusForSelectedSpu.length }} class{{ skusForSelectedSpu.length === 1 ? '' : 'es' }} in {{ selectedSpu.name_zh }}
+                </template>
+                <template v-else>
+                  Pick a course first
+                </template>
+              </div>
+            </div>
+          </template>
+          <template #text>
+            <div class="catalog-toolbar">
+              <span class="catalog-toolbar__label">
+                <template v-if="selectedSpu">
+                  {{ selectedSpu.code }} · {{ selectedSpu.name_zh }}
+                </template>
+                <template v-else>
+                  Pick a course first
+                </template>
+              </span>
+              <VBtn
+                size="small"
+                color="primary"
+                prepend-icon="ri-add-line"
+                :disabled="!selectedSpuId"
+                @click="openCreateSku"
+              >
+                Add Class
+              </VBtn>
+            </div>
             <div
               ref="offeringsScroll"
               class="catalog-scroll"
@@ -1373,7 +1431,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
               <thead>
                 <tr>
                   <th
-                    class="sortable"
+                    class="sortable col-code"
                     @click="toggleSort(skuSort, 'code')"
                   >
                     Code
@@ -1386,7 +1444,6 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   </th>
                   <th
                     class="sortable"
-                    style="min-width: 10rem;"
                     @click="toggleSort(skuSort, 'name')"
                   >
                     Name
@@ -1433,7 +1490,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   style="cursor: pointer;"
                   @click="selectClass(sku.id)"
                 >
-                  <td>{{ sku.code }}</td>
+                  <td class="col-code">{{ sku.code }}</td>
                   <td>
                     <div class="catalog-cell">
                       <span class="catalog-cell__primary">
@@ -1514,18 +1571,18 @@ function purchaseTooltip(e: CourseEnrollment): string {
                 </tr>
                 <tr v-if="!selectedSpuId">
                   <td
-                    colspan="9"
+                    colspan="6"
                     class="text-center text-medium-emphasis py-6"
                   >
-                    Select a course on the left to see its class offerings.
+                    Select a course above to see its class offerings.
                   </td>
                 </tr>
               </tbody>
             </VTable>
             </div>
-          </VCard>
-        </VCol>
-      </VRow>
+          </template>
+        </VExpansionPanel>
+      </VExpansionPanels>
 
       <!-- Class roster -->
       <VRow class="mt-4">
@@ -1562,7 +1619,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
               </div>
               <div class="roster-identity__aside">
                 <VAutocomplete
-                  v-model="rosterSkuId"
+                  :model-value="rosterSkuId"
                   :items="classOptions"
                   item-title="title"
                   item-value="id"
@@ -1574,6 +1631,7 @@ function purchaseTooltip(e: CourseEnrollment): string {
                   clearable
                   :disabled="classOptions.length === 0"
                   class="roster-class-switcher"
+                  @update:model-value="onJumpToClass"
                 >
                   <template #item="{ props: itemProps, item }">
                     <VListItem
@@ -2607,30 +2665,57 @@ function purchaseTooltip(e: CourseEnrollment): string {
 </template>
 
 <style scoped>
-.catalog-row {
-  align-items: stretch;
+.catalog-panels :deep(.v-expansion-panel-title) {
+  align-items: center;
+  min-height: 64px;
+  padding-inline: 16px 12px;
 }
 
-.catalog-row > .v-col {
-  display: flex;
+.catalog-panels :deep(.v-expansion-panel-text__wrapper) {
+  padding: 0;
 }
 
-.catalog-card {
+.catalog-panel__heading {
   display: flex;
   flex-direction: column;
-  width: 100%;
-  height: 20rem;
-  overflow: hidden;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding-inline-end: 12px;
 }
 
-.catalog-card :deep(.v-card-item) {
-  flex: 0 0 auto;
+.catalog-panel__heading .text-caption {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-block-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.catalog-toolbar__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  color: rgba(var(--v-theme-on-surface), 0.6);
 }
 
 .catalog-scroll {
-  flex: 1 1 auto;
+  max-height: 18rem;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
 }
 
@@ -2638,23 +2723,19 @@ function purchaseTooltip(e: CourseEnrollment): string {
   width: 100%;
 }
 
+.catalog-scroll :deep(.v-table__wrapper) {
+  overflow: visible;
+}
+
 .catalog-scroll :deep(table) {
   width: 100%;
-  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
 
-.catalog-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.catalog-cell > .catalog-cell__primary {
-  flex: 1 1 auto;
-  min-width: 0;
+.catalog-scroll :deep(.col-code) {
+  width: 1%;
+  white-space: nowrap;
 }
 
 .catalog-scroll :deep(thead th) {
@@ -2673,6 +2754,11 @@ function purchaseTooltip(e: CourseEnrollment): string {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+.catalog-cell > .catalog-cell__primary {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
