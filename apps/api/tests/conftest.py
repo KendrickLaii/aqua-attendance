@@ -15,6 +15,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
+from app.limiter import limiter
 import app.models  # noqa: F401 — register all tables on Base.metadata
 from app.main import app as fastapi_app
 from app.models.user import User
@@ -36,6 +37,7 @@ def _set_sqlite_pragma(dbapi_conn, _):
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():
+    limiter.reset()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -84,6 +86,7 @@ async def admin_token(client: AsyncClient) -> str:
     uname = f"admin_{uuid.uuid4().hex[:8]}"
     await _insert_test_user(username=uname, email=f"{uname}@test.com")
     resp = await client.post("/api/auth/login", json={"username": uname, "password": "admin123"})
+    assert resp.status_code == 200, resp.text
     return resp.json()["access_token"]
 
 
