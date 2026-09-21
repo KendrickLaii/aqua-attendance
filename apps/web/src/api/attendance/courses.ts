@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
+import { fetchAllAttendancePages } from '@/utils/attendanceListApi'
 
 /** SPU — course subject/curriculum, e.g. "Primary Math". */
 export interface CourseSpu {
@@ -98,6 +98,8 @@ export interface CourseEnrollment {
   unit_price: number | null
   notes: string | null
   purchases: EnrollmentPurchase[]
+  unit_code?: string | null
+  unit_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -117,27 +119,10 @@ export interface CourseEnrollmentPayload {
 
 // ---- SPU ----
 
-async function fetchAllAttendancePages<T>(
-  path: string,
-  params?: Record<string, unknown>,
-): Promise<T[]> {
-  const pageSize = 200
-  const first = await fetchAttendanceListWithTotal<T>(path, { ...params, page: 1, page_size: pageSize })
-  const items = [...first.items]
-  let page = 2
-  while (items.length < first.total) {
-    const next = await fetchAttendanceListWithTotal<T>(path, { ...params, page, page_size: pageSize })
-    if (next.items.length === 0)
-      break
-    items.push(...next.items)
-    page += 1
-  }
-
-  return items
-}
-
 export async function listCourseSpus(params?: { is_active?: boolean; search?: string }): Promise<CourseSpu[]> {
-  return await fetchAllAttendancePages<CourseSpu>('/course-spus', params)
+  const result = await fetchAllAttendancePages<CourseSpu>('/course-spus', params)
+
+  return result.items
 }
 
 export async function createCourseSpu(payload: CourseSpuPayload): Promise<CourseSpu> {
@@ -159,7 +144,9 @@ export async function listCourseSkus(params?: {
   is_active?: boolean
   search?: string
 }): Promise<CourseSku[]> {
-  return await fetchAllAttendancePages<CourseSku>('/course-skus', params)
+  const result = await fetchAllAttendancePages<CourseSku>('/course-skus', params)
+
+  return result.items
 }
 
 export async function createCourseSku(payload: CourseSkuPayload): Promise<CourseSku> {
@@ -181,7 +168,9 @@ export async function listAllCourseEnrollments(params?: {
   sku_id?: string
   status?: EnrollmentStatus
 }): Promise<CourseEnrollment[]> {
-  return await fetchAllAttendancePages<CourseEnrollment>('/course-enrollments', params)
+  const result = await fetchAllAttendancePages<CourseEnrollment>('/course-enrollments', params)
+
+  return result.items
 }
 
 export async function createCourseEnrollment(payload: CourseEnrollmentPayload): Promise<CourseEnrollment> {

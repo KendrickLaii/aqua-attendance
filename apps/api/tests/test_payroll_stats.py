@@ -40,11 +40,35 @@ async def _create_payroll(
             "payroll_period_end": "2026-07-31",
             "gross_pay": gross,
             "net_pay": net,
-            "status": status,
+            "status": "draft",
         },
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 201, resp.text
+    record_id = resp.json()["id"]
+    headers = {"Authorization": f"Bearer {token}"}
+    if status == "draft":
+        return
+    if status == "paid":
+        approved = await client.patch(
+            f"/api/payroll-records/{record_id}",
+            json={"status": "approved"},
+            headers=headers,
+        )
+        assert approved.status_code == 200, approved.text
+        paid = await client.patch(
+            f"/api/payroll-records/{record_id}",
+            json={"status": "paid", "cheque_amount": 0, "cash_amount": net},
+            headers=headers,
+        )
+        assert paid.status_code == 200, paid.text
+        return
+    patched = await client.patch(
+        f"/api/payroll-records/{record_id}",
+        json={"status": status},
+        headers=headers,
+    )
+    assert patched.status_code == 200, patched.text
 
 
 @pytest.mark.asyncio

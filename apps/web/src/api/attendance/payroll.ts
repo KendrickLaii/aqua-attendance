@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAllAttendancePages, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export interface PayrollRecord {
   id: string
@@ -32,7 +32,6 @@ export interface PayrollRecord {
   cheque_number: string | null
   cheque_amount: number
   cash_amount: number
-  deduction: number
   status: 'draft' | 'calculated' | 'approved' | 'paid' | 'cancelled'
   calculation_date: string
   approval_date: string | null
@@ -68,6 +67,18 @@ export async function listPayrollRecordsWithTotal(params?: {
   page_size?: number
 }): Promise<AttendanceListResult<PayrollRecord>> {
   return await fetchAttendanceListWithTotal<PayrollRecord>('/payroll-records', params)
+}
+
+export async function listAllPayrollRecords(params?: {
+  unit_id?: string
+  status?: string
+  unit_type?: string
+  year?: number
+  month?: number
+}): Promise<PayrollRecord[]> {
+  const result = await fetchAllAttendancePages<PayrollRecord>('/payroll-records', params)
+
+  return result.items
 }
 
 export interface PayrollStats {

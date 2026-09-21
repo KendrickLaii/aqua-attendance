@@ -144,6 +144,15 @@ async def record_scan(
     unit.last_event_location_id = location_id
     unit.last_event_location = loc
 
+    await db.flush()
+    from app.services.summary_generator import refresh_unit_day_summary
+
+    await refresh_unit_day_summary(
+        db,
+        unit_id=unit.id,
+        day=attendance_date(now),
+    )
+
     await db.commit()
     await db.refresh(event)
     return event, True
@@ -424,6 +433,15 @@ async def void_event(
     if unit is not None:
         await recompute_unit_attendance_status(db, unit=unit)
 
+    await db.flush()
+    from app.services.summary_generator import refresh_unit_day_summary
+
+    await refresh_unit_day_summary(
+        db,
+        unit_id=event.unit_id,
+        day=attendance_date(event.recorded_at),
+    )
+
     await db.commit()
     await db.refresh(event)
     return event
@@ -440,9 +458,8 @@ async def manual_correction(
     notes: str | None = None,
     recorded_by_user_id: uuid.UUID | None = None,
 ) -> AttendanceEvent:
-    """Insert a manual correction.  If the correction is an explicit
-    check_in/check_out, also update the unit's attendance_status so the
-    next scan continues the toggle from the corrected state.
+    """Insert a manual correction, then recompute live status from the latest
+    non-voided in/out so a historical backfill cannot overwrite today's state.
     """
     when = recorded_at or _now()
     loc = _normalize_location(location)
@@ -457,17 +474,16 @@ async def manual_correction(
         recorded_by_user_id=recorded_by_user_id,
     )
     db.add(event)
+    await db.flush()
+    await recompute_unit_attendance_status(db, unit=unit)
 
-    if event_type == EventType.check_in.value:
-        unit.attendance_status = AttendanceStatus.checked_in.value
-        unit.last_event_at = when
-        unit.last_event_location_id = location_id
-        unit.last_event_location = loc
-    elif event_type == EventType.check_out.value:
-        unit.attendance_status = AttendanceStatus.checked_out.value
-        unit.last_event_at = when
-        unit.last_event_location_id = location_id
-        unit.last_event_location = loc
+    from app.services.summary_generator import refresh_unit_day_summary
+
+    await refresh_unit_day_summary(
+        db,
+        unit_id=unit.id,
+        day=attendance_date(when),
+    )
 
     await db.commit()
     await db.refresh(event)

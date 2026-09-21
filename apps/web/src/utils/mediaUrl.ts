@@ -6,7 +6,7 @@ export function resolveMediaUrl(url: string | null | undefined): string {
   if (/^(https?:|blob:|data:)/i.test(trimmed))
     return trimmed
 
-  const apiBase = String(import.meta.env.VITE_ATTENDANCE_API_URL || 'http://localhost:8000/api').replace(/\/$/, '')
+  const apiBase = String(import.meta.env?.VITE_ATTENDANCE_API_URL || 'http://localhost:8000/api').replace(/\/$/, '')
   const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
 
   // Production can bake VITE_ATTENDANCE_API_URL=/api (same origin via Caddy).
@@ -16,4 +16,19 @@ export function resolveMediaUrl(url: string | null | undefined): string {
   const origin = apiBase.replace(/\/api$/i, '')
 
   return `${origin}${path}`
+}
+
+export function needsAuthenticatedMediaFetch(url: string | null | undefined): boolean {
+  const trimmed = (url ?? '').trim()
+  if (!trimmed || /^(blob:|data:)/i.test(trimmed))
+    return false
+  if (/\/(?:api\/)?uploads(?:\/|$)/.test(trimmed))
+    return true
+  try {
+    const parsed = new URL(trimmed)
+    return /\/(?:api\/)?uploads(?:\/|$)/.test(parsed.pathname)
+  }
+  catch {
+    return false
+  }
 }

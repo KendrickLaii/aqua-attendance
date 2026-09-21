@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAllAttendancePages, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export interface AttendanceSummary {
   id: string
@@ -79,6 +79,17 @@ export async function listSummaryOverview(params: {
   page_size?: number
 }): Promise<AttendanceListResult<SummaryOverviewItem>> {
   return await fetchAttendanceListWithTotal<SummaryOverviewItem>('/attendance-summaries/overview', params)
+}
+
+export async function listAllSummaryOverview(params: {
+  date_from: string
+  date_to: string
+  unit_type?: string
+  search?: string
+}): Promise<SummaryOverviewItem[]> {
+  const result = await fetchAllAttendancePages<SummaryOverviewItem>('/attendance-summaries/overview', params)
+
+  return result.items
 }
 
 export interface SummaryOverviewStats {

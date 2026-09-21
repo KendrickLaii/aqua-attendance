@@ -18,10 +18,10 @@ import {
   listAllCourseEnrollments,
   listCourseSkus,
 } from '@/api/attendance/courses'
-import { type Unit, listUnits } from '@/api/attendance/units'
+import { type Unit, listAllUnits, listUnits } from '@/api/attendance/units'
 import StatCards from '@/components/attendance/StatCards.vue'
+import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { resolveMediaUrl } from '@/utils/mediaUrl'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import {
   type TuitionInvoicePrintHeader,
@@ -411,9 +411,18 @@ async function generate() {
     const result = await generateTuitionInvoices(
       parsedYearMonth.value.year,
       parsedYearMonth.value.month,
+      locationId.value,
     )
 
+    const leftover = result.leftover_unbilled ?? 0
     generateSuccess.value = `Created ${result.created}, updated ${result.updated}, skipped ${result.skipped}, deleted ${result.deleted ?? 0}.`
+    if (leftover > 0) {
+      const samples = (result.leftover_purchases ?? [])
+        .slice(0, 3)
+        .map(p => `${p.unit_code || p.unit_name || 'student'} ${p.purchased_at}`)
+        .join(', ')
+      generateSuccess.value += ` ${leftover} older unbilled session package${leftover === 1 ? '' : 's'} skipped — generate that month first${samples ? ` (${samples})` : ''}.`
+    }
     await loadInvoices()
   }
   catch (e) {
@@ -509,11 +518,11 @@ function headerFromLocation(location: LocationItem): TuitionInvoicePrintHeader {
   }
 }
 
-function printOptionsFor(invoice: TuitionInvoice) {
+async function printOptionsFor(invoice: TuitionInvoice) {
   const location = locations.value.find(l => l.id === invoice.location_id)
 
   return {
-    logoUrl: resolveMediaUrl(location?.icon_url || location?.main_photo_url || ''),
+    logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
     header: location ? headerFromLocation(location) : undefined,
   }
 }
@@ -541,13 +550,13 @@ async function loadLocations() {
   }
 }
 
-function printInvoice(invoice: TuitionInvoice) {
+async function printInvoice(invoice: TuitionInvoice) {
   try {
     const printWindow = openTuitionInvoicePrintPlaceholder()
 
     printTuitionInvoice(
       printWindow,
-      tuitionInvoicePrintData(invoice, printOptionsFor(invoice)),
+      tuitionInvoicePrintData(invoice, await printOptionsFor(invoice)),
     )
   }
   catch (e) {
@@ -594,7 +603,7 @@ async function confirmPendingStatus() {
   if (printWindow) {
     printTuitionInvoice(
       printWindow,
-      tuitionInvoicePrintData(updated, printOptionsFor(updated)),
+      tuitionInvoicePrintData(updated, await printOptionsFor(updated)),
     )
   }
 }
@@ -695,7 +704,7 @@ async function loadManualStaff() {
   if (manualStaffLoaded.value)
     return
   try {
-    manualStaffUnits.value = await listUnits({ unit_type: 'staff', page_size: 200 })
+    manualStaffUnits.value = await listAllUnits({ unit_type: 'staff' })
     manualStaffLoaded.value = true
   }
   catch {
@@ -971,7 +980,7 @@ async function printManualInvoice() {
 
       printTuitionInvoice(
         printWindow,
-        tuitionInvoicePrintData(created, printOptionsFor(created)),
+        tuitionInvoicePrintData(created, await printOptionsFor(created)),
       )
       manualInvoiceOpen.value = false
       await loadInvoices()
@@ -1740,7 +1749,7 @@ watch(yearMonth, () => {
       @confirm="confirmGenerate"
       @cancel="pendingGenerate = false"
     >
-      Replaces drafts, skips issued and paid bills, and may bring back cancelled bills if the student is still in class.
+      Replaces drafts for {{ locationId ? (locationName(locationId) || 'this campus') : 'all campuses' }}. Skips issued and paid bills, and may bring back cancelled bills if the student is still in class.
     </AttendanceConfirmDialog>
 
     <VDialog

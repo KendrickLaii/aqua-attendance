@@ -1,9 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 import jwt
 from sqlalchemy import func, select
 
+from app.auth_cookies import REFRESH_COOKIE, clear_auth_cookies, set_auth_cookies
 from app.config import settings
 from app.deps import DB, CurrentUser
 from app.limiter import limiter
@@ -34,7 +35,7 @@ async def register() -> None:
 
 @router.post("/login", response_model=TokenPair)
 @limiter.limit(settings.LOGIN_RATE_LIMIT)
-async def login(request: Request, body: UserLogin, db: DB) -> dict:
+async def login(request: Request, response: Response, body: UserLogin, db: DB) -> dict:
     result = await db.execute(
         select(User).where(func.lower(User.username) == body.username.lower())
     )
@@ -45,14 +46,19 @@ async def login(request: Request, body: UserLogin, db: DB) -> dict:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
     await revoke_all_refresh_tokens_for_user(db, user_id=user.id)
-    return await issue_token_pair(db, user_id=user.id, role=user.role)
+    tokens = await issue_token_pair(db, user_id=user.id, role=user.role)
+    set_auth_cookies(response, tokens)
+    return tokens
 
 
 @router.post("/refresh", response_model=TokenPair)
 @limiter.limit("10/minute")
-async def refresh(request: Request, body: TokenRefresh, db: DB) -> dict:
+async def refresh(request: Request, response: Response, db: DB, body: TokenRefresh | None = None) -> dict:
+    raw = (body.refresh_token if body else None) or request.cookies.get(REFRESH_COOKIE)
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
     try:
-        payload = decode_token(body.refresh_token, expected_type="refresh")
+        payload = decode_token(raw, expected_type="refresh")
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
@@ -70,11 +76,13 @@ async def refresh(request: Request, body: TokenRefresh, db: DB) -> dict:
     if not jti or not await consume_refresh_token(db, jti=jti, user_id=user_id):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or revoked refresh token")
 
-    return await issue_token_pair(db, user_id=user_id, role=user.role)
+    tokens = await issue_token_pair(db, user_id=user_id, role=user.role)
+    set_auth_cookies(response, tokens)
+    return tokens
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(body: TokenRefresh, db: DB) -> None:
+async def logout(request: Request, response: Response, db: DB, body: TokenRefresh | None = None) -> None:
     """Revoke the supplied refresh token so it cannot be reused.
 
     Clients should call this on sign-out and discard both tokens locally.
@@ -82,13 +90,16 @@ async def logout(body: TokenRefresh, db: DB) -> None:
     (idempotent — safe to call on every logout regardless of token state).
     """
     await purge_expired_refresh_tokens(db)
-    try:
-        payload = decode_token(body.refresh_token, expected_type="refresh")
-        jti = payload.get("jti")
-        if jti:
-            await revoke_refresh_token(db, jti=jti)
-    except jwt.PyJWTError:
-        pass  # expired / invalid token — nothing to revoke
+    raw = (body.refresh_token if body else None) or request.cookies.get(REFRESH_COOKIE)
+    if raw:
+        try:
+            payload = decode_token(raw, expected_type="refresh")
+            jti = payload.get("jti")
+            if jti:
+                await revoke_refresh_token(db, jti=jti)
+        except jwt.PyJWTError:
+            pass  # expired / invalid token — nothing to revoke
+    clear_auth_cookies(response)
 
 
 @router.get("/me", response_model=UserOut)

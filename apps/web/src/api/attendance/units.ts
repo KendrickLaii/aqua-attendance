@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAllAttendancePages, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export interface UnitLocationRef {
   id: string
@@ -107,6 +107,7 @@ export async function listUnits(params?: {
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
+  employment_type?: 'part_time' | 'full_time'
   page?: number
   page_size?: number
 }): Promise<Unit[]> {
@@ -120,10 +121,23 @@ export async function listUnitsWithTotal(params?: {
   is_active?: boolean
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
+  employment_type?: 'part_time' | 'full_time'
   page?: number
   page_size?: number
 }): Promise<AttendanceListResult<Unit>> {
   return await fetchAttendanceListWithTotal<Unit>('/units', params)
+}
+
+export async function listAllUnits(params?: {
+  unit_type?: string
+  is_active?: boolean
+  attendance_status?: 'checked_in' | 'checked_out'
+  search?: string
+  employment_type?: 'part_time' | 'full_time'
+}): Promise<Unit[]> {
+  const result = await fetchAllAttendancePages<Unit>('/units', params)
+
+  return result.items
 }
 
 export async function getUnit(unitId: string): Promise<Unit> {

@@ -60,11 +60,15 @@ async def test_admin_upload_png_returns_relative_url(client: AsyncClient, admin_
 
 
 @pytest.mark.asyncio
-async def test_get_uploaded_file_is_public(client: AsyncClient, admin_token: str) -> None:
+async def test_get_uploaded_file_requires_auth(client: AsyncClient, admin_token: str) -> None:
     uploaded = await _upload(client, admin_token, MIN_PNG, "icon.png", "image/png")
     url = uploaded.json()["url"]
 
-    resp = await client.get(url)
+    client.cookies.clear()
+    anonymous = await client.get(url)
+    assert anonymous.status_code in (401, 403)
+
+    resp = await client.get(url, headers={"Authorization": f"Bearer {admin_token}"})
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("image/png")
     assert resp.content == MIN_PNG
@@ -102,14 +106,20 @@ async def test_upload_jpeg(client: AsyncClient, admin_token: str) -> None:
     resp = await _upload(client, admin_token, MIN_JPEG, "photo.jpg", "image/jpeg")
     assert resp.status_code == 200, resp.text
     assert resp.json()["url"].endswith(".jpg")
-    got = await client.get(resp.json()["url"])
+    got = await client.get(
+        resp.json()["url"],
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
     assert got.status_code == 200
     assert got.content == MIN_JPEG
 
 
 @pytest.mark.asyncio
-async def test_get_missing_upload_is_404(client: AsyncClient) -> None:
-    resp = await client.get("/api/uploads/2099/01/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png")
+async def test_get_missing_upload_is_404(client: AsyncClient, admin_token: str) -> None:
+    resp = await client.get(
+        "/api/uploads/2099/01/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
     assert resp.status_code == 404
 
 

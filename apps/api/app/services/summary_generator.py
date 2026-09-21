@@ -38,6 +38,194 @@ from app.services.auto_checkout import (
 from app.services.overtime import calculate_workday
 
 
+def _as_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+async def _summarize_one_day(
+    db: AsyncSession,
+    *,
+    unit_id: uuid.UUID,
+    event_date: date,
+    day_events: list[AttendanceEvent],
+    today: date,
+) -> tuple[int, int, int, uuid.UUID | None]:
+    """Upsert one unit/day summary. Returns (created, updated, auto_checkouts, unit_id_to_recompute)."""
+    check_ins = [e for e in day_events if e.event_type == EventType.check_in.value]
+    check_outs = [e for e in day_events if e.event_type == EventType.check_out.value]
+
+    if not check_ins and not check_outs:
+        return 0, 0, 0, None
+
+    first_event = day_events[0]
+    location = first_event.location_ref or (
+        first_event.unit.registered_location if first_event.unit else None
+    )
+    location_id = location.id if location else (
+        first_event.unit.registered_location_id if first_event.unit else None
+    )
+    if location_id is None:
+        return 0, 0, 0, None
+
+    notes: str | None = None
+    work_result = None
+    is_complete = False
+    first_check_in = None
+    last_out_event = (
+        max(check_outs, key=lambda e: _as_utc(e.recorded_at)) if check_outs else None
+    )
+    last_check_out = last_out_event.recorded_at if last_out_event else None
+    auto_checkout_count = 0
+    recompute_unit_id: uuid.UUID | None = None
+
+    if not check_ins:
+        notes = "Missing check-in — add Manual correction to complete the day"
+    else:
+        first_check_in = min(_as_utc(e.recorded_at) for e in check_ins)
+
+        if (
+            is_auto_checkout_enabled()
+            and last_check_out is None
+            and event_date < today
+        ):
+            last_check_out = day_boundary_at(event_date)
+            db.add(
+                make_day_boundary_checkout_event(
+                    unit_id=unit_id,
+                    checkout_time=last_check_out,
+                    location_id=location_id,
+                    location=first_event.location
+                    or (location.code if location and location.code else "auto"),
+                )
+            )
+            notes = "Closed by day-boundary auto checkout (23:59)"
+            auto_checkout_count = 1
+            recompute_unit_id = unit_id
+        elif (
+            last_out_event is not None
+            and last_out_event.source == EventSource.auto_checkout.value
+        ):
+            notes = (last_out_event.notes or "").strip() or DAY_BOUNDARY_NOTE
+        elif last_check_out is None and event_date < today:
+            notes = "Missing check-out — add Manual correction to complete the day"
+
+        if last_check_out:
+            work_result = calculate_workday(
+                first_check_in=first_check_in,
+                last_check_out=last_check_out,
+                location=location,
+                target_date=event_date,
+            )
+            is_complete = True
+
+    total_minutes = int(work_result.total_hours * 60) if work_result else 0
+    ot_minutes = int(work_result.ot_hours * 60) if work_result else 0
+    regular_hours = float(work_result.standard_hours) if work_result else 0.0
+    ot_hours = float(work_result.ot_hours) if work_result else 0.0
+    ot_slots = work_result.ot_slots if work_result else 0
+    regular_slots = max(0, work_result.total_slots - ot_slots) if work_result else 0
+
+    existing_result = await db.execute(
+        select(AttendanceSummary).where(
+            AttendanceSummary.unit_id == unit_id,
+            AttendanceSummary.summary_date == event_date,
+        )
+    )
+    summary = existing_result.scalar_one_or_none()
+
+    if summary:
+        summary.first_check_in = first_check_in
+        summary.last_check_out = last_check_out
+        summary.total_work_minutes = total_minutes
+        summary.total_overtime_minutes = ot_minutes
+        summary.is_complete = is_complete
+        summary.is_weekend = event_date.weekday() >= 5
+        summary.regular_slots = regular_slots
+        summary.ot_slots = ot_slots
+        summary.regular_hours = regular_hours
+        summary.overtime_hours = ot_hours
+        summary.location_id = location_id
+        summary.attendance_notes = notes
+        summary.calculation_method = "standard"
+        summary.updated_at = datetime.now(timezone.utc)
+        return 0, 1, auto_checkout_count, recompute_unit_id
+
+    db.add(
+        AttendanceSummary(
+            unit_id=unit_id,
+            summary_date=event_date,
+            location_id=location_id,
+            first_check_in=first_check_in,
+            last_check_out=last_check_out,
+            total_work_minutes=total_minutes,
+            total_overtime_minutes=ot_minutes,
+            is_complete=is_complete,
+            is_weekend=event_date.weekday() >= 5,
+            regular_slots=regular_slots,
+            ot_slots=ot_slots,
+            regular_hours=regular_hours,
+            overtime_hours=ot_hours,
+            attendance_notes=notes,
+            calculation_method="standard",
+        )
+    )
+    return 1, 0, auto_checkout_count, recompute_unit_id
+
+
+async def refresh_unit_day_summary(
+    db: AsyncSession,
+    *,
+    unit_id: uuid.UUID,
+    day: date,
+) -> None:
+    """Rebuild one unit's daily summary from current non-voided events. Does not commit."""
+    start_dt = datetime.combine(day, datetime.min.time(), tzinfo=ATTENDANCE_TZ)
+    end_dt = datetime.combine(day, datetime.max.time(), tzinfo=ATTENDANCE_TZ)
+    result = await db.execute(
+        select(AttendanceEvent)
+        .options(
+            selectinload(AttendanceEvent.unit).selectinload(Unit.registered_location),
+            selectinload(AttendanceEvent.location_ref),
+        )
+        .where(AttendanceEvent.unit_id == unit_id)
+        .where(AttendanceEvent.recorded_at >= start_dt)
+        .where(AttendanceEvent.recorded_at <= end_dt)
+        .where(AttendanceEvent.voided_at.is_(None))
+        .order_by(AttendanceEvent.recorded_at)
+    )
+    events = list(result.scalars().all())
+    today = attendance_today()
+
+    if not events:
+        existing = await db.execute(
+            select(AttendanceSummary).where(
+                AttendanceSummary.unit_id == unit_id,
+                AttendanceSummary.summary_date == day,
+            )
+        )
+        row = existing.scalar_one_or_none()
+        if row is not None and (row.calculation_method or "").lower() != "seed":
+            await db.delete(row)
+        return
+
+    created, updated, auto, recompute_id = await _summarize_one_day(
+        db,
+        unit_id=unit_id,
+        event_date=day,
+        day_events=events,
+        today=today,
+    )
+    if recompute_id is not None:
+        await db.flush()
+        unit_result = await db.execute(select(Unit).where(Unit.id == recompute_id))
+        unit = unit_result.scalar_one_or_none()
+        if unit is not None:
+            await recompute_unit_attendance_status(db, unit=unit)
+    _ = (created, updated, auto)
+
+
 async def generate_monthly_summaries(
     db: AsyncSession,
     year: int,
@@ -84,134 +272,20 @@ async def generate_monthly_summaries(
     kept_keys: set[tuple[uuid.UUID, date]] = set()
 
     for (unit_id, event_date), day_events in grouped.items():
-        # Separate check_ins and check_outs
-        check_ins = [e for e in day_events if e.event_type == EventType.check_in.value]
-        check_outs = [e for e in day_events if e.event_type == EventType.check_out.value]
-
-        if not check_ins and not check_outs:
+        created, updated, auto, recompute_id = await _summarize_one_day(
+            db,
+            unit_id=unit_id,
+            event_date=event_date,
+            day_events=day_events,
+            today=today,
+        )
+        if created == 0 and updated == 0 and auto == 0 and recompute_id is None:
             continue
-
-        # Determine location (prefer first event's location, fallback to unit's registered)
-        first_event = day_events[0]
-        location = first_event.location_ref or (
-            first_event.unit.registered_location if first_event.unit else None
-        )
-        location_id = location.id if location else (
-            first_event.unit.registered_location_id if first_event.unit else None
-        )
-        if location_id is None:
-            continue  # summaries require a location_id
-
-        notes: str | None = None
-        work_result = None
-        is_complete = False
-        first_check_in = None
-        last_out_event = (
-            max(check_outs, key=lambda e: e.recorded_at) if check_outs else None
-        )
-        last_check_out = last_out_event.recorded_at if last_out_event else None
-
-        if not check_ins:
-            # Checkout-only: keep the day visible so admins can add a check-in
-            notes = "Missing check-in — add Manual correction to complete the day"
-        else:
-            first_check_in = min(e.recorded_at for e in check_ins)
-
-            # Past days with check-in but no check-out → day-boundary auto checkout
-            # (gated by AUTO_CHECKOUT_ENABLED; prefer Manual correction when off)
-            if (
-                is_auto_checkout_enabled()
-                and last_check_out is None
-                and event_date < today
-            ):
-                last_check_out = day_boundary_at(event_date)
-                db.add(
-                    make_day_boundary_checkout_event(
-                        unit_id=unit_id,
-                        checkout_time=last_check_out,
-                        location_id=location_id,
-                        location=first_event.location
-                        or (location.code if location and location.code else "auto"),
-                    )
-                )
-                notes = "Closed by day-boundary auto checkout (23:59)"
-                auto_checkout_count += 1
-                units_to_recompute.add(unit_id)
-            elif (
-                last_out_event is not None
-                and last_out_event.source == EventSource.auto_checkout.value
-            ):
-                # Day-end (or prior Generate) already wrote the event — still mark the day
-                notes = (last_out_event.notes or "").strip() or DAY_BOUNDARY_NOTE
-            elif last_check_out is None and event_date < today:
-                notes = "Missing check-out — add Manual correction to complete the day"
-
-            # Calculate work hours when both sides exist
-            if last_check_out:
-                work_result = calculate_workday(
-                    first_check_in=first_check_in,
-                    last_check_out=last_check_out,
-                    location=location,
-                    target_date=event_date,
-                )
-                is_complete = True
-
-        # Build values
-        total_minutes = int(work_result.total_hours * 60) if work_result else 0
-        ot_minutes = int(work_result.ot_hours * 60) if work_result else 0
-        regular_hours = float(work_result.standard_hours) if work_result else 0.0
-        ot_hours = float(work_result.ot_hours) if work_result else 0.0
-        # Slot-based source of truth (1 slot = 15 min = 0.25h)
-        ot_slots = work_result.ot_slots if work_result else 0
-        regular_slots = max(0, work_result.total_slots - ot_slots) if work_result else 0
-
-        # Upsert
-        existing_result = await db.execute(
-            select(AttendanceSummary).where(
-                AttendanceSummary.unit_id == unit_id,
-                AttendanceSummary.summary_date == event_date,
-            )
-        )
-        summary = existing_result.scalar_one_or_none()
-
-        if summary:
-            summary.first_check_in = first_check_in
-            summary.last_check_out = last_check_out
-            summary.total_work_minutes = total_minutes
-            summary.total_overtime_minutes = ot_minutes
-            summary.is_complete = is_complete
-            summary.is_weekend = event_date.weekday() >= 5
-            summary.regular_slots = regular_slots
-            summary.ot_slots = ot_slots
-            summary.regular_hours = regular_hours
-            summary.overtime_hours = ot_hours
-            summary.location_id = location_id
-            summary.attendance_notes = notes
-            # Real events replace seed demo rows for this unit/day
-            summary.calculation_method = "standard"
-            summary.updated_at = datetime.now(timezone.utc)
-            updated_count += 1
-        else:
-            summary = AttendanceSummary(
-                unit_id=unit_id,
-                summary_date=event_date,
-                location_id=location_id,
-                first_check_in=first_check_in,
-                last_check_out=last_check_out,
-                total_work_minutes=total_minutes,
-                total_overtime_minutes=ot_minutes,
-                is_complete=is_complete,
-                is_weekend=event_date.weekday() >= 5,
-                regular_slots=regular_slots,
-                ot_slots=ot_slots,
-                regular_hours=regular_hours,
-                overtime_hours=ot_hours,
-                attendance_notes=notes,
-                calculation_method="standard",
-            )
-            db.add(summary)
-            created_count += 1
-
+        created_count += created
+        updated_count += updated
+        auto_checkout_count += auto
+        if recompute_id is not None:
+            units_to_recompute.add(recompute_id)
         kept_keys.add((unit_id, event_date))
 
     # Remove event-less month rows, but keep seed demo data (calculation_method=seed)

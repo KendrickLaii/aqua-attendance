@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.deps import AdminOnly, DB
 from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase, EnrollmentStatus
 from app.models.course_sku import CourseSku
+from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
 from app.models.unit import Unit, UnitStatus
 from app.schemas.course_enrollment import (
     CourseEnrollmentCreate,
@@ -19,6 +20,19 @@ from app.schemas.course_enrollment import (
 )
 
 router = APIRouter(prefix="/course-enrollments", tags=["courses"])
+
+_ENROLLMENT_LOAD = (
+    selectinload(CourseEnrollment.purchases),
+    selectinload(CourseEnrollment.unit),
+)
+
+
+def _enrollment_to_out(enrollment: CourseEnrollment) -> CourseEnrollmentOut:
+    out = CourseEnrollmentOut.model_validate(enrollment)
+    if enrollment.unit is not None:
+        out.unit_code = enrollment.unit.code
+        out.unit_name = enrollment.unit.full_name
+    return out
 
 
 async def _require_enrollable_sku(
@@ -63,7 +77,7 @@ async def list_course_enrollments(
     status_filter: str | None = Query(default=None, alias="status"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
-) -> list[CourseEnrollment]:
+) -> list[CourseEnrollmentOut]:
     clauses = []
     if unit_id is not None:
         clauses.append(CourseEnrollment.unit_id == unit_id)
@@ -77,17 +91,17 @@ async def list_course_enrollments(
         count_q = count_q.where(*clauses)
     total = await db.scalar(count_q) or 0
 
-    q = select(CourseEnrollment).options(selectinload(CourseEnrollment.purchases))
+    q = select(CourseEnrollment).options(*_ENROLLMENT_LOAD)
     if clauses:
         q = q.where(*clauses)
     q = q.order_by(CourseEnrollment.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return list(result.scalars().all())
+    return [_enrollment_to_out(row) for row in result.scalars().all()]
 
 
 @router.post("", response_model=CourseEnrollmentOut, status_code=status.HTTP_201_CREATED)
-async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOnly, db: DB) -> CourseEnrollment:
+async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOnly, db: DB) -> CourseEnrollmentOut:
     unit_result = await db.execute(select(Unit).where(Unit.id == body.unit_id))
     unit = unit_result.scalar_one_or_none()
     if not unit:
@@ -123,32 +137,32 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
         raise HTTPException(status_code=409, detail="This student is already enrolled in this course")
     result = await db.execute(
         select(CourseEnrollment)
-        .options(selectinload(CourseEnrollment.purchases))
+        .options(*_ENROLLMENT_LOAD)
         .where(CourseEnrollment.id == enrollment.id)
     )
-    return result.scalar_one()
+    return _enrollment_to_out(result.scalar_one())
 
 
 @router.get("/{enrollment_id}", response_model=CourseEnrollmentOut)
-async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB) -> CourseEnrollment:
+async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB) -> CourseEnrollmentOut:
     result = await db.execute(
         select(CourseEnrollment)
-        .options(selectinload(CourseEnrollment.purchases))
+        .options(*_ENROLLMENT_LOAD)
         .where(CourseEnrollment.id == enrollment_id)
     )
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
-    return enrollment
+    return _enrollment_to_out(enrollment)
 
 
 @router.patch("/{enrollment_id}", response_model=CourseEnrollmentOut)
 async def update_course_enrollment(
     enrollment_id: uuid.UUID, body: CourseEnrollmentUpdate, _admin: AdminOnly, db: DB
-) -> CourseEnrollment:
+) -> CourseEnrollmentOut:
     result = await db.execute(
         select(CourseEnrollment)
-        .options(selectinload(CourseEnrollment.purchases))
+        .options(*_ENROLLMENT_LOAD)
         .where(CourseEnrollment.id == enrollment_id)
     )
     enrollment = result.scalar_one_or_none()
@@ -180,10 +194,10 @@ async def update_course_enrollment(
     await db.commit()
     result = await db.execute(
         select(CourseEnrollment)
-        .options(selectinload(CourseEnrollment.purchases))
+        .options(*_ENROLLMENT_LOAD)
         .where(CourseEnrollment.id == enrollment.id)
     )
-    return result.scalar_one()
+    return _enrollment_to_out(result.scalar_one())
 
 
 @router.delete("/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -192,6 +206,22 @@ async def delete_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, 
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    billed = await db.scalar(
+        select(TuitionInvoiceLine.id)
+        .join(TuitionInvoice, TuitionInvoiceLine.invoice_id == TuitionInvoice.id)
+        .where(
+            TuitionInvoiceLine.enrollment_id == enrollment_id,
+            TuitionInvoice.status != TuitionInvoiceStatus.void.value,
+        )
+        .limit(1)
+    )
+    if billed is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Enrollment has billed invoices. Unenroll instead of deleting.",
+        )
+
     await db.delete(enrollment)
     await db.commit()
 

@@ -244,18 +244,12 @@ async def attendance_summary_overview_stats(
 
 @router.post("", response_model=AttendanceSummaryOut, status_code=status.HTTP_201_CREATED)
 async def create_attendance_summary(
-    body: AttendanceSummaryCreate, _admin: AdminOnly, db: DB
+    _body: AttendanceSummaryCreate, _admin: AdminOnly, _db: DB
 ) -> AttendanceSummaryOut:
-    summary = AttendanceSummary(**body.model_dump())
-    db.add(summary)
-    await db.commit()
-    await db.refresh(summary)
-    result = await db.execute(
-        select(AttendanceSummary)
-        .options(selectinload(AttendanceSummary.unit))
-        .where(AttendanceSummary.id == summary.id)
+    raise HTTPException(
+        status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        detail="Manual attendance summaries are disabled. Use generate instead.",
     )
-    return _summary_to_out(result.scalar_one())
 
 
 @router.get("/{summary_id}", response_model=AttendanceSummaryOut)

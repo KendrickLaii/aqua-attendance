@@ -6,8 +6,8 @@ import {
 } from '@/api/attendance/tuitionReceipts'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import StatCards from '@/components/attendance/StatCards.vue'
+import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { resolveMediaUrl } from '@/utils/mediaUrl'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import {
   type TuitionInvoicePrintHeader,
@@ -207,12 +207,12 @@ function headerFromLocation(location: LocationItem): TuitionInvoicePrintHeader {
   }
 }
 
-function printReceipt(receipt: TuitionReceipt) {
+async function printReceipt(receipt: TuitionReceipt) {
   try {
     const printWindow = openTuitionReceiptPrintPlaceholder()
     const location = locations.value.find(item => item.id === receipt.location_id)
     printTuitionReceipt(printWindow, tuitionReceiptPrintData(receipt, {
-      logoUrl: resolveMediaUrl(location?.icon_url || location?.main_photo_url || ''),
+      logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
       header: location ? headerFromLocation(location) : undefined,
     }))
   }

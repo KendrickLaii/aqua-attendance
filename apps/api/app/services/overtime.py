@@ -116,6 +116,10 @@ def calculate_workday(
     # Round to 15-min slots (keep original tz; compare via absolute deltas)
     rounded_in = _round_to_15(first_check_in)
     rounded_out = _round_to_15(last_check_out)
+    if rounded_in.tzinfo is not None and rounded_out.tzinfo is None:
+        rounded_out = rounded_out.replace(tzinfo=rounded_in.tzinfo)
+    elif rounded_out.tzinfo is not None and rounded_in.tzinfo is None:
+        rounded_in = rounded_in.replace(tzinfo=rounded_out.tzinfo)
 
     if rounded_out <= rounded_in:
         return WorkDayResult(0, 0, 0.0, 0.0, 0.0)

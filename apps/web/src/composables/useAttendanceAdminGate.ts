@@ -17,6 +17,12 @@ export function useAttendanceAdminGate() {
 
       return false
     }
+    const hydrated = await authStore.hydrateSession()
+    if (!hydrated) {
+      await router.replace({ name: 'attendance-login' })
+
+      return false
+    }
     if (requireAdmin && !authStore.isAdmin) {
       await router.replace({ name: 'attendance-dashboard' })
 

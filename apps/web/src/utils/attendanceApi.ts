@@ -57,23 +57,19 @@ function refreshAttendanceTokens(): Promise<boolean> {
 
   attendanceRefreshing = (async (): Promise<boolean> => {
     const refreshToken = useCookie('refreshToken').value
-    if (!refreshToken) {
-      redirectToLogin()
-
-      return false
-    }
 
     try {
       const data = await ofetch<{ access_token: string; refresh_token: string }>(
         `${getBaseURL()}/auth/refresh`,
         {
           method: 'POST',
-          body: { refresh_token: refreshToken },
+          credentials: 'include',
+          body: refreshToken ? { refresh_token: refreshToken } : {},
         },
       )
 
       useCookie('accessToken').value = data.access_token
-      useCookie('refreshToken').value = data.refresh_token
+      useCookie('refreshToken').value = null
 
       return true
     }
@@ -95,6 +91,7 @@ function refreshAttendanceTokens(): Promise<boolean> {
 /** Single-flight inner client (401 handling is in $attendanceApi wrapper). */
 const attendanceOfetch = ofetch.create({
   baseURL: getBaseURL(),
+  credentials: 'include',
   async onRequest({ options }) {
     attachAttendanceAuthHeaders(options)
   },

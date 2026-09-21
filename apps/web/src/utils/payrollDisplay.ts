@@ -86,3 +86,22 @@ export function parsePayrollCurrencyInput(display: string | number | null | unde
 
   return Number.isFinite(n) ? n : 0
 }
+
+export function payrollPaySplitError(input: {
+  cheque: number
+  cash: number
+  net: number
+  chequeNumber: string
+}): string | null {
+  const cheque = Number(input.cheque) || 0
+  const cash = Number(input.cash) || 0
+  const net = Number(input.net) || 0
+  if (cheque < 0 || cash < 0)
+    return 'Cheque and cash amounts cannot be negative.'
+  if (cheque > 0 && !input.chequeNumber.trim())
+    return 'Enter a cheque number when cheque amount is greater than 0.'
+  if (Math.abs(cheque + cash - net) > 0.009)
+    return 'Cheque + cash must equal net pay.'
+
+  return null
+}

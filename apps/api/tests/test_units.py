@@ -194,3 +194,46 @@ async def test_unit_registered_and_scan_locations(
     updated = patch.json()
     assert updated["registered_location_id"] == sample_location_b["id"]
     assert updated["scan_location_ids"] == [sample_location_b["id"]]
+
+
+async def _create_staff(
+    client: AsyncClient,
+    token: str,
+    location_id: str,
+    *,
+    employment_type: str,
+) -> dict:
+    resp = await client.post(
+        "/api/units",
+        json={
+            "code": f"EMP-{uuid.uuid4().hex[:6]}",
+            "full_name": f"{employment_type} staff",
+            "unit_type": "staff",
+            "registered_location_id": location_id,
+            "scan_location_ids": [location_id],
+            "staff_profile": {"employment_type": employment_type},
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_list_units_employment_type_filter(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    part = await _create_staff(client, admin_token, sample_location["id"], employment_type="part_time")
+    await _create_staff(client, admin_token, sample_location["id"], employment_type="full_time")
+
+    resp = await client.get(
+        "/api/units",
+        params={"unit_type": "staff", "employment_type": "part_time", "page_size": 50},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert resp.headers.get("X-Total-Count") == "1"
+    assert [row["id"] for row in body] == [part["id"]]
+    assert body[0]["staff_profile"]["employment_type"] == "part_time"

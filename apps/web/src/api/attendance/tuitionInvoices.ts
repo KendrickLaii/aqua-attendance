@@ -1,5 +1,5 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { type AttendanceListResult, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAllAttendancePages, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
 export type TuitionInvoiceStatus = 'draft' | 'issued' | 'paid' | 'void'
 
@@ -43,11 +43,21 @@ export interface TuitionInvoice {
   updated_at: string
 }
 
+export interface LeftoverPurchase {
+  unit_code: string | null
+  unit_name: string | null
+  sku_code: string | null
+  purchased_at: string
+  purchased_quantity: number
+}
+
 export interface TuitionInvoiceGenerateResult {
   created: number
   updated: number
   skipped: number
   deleted?: number
+  leftover_unbilled?: number
+  leftover_purchases?: LeftoverPurchase[]
 }
 
 export async function listTuitionInvoicesWithTotal(params?: {
@@ -67,41 +77,20 @@ export async function listAllTuitionInvoices(params: {
   status?: string
   location_id?: string
 } = {}): Promise<AttendanceListResult<TuitionInvoice>> {
-  const pageSize = 200
-
-  const first = await listTuitionInvoicesWithTotal({
-    ...params,
-    page: 1,
-    page_size: pageSize,
-  })
-
-  const items = [...first.items]
-  const total = first.total
-  let page = 2
-  while (items.length < total) {
-    const next = await listTuitionInvoicesWithTotal({
-      ...params,
-      page,
-      page_size: pageSize,
-    })
-
-    if (next.items.length === 0)
-      break
-    items.push(...next.items)
-    page += 1
-  }
-
-  return { items, total }
+  return await fetchAllAttendancePages<TuitionInvoice>('/tuition-invoices', params)
 }
 
 export async function generateTuitionInvoices(
   year: number,
   month: number,
+  locationId?: string | null,
 ): Promise<TuitionInvoiceGenerateResult> {
   const params = new URLSearchParams()
 
   params.set('year', String(year))
   params.set('month', String(month))
+  if (locationId)
+    params.set('location_id', locationId)
 
   return await $attendanceApi(`/tuition-invoices/generate?${params.toString()}`, { method: 'POST' })
 }

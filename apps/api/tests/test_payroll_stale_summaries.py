@@ -144,7 +144,7 @@ async def test_stale_detection_uses_hong_kong_month_window(
 
 
 @pytest.mark.asyncio
-async def test_generate_payroll_returns_stale_warning(
+async def test_generate_payroll_rejects_stale_summaries(
     client: AsyncClient, admin_token: str, sample_location: dict
 ) -> None:
     loc = sample_location["id"]
@@ -160,7 +160,9 @@ async def test_generate_payroll_returns_stale_warning(
         params={"year": YEAR, "month": MONTH, "unit_type": "staff"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
-    assert resp.status_code == 200
-    body = resp.json()
-    stale = body.get("stale_summaries") or []
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert isinstance(detail, dict)
+    assert "stale" in detail["message"].lower() or "summar" in detail["message"].lower()
+    stale = detail.get("stale_summaries") or []
     assert any(s["unit_id"] == unit["id"] and s["reason"] == "outdated" for s in stale)

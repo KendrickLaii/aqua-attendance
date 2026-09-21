@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { LocationItem } from '@/api/attendance/locations'
+import { useAuthenticatedMediaSrc } from '@/composables/useAuthenticatedMediaSrc'
 import { cardCoverUrl, formatCardBusinessHours, showCardIcon } from '@/utils/locationHours'
-import { resolveMediaUrl } from '@/utils/mediaUrl'
 
-defineProps<{
+const props = defineProps<{
   location: LocationItem
 }>()
 
@@ -11,6 +11,9 @@ const emit = defineEmits<{
   edit: []
   delete: []
 }>()
+
+const coverSrc = useAuthenticatedMediaSrc(() => cardCoverUrl(props.location))
+const iconSrc = useAuthenticatedMediaSrc(() => props.location.icon_url)
 </script>
 
 <template>
@@ -23,7 +26,7 @@ const emit = defineEmits<{
     <div class="location-card__cover">
       <img
         v-if="cardCoverUrl(location)"
-        :src="resolveMediaUrl(cardCoverUrl(location))"
+        :src="coverSrc"
         alt=""
         class="location-card__cover-img"
       >
@@ -78,7 +81,7 @@ const emit = defineEmits<{
           class="location-card__avatar flex-shrink-0"
         >
           <VImg
-            :src="resolveMediaUrl(location.icon_url)"
+            :src="iconSrc"
             cover
           />
         </VAvatar>

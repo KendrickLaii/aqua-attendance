@@ -77,6 +77,8 @@ class CourseEnrollmentOut(BaseModel):
     unit_price: float | None = None
     notes: str | None = None
     purchases: list[EnrollmentPurchaseOut] = Field(default_factory=list)
+    unit_code: str | None = None
+    unit_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

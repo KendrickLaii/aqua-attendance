@@ -393,7 +393,7 @@ async def test_unauthenticated_cannot_scan(client: AsyncClient):
 
     )
 
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 
@@ -523,7 +523,7 @@ async def test_unauthenticated_cannot_list_attendance(client: AsyncClient):
 
     resp = await client.get("/api/attendance")
 
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 
@@ -896,6 +896,6 @@ async def test_unauthenticated_cannot_get_attendance_stats(client: AsyncClient):
 
     resp = await client.get("/api/attendance/stats")
 
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 

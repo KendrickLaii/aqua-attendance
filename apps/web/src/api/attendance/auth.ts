@@ -31,9 +31,9 @@ export async function attendanceGetMe(): Promise<AttendanceUser> {
 }
 
 /** Revoke refresh token on sign-out (idempotent; safe if token already expired). */
-export async function attendanceLogout(refreshToken: string): Promise<void> {
+export async function attendanceLogout(refreshToken?: string | null): Promise<void> {
   await $attendanceApi('/auth/logout', {
     method: 'POST',
-    body: { refresh_token: refreshToken },
+    body: refreshToken ? { refresh_token: refreshToken } : {},
   })
 }

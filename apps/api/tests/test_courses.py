@@ -363,10 +363,14 @@ async def test_enroll_student_in_sku(
     assert body["unit_id"] == sample_unit["id"]
     assert body["sku_id"] == sku["id"]
     assert body["status"] == "active"
+    assert body["unit_code"] == sample_unit["code"]
+    assert body["unit_name"] == sample_unit["full_name"]
 
     listed = await client.get(f"/api/course-enrollments?unit_id={sample_unit['id']}", headers=_auth(admin_token))
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+    assert listed.json()[0]["unit_code"] == sample_unit["code"]
+    assert listed.json()[0]["unit_name"] == sample_unit["full_name"]
 
 
 @pytest.mark.asyncio

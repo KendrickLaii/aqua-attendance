@@ -29,7 +29,7 @@ async def upload_media(file: UploadFile, _admin: AdminOnly) -> UploadOut:
 
 
 @router.get("/{key:path}")
-async def get_media(key: str) -> FileResponse:
+async def get_media(key: str, _admin: AdminOnly) -> FileResponse:
     try:
         path = resolve_upload_path(key)
     except MediaStorageError as exc:
@@ -40,5 +40,5 @@ async def get_media(key: str) -> FileResponse:
     return FileResponse(
         path,
         media_type=content_type_for_key(key),
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={"Cache-Control": "private, max-age=3600"},
     )

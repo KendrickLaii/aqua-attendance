@@ -2,7 +2,7 @@
 import { uploadMedia } from '@/api/attendance/uploads'
 import { useToast } from '@/composables/useToast'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { resolveMediaUrl } from '@/utils/mediaUrl'
+import { useAuthenticatedMediaSrc } from '@/composables/useAuthenticatedMediaSrc'
 
 const url = defineModel<string>('url', { required: true })
 const previewError = defineModel<boolean>('previewError', { required: true })
@@ -21,7 +21,7 @@ const uploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const showUrlField = ref(false)
 
-const previewSrc = computed(() => resolveMediaUrl(url.value))
+const previewSrc = useAuthenticatedMediaSrc(url)
 
 function openPicker() {
   fileInput.value?.click()

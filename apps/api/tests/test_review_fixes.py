@@ -71,6 +71,96 @@ async def test_delete_unit_with_events_blocked(
 
 
 @pytest.mark.asyncio
+async def test_delete_unit_with_enrollment_blocked(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    spu = await client.post(
+        "/api/course-spus",
+        json={"code": f"DEL-{uuid.uuid4().hex[:6]}", "name_zh": "刪除保護課"},
+        headers=headers,
+    )
+    assert spu.status_code == 201, spu.text
+    sku = await client.post(
+        "/api/course-skus",
+        json={
+            "spu_id": spu.json()["id"],
+            "code": f"DEL-SKU-{uuid.uuid4().hex[:6]}",
+            "name_zh": "刪除保護班",
+            "price": 100,
+        },
+        headers=headers,
+    )
+    assert sku.status_code == 201, sku.text
+    enrolled = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku.json()["id"]},
+        headers=headers,
+    )
+    assert enrolled.status_code == 201, enrolled.text
+
+    delete = await client.delete(f"/api/units/{sample_unit['id']}", headers=headers)
+    assert delete.status_code == 409
+    assert "enroll" in delete.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_delete_unit_with_payroll_blocked(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    from datetime import date
+
+    from app.models.payroll_record import PayrollRecord
+    from tests.conftest import TestSessionLocal
+
+    async with TestSessionLocal() as session:
+        session.add(
+            PayrollRecord(
+                unit_id=uuid.UUID(sample_unit["id"]),
+                payroll_period_start=date(2026, 3, 1),
+                payroll_period_end=date(2026, 3, 31),
+            )
+        )
+        await session.commit()
+
+    delete = await client.delete(
+        f"/api/units/{sample_unit['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert delete.status_code == 409
+    assert "payroll" in delete.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_delete_unit_with_invoice_blocked(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    from datetime import date
+
+    from app.models.tuition_invoice import TuitionInvoice
+    from tests.conftest import TestSessionLocal
+
+    async with TestSessionLocal() as session:
+        session.add(
+            TuitionInvoice(
+                unit_id=uuid.UUID(sample_unit["id"]),
+                location_id=uuid.UUID(sample_location["id"]),
+                period_start=date(2026, 3, 1),
+                period_end=date(2026, 3, 31),
+                total=100,
+            )
+        )
+        await session.commit()
+
+    delete = await client.delete(
+        f"/api/units/{sample_unit['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert delete.status_code == 409
+    assert "invoice" in delete.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_export_csv_requires_date_range(
     client: AsyncClient, admin_token: str
 ) -> None:

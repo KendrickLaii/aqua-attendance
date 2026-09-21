@@ -126,27 +126,33 @@ async def generate_tuition_invoices(
     db: DB,
     year: int,
     month: int,
+    location_id: uuid.UUID | None = None,
 ) -> TuitionInvoiceGenerateResult:
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
 
     try:
-        result = await generate_monthly_tuition_invoices(db, year=year, month=month)
+        result = await generate_monthly_tuition_invoices(
+            db, year=year, month=month, location_id=location_id
+        )
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Invoice already exists for this student and period",
         )
+    leftover = int(result.get("leftover_unbilled") or 0)
     await audit_log_svc.log_audit(
         db,
         user_id=admin.id,
         action="DATA_EXPORT",
         table_name="tuition_invoices",
         description=(
-            f"Generated tuition invoices for {year}-{month:02d}: "
+            f"Generated tuition invoices for {year}-{month:02d}"
+            f"{f' location {location_id}' if location_id else ''}: "
             f"{result['created']} created, {result['updated']} updated, "
             f"{result['skipped']} skipped, {result['deleted']} deleted"
+            + (f", {leftover} leftover unbilled" if leftover else "")
         ),
     )
     return TuitionInvoiceGenerateResult(**result)

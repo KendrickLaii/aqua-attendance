@@ -6,8 +6,9 @@ Billing is derived purely from CourseEnrollment + CourseSku, not attendance:
 - price: enrollment.unit_price overrides the SKU price when set — lets
   price-less classes (e.g. 私補) be billed per student.
 - per_session (堂費): each EnrollmentPurchase (initial purchase or top-up)
-  is billed once, in the first month Generate runs for that covers or
-  follows its ``purchased_at`` date. A purchase stays billable while its
+  is billed once, in the calendar month of its ``purchased_at`` date. Older
+  unbilled purchases are reported as leftovers instead of being rolled into
+  a later month. A purchase stays billable while its
   ``billed_invoice_line_id`` is NULL or points at a line on a void or
   rebuilt-draft invoice.
 """
@@ -88,7 +89,7 @@ def _lines_from_enrollment(
         # link is NULL or points at a line that is being rebuilt/voided this
         # run. Enrollments without purchases have nothing to bill.
         for p in getattr(enrollment, "purchases", []):
-            if p.purchased_at > ctx.last_day:
+            if p.purchased_at < ctx.first_day or p.purchased_at > ctx.last_day:
                 continue
             if p.billed_invoice_line_id is not None and p.billed_invoice_line_id not in ctx.unbilled_line_ids:
                 continue
@@ -151,9 +152,27 @@ async def generate_monthly_tuition_invoices(
     *,
     year: int,
     month: int,
-) -> dict[str, int]:
+    location_id: UUID | None = None,
+) -> dict[str, object]:
     first_day = date(year, month, 1)
     last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+    enrollment_clauses = [
+        CourseEnrollment.status == "active",
+        or_(CourseEnrollment.start_date.is_(None), CourseEnrollment.start_date <= last_day),
+        or_(CourseEnrollment.end_date.is_(None), CourseEnrollment.end_date >= first_day),
+        # per_session prices live on EnrollmentPurchase, not the SKU/enrollment.
+        or_(
+            CourseSku.billing_unit == "per_session",
+            CourseSku.price.is_not(None),
+            CourseEnrollment.unit_price.is_not(None),
+        ),
+        CourseSku.is_active.is_(True),
+        Unit.is_active.is_(True),
+        Unit.status == UnitStatus.active.value,
+    ]
+    if location_id is not None:
+        enrollment_clauses.append(Unit.registered_location_id == location_id)
 
     result = await db.execute(
         select(CourseEnrollment)
@@ -164,20 +183,7 @@ async def generate_monthly_tuition_invoices(
         )
         .join(CourseSku, CourseEnrollment.sku_id == CourseSku.id)
         .join(Unit, CourseEnrollment.unit_id == Unit.id)
-        .where(
-            CourseEnrollment.status == "active",
-            or_(CourseEnrollment.start_date.is_(None), CourseEnrollment.start_date <= last_day),
-            or_(CourseEnrollment.end_date.is_(None), CourseEnrollment.end_date >= first_day),
-            # per_session prices live on EnrollmentPurchase, not the SKU/enrollment.
-            or_(
-                CourseSku.billing_unit == "per_session",
-                CourseSku.price.is_not(None),
-                CourseEnrollment.unit_price.is_not(None),
-            ),
-            CourseSku.is_active.is_(True),
-            Unit.is_active.is_(True),
-            Unit.status == UnitStatus.active.value,
-        )
+        .where(*enrollment_clauses)
     )
     enrollments = result.scalars().all()
 
@@ -203,13 +209,44 @@ async def generate_monthly_tuition_invoices(
         line_purchase_links.extend(links)
         unit_locations[enrollment.unit_id] = enrollment.unit.registered_location_id
 
+    leftover_clauses = [
+        CourseSku.billing_unit == "per_session",
+        EnrollmentPurchase.purchased_at < first_day,
+        EnrollmentPurchase.billed_invoice_line_id.is_(None),
+    ]
+    if location_id is not None:
+        leftover_clauses.append(Unit.registered_location_id == location_id)
+    leftover_result = await db.execute(
+        select(EnrollmentPurchase, Unit, CourseSku)
+        .join(CourseEnrollment, EnrollmentPurchase.enrollment_id == CourseEnrollment.id)
+        .join(Unit, CourseEnrollment.unit_id == Unit.id)
+        .join(CourseSku, CourseEnrollment.sku_id == CourseSku.id)
+        .where(*leftover_clauses)
+        .order_by(EnrollmentPurchase.purchased_at)
+    )
+    leftover_purchases = [
+        {
+            "unit_code": unit.code,
+            "unit_name": unit.full_name,
+            "sku_code": sku.code,
+            "purchased_at": purchase.purchased_at,
+            "purchased_quantity": purchase.purchased_quantity,
+        }
+        for purchase, unit, sku in leftover_result.all()
+    ]
+
+    existing_clauses = [
+        TuitionInvoice.period_start == first_day,
+        TuitionInvoice.period_end == last_day,
+        TuitionInvoice.kind == "tuition",
+    ]
+    if location_id is not None:
+        existing_clauses.append(TuitionInvoice.location_id == location_id)
+
     existing_result = await db.execute(
         select(TuitionInvoice)
         .options(selectinload(TuitionInvoice.lines))
-        .where(
-            TuitionInvoice.period_start == first_day,
-            TuitionInvoice.period_end == last_day,
-        )
+        .where(*existing_clauses)
     )
     existing_by_unit = {invoice.unit_id: invoice for invoice in existing_result.scalars().all()}
 
@@ -273,4 +310,11 @@ async def generate_monthly_tuition_invoices(
     except IntegrityError:
         await db.rollback()
         raise
-    return {"created": created, "updated": updated, "skipped": skipped, "deleted": deleted}
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "deleted": deleted,
+        "leftover_unbilled": len(leftover_purchases),
+        "leftover_purchases": leftover_purchases,
+    }

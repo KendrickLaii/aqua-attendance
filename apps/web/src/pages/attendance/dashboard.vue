@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { getAttendanceDayStats, listAttendanceWithTotal } from '@/api/attendance/events'
-import { listUnits } from '@/api/attendance/units'
+import { listAllUnits } from '@/api/attendance/units'
 import type { Unit } from '@/api/attendance/units'
 import { type BusinessHours, listLocations } from '@/api/attendance/locations'
 import { getAutoCheckoutStatus, triggerAutoCheckout } from '@/api/attendance/autoCheckout'
@@ -246,7 +246,7 @@ async function loadDashboard(isRefresh = false) {
     const [eventsResult, dayStats, units, checkoutStatus] = await Promise.all([
       listAttendanceWithTotal({ date_from: range.date_from, date_to: range.date_to, page_size: RECENT_EVENTS_LIMIT }),
       getAttendanceDayStats({ date_from: range.date_from, date_to: range.date_to }),
-      listUnits({ is_active: true, page_size: 200 }),
+      listAllUnits({ is_active: true }),
       getAutoCheckoutStatus().catch(() => ({ still_checked_in_count: 0, enabled: false })),
     ])
 
@@ -332,7 +332,7 @@ async function openAutoCheckoutDialog() {
   locationCloseById.value = {}
   try {
     const [units, locations] = await Promise.all([
-      listUnits({ is_active: true, attendance_status: 'checked_in', page_size: 200 }),
+      listAllUnits({ is_active: true, attendance_status: 'checked_in' }),
       listLocations({ is_active: true, page_size: 200 }),
     ])
 

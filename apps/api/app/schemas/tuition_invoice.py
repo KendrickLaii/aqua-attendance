@@ -57,11 +57,21 @@ class TuitionInvoiceUpdate(BaseModel):
     staff_name: str | None = Field(default=None, max_length=255)
 
 
+class LeftoverPurchaseOut(BaseModel):
+    unit_code: str | None = None
+    unit_name: str | None = None
+    sku_code: str | None = None
+    purchased_at: date
+    purchased_quantity: int
+
+
 class TuitionInvoiceGenerateResult(BaseModel):
     created: int
     updated: int
     skipped: int
     deleted: int = 0
+    leftover_unbilled: int = 0
+    leftover_purchases: list[LeftoverPurchaseOut] = Field(default_factory=list)
 
 
 class TuitionInvoiceNextNo(BaseModel):

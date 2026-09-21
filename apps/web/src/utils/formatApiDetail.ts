@@ -3,6 +3,11 @@ export function formatApiDetail(detail: unknown): string {
     return ''
   if (typeof detail === 'string')
     return detail
+  if (detail && typeof detail === 'object' && !Array.isArray(detail) && 'message' in detail) {
+    const message = (detail as { message?: unknown }).message
+
+    return typeof message === 'string' ? message : String(message ?? '')
+  }
   if (Array.isArray(detail)) {
     return detail
       .filter((e): e is Record<string, unknown> => Boolean(e && typeof e === 'object'))

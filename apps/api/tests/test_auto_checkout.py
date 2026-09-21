@@ -148,6 +148,7 @@ async def test_auto_checkout_without_ids_checks_out_all(
 async def test_auto_checkout_requires_admin(
     client: AsyncClient, sample_location: dict
 ) -> None:
+    client.cookies.clear()
     resp = await client.post("/api/auto-checkout/run", json={})
     assert resp.status_code in (401, 403)
 

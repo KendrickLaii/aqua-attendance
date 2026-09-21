@@ -7,8 +7,8 @@ import { type TuitionInvoice } from '@/api/attendance/tuitionInvoices'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { type Unit, listUnits } from '@/api/attendance/units'
 import { requiredValidator } from '@core/utils/validators'
+import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { resolveMediaUrl } from '@/utils/mediaUrl'
 import {
   type TuitionInvoicePrintHeader,
 } from '@/utils/printTuitionInvoice'
@@ -303,7 +303,7 @@ async function submit() {
     })
     const location = locations.value.find(item => item.id === created.location_id)
     printTuitionReceipt(printWindow, tuitionReceiptPrintData(created, {
-      logoUrl: resolveMediaUrl(location?.icon_url || location?.main_photo_url || ''),
+      logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
       header: location ? headerFromLocation(location) : undefined,
     }))
     await router.push('/attendance/receipts')

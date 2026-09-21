@@ -257,6 +257,13 @@ def test_line_from_enrollment_per_session_skips_future_purchase() -> None:
     assert _one_line(enrollment, _ctx(last_day=date(2026, 6, 30))) is None
 
 
+def test_line_from_enrollment_per_session_skips_prior_month_purchase() -> None:
+    sku = SimpleNamespace(id=uuid.uuid4(), code="SESS", name_zh="堂費班", price=150, billing_unit="per_session")
+    purchase = _purchase(purchased_at=date(2026, 5, 20))
+    enrollment = SimpleNamespace(id=uuid.uuid4(), sku=sku, unit_price=None, purchases=[purchase])
+    assert _one_line(enrollment, _ctx(first_day=date(2026, 6, 1), last_day=date(2026, 6, 30))) is None
+
+
 def test_line_from_enrollment_monthly_ignores_purchased_quantity() -> None:
     sku = SimpleNamespace(id=uuid.uuid4(), code="MTH", name_zh="月費班", price=800, billing_unit="monthly")
     enrollment = SimpleNamespace(id=uuid.uuid4(), sku=sku, purchased_quantity=None, unit_price=None, purchases=[])
@@ -386,12 +393,17 @@ async def test_generate_per_session_rebills_after_invoice_voided(
         "/api/tuition-invoices/generate?year=2026&month=7",
         headers=_auth(admin_token),
     )
-    assert july.json()["created"] == 1
-    july_line = (
-        await client.get("/api/tuition-invoices?year=2026&month=7", headers=_auth(admin_token))
+    assert july.status_code == 200, july.text
+    assert july.json()["created"] == 0
+    assert july.json()["leftover_unbilled"] == 1
+
+    june = await _generate(client, admin_token, 2026, 6)
+    assert june["updated"] == 1
+    june_line = (
+        await client.get("/api/tuition-invoices?year=2026&month=6", headers=_auth(admin_token))
     ).json()[0]["lines"][0]
-    assert float(july_line["quantity"]) == 8
-    assert float(july_line["amount"]) == 1200
+    assert float(june_line["quantity"]) == 8
+    assert float(june_line["amount"]) == 1200
 
 
 @pytest.mark.asyncio
@@ -1178,9 +1190,19 @@ async def _top_up(
     return resp.json()
 
 
-async def _generate(client: AsyncClient, admin_token: str, year: int, month: int) -> dict:
+async def _generate(
+    client: AsyncClient,
+    admin_token: str,
+    year: int,
+    month: int,
+    location_id: str | None = None,
+) -> dict:
+    params: dict[str, int | str] = {"year": year, "month": month}
+    if location_id is not None:
+        params["location_id"] = location_id
     resp = await client.post(
-        f"/api/tuition-invoices/generate?year={year}&month={month}",
+        "/api/tuition-invoices/generate",
+        params=params,
         headers=_auth(admin_token),
     )
     assert resp.status_code == 200, resp.text
@@ -1630,6 +1652,27 @@ async def test_delete_per_session_enrollment_with_purchases(
 
 
 @pytest.mark.asyncio
+async def test_delete_enrollment_blocked_when_billed(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=8,
+    )
+    await _generate(client, admin_token, 2026, 6)
+
+    resp = await client.delete(
+        f"/api/course-enrollments/{enrollment['id']}",
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 409, resp.text
+    detail = str(resp.json()["detail"]).lower()
+    assert "unenroll" in detail or "billed" in detail
+
+
+@pytest.mark.asyncio
 async def test_manual_invoice_bills_unbilled_purchase(
     client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:
@@ -1886,3 +1929,69 @@ async def test_manual_invoice_line_stores_staff_name(
     assert resp.status_code == 201, resp.text
     line = resp.json()["lines"][0]
     assert line["staff_name"] == "Miss Chan"
+
+
+@pytest.mark.asyncio
+async def test_generate_per_session_skips_prior_month_and_reports_leftover(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=8,
+    )
+
+    july = await _generate(client, admin_token, 2026, 7)
+    assert july["created"] == 0
+    assert july["leftover_unbilled"] == 1
+    assert july["leftover_purchases"][0]["purchased_at"] == "2026-06-01"
+    assert (await _june_invoices(client, admin_token, month=7)) == []
+
+
+@pytest.mark.asyncio
+async def test_generate_reports_leftover_after_enrollment_ended(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", end_date="2026-06-30", purchased_quantity=8,
+    )
+
+    july = await _generate(client, admin_token, 2026, 7)
+    assert july["created"] == 0
+    assert july["leftover_unbilled"] == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_respects_location_and_does_not_delete_other_campus_drafts(
+    client: AsyncClient,
+    admin_token: str,
+    sample_unit: dict,
+    sample_location: dict,
+    sample_location_b: dict,
+) -> None:
+    student_b = await _create_student(client, admin_token, sample_location_b["id"], "Student B")
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    for student in (sample_unit, student_b):
+        await _enroll(
+            client, admin_token, student["id"], sku["id"],
+            start_date="2026-06-01", end_date="2026-06-30",
+        )
+
+    first = await _generate(client, admin_token, 2026, 6, location_id=sample_location["id"])
+    assert first["created"] == 1
+    invoices = await _june_invoices(client, admin_token)
+    assert len(invoices) == 1
+    assert invoices[0]["location_id"] == sample_location["id"]
+
+    second = await _generate(client, admin_token, 2026, 6, location_id=sample_location_b["id"])
+    assert second["created"] == 1
+    assert second["deleted"] == 0
+    after = await _june_invoices(client, admin_token)
+    assert len(after) == 2
+    locations = {inv["location_id"] for inv in after}
+    assert locations == {sample_location["id"], sample_location_b["id"]}

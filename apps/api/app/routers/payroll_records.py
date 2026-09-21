@@ -1,6 +1,7 @@
 import calendar
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import case, func, select
@@ -16,7 +17,7 @@ from app.schemas.payroll_record import (
     PayrollRecordUpdate,
 )
 from app.services import audit_log as audit_log_svc
-from app.services.payroll_generator import generate_monthly_payroll
+from app.services.payroll_generator import detect_stale_summary_units, generate_monthly_payroll
 from app.services.payroll_status import can_transition_payroll_status
 
 router = APIRouter(prefix="/payroll-records", tags=["payroll-records"])
@@ -28,6 +29,22 @@ def _record_to_out(record: PayrollRecord) -> PayrollRecordOut:
         out.unit_name = record.unit.full_name
         out.unit_code = record.unit.code
     return out
+
+
+def _money(value: object) -> Decimal:
+    return Decimal(str(value or 0)).quantize(Decimal("0.01"))
+
+
+def _recompute_payroll_totals(record: PayrollRecord) -> None:
+    gross = (
+        _money(record.base_salary)
+        + _money(record.overtime_pay)
+        + _money(record.holiday_pay)
+        + _money(record.adjustment_1)
+    )
+    net = gross + _money(record.adjustment_2)
+    record.gross_pay = float(gross)
+    record.net_pay = float(net)
 
 
 @router.get("", response_model=list[PayrollRecordOut])
@@ -153,6 +170,11 @@ async def payroll_record_stats(
 async def create_payroll_record(
     body: PayrollRecordCreate, _admin: AdminOnly, db: DB
 ) -> PayrollRecordOut:
+    if body.status != PayrollStatus.draft.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Payroll records must be created as draft",
+        )
     record = PayrollRecord(**body.model_dump())
     db.add(record)
     await db.commit()
@@ -215,8 +237,27 @@ async def update_payroll_record(
     if update_data.get("status") == PayrollStatus.paid.value:
         update_data["payment_date"] = datetime.now(timezone.utc)
 
+    update_data.pop("gross_pay", None)
+    update_data.pop("net_pay", None)
+    should_recompute = any(
+        field in update_data
+        for field in ("adjustment_1", "adjustment_2", "base_salary", "overtime_pay", "holiday_pay")
+    )
+
     for field, value in update_data.items():
         setattr(record, field, value)
+    if should_recompute:
+        _recompute_payroll_totals(record)
+
+    if record.status == PayrollStatus.paid.value:
+        cheque = _money(record.cheque_amount)
+        cash = _money(record.cash_amount)
+        if cheque + cash != _money(record.net_pay):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cheque + cash must equal net pay",
+            )
+
     await db.commit()
     await db.refresh(record)
     result = await db.execute(
@@ -244,6 +285,21 @@ async def generate_payroll_records(
     """
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
+
+    stale = await detect_stale_summary_units(
+        db, year=year, month=month, unit_type=unit_type, unit_ids=unit_ids
+    )
+    if stale:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": (
+                    "Attendance summaries are stale. Generate attendance summaries "
+                    "for this month, then run payroll again."
+                ),
+                "stale_summaries": stale,
+            },
+        )
 
     result = await generate_monthly_payroll(
         db, year=year, month=month, unit_type=unit_type, unit_ids=unit_ids

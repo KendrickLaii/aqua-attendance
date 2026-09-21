@@ -1,27 +1,34 @@
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth_cookies import ACCESS_COOKIE
 from app.database import get_db
 from app.models.user import Role, User
 from app.services.auth import decode_token
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
 async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     db: DB,
 ) -> User:
+    token = credentials.credentials if credentials else None
+    if not token:
+        token = request.cookies.get(ACCESS_COOKIE)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     try:
-        payload = decode_token(credentials.credentials, expected_type="access")
+        payload = decode_token(token, expected_type="access")
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 

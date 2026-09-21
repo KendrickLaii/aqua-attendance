@@ -250,20 +250,14 @@ async function loadUnits(isRefresh = false, resetPage = false) {
       attendance_status: filterAttendance.value === 'checked_in' || filterAttendance.value === 'checked_out'
         ? filterAttendance.value
         : undefined,
+      employment_type: filterEmployment.value === 'part_time' || filterEmployment.value === 'full_time'
+        ? filterEmployment.value
+        : undefined,
       page: page.value,
       page_size: pageSize.value,
     })
 
-    let items = result.items
-
-    // Frontend-only employment filter (no longer supported by backend query)
-    if (filterEmployment.value) {
-      items = items.filter(
-        p => p.staff_profile?.employment_type === filterEmployment.value,
-      )
-    }
-
-    units.value = items
+    units.value = result.items
     totalCount.value = result.total
   }
   catch (e) {
@@ -1725,6 +1719,7 @@ function rowStatusChip(p: Unit) {
     >
       This will permanently remove
       <strong>{{ deleteTarget?.full_name }}</strong> ({{ deleteTarget?.code }}).
+      People with attendance, enrollments, invoices, or payroll cannot be deleted — set them inactive instead.
       This action cannot be undone.
     </AttendanceConfirmDialog>
 

@@ -39,6 +39,25 @@ async def test_login_and_me(client: AsyncClient):
     assert resp.status_code == 200
     assert resp.json()["username"] == uname
 
+    assert client.cookies.get("attendance_refresh")
+    assert client.cookies.get("attendance_access")
+
+
+@pytest.mark.asyncio
+async def test_refresh_accepts_http_only_cookie(client: AsyncClient):
+    uname = f"user_{uuid.uuid4().hex[:8]}"
+    await _insert_test_user(username=uname, email=f"{uname}@test.com", password="testpass123")
+    login = await client.post("/api/auth/login", json={"username": uname, "password": "testpass123"})
+    assert login.status_code == 200
+
+    refreshed = await client.post("/api/auth/refresh", json={})
+    assert refreshed.status_code == 200
+    assert "access_token" in refreshed.json()
+
+    me = await client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["username"] == uname
+
 
 @pytest.mark.asyncio
 async def test_login_username_case_insensitive(client: AsyncClient):

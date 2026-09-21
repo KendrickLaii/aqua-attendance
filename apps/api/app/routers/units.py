@@ -6,6 +6,9 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import DB, AdminOnly
 from app.models.attendance import AttendanceEvent
+from app.models.course_enrollment import CourseEnrollment
+from app.models.payroll_record import PayrollRecord
+from app.models.tuition_invoice import TuitionInvoice
 from app.models.unit import Unit
 from app.models.staff_profile import StaffProfile
 from app.models.student_profile import StudentProfile
@@ -17,6 +20,7 @@ from app.utils.search import ilike_contains
 router = APIRouter(prefix="/units", tags=["units"])
 
 _VALID_ATTENDANCE_STATUSES = frozenset({"checked_in", "checked_out"})
+_VALID_EMPLOYMENT_TYPES = frozenset({"part_time", "full_time"})
 
 _UNIT_LOAD_OPTIONS = (
     selectinload(Unit.registered_location),
@@ -32,6 +36,7 @@ def _unit_filters(
     is_active: bool | None,
     search: str | None,
     attendance_status: str | None,
+    employment_type: str | None,
 ) -> list:
     clauses = []
     if unit_type:
@@ -48,6 +53,8 @@ def _unit_filters(
         )
     if attendance_status:
         clauses.append(Unit.attendance_status == attendance_status)
+    if employment_type:
+        clauses.append(StaffProfile.employment_type == employment_type)
     return clauses
 
 
@@ -60,6 +67,7 @@ async def list_units(
     is_active: bool | None = None,
     search: str | None = None,
     attendance_status: str | None = None,
+    employment_type: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[UnitOut]:
@@ -68,22 +76,30 @@ async def list_units(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="attendance_status must be checked_in or checked_out",
         )
+    if employment_type and employment_type not in _VALID_EMPLOYMENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="employment_type must be part_time or full_time",
+        )
 
     clauses = _unit_filters(
         unit_type=unit_type,
         is_active=is_active,
         search=search,
         attendance_status=attendance_status,
+        employment_type=employment_type,
     )
 
     count_q = select(func.count()).select_from(Unit)
+    q = select(Unit).options(*_UNIT_LOAD_OPTIONS)
+    if employment_type:
+        count_q = count_q.join(StaffProfile, StaffProfile.id == Unit.id)
+        q = q.join(StaffProfile, StaffProfile.id == Unit.id)
     if clauses:
         count_q = count_q.where(*clauses)
+        q = q.where(*clauses)
     total = await db.scalar(count_q) or 0
 
-    q = select(Unit).options(*_UNIT_LOAD_OPTIONS)
-    if clauses:
-        q = q.where(*clauses)
     q = q.order_by(Unit.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
@@ -207,6 +223,33 @@ async def delete_unit(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
         raise HTTPException(
             status_code=409,
             detail="Unit has attendance records. Set it inactive instead of deleting.",
+        )
+
+    has_enrollments = await db.execute(
+        select(CourseEnrollment.id).where(CourseEnrollment.unit_id == unit_id).limit(1)
+    )
+    if has_enrollments.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Unit has course enrollments. Set it inactive instead of deleting.",
+        )
+
+    has_invoices = await db.execute(
+        select(TuitionInvoice.id).where(TuitionInvoice.unit_id == unit_id).limit(1)
+    )
+    if has_invoices.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Unit has tuition invoices. Set it inactive instead of deleting.",
+        )
+
+    has_payroll = await db.execute(
+        select(PayrollRecord.id).where(PayrollRecord.unit_id == unit_id).limit(1)
+    )
+    if has_payroll.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Unit has payroll records. Set it inactive instead of deleting.",
         )
 
     await db.delete(unit)

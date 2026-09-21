@@ -18,7 +18,7 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
       const tokens = await attendanceLogin(payload)
 
       useCookie('accessToken').value = tokens.access_token
-      useCookie('refreshToken').value = tokens.refresh_token
+      useCookie('refreshToken').value = null
 
       const me = await attendanceGetMe()
 
@@ -34,14 +34,11 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
       })
     },
     async logout() {
-      const refreshToken = useCookie('refreshToken').value
-      if (refreshToken) {
-        try {
-          await attendanceLogout(refreshToken)
-        }
-        catch {
-          // still clear local session if API is down or token already invalid
-        }
+      try {
+        await attendanceLogout(useCookie('refreshToken').value)
+      }
+      catch {
+        // still clear local session if API is down or token already invalid
       }
       clearAttendanceSessionCookies()
       this.user = null
@@ -68,6 +65,34 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
         catch {
           this.logout()
         }
+      }
+    },
+    async hydrateSession() {
+      this.restoreSession()
+      if (!this.isLoggedIn)
+        return false
+      try {
+        const me = await attendanceGetMe()
+        if (!me.is_active) {
+          await this.logout()
+
+          return false
+        }
+        this.user = me
+        this.isLoggedIn = true
+        useCookie('userData').value = JSON.stringify({
+          id: me.id,
+          username: me.username,
+          role: me.role,
+          fullName: me.full_name,
+        })
+
+        return true
+      }
+      catch {
+        await this.logout()
+
+        return false
       }
     },
   },
