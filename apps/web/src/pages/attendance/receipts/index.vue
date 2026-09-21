@@ -191,8 +191,9 @@ async function loadLocations() {
     if (!locationOptions.value.some(l => l.value === locationId.value))
       locationId.value = null
   }
-  catch {
+  catch (e) {
     locations.value = []
+    loadError.value = formatApiError(e, 'Could not load locations. Campus filter and print headers may be incomplete.')
   }
 }
 

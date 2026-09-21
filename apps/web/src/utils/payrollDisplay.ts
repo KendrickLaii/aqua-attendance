@@ -105,3 +105,62 @@ export function payrollPaySplitError(input: {
 
   return null
 }
+
+type PayrollSummaryStatus = {
+  is_holiday: boolean
+  is_weekend: boolean
+  is_complete: boolean
+}
+
+export function payrollSummaryStatusLabel(s: PayrollSummaryStatus): string {
+  if (s.is_holiday)
+    return 'Holiday'
+  if (s.is_weekend)
+    return 'Weekend'
+
+  return s.is_complete ? 'Complete' : 'Incomplete'
+}
+
+export function payrollSummaryStatusColor(s: PayrollSummaryStatus): string {
+  if (s.is_holiday || s.is_weekend)
+    return 'info'
+
+  return s.is_complete ? 'success' : 'warning'
+}
+
+export function payrollSummaryStatusIcon(s: PayrollSummaryStatus, autoCheckout: boolean): string {
+  if (s.is_holiday)
+    return 'ri-calendar-event-line'
+  if (s.is_weekend)
+    return 'ri-calendar-2-line'
+  if (autoCheckout)
+    return 'ri-alarm-warning-line'
+  if (!s.is_complete)
+    return 'ri-error-warning-line'
+
+  return 'ri-checkbox-circle-line'
+}
+
+export function payrollDetailTotals(
+  summaries: Array<{
+    regular_hours: number
+    regular_slots: number
+    overtime_hours: number
+    ot_slots: number
+  }>,
+  autoCheckoutDays: number,
+) {
+  const regular = summaries.reduce((sum, s) => sum + safePayrollNumber(s.regular_hours), 0)
+  const regularSlots = summaries.reduce((sum, s) => sum + safePayrollNumber(s.regular_slots), 0)
+  const overtime = summaries.reduce((sum, s) => sum + safePayrollNumber(s.overtime_hours), 0)
+  const otSlots = summaries.reduce((sum, s) => sum + safePayrollNumber(s.ot_slots), 0)
+
+  return {
+    regular,
+    regularSlots,
+    overtime,
+    otSlots,
+    days: summaries.length,
+    autoCheckoutDays,
+  }
+}

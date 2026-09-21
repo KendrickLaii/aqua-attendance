@@ -186,6 +186,8 @@ async function loadStudentOptions(search?: string) {
   }
   catch (e) {
     console.error('Failed to load students', e)
+    if (requestId === studentSearchRequestId)
+      enrollError.value = formatApiError(e, 'Could not load students. Search by name, or pick from the list after it reloads.')
   }
   finally {
     if (requestId === studentSearchRequestId)
