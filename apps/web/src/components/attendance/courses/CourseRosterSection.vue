@@ -51,6 +51,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'jump-to-class': [skuId: string | null]
+  'in-class-count': [skuId: string, count: number]
 }>()
 
 const rosterSection = ref<HTMLElement | null>(null)
@@ -144,14 +145,22 @@ async function ensureStudentNames(items: CourseEnrollment[]) {
   cacheStudents(loaded.filter((u): u is Unit => u != null))
 }
 
+watch([activeRosterCount, enrollmentsLoading], () => {
+  if (!props.skuId || enrollmentsLoading.value)
+    return
+  emit('in-class-count', props.skuId, activeRosterCount.value)
+})
+
 async function loadRoster(skuId: string | null) {
   const requestId = ++rosterRequestId
 
-  enrollments.value = []
-  if (!skuId)
-    return
-
   enrollmentsLoading.value = true
+  enrollments.value = []
+  if (!skuId) {
+    enrollmentsLoading.value = false
+
+    return
+  }
   try {
     const items = await listAllCourseEnrollments({ sku_id: skuId })
     if (requestId !== rosterRequestId)

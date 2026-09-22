@@ -4,6 +4,7 @@ import {
   type CourseSpu,
   deleteCourseSku,
   deleteCourseSpu,
+  listAllCourseEnrollments,
   listCourseSkus,
   listCourseSpus,
 } from '@/api/attendance/courses'
@@ -30,6 +31,7 @@ const spus = ref<CourseSpu[]>([])
 const skus = ref<CourseSku[]>([])
 const locations = ref<LocationItem[]>([])
 const staffUnits = ref<Unit[]>([])
+const inClassCounts = ref<Record<string, number>>({})
 
 const selectedSpuId = ref<string | null>(null)
 const rosterSkuId = ref<string | null>(null)
@@ -76,17 +78,22 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [spuList, skuList, locationList, staffList] = await Promise.all([
+    const [spuList, skuList, locationList, staffList, activeEnrollments] = await Promise.all([
       listCourseSpus(),
       listCourseSkus(),
       listLocations({ is_active: true }),
       listAllUnits({ unit_type: 'staff' }),
+      listAllCourseEnrollments({ status: 'active' }),
     ])
 
     spus.value = [...spuList].sort((a, b) => compareCodes(a.code, b.code))
     skus.value = [...skuList].sort((a, b) => compareCodes(a.code, b.code))
     locations.value = [...locationList].sort((a, b) => a.name_en.localeCompare(b.name_en))
     staffUnits.value = staffList
+    const counts: Record<string, number> = {}
+    for (const enrollment of activeEnrollments)
+      counts[enrollment.sku_id] = (counts[enrollment.sku_id] ?? 0) + 1
+    inClassCounts.value = counts
     if (!selectedSpuId.value && spuList.length > 0)
       selectedSpuId.value = spuList[0].id
   }
@@ -141,6 +148,10 @@ async function selectClass(skuId: string) {
   await nextTick()
   catalogRef.value?.scrollCatalogSelection()
   await rosterRef.value?.scrollIntoView()
+}
+
+function onInClassCount(skuId: string, count: number) {
+  inClassCounts.value = { ...inClassCounts.value, [skuId]: count }
 }
 
 function onJumpToClass(skuId: string | null) {
@@ -317,6 +328,7 @@ function removeSku(sku: CourseSku) {
         :staff-units="staffUnits"
         :selected-spu-id="selectedSpuId"
         :roster-sku-id="rosterSkuId"
+        :in-class-counts="inClassCounts"
         @select-course="selectCourse"
         @select-class="selectClass"
         @create-sku="openCreateSku"
@@ -336,6 +348,7 @@ function removeSku(sku: CourseSku) {
             :locations="locations"
             :staff-units="staffUnits"
             @jump-to-class="onJumpToClass"
+            @in-class-count="onInClassCount"
           />
         </VCol>
       </VRow>

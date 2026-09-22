@@ -14,6 +14,7 @@ const props = defineProps<{
   selectedSpuId: string | null
   rosterSkuId: string | null
   catalogPanel: 'courses' | 'offerings' | undefined
+  inClassCounts: Record<string, number>
 }>()
 
 const emit = defineEmits<{
@@ -31,7 +32,7 @@ const coursesScroll = ref<HTMLElement | null>(null)
 const offeringsScroll = ref<HTMLElement | null>(null)
 
 type SpuSortKey = 'code' | 'name' | 'subject'
-type SkuSortKey = 'code' | 'name' | 'billing' | 'price'
+type SkuSortKey = 'code' | 'name' | 'billing' | 'price' | 'students'
 
 const spuSort = reactive<TableSort<SpuSortKey>>({ key: 'code', dir: 1 })
 const skuSort = reactive<TableSort<SkuSortKey>>({ key: 'code', dir: 1 })
@@ -60,12 +61,21 @@ const skusForSelectedSpu = computed(() => {
     name: k => k.name_zh,
     billing: k => k.billing_unit,
     price: k => k.price,
+    students: k => props.inClassCounts[k.id] ?? 0,
   }
 
   return props.skus
     .filter(k => k.spu_id === props.selectedSpuId)
     .sort((a, b) => compareSortValues(pick[skuSort.key](a), pick[skuSort.key](b)) * skuSort.dir)
 })
+
+function inClassLabel(sku: CourseSku): string {
+  const count = props.inClassCounts[sku.id] ?? 0
+  if (sku.capacity != null)
+    return `${count} / ${sku.capacity}`
+
+  return String(count)
+}
 
 const locationName = (id: string | null) => props.locations.find(l => l.id === id)?.name_en ?? '—'
 const staffName = (id: string | null | undefined) => props.staffUnits.find(u => u.id === id)?.full_name ?? ''
@@ -325,6 +335,18 @@ defineExpose({ scrollCatalogSelection })
                 </th>
                 <th
                   class="sortable text-end"
+                  @click="toggleSort(skuSort, 'students')"
+                >
+                  In class
+                  <VIcon
+                    :icon="sortIconFor(skuSort, 'students')"
+                    size="14"
+                    class="ms-1 sort-icon"
+                    :class="{ 'sort-icon--active': skuSort.key === 'students' }"
+                  />
+                </th>
+                <th
+                  class="sortable text-end"
                   @click="toggleSort(skuSort, 'price')"
                 >
                   <VIcon
@@ -388,6 +410,12 @@ defineExpose({ scrollCatalogSelection })
                   </div>
                 </td>
                 <td>{{ billingUnitShortLabel(sku.billing_unit ?? 'monthly') }}</td>
+                <td
+                  class="text-end tabular-nums"
+                  :title="`${props.inClassCounts[sku.id] ?? 0} in class`"
+                >
+                  {{ inClassLabel(sku) }}
+                </td>
                 <td class="text-end">
                   {{ sku.price != null ? sku.price : '—' }}
                 </td>
@@ -419,7 +447,7 @@ defineExpose({ scrollCatalogSelection })
               </tr>
               <tr v-if="selectedSpuId && skusForSelectedSpu.length === 0">
                 <td
-                  colspan="6"
+                  colspan="7"
                   class="text-center text-medium-emphasis py-6"
                 >
                   No class offerings yet for this course.
@@ -427,7 +455,7 @@ defineExpose({ scrollCatalogSelection })
               </tr>
               <tr v-if="!selectedSpuId">
                 <td
-                  colspan="6"
+                  colspan="7"
                   class="text-center text-medium-emphasis py-6"
                 >
                   Select a course above to see its class offerings.

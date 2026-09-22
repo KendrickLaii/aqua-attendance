@@ -390,7 +390,7 @@ erDiagram
 | 5 | `price` 為空則跳過該報名 | 未定價班次不進發票，避免產生 $0 或錯誤行。per_session 例外：價錢在 purchase 列，無須 SKU/enrollment 價。 |
 | 6 | 發票編號每中心獨立系列 | `invoice_counters` 每 `location_id` 一列；派號以獨立 session `UPDATE…RETURNING` 原子遞增，跳過已被手打佔用的號碼；`(location_id, invoice_no)` 唯一。`void` 後復活的發票會清空 `invoice_no`/`issued_at`，再 Issue 派新號。編號預設佔住；**Remove cancelled invoice / voided receipt** 之後可以再用同一個號。 |
 | 7 | 手動發票為真實記錄 | `kind='manual'`、`unit_id` 可空、`manual_student_name` 存 walk-in 姓名；`POST /manual` 建立即 `issued`，可重印／付款／作廢。可帶 `purchase_id` 直接結算堂費購買（私補主要出單路徑）。`location_id` 必填，決定編號系列與列印抬頭。`fee` 可負數做 credit note。 |
-| 8 | 未 Paid 可 Edit | `draft`／`issued` 可用 PATCH `lines` 改行項目並重算 `total`，編號保留。`paid`／`void` 改行 422。Paid 之後用負數 Manual invoice（credit note）或 Void receipt。 |
+| 8 | 未 Paid 可 Edit | `draft`／`issued` 可用 PATCH `lines` 改行項目並重算 `total`，編號保留。帶 `id` 的舊行會保留 `enrollment_id`／SKU（唔會變成 manual 行）。`paid`／`void` 任何欄位（包括 `invoice_no`）都 422。Paid 之後用負數 Manual invoice（credit note）或 Void receipt。 |
 | 9 | 作廢單可刪、編號可重用 | `DELETE` 只准 `void` invoice／voided receipt。Posted receipt 仍在時唔准刪／Cancel invoice。刪 cancelled invoice 會拆非 posted receipt 連結。 |
 
 ### Generate 規則（`POST /api/tuition-invoices/generate?year=&month=`）
@@ -400,7 +400,7 @@ erDiagram
 - 排除：`cancelled`／`completed`、完全落在該月之外、SKU `is_active=false`、inactive 學生；月費另須 SKU 或 enrollment 有價。
 - 月費：`quantity = 1`；價錢 = `enrollment.unit_price` ?? `sku.price`。
 - 堂費：逐條未出單 `enrollment_purchases` 各出一行（`quantity` = 該次購買堂數、單價 = `purchase.unit_price`，若為 NULL 則退回 `enrollment.unit_price` ?? `sku.price`，兩者皆無則跳過留俾手動發票）；無購買則不出行。
-- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`，亦可 Edit 行項目。已 `paid` 不可再改行。`void` 只能靠 Generate 在仍有報名時回收成 draft（同時清空編號）。`DELETE` 只准 void invoice／voided receipt。
+- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`，亦可 Edit 行項目（保留報名連結）。已 `paid`／`void` 不可再改任何欄。`void` 只能靠 Generate 在仍有報名時回收成 draft（同時清空編號）。`DELETE` 只准 void invoice／voided receipt，並寫 audit log。
 
 ### 手動發票（`POST /api/tuition-invoices/manual`）
 
