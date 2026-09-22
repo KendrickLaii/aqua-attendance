@@ -12,6 +12,14 @@ import {
 import type { LocationItem } from '@/api/attendance/locations'
 import { type Unit, getUnit, listUnits } from '@/api/attendance/units'
 import { billingUnitShortLabel, enrollmentStatusColor } from '@/utils/courseEnrollmentDisplay'
+import {
+  JOIN_CLASS_HINT,
+  JOIN_FIRST_STUDENT,
+  LEAVE_CLASS_CONFIRM,
+  REMOVE_RECORD_CONFIRM,
+  leaveClassUnbilledNote,
+  mapEnrollmentApiError,
+} from '@/utils/billingStaffCopy'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { formatApiError } from '@/utils/formatApiDetail'
 import {
@@ -96,7 +104,7 @@ const topUpSaving = ref(false)
 const deleteConfirmOpen = ref(false)
 const deleteConfirmLoading = ref(false)
 const deleteConfirmError = ref('')
-const deleteTarget = ref<{ title: string; detail: string; run: () => Promise<void> } | null>(null)
+const deleteTarget = ref<{ title: string; detail: string; confirmLabel: string; run: () => Promise<void> } | null>(null)
 
 function cacheStudents(units: Unit[]) {
   for (const unit of units)
@@ -415,7 +423,7 @@ async function enrollStudent() {
     if (picked)
       cacheStudents([picked])
 
-    enrollSuccess.value = `${picked?.full_name ?? 'Student'} enrolled in ${rosterSku.value?.name_zh ?? 'class'}.`
+    enrollSuccess.value = `${picked?.full_name ?? 'Student'} joined ${rosterSku.value?.name_zh ?? 'class'}.`
     selectedStudentId.value = null
     studentSearch.value = ''
     enrollStartDate.value = ''
@@ -425,7 +433,7 @@ async function enrollStudent() {
     rosterStatusFilter.value = 'active'
   }
   catch (e) {
-    enrollError.value = formatApiError(e, 'Could not enroll student.')
+    enrollError.value = formatApiError(e, 'Could not join this class.')
   }
   finally {
     enrolling.value = false
@@ -507,7 +515,7 @@ async function confirmDelete() {
     deleteTarget.value = null
   }
   catch (e) {
-    deleteConfirmError.value = formatApiError(e, 'Could not delete this item.')
+    deleteConfirmError.value = mapEnrollmentApiError(formatApiError(e, 'Could not delete this item.'))
   }
   finally {
     deleteConfirmLoading.value = false
@@ -518,10 +526,9 @@ function cancelEnrollment(enrollment: CourseEnrollment) {
   const unbilledQty = purchaseSummary(enrollment).unbilledQty
 
   openDeleteConfirm({
-    title: `Unenroll ${labelFor(enrollment)}?`,
-    detail: unbilledQty > 0
-      ? `Stops billing going forward — issued invoices stay. Note: ${unbilledQty} session${unbilledQty === 1 ? '' : 's'} not yet billed; you can still bill them via a manual invoice.`
-      : 'Stops billing going forward — issued invoices stay. You can re-activate later.',
+    title: `Leave class — ${labelFor(enrollment)}?`,
+    detail: LEAVE_CLASS_CONFIRM + leaveClassUnbilledNote(unbilledQty),
+    confirmLabel: 'Leave class',
     run: async () => {
       const updated = await updateCourseEnrollment(enrollment.id, { status: 'cancelled' })
       const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
@@ -537,10 +544,10 @@ async function reactivateEnrollment(enrollment: CourseEnrollment) {
     const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
     if (idx !== -1)
       enrollments.value[idx] = updated
-    enrollSuccess.value = `${labelFor(enrollment)} re-activated.`
+    enrollSuccess.value = `${labelFor(enrollment)} is back in class.`
   }
   catch (e) {
-    enrollError.value = formatApiError(e, 'Could not re-activate enrollment.')
+    enrollError.value = formatApiError(e, 'Could not put this student back in class.')
   }
 }
 
@@ -551,8 +558,9 @@ function removeEnrollment(enrollment: CourseEnrollment) {
     : ''
 
   openDeleteConfirm({
-    title: 'Remove enrollment?',
-    detail: `Remove this enrollment record entirely?${purchaseNote} For a student who is just leaving, Unenroll keeps the record instead.`,
+    title: 'Remove record?',
+    detail: `${REMOVE_RECORD_CONFIRM}${purchaseNote}`,
+    confirmLabel: 'Remove',
     run: async () => {
       await deleteCourseEnrollment(enrollment.id)
       enrollments.value = enrollments.value.filter(e => e.id !== enrollment.id)
@@ -726,9 +734,9 @@ defineExpose({ scrollIntoView })
         border
       >
         <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
-          <span class="text-subtitle-2">Enroll a student</span>
+          <span class="text-subtitle-2">Join a student</span>
           <span class="text-caption text-medium-emphasis">
-            Billing days are inclusive — leave dates blank for already-started / ongoing.
+            {{ JOIN_CLASS_HINT }}
           </span>
         </div>
         <VRow dense>
@@ -849,7 +857,7 @@ defineExpose({ scrollIntoView })
               :title="disabledReason || undefined"
               @click="enrollStudent"
             >
-              Enroll
+              Join class
             </VBtn>
           </VCol>
         </VRow>
@@ -1115,13 +1123,13 @@ defineExpose({ scrollIntoView })
                       <VListItem
                         v-if="e.status === 'active'"
                         prepend-icon="ri-user-unfollow-line"
-                        title="Unenroll"
+                        title="Leave class"
                         @click="cancelEnrollment(e)"
                       />
                       <VListItem
                         v-else
                         prepend-icon="ri-user-follow-line"
-                        title="Re-activate"
+                        title="Back in class"
                         @click="reactivateEnrollment(e)"
                       />
                       <VListItem
@@ -1156,7 +1164,7 @@ defineExpose({ scrollIntoView })
                     Nobody on this roll yet
                   </div>
                   <div class="text-body-2 text-medium-emphasis">
-                    Enroll the first student with the form above.
+                    {{ JOIN_FIRST_STUDENT }}
                   </div>
                 </template>
                 <template v-else-if="rosterSearch.trim()">
@@ -1277,6 +1285,7 @@ defineExpose({ scrollIntoView })
     <AttendanceConfirmDialog
       v-model="deleteConfirmOpen"
       :title="deleteTarget?.title || 'Confirm delete'"
+      :confirm-label="deleteTarget?.confirmLabel || 'Delete'"
       :loading="deleteConfirmLoading"
       :error="deleteConfirmError"
       @confirm="confirmDelete"

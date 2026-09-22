@@ -10,17 +10,31 @@ declare global {
   const $attendanceApi: typeof import('./src/utils/attendanceApi')['$attendanceApi']
   const $authApi: typeof import('./src/utils/authApi')['$authApi']
   const ATTENDANCE_TIMEZONE: typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']
+  const BILLING_HELP_DONT_ONLY_CANCEL: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_DONT_ONLY_CANCEL']
+  const BILLING_HELP_FIX: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_FIX']
+  const BILLING_HELP_STOP: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const EffectScope: typeof import('vue')['EffectScope']
+  const GENERATE_CONFIRM: typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']
+  const INVOICE_CANCEL_GENERATED: typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']
+  const JOIN_CLASS_HINT: typeof import('./src/utils/billingStaffCopy')['JOIN_CLASS_HINT']
+  const JOIN_FIRST_STUDENT: typeof import('./src/utils/billingStaffCopy')['JOIN_FIRST_STUDENT']
+  const LEAVE_CLASS_CONFIRM: typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']
   const LOCATION_DAYS: typeof import('./src/utils/locationHours')['LOCATION_DAYS']
+  const MANUAL_CREDIT_HINT: typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']
   const PRODUCT_QR_CARD_IMAGE_SIZE: typeof import('./src/utils/printProductQrs')['PRODUCT_QR_CARD_IMAGE_SIZE']
   const PRODUCT_QR_IMAGE_SIZE: typeof import('./src/composables/useProductQrDialog')['PRODUCT_QR_IMAGE_SIZE']
   const PRODUCT_QR_PRINT_IMAGE_SIZE: typeof import('./src/utils/printProductQrs')['PRODUCT_QR_PRINT_IMAGE_SIZE']
+  const REMOVE_CANCELLED_INVOICE: typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']
+  const REMOVE_RECORD_BILLED: typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_BILLED']
+  const REMOVE_RECORD_CONFIRM: typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_CONFIRM']
+  const REMOVE_VOIDED_RECEIPT: typeof import('./src/utils/billingStaffCopy')['REMOVE_VOIDED_RECEIPT']
   const SCAN_ENTRY_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']
   const SCAN_TOKEN_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']
   const UNIT_QR_CARD_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']
   const UNIT_QR_IMAGE_SIZE: typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']
   const UNIT_QR_PRINT_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']
+  const VOID_RECEIPT_HINT: typeof import('./src/utils/billingStaffCopy')['VOID_RECEIPT_HINT']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
   const addDetailPhotoRow: typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
@@ -72,6 +86,7 @@ declare global {
   const createTemplatePromise: typeof import('@vueuse/core')['createTemplatePromise']
   const createUnrefFn: typeof import('@vueuse/core')['createUnrefFn']
   const createUrl: typeof import('./src/@core/composable/createUrl')['createUrl']
+  const creditLinesFromInvoice: typeof import('./src/utils/invoiceDisplay')['creditLinesFromInvoice']
   const customRef: typeof import('vue')['customRef']
   const dateTimeLocalToIso: typeof import('./src/utils/attendanceDisplay')['dateTimeLocalToIso']
   const debouncedRef: typeof import('@vueuse/core')['debouncedRef']
@@ -156,6 +171,7 @@ declare global {
   const internalEmailValidator: typeof import('./src/@core/utils/validators')['internalEmailValidator']
   const invoiceClassNames: typeof import('./src/utils/invoiceDisplay')['invoiceClassNames']
   const invoiceLineFormula: typeof import('./src/utils/invoiceDisplay')['invoiceLineFormula']
+  const invoiceLinesEditable: typeof import('./src/utils/invoiceDisplay')['invoiceLinesEditable']
   const invoiceMonthLabel: typeof import('./src/utils/printTuitionInvoice')['invoiceMonthLabel']
   const invoiceOpenedBy: typeof import('./src/utils/invoiceDisplay')['invoiceOpenedBy']
   const invoicePeriodLabel: typeof import('./src/utils/invoiceDisplay')['invoicePeriodLabel']
@@ -170,6 +186,7 @@ declare global {
   const isAutoCheckoutSummaryDay: typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSummaryDay']
   const isCheckboxContent: typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']
   const isComplexValue: typeof import('./src/utils/review-format')['isComplexValue']
+  const isCreditInvoice: typeof import('./src/utils/invoiceDisplay')['isCreditInvoice']
   const isDayBoundaryCheckoutTime: typeof import('./src/utils/attendanceDisplay')['isDayBoundaryCheckoutTime']
   const isDefined: typeof import('@vueuse/core')['isDefined']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
@@ -186,6 +203,7 @@ declare global {
   const isTaxScheduleEntry: typeof import('./src/composables/useTaxComputationReview')['isTaxScheduleEntry']
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
+  const leaveClassUnbilledNote: typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
   const loadHoursSchedule: typeof import('./src/utils/locationHours')['loadHoursSchedule']
   const locationTitle: typeof import('./src/utils/invoiceDisplay')['locationTitle']
@@ -194,6 +212,7 @@ declare global {
   const logicOr: typeof import('@vueuse/math')['logicOr']
   const makeDestructurable: typeof import('@vueuse/core')['makeDestructurable']
   const mapActions: typeof import('pinia')['mapActions']
+  const mapEnrollmentApiError: typeof import('./src/utils/billingStaffCopy')['mapEnrollmentApiError']
   const mapGetters: typeof import('pinia')['mapGetters']
   const mapState: typeof import('pinia')['mapState']
   const mapStores: typeof import('pinia')['mapStores']
@@ -570,14 +589,28 @@ declare module 'vue' {
     readonly $attendanceApi: UnwrapRef<typeof import('./src/utils/attendanceApi')['$attendanceApi']>
     readonly $authApi: UnwrapRef<typeof import('./src/utils/authApi')['$authApi']>
     readonly ATTENDANCE_TIMEZONE: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']>
+    readonly BILLING_HELP_DONT_ONLY_CANCEL: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_DONT_ONLY_CANCEL']>
+    readonly BILLING_HELP_FIX: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_FIX']>
+    readonly BILLING_HELP_STOP: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly GENERATE_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']>
+    readonly INVOICE_CANCEL_GENERATED: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']>
+    readonly JOIN_CLASS_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['JOIN_CLASS_HINT']>
+    readonly JOIN_FIRST_STUDENT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['JOIN_FIRST_STUDENT']>
+    readonly LEAVE_CLASS_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']>
     readonly LOCATION_DAYS: UnwrapRef<typeof import('./src/utils/locationHours')['LOCATION_DAYS']>
+    readonly MANUAL_CREDIT_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']>
+    readonly REMOVE_CANCELLED_INVOICE: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']>
+    readonly REMOVE_RECORD_BILLED: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_BILLED']>
+    readonly REMOVE_RECORD_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_CONFIRM']>
+    readonly REMOVE_VOIDED_RECEIPT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_VOIDED_RECEIPT']>
     readonly SCAN_ENTRY_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']>
     readonly SCAN_TOKEN_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']>
     readonly UNIT_QR_CARD_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']>
     readonly UNIT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']>
     readonly UNIT_QR_PRINT_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']>
+    readonly VOID_RECEIPT_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['VOID_RECEIPT_HINT']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly addDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
@@ -629,6 +662,7 @@ declare module 'vue' {
     readonly createTemplatePromise: UnwrapRef<typeof import('@vueuse/core')['createTemplatePromise']>
     readonly createUnrefFn: UnwrapRef<typeof import('@vueuse/core')['createUnrefFn']>
     readonly createUrl: UnwrapRef<typeof import('./src/@core/composable/createUrl')['createUrl']>
+    readonly creditLinesFromInvoice: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['creditLinesFromInvoice']>
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
     readonly dateTimeLocalToIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['dateTimeLocalToIso']>
     readonly debouncedRef: UnwrapRef<typeof import('@vueuse/core')['debouncedRef']>
@@ -711,6 +745,7 @@ declare module 'vue' {
     readonly internalEmailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['internalEmailValidator']>
     readonly invoiceClassNames: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceClassNames']>
     readonly invoiceLineFormula: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceLineFormula']>
+    readonly invoiceLinesEditable: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceLinesEditable']>
     readonly invoiceMonthLabel: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['invoiceMonthLabel']>
     readonly invoiceOpenedBy: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceOpenedBy']>
     readonly invoicePeriodLabel: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoicePeriodLabel']>
@@ -725,6 +760,7 @@ declare module 'vue' {
     readonly isAutoCheckoutSummaryDay: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isAutoCheckoutSummaryDay']>
     readonly isCheckboxContent: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['isCheckboxContent']>
     readonly isComplexValue: UnwrapRef<typeof import('./src/utils/review-format')['isComplexValue']>
+    readonly isCreditInvoice: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['isCreditInvoice']>
     readonly isDayBoundaryCheckoutTime: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['isDayBoundaryCheckoutTime']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
@@ -741,6 +777,7 @@ declare module 'vue' {
     readonly isTaxScheduleEntry: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['isTaxScheduleEntry']>
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
+    readonly leaveClassUnbilledNote: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
     readonly loadHoursSchedule: UnwrapRef<typeof import('./src/utils/locationHours')['loadHoursSchedule']>
     readonly locationTitle: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['locationTitle']>
@@ -749,6 +786,7 @@ declare module 'vue' {
     readonly logicOr: UnwrapRef<typeof import('@vueuse/math')['logicOr']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly mapActions: UnwrapRef<typeof import('pinia')['mapActions']>
+    readonly mapEnrollmentApiError: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['mapEnrollmentApiError']>
     readonly mapGetters: UnwrapRef<typeof import('pinia')['mapGetters']>
     readonly mapState: UnwrapRef<typeof import('pinia')['mapState']>
     readonly mapStores: UnwrapRef<typeof import('pinia')['mapStores']>

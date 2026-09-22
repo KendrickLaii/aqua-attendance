@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import {
   type ManualInvoiceLine,
+  type TuitionInvoice,
   createManualTuitionInvoice,
   getNextInvoiceNo,
+  updateTuitionInvoice,
 } from '@/api/attendance/tuitionInvoices'
 import { type LocationItem } from '@/api/attendance/locations'
 import {
@@ -15,9 +17,12 @@ import {
 import { type Unit, listAllUnits, listUnits } from '@/api/attendance/units'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { MANUAL_CREDIT_HINT } from '@/utils/billingStaffCopy'
 import {
+  creditLinesFromInvoice,
   formatInvoiceMoney,
   invoicePrintHeaderFromLocation,
+  invoiceStudentLabel,
 } from '@/utils/invoiceDisplay'
 import {
   invoiceMonthLabel,
@@ -32,6 +37,8 @@ const props = defineProps<{
   locationOptions: { value: string; title: string }[]
   locations: LocationItem[]
   defaultMonthLabel: string
+  editingInvoice?: TuitionInvoice | null
+  creditFromInvoice?: TuitionInvoice | null
 }>()
 
 const emit = defineEmits<{
@@ -44,6 +51,7 @@ interface ManualInvoiceRow {
   course: string
   fee: string
   qty: string
+  lineId?: string
   purchaseId?: string
 }
 
@@ -90,6 +98,12 @@ const manualStaffUnits = ref<Unit[]>([])
 const manualStaffLoaded = ref(false)
 const manualUnbilledPackages = ref<UnbilledPackage[]>([])
 const manualRemovedPackages = ref<UnbilledPackage[]>([])
+const lockedUnitId = ref<string | null>(null)
+const hydratingForm = ref(false)
+
+const isEdit = computed(() => Boolean(props.editingInvoice))
+const isCredit = computed(() => Boolean(props.creditFromInvoice) && !props.editingInvoice)
+const studentLocked = computed(() => isEdit.value || isCredit.value)
 
 const staffName = (id: string | null | undefined) =>
   manualStaffUnits.value.find(u => u.id === id)?.full_name ?? ''
@@ -170,6 +184,8 @@ watch(manualStudentSearch, value => {
 })
 
 watch(manualStudent, picked => {
+  if (hydratingForm.value || studentLocked.value)
+    return
   manualRemovedPackages.value = []
   manualForm.value.rows = manualForm.value.rows.filter(row => !row.purchaseId)
   if (picked && typeof picked !== 'string') {
@@ -322,11 +338,62 @@ async function suggestManualInvoiceNo() {
 }
 
 watch(manualLocationId, () => {
-  if (open.value)
+  if (open.value && !isEdit.value)
     suggestManualInvoiceNo()
 })
 
+function rowsFromInvoice(invoice: TuitionInvoice, negateFee: boolean): ManualInvoiceRow[] {
+  if (negateFee) {
+    const creditRows = creditLinesFromInvoice(invoice).map(line => ({
+      month: line.month || props.defaultMonthLabel,
+      course: line.course,
+      fee: String(line.fee),
+      qty: String(line.qty),
+    }))
+
+    return creditRows.length ? creditRows : [blankManualRow()]
+  }
+
+  const rows = invoice.lines.map(line => ({
+    month: line.month_label || props.defaultMonthLabel,
+    course: line.name_zh,
+    fee: String(line.unit_price),
+    qty: String(line.quantity),
+    lineId: line.id,
+    purchaseId: line.purchase_id || undefined,
+  }))
+
+  return rows.length ? rows : [blankManualRow()]
+}
+
+function fillFromInvoice(invoice: TuitionInvoice, negateFee: boolean) {
+  hydratingForm.value = true
+  lockedUnitId.value = invoice.unit_id
+  manualError.value = ''
+  manualLocationId.value = invoice.location_id
+  manualForm.value = {
+    invoiceNo: negateFee ? '' : (invoice.invoice_no ?? ''),
+    date: invoice.period_start,
+    studentName: invoiceStudentLabel(invoice),
+    staff: invoice.staff_name ?? '',
+    remark: negateFee ? '' : (invoice.notes ?? ''),
+    rows: rowsFromInvoice(invoice, negateFee),
+  }
+  manualStudent.value = invoiceStudentLabel(invoice)
+  manualStudentSearch.value = ''
+  manualUnbilledPackages.value = []
+  manualRemovedPackages.value = []
+  manualNoEdited.value = false
+  void nextTick().then(() => {
+    hydratingForm.value = false
+  })
+  if (invoice.unit_id && !negateFee)
+    loadManualUnbilledPackages(invoice.unit_id)
+}
+
 function resetForm() {
+  hydratingForm.value = true
+  lockedUnitId.value = null
   manualError.value = ''
   manualForm.value = {
     invoiceNo: '',
@@ -342,16 +409,23 @@ function resetForm() {
   manualRemovedPackages.value = []
   manualNoEdited.value = false
   manualLocationId.value = props.defaultLocationId
+  hydratingForm.value = false
 }
 
 watch(open, value => {
   if (!value)
     return
-  resetForm()
+  if (props.editingInvoice)
+    fillFromInvoice(props.editingInvoice, false)
+  else if (props.creditFromInvoice)
+    fillFromInvoice(props.creditFromInvoice, true)
+  else
+    resetForm()
   loadManualStudents()
   loadManualSkus()
   loadManualStaff()
-  suggestManualInvoiceNo()
+  if (!isEdit.value)
+    suggestManualInvoiceNo()
 })
 
 function manualNumber(value: string): number | null {
@@ -376,6 +450,15 @@ const manualTotal = computed(
   () => manualForm.value.rows.reduce((sum, row) => sum + (manualRowAmount(row) ?? 0), 0),
 )
 
+const dialogTitle = computed(() => {
+  if (isEdit.value)
+    return 'Edit invoice'
+  if (isCredit.value || manualTotal.value < 0)
+    return 'Credit note'
+
+  return 'Manual invoice'
+})
+
 async function printOptionsFor(invoice: { location_id: string }) {
   const location = props.locations.find(l => l.id === invoice.location_id)
 
@@ -389,6 +472,13 @@ async function printManualInvoice() {
   manualPrinting.value = true
   manualError.value = ''
   try {
+    if (manualForm.value.rows.some(row => row.purchaseId && (manualNumber(row.fee) ?? 0) < 0)) {
+      manualError.value = 'Session package lines cannot have a negative fee.'
+      manualPrinting.value = false
+
+      return
+    }
+
     if (manualForm.value.rows.some(row => row.purchaseId && manualNumber(row.fee) == null)) {
       manualError.value = 'Session package lines need a fee — enter the price to charge.'
       manualPrinting.value = false
@@ -398,6 +488,7 @@ async function printManualInvoice() {
 
     const validLines = manualForm.value.rows
       .map(row => ({
+        id: isEdit.value ? row.lineId : undefined,
         month: row.month.trim(),
         course: row.course.trim(),
         fee: manualNumber(row.fee),
@@ -405,14 +496,14 @@ async function printManualInvoice() {
         staff_name: (manualForm.value.staff ?? '').trim() || null,
         purchase_id: row.purchaseId || undefined,
       }))
-      .filter(row => row.course && row.fee != null && row.fee >= 0 && row.qty != null && row.qty > 0)
+      .filter(row => row.course && row.fee != null && row.qty != null && row.qty > 0)
 
     const touchedRows = manualForm.value.rows.filter(
       row => row.purchaseId || row.course.trim() || row.fee.trim() || row.qty.trim(),
     ).length
 
     if (validLines.length < touchedRows) {
-      manualError.value = 'Each filled line needs a course, a fee (0 or more) and a quantity above 0 — fix or remove it.'
+      manualError.value = 'Each filled line needs a course, a fee and a quantity above 0 — fix or remove it. Use a negative fee for a credit note.'
       manualPrinting.value = false
 
       return
@@ -425,9 +516,10 @@ async function printManualInvoice() {
       return
     }
 
-    const unitId = manualStudent.value && typeof manualStudent.value !== 'string'
-      ? manualStudent.value.id
-      : undefined
+    const unitId = lockedUnitId.value
+      || (manualStudent.value && typeof manualStudent.value !== 'string'
+        ? manualStudent.value.id
+        : undefined)
 
     if (!unitId && !(manualForm.value.studentName ?? '').trim()) {
       manualError.value = 'Pick a student, or type a name for a walk-in invoice.'
@@ -444,37 +536,57 @@ async function printManualInvoice() {
     }
 
     let printWindow: Window | null = null
-    try {
-      printWindow = openTuitionInvoicePrintPlaceholder()
-    }
-    catch (e) {
-      manualError.value = formatApiError(e, 'Could not open print window.')
-      manualPrinting.value = false
+    if (!isEdit.value) {
+      try {
+        printWindow = openTuitionInvoicePrintPlaceholder()
+      }
+      catch (e) {
+        manualError.value = formatApiError(e, 'Could not open print window.')
+        manualPrinting.value = false
 
-      return
+        return
+      }
     }
 
     try {
-      const created = await createManualTuitionInvoice({
-        date: manualForm.value.date,
-        location_id: manualLocationId.value,
-        unit_id: unitId,
-        manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
-        staff_name: (manualForm.value.staff ?? '').trim() || null,
-        invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
-        notes: (manualForm.value.remark ?? '').trim() || null,
-        lines: validLines as ManualInvoiceLine[],
-      })
+      const saved = isEdit.value && props.editingInvoice
+        ? await updateTuitionInvoice(props.editingInvoice.id, {
+            staff_name: (manualForm.value.staff ?? '').trim() || null,
+            notes: (manualForm.value.remark ?? '').trim() || null,
+            lines: validLines as ManualInvoiceLine[],
+          })
+        : await createManualTuitionInvoice({
+            date: manualForm.value.date,
+            location_id: manualLocationId.value,
+            unit_id: unitId,
+            manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
+            staff_name: (manualForm.value.staff ?? '').trim() || null,
+            invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
+            notes: (manualForm.value.remark ?? '').trim() || null,
+            lines: validLines as ManualInvoiceLine[],
+          })
+
+      if (isEdit.value) {
+        try {
+          printWindow = openTuitionInvoicePrintPlaceholder()
+        }
+        catch {
+          open.value = false
+          emit('created')
+
+          return
+        }
+      }
 
       printTuitionInvoice(
         printWindow,
-        tuitionInvoicePrintData(created, await printOptionsFor(created)),
+        tuitionInvoicePrintData(saved, await printOptionsFor(saved)),
       )
       open.value = false
       emit('created')
     }
     catch (e) {
-      printWindow.close()
+      printWindow?.close()
       throw e
     }
   }
@@ -495,12 +607,12 @@ async function printManualInvoice() {
   >
     <VCard>
       <VCardTitle class="text-h6 py-4">
-        Manual invoice
+        {{ dialogTitle }}
       </VCardTitle>
       <VDivider />
       <VCardText class="pa-4">
         <div class="text-caption text-medium-emphasis mb-3">
-          Creates an issued bill you can reprint and track payment for — use this for one-off sales and private-class packages that Generate skips.
+          {{ MANUAL_CREDIT_HINT }}
         </div>
         <VAlert
           v-if="manualError"
@@ -522,8 +634,9 @@ async function printManualInvoice() {
               v-model="manualForm.invoiceNo"
               label="Invoice no."
               density="compact"
-              hint="Auto-generated — editable"
+              :hint="isEdit ? 'Kept on Edit' : 'Auto-generated — editable'"
               persistent-hint
+              :disabled="isEdit"
               @update:model-value="manualNoEdited = true"
             />
           </VCol>
@@ -537,6 +650,7 @@ async function printManualInvoice() {
               type="date"
               density="compact"
               hide-details
+              :disabled="isEdit"
             />
           </VCol>
           <VCol
@@ -550,6 +664,7 @@ async function printManualInvoice() {
               density="compact"
               hide-details
               clearable
+              :disabled="studentLocked"
             />
           </VCol>
           <VCol
@@ -570,6 +685,7 @@ async function printManualInvoice() {
               hide-details
               clearable
               no-filter
+              :disabled="studentLocked"
             >
               <template #item="{ props: itemProps, item }">
                 <VListItem
@@ -689,7 +805,7 @@ async function printManualInvoice() {
                   density="compact"
                   hide-details
                   type="number"
-                  min="0"
+                  step="0.01"
                 />
               </td>
               <td>
@@ -753,7 +869,7 @@ async function printManualInvoice() {
           </VAutocomplete>
           <VSpacer />
           <div class="font-weight-medium">
-            Total: {{ formatInvoiceMoney(manualTotal) }}
+            {{ manualTotal < 0 ? 'Credit' : 'Total' }}: {{ formatInvoiceMoney(manualTotal) }}
           </div>
         </div>
         <VTextField
@@ -781,7 +897,7 @@ async function printManualInvoice() {
           :loading="manualPrinting"
           @click="printManualInvoice"
         >
-          Create &amp; print
+          {{ isEdit ? 'Save & print' : 'Create & print' }}
         </VBtn>
       </DialogFooter>
     </VCard>

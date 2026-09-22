@@ -221,16 +221,20 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 - `POST /api/tuition-invoices/generate?year=&month=`：納入該月與 **active** 報名日期視窗重疊的列；跳過 cancelled、完全落在該月外、未啟用 SKU；月費行另跳過 SKU `price` 為空（堂費不受 SKU 價限制，價錢在 purchase）。
 - 已 `issued`／`paid` 的該月發票跳過；`draft` 可重產（替換行項目）。沒有有效報名的 `draft` 會刪除。
-- `void`：PATCH 不能改回 draft。再 Generate 時，若仍有重疊的 active 報名則復活成 draft（清走舊 `invoice_no`/`issued_at`，再 Issue 派新號）；若已無有效報名則保持 void。
+- **未 Paid 可 Edit**（`draft`／`issued`）：PATCH `lines` 重算 `total`，編號預設不變。`paid`／`void` 改行 → 422。Paid 之後用負數 Manual invoice（credit note）或先 Void receipt 變返 Issued。
+- `void`：PATCH 不能改回 draft。再 Generate 時，若仍有重疊的 active 報名則復活成 draft（清走舊 `invoice_no`／`issued_at`，再 Issue 派新號）；若已無有效報名則保持 void。要張單唔出返嚟：**先 Leave class／改 Courses，再 Generate**。
+- `DELETE /tuition-invoices/{id}`：只准 `void`；有 posted receipt 連結 → 409；否則刪非 posted 連結再刪單，編號釋放。
+- `DELETE /tuition-receipts/{id}`：只准 voided receipt；posted → 422。Void 後 Remove 先可以重用收條編號。
 - 兩人同時 Generate 撞唯一約束回 **409**（不是 500）。
 - **堂費** = `enrollment_purchases` 中 `billed_invoice_line_id` 為空（或所連行屬 void/本期重產）且 `purchased_at <=` 月末的購買，每條一行、行與 purchase 連結防止重複收費；月費每 enrollment 一行，數量 1。
 - 發票編號：Issue 或 Manual 建立時按 `location_id` 從 `invoice_counters` 取下一號（1–999999）；手打編號會推進該中心 counter，自動派號跳過已佔用號碼。
-- Web：`/attendance/invoices`（選月份 → Generate → Issue / Mark paid / Void；Issue 後自動開列印；手動發票可選學生並一鍵加入其未出單堂費 package）。
+- Web：`/attendance/invoices`（選月份 → Generate → Issue / Mark paid / Edit / Void / Credit note；Issue 後自動開列印；手動發票可選學生並一鍵加入其未出單堂費 package）。Courses 名冊掣名 **Join class / Leave class / Back in class / Remove record**；hint 同確認框用粵語。
 
 #### 手動發票
 
-- `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。
-- purchase 檢查在派號**之前**：購買須存在、屬所選學生、未被出單；失敗不消耗編號。void 手動發票後其 purchase 回復可出單。
+- `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。`fee` 可以係負數（credit note）；綁 `purchase_id` 嘅行不准負數。
+- `PATCH /api/tuition-invoices/{id}`：未 Paid 可改 `lines`／notes／staff；Generated 行會保留 `enrollment_id`／SKU。Paid 或 Cancelled 連編號都唔准改 → 422。
+- purchase 檢查在派號**之前**：購買須存在、屬所選學生、未被出單；失敗不消耗編號。void 手動發票後其 purchase 回復可出單。行項目 GET 會帶 `purchase_id`（如該行結算咗一條購買），Edit 要原封交返去，唔好拆咗連結。
 
 #### 尚未做（刻意延後）
 

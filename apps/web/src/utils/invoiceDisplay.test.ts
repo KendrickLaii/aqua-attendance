@@ -4,13 +4,16 @@ import type { TuitionInvoice, TuitionInvoiceLine } from '../api/attendance/tuiti
 import {
   billingLabel,
   classPreview,
+  creditLinesFromInvoice,
   filterTuitionInvoices,
   formatInvoiceMoney,
   formatInvoiceQty,
   invoiceLineFormula,
+  invoiceLinesEditable,
   invoiceOpenedBy,
   invoicePeriodLabel,
   invoiceStudentLabel,
+  isCreditInvoice,
 } from './invoiceDisplay'
 
 function line(over: Partial<TuitionInvoiceLine> = {}): TuitionInvoiceLine {
@@ -60,6 +63,22 @@ function invoice(over: Partial<TuitionInvoice> = {}): TuitionInvoice {
 describe('invoiceDisplay', () => {
   it('formats Hong Kong dollar amounts', () => {
     assert.equal(formatInvoiceMoney(800), 'HK$800.00')
+    assert.equal(formatInvoiceMoney(-200), '-HK$200.00')
+  })
+
+  it('treats negative totals as credit notes and unpaid bills as editable', () => {
+    assert.equal(isCreditInvoice(invoice({ total: -200 })), true)
+    assert.equal(isCreditInvoice(invoice({ total: 800 })), false)
+    assert.equal(invoiceLinesEditable('draft'), true)
+    assert.equal(invoiceLinesEditable('issued'), true)
+    assert.equal(invoiceLinesEditable('paid'), false)
+    assert.equal(invoiceLinesEditable('void'), false)
+  })
+
+  it('builds credit-note lines with the opposite fee', () => {
+    assert.deepEqual(creditLinesFromInvoice(invoice({
+      lines: [line({ month_label: 'Sept-26', name_zh: '私補', unit_price: 200, quantity: 1 })],
+    })), [{ month: 'Sept-26', course: '私補', fee: -200, qty: 1 }])
   })
 
   it('labels billing units in staff English', () => {

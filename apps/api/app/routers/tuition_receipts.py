@@ -402,3 +402,21 @@ async def void_tuition_receipt(
         description=f"Voided receipt {receipt.receipt_no}",
     )
     return _receipt_to_out(await _get_receipt(db, receipt.id))
+
+
+@router.delete("/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tuition_receipt(receipt_id: uuid.UUID, admin: AdminOnly, db: DB) -> None:
+    receipt = await _get_receipt(db, receipt_id, for_update=True)
+    if receipt.status != TuitionReceiptStatus.void.value:
+        raise HTTPException(status_code=422, detail="Only voided receipts can be deleted")
+    receipt_no = receipt.receipt_no
+    await db.delete(receipt)
+    await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="DELETE",
+        table_name="tuition_receipts",
+        record_id=receipt_id,
+        description=f"Deleted voided receipt {receipt_no}",
+    )

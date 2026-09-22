@@ -21,6 +21,7 @@ class TuitionInvoiceLineOut(BaseModel):
     amount: float
     month_label: str | None = None
     staff_name: str | None = None
+    purchase_id: uuid.UUID | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -55,6 +56,7 @@ class TuitionInvoiceUpdate(BaseModel):
     notes: str | None = None
     invoice_no: str | None = Field(default=None, max_length=50)
     staff_name: str | None = Field(default=None, max_length=255)
+    lines: list["TuitionInvoiceManualLine"] | None = None
 
 
 class LeftoverPurchaseOut(BaseModel):
@@ -79,15 +81,22 @@ class TuitionInvoiceNextNo(BaseModel):
 
 
 class TuitionInvoiceManualLine(BaseModel):
+    id: uuid.UUID | None = None
     month: str = Field(..., max_length=50)
     course: str = Field(..., max_length=255)
-    fee: float = Field(..., ge=0)
+    fee: float
     qty: float = Field(..., gt=0)
     staff_name: str | None = Field(default=None, max_length=255)
     # Set when this line settles an unbilled per-session EnrollmentPurchase:
     # the typed `fee` is the charged price (purchases may have no price yet);
     # quantity always comes from the purchase so a package is billed whole.
     purchase_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def purchase_fee_not_negative(self):
+        if self.purchase_id is not None and self.fee < 0:
+            raise ValueError("Session package lines cannot have a negative fee")
+        return self
 
 
 class TuitionInvoiceManualCreate(BaseModel):

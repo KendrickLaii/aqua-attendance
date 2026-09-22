@@ -25,10 +25,21 @@ export const invoiceStatusFilters: { title: string; value: 'all' | TuitionInvoic
 ]
 
 export function formatInvoiceMoney(value: number): string {
-  return `HK$${Number(value).toLocaleString('en-HK', {
+  const amount = Number(value)
+  const abs = Math.abs(amount).toLocaleString('en-HK', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })}`
+  })
+
+  return amount < 0 ? `-HK$${abs}` : `HK$${abs}`
+}
+
+export function isCreditInvoice(invoice: { total: number }): boolean {
+  return Number(invoice.total) < 0
+}
+
+export function invoiceLinesEditable(status: string): boolean {
+  return status === 'draft' || status === 'issued'
 }
 
 export function billingLabel(unit: string): string {
@@ -83,6 +94,20 @@ export function invoiceStudentLabel(invoice: TuitionInvoice): string {
 
 export function invoiceOpenedBy(invoice: TuitionInvoice): string {
   return (invoice.staff_name ?? '').trim()
+}
+
+export function creditLinesFromInvoice(invoice: TuitionInvoice): Array<{
+  month: string
+  course: string
+  fee: number
+  qty: number
+}> {
+  return invoice.lines.map(line => ({
+    month: line.month_label ?? '',
+    course: line.name_zh,
+    fee: -Math.abs(Number(line.unit_price)),
+    qty: Number(line.quantity),
+  }))
 }
 
 export function invoicePrintHeaderFromLocation(location: LocationItem): TuitionInvoicePrintHeader {

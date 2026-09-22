@@ -107,6 +107,10 @@ export async function voidTuitionReceipt(receiptId: string): Promise<TuitionRece
   return await $attendanceApi(`/tuition-receipts/${receiptId}/void`, { method: 'POST' })
 }
 
+export async function deleteTuitionReceipt(receiptId: string): Promise<void> {
+  await $attendanceApi(`/tuition-receipts/${receiptId}`, { method: 'DELETE' })
+}
+
 export async function getNextReceiptNo(locationId: string, date: string): Promise<string> {
   const result = await $attendanceApi<{ next_no: string }>('/tuition-receipts/next-no', {
     params: { location_id: locationId, date },

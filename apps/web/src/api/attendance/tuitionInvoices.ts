@@ -16,6 +16,7 @@ export interface TuitionInvoiceLine {
   amount: number
   month_label: string | null
   staff_name: string | null
+  purchase_id?: string | null
   created_at: string
 }
 
@@ -117,6 +118,9 @@ export interface ManualInvoiceLine {
   qty: number
   staff_name?: string | null
 
+  /** Existing line to keep enrollment / SKU identity when editing. */
+  id?: string
+
   /** Set to settle an unbilled per-session purchase; qty comes from the purchase. */
   purchase_id?: string
 }
@@ -140,7 +144,17 @@ export async function createManualTuitionInvoice(payload: ManualInvoicePayload):
 
 export async function updateTuitionInvoice(
   invoiceId: string,
-  payload: { status?: TuitionInvoiceStatus; notes?: string | null; invoice_no?: string | null; staff_name?: string | null },
+  payload: {
+    status?: TuitionInvoiceStatus
+    notes?: string | null
+    invoice_no?: string | null
+    staff_name?: string | null
+    lines?: ManualInvoiceLine[]
+  },
 ): Promise<TuitionInvoice> {
   return await $attendanceApi(`/tuition-invoices/${invoiceId}`, { method: 'PATCH', body: payload })
+}
+
+export async function deleteTuitionInvoice(invoiceId: string): Promise<void> {
+  await $attendanceApi(`/tuition-invoices/${invoiceId}`, { method: 'DELETE' })
 }

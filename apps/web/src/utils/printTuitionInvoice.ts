@@ -28,6 +28,7 @@ export interface TuitionInvoicePrintData {
   logoUrl?: string
   header?: TuitionInvoicePrintHeader
   remark?: string
+  title?: string
 }
 
 const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
@@ -96,6 +97,7 @@ export function tuitionInvoicePrintData(
     logoUrl: options?.logoUrl,
     header: options?.header,
     remark: invoice.notes ?? '',
+    title: Number(invoice.total) < 0 ? 'CREDIT NOTE' : 'INVOICE',
     lines: invoice.lines.map(line => ({
       month: line.month_label ?? invoiceMonthLabel(invoice.period_start),
       course: line.name_zh || line.sku_code,
@@ -142,7 +144,7 @@ function invoiceCopyHtml(
           ${centreLines}
         </div>
         <div class="cell title-cell">
-          <div class="title">INVOICE</div>
+          <div class="title">${escapeHtml(data.title || 'INVOICE')}</div>
           ${copyLabel ? `<div class="copy-label">${escapeHtml(copyLabel)}</div>` : ''}
         </div>
       </div>

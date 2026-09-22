@@ -9,6 +9,7 @@ import { type Unit, listUnits } from '@/api/attendance/units'
 import { requiredValidator } from '@core/utils/validators'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
 import {
   type TuitionInvoicePrintHeader,
 } from '@/utils/printTuitionInvoice'
@@ -92,13 +93,6 @@ const lockedStudentLabel = computed(() => {
     return studentLabel(first)
   return walkInName.value || '—'
 })
-
-function formatMoney(value: number): string {
-  return `HK$${Number(value).toLocaleString('en-HK', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
 
 function studentLabel(invoice: TuitionInvoice): string {
   if (invoice.unit_name)
@@ -273,7 +267,7 @@ async function submit() {
     return
   }
   if (!amountFits.value) {
-    formError.value = `Amount does not match invoices plus adjustments (expected ${formatMoney(expectedAmount.value)}).`
+    formError.value = `Amount does not match invoices plus adjustments (expected ${formatInvoiceMoney(expectedAmount.value)}).`
     return
   }
 
@@ -461,7 +455,7 @@ onMounted(async () => {
               density="compact"
               :hide-details="amountFits"
               :error="!amountFits"
-              :error-messages="amountFits ? undefined : `Must equal invoices plus adjustments (${formatMoney(expectedAmount)})`"
+              :error-messages="amountFits ? undefined : `Must equal invoices plus adjustments (${formatInvoiceMoney(expectedAmount)})`"
               @update:model-value="onAmountInput"
             />
           </VCol>
@@ -529,7 +523,7 @@ onMounted(async () => {
               </td>
               <td>{{ classPreview(invoice) }}</td>
               <td class="text-end tabular-nums">
-                {{ formatMoney(Number(invoice.total)) }}
+                {{ formatInvoiceMoney(Number(invoice.total)) }}
               </td>
             </tr>
           </tbody>
@@ -614,9 +608,9 @@ onMounted(async () => {
           </tbody>
         </VTable>
         <div class="text-caption text-medium-emphasis mb-4">
-          Invoices {{ formatMoney(invoiceTotal) }}
-          + Adjustments {{ formatMoney(adjustmentTotal) }}
-          = {{ formatMoney(expectedAmount) }}
+          Invoices {{ formatInvoiceMoney(invoiceTotal) }}
+          + Adjustments {{ formatInvoiceMoney(adjustmentTotal) }}
+          = {{ formatInvoiceMoney(expectedAmount) }}
         </div>
 
         <div class="d-flex justify-end gap-2 mt-6">

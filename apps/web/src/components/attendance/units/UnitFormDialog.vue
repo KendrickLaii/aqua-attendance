@@ -242,7 +242,7 @@ async function loadStudentEnrollments(unitId: string | null) {
   }
   catch (e) {
     if (requestId === unitEnrollmentsRequestId)
-      unitEnrollmentsError.value = formatApiError(e, 'Could not load enrolled classes.')
+      unitEnrollmentsError.value = formatApiError(e, 'Could not load classes.')
   }
   finally {
     if (requestId === unitEnrollmentsRequestId)
@@ -666,10 +666,10 @@ async function handleSave() {
 
       <template v-if="form.unit_type === 'student'">
         <h4 class="text-subtitle-2 text-medium-emphasis mb-1 mt-4">
-          Enrolled classes
+          Classes
         </h4>
         <p class="text-caption text-medium-emphasis mb-2">
-          Read-only. Enroll, change dates, or cancel on Courses.
+          Read-only. Join, change dates, or Leave class on Courses.
         </p>
         <div
           v-if="!editingUnit"

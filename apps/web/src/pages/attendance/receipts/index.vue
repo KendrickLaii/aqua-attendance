@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   type TuitionReceipt,
+  deleteTuitionReceipt,
   listAllTuitionReceipts,
   voidTuitionReceipt,
 } from '@/api/attendance/tuitionReceipts'
@@ -9,6 +10,11 @@ import StatCards from '@/components/attendance/StatCards.vue'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import {
+  REMOVE_VOIDED_RECEIPT,
+  VOID_RECEIPT_HINT,
+} from '@/utils/billingStaffCopy'
+import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
 import {
   type TuitionInvoicePrintHeader,
 } from '@/utils/printTuitionInvoice'
@@ -47,7 +53,9 @@ const loadError = ref('')
 const actionError = ref('')
 const expandedId = ref<string | null>(null)
 const voidingId = ref<string | null>(null)
+const removingId = ref<string | null>(null)
 const pendingVoid = ref<TuitionReceipt | null>(null)
+const pendingRemove = ref<TuitionReceipt | null>(null)
 const locations = ref<LocationItem[]>([])
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'posted' | 'void'>('all')
@@ -56,13 +64,6 @@ const LOCATION_FILTER_KEY = 'tuition-receipt-location'
 const locationId = ref<string | null>(localStorage.getItem(LOCATION_FILTER_KEY))
 
 useAutoClearAlerts(loadError, actionError)
-
-function formatMoney(value: number): string {
-  return `HK$${Number(value).toLocaleString('en-HK', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
 
 function studentLabel(receipt: TuitionReceipt): string {
   if (receipt.unit_name)
@@ -136,7 +137,7 @@ const scopeLabel = computed(() => {
 const statCards = computed(() => [
   {
     label: 'Collected',
-    value: formatMoney(postedTotal.value),
+    value: formatInvoiceMoney(postedTotal.value),
     hint: `${postedReceipts.value.length} posted receipt${postedReceipts.value.length === 1 ? '' : 's'}`,
     icon: 'ri-checkbox-circle-line',
     color: 'success',
@@ -158,7 +159,7 @@ const statCards = computed(() => [
   {
     label: 'Voided',
     value: String(voidReceipts.value.length),
-    hint: 'Number kept; invoices reopened',
+    hint: 'Void first, then Remove to reuse the number',
     icon: 'ri-close-circle-line',
     color: 'warning',
   },
@@ -219,6 +220,25 @@ async function printReceipt(receipt: TuitionReceipt) {
   }
   catch (e) {
     actionError.value = formatApiError(e, 'Could not open print window.')
+  }
+}
+
+async function confirmRemoveVoided() {
+  const receipt = pendingRemove.value
+  if (!receipt)
+    return
+  removingId.value = receipt.id
+  actionError.value = ''
+  try {
+    await deleteTuitionReceipt(receipt.id)
+    receipts.value = receipts.value.filter(row => row.id !== receipt.id)
+    pendingRemove.value = null
+  }
+  catch (e) {
+    actionError.value = formatApiError(e, 'Could not remove this voided receipt.')
+  }
+  finally {
+    removingId.value = null
   }
 }
 
@@ -510,7 +530,7 @@ onMounted(async () => {
                   </VChip>
                 </td>
                 <td class="text-end tabular-nums">
-                  {{ formatMoney(Number(receipt.amount)) }}
+                  {{ formatInvoiceMoney(Number(receipt.amount)) }}
                 </td>
                 <td
                   class="text-end"
@@ -533,6 +553,16 @@ onMounted(async () => {
                     title="Void receipt"
                     :loading="voidingId === receipt.id"
                     @click="pendingVoid = receipt"
+                  />
+                  <VBtn
+                    v-if="receipt.status === 'void'"
+                    icon="ri-delete-bin-line"
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    title="Remove voided receipt"
+                    :loading="removingId === receipt.id"
+                    @click="pendingRemove = receipt"
                   />
                 </td>
               </tr>
@@ -561,7 +591,7 @@ onMounted(async () => {
                       class="d-flex justify-space-between py-1"
                     >
                       <span>{{ [row.month, row.course].filter(Boolean).join(' · ') }}</span>
-                      <span>{{ formatMoney(Number(row.amount)) }}</span>
+                      <span>{{ formatInvoiceMoney(Number(row.amount)) }}</span>
                     </div>
                   </div>
                 </td>
@@ -601,7 +631,25 @@ onMounted(async () => {
     >
       <p class="text-body-2 mb-0">
         <strong>{{ pendingVoid?.receipt_no }}</strong>
-        will be voided. Linked invoices go back to issued. The receipt number is not used again.
+        {{ VOID_RECEIPT_HINT }}
+      </p>
+    </AttendanceConfirmDialog>
+
+    <AttendanceConfirmDialog
+      :model-value="pendingRemove != null"
+      title="Remove this voided receipt?"
+      confirm-label="Remove"
+      confirm-color="error"
+      :loading="removingId === pendingRemove?.id"
+      :error="actionError"
+      @update:model-value="value => { if (!value) pendingRemove = null }"
+      @confirm="confirmRemoveVoided"
+      @cancel="pendingRemove = null"
+      @clear-error="actionError = ''"
+    >
+      <p class="text-body-2 mb-0">
+        <strong>{{ pendingRemove?.receipt_no }}</strong>
+        {{ REMOVE_VOIDED_RECEIPT }}
       </p>
     </AttendanceConfirmDialog>
   </div>

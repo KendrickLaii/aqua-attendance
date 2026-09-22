@@ -1714,6 +1714,7 @@ async def test_manual_invoice_bills_unbilled_purchase(
     line = invoice["lines"][0]
     assert line["billing_unit"] == "per_session"
     assert float(line["amount"]) == 1200
+    assert line["purchase_id"] == purchase_id
 
     async with TestSessionLocal() as session:
         purchase = (
@@ -1995,3 +1996,331 @@ async def test_generate_respects_location_and_does_not_delete_other_campus_draft
     assert len(after) == 2
     locations = {inv["location_id"] for inv in after}
     assert locations == {sample_location["id"], sample_location_b["id"]}
+
+
+@pytest.mark.asyncio
+async def test_patch_replaces_lines_on_issued_invoice(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    created = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "invoice_no": "2683",
+            "lines": [{"month": "2026-09", "course": "功課輔導班", "fee": 1900, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    invoice_id = created.json()["id"]
+
+    patched = await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={
+            "lines": [
+                {"month": "2026-09", "course": "功課輔導班", "fee": 1800, "qty": 1},
+                {"month": "2026-09", "course": "專補", "fee": 215, "qty": 4},
+            ]
+        },
+        headers=_auth(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert body["invoice_no"] == "2683"
+    assert body["status"] == "issued"
+    assert float(body["total"]) == 2660
+    assert len(body["lines"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_patch_keeps_purchase_link_on_issued_invoice(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=8,
+    )
+    purchase_id = enrollment["purchases"][0]["id"]
+    created = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{
+                "month": "2026-09",
+                "course": "堂費",
+                "fee": 150,
+                "qty": 8,
+                "purchase_id": purchase_id,
+            }],
+        },
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    invoice = created.json()
+    assert invoice["lines"][0]["purchase_id"] == purchase_id
+
+    patched = await client.patch(
+        f"/api/tuition-invoices/{invoice['id']}",
+        json={
+            "lines": [{
+                "month": "2026-09",
+                "course": "堂費",
+                "fee": 140,
+                "qty": 8,
+                "purchase_id": purchase_id,
+            }]
+        },
+        headers=_auth(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["lines"][0]["purchase_id"] == purchase_id
+    assert float(patched.json()["total"]) == 1120
+
+    async with TestSessionLocal() as session:
+        purchase = (
+            await session.execute(
+                select(EnrollmentPurchase).where(EnrollmentPurchase.id == uuid.UUID(purchase_id))
+            )
+        ).scalar_one()
+        assert purchase.billed_invoice_line_id == uuid.UUID(patched.json()["lines"][0]["id"])
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_line_edit_on_paid_invoice(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    created = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{"month": "2026-09", "course": "私補", "fee": 100, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    invoice_id = created.json()["id"]
+    paid = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice_id],
+        },
+        headers=_auth(admin_token),
+    )
+    assert paid.status_code == 201, paid.text
+
+    patched = await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={"lines": [{"month": "2026-09", "course": "私補", "fee": 80, "qty": 1}]},
+        headers=_auth(admin_token),
+    )
+    assert patched.status_code == 422
+
+    no_change = await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={"invoice_no": "9999"},
+        headers=_auth(admin_token),
+    )
+    assert no_change.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_generated_invoice_keeps_enrollment_link(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", end_date="2026-06-30",
+    )
+    await _generate(client, admin_token, 2026, 6)
+    invoices = await _june_invoices(client, admin_token)
+    assert len(invoices) == 1
+    line = invoices[0]["lines"][0]
+    assert line["enrollment_id"] == enrollment["id"]
+    assert line["sku_code"] != "manual"
+
+    patched = await client.patch(
+        f"/api/tuition-invoices/{invoices[0]['id']}",
+        json={
+            "lines": [{
+                "id": line["id"],
+                "month": line["month_label"] or "2026-06",
+                "course": line["name_zh"],
+                "fee": 750,
+                "qty": 1,
+            }]
+        },
+        headers=_auth(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    updated = patched.json()["lines"][0]
+    assert updated["enrollment_id"] == enrollment["id"]
+    assert updated["sku_id"] == sku["id"]
+    assert updated["sku_code"] == sku["code"]
+    assert updated["billing_unit"] == "monthly"
+    assert float(updated["unit_price"]) == 750
+
+    blocked = await client.delete(
+        f"/api/course-enrollments/{enrollment['id']}",
+        headers=_auth(admin_token),
+    )
+    assert blocked.status_code == 409, blocked.text
+
+
+@pytest.mark.asyncio
+async def test_delete_void_tuition_invoice_allows_generate_again(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", end_date="2026-06-30",
+    )
+    await _generate(client, admin_token, 2026, 6)
+    invoices = await _june_invoices(client, admin_token)
+    invoice_id = invoices[0]["id"]
+
+    voided = await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={"status": "void"},
+        headers=_auth(admin_token),
+    )
+    assert voided.status_code == 200, voided.text
+
+    deleted = await client.delete(
+        f"/api/tuition-invoices/{invoice_id}",
+        headers=_auth(admin_token),
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    again = await _generate(client, admin_token, 2026, 6)
+    assert again["created"] == 1
+    after = await _june_invoices(client, admin_token)
+    assert len(after) == 1
+    assert after[0]["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_delete_void_invoice_releases_number(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    created = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "invoice_no": "2683",
+            "lines": [{"month": "2026-09", "course": "私補", "fee": 100, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    invoice_id = created.json()["id"]
+    voided = await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={"status": "void"},
+        headers=_auth(admin_token),
+    )
+    assert voided.status_code == 200, voided.text
+
+    deleted = await client.delete(
+        f"/api/tuition-invoices/{invoice_id}",
+        headers=_auth(admin_token),
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    reused = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-03",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "invoice_no": "2683",
+            "lines": [{"month": "2026-09", "course": "私補", "fee": 90, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert reused.status_code == 201, reused.text
+    assert reused.json()["invoice_no"] == "2683"
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_issued_invoice(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    created = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{"month": "2026-09", "course": "私補", "fee": 100, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    resp = await client.delete(
+        f"/api/tuition-invoices/{created.json()['id']}",
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_accepts_negative_fee(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{"month": "2026-09", "course": "Credit note", "fee": -200, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert float(resp.json()["total"]) == -200
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_rejects_negative_fee_on_purchase(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrollment = await _enroll(
+        client, admin_token, sample_unit["id"], sku["id"],
+        start_date="2026-06-01", purchased_quantity=8,
+    )
+    purchase_id = enrollment["purchases"][0]["id"]
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{
+                "month": "2026-09",
+                "course": "堂費",
+                "fee": -150,
+                "qty": 8,
+                "purchase_id": purchase_id,
+            }],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422

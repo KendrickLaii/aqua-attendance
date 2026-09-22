@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -19,6 +19,7 @@ from app.models.unit import Unit
 from app.schemas.tuition_invoice import (
     TuitionInvoiceGenerateResult,
     TuitionInvoiceManualCreate,
+    TuitionInvoiceManualLine,
     TuitionInvoiceNextNo,
     TuitionInvoiceOut,
     TuitionInvoiceUpdate,
@@ -34,9 +35,14 @@ _ALLOWED_STATUS = {
     TuitionInvoiceStatus.paid.value: set(),
     TuitionInvoiceStatus.void.value: set(),
 }
+_EDITABLE_STATUS = frozenset({TuitionInvoiceStatus.draft.value, TuitionInvoiceStatus.issued.value})
 
 
-def _invoice_to_out(invoice: TuitionInvoice, receipt_no: str | None = None) -> TuitionInvoiceOut:
+def _invoice_to_out(
+    invoice: TuitionInvoice,
+    receipt_no: str | None = None,
+    purchase_ids: dict[uuid.UUID, uuid.UUID] | None = None,
+) -> TuitionInvoiceOut:
     out = TuitionInvoiceOut.model_validate(invoice)
     out.receipt_no = receipt_no
     if invoice.unit:
@@ -44,7 +50,9 @@ def _invoice_to_out(invoice: TuitionInvoice, receipt_no: str | None = None) -> T
         out.unit_code = invoice.unit.code
     elif invoice.kind == "manual":
         out.unit_name = invoice.manual_student_name
+    linked = purchase_ids or {}
     for line_out, line in zip(out.lines, invoice.lines):
+        line_out.purchase_id = linked.get(line.id)
         if line_out.staff_name:
             continue
         staff = line.sku.staff if line.sku else None
@@ -67,9 +75,24 @@ async def _receipt_no_map(db: AsyncSession, invoice_ids: list[uuid.UUID]) -> dic
     return {row[0]: row[1] for row in result.all()}
 
 
+async def _line_purchase_ids(
+    db: AsyncSession, invoices: list[TuitionInvoice]
+) -> dict[uuid.UUID, uuid.UUID]:
+    line_ids = [line.id for invoice in invoices for line in invoice.lines]
+    if not line_ids:
+        return {}
+    result = await db.execute(
+        select(EnrollmentPurchase.billed_invoice_line_id, EnrollmentPurchase.id).where(
+            EnrollmentPurchase.billed_invoice_line_id.in_(line_ids)
+        )
+    )
+    return {row[0]: row[1] for row in result.all() if row[0] is not None}
+
+
 async def _invoices_to_out(db: AsyncSession, invoices: list[TuitionInvoice]) -> list[TuitionInvoiceOut]:
     nos = await _receipt_no_map(db, [invoice.id for invoice in invoices])
-    return [_invoice_to_out(invoice, nos.get(invoice.id)) for invoice in invoices]
+    purchase_ids = await _line_purchase_ids(db, invoices)
+    return [_invoice_to_out(invoice, nos.get(invoice.id), purchase_ids) for invoice in invoices]
 
 
 _INVOICE_LOAD = (
@@ -314,25 +337,15 @@ async def allocate_invoice_no(
     return TuitionInvoiceNextNo(next_no=allocated)
 
 
-@router.post("/manual", response_model=TuitionInvoiceOut, status_code=status.HTTP_201_CREATED)
-async def create_manual_tuition_invoice(
-    body: TuitionInvoiceManualCreate,
-    _admin: AdminOnly,
-    db: DB,
-) -> TuitionInvoiceOut:
-    """Create and issue a manual (ad-hoc) invoice, storing it for reprint/payment tracking."""
-    location = await db.get(Location, body.location_id)
-    if not location:
-        raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
-
-    if body.unit_id is not None:
-        unit = await db.get(Unit, body.unit_id)
-        if not unit:
-            raise HTTPException(status_code=422, detail="unit_id does not reference an existing unit")
-
-    # Validate purchase-linked lines before allocating an invoice number —
-    # a failed create must not consume a number.
-    purchase_ids = [line.purchase_id for line in body.lines if line.purchase_id]
+async def _build_manual_lines(
+    db: AsyncSession,
+    lines_in: list[TuitionInvoiceManualLine],
+    unit_id: uuid.UUID | None,
+    *,
+    ignore_line_ids: set[uuid.UUID] | None = None,
+    existing_lines: list[TuitionInvoiceLine] | None = None,
+) -> tuple[list[TuitionInvoiceLine], list[tuple[TuitionInvoiceLine, EnrollmentPurchase]]]:
+    purchase_ids = [line.purchase_id for line in lines_in if line.purchase_id]
     if len(purchase_ids) != len(set(purchase_ids)):
         raise HTTPException(
             status_code=422,
@@ -357,8 +370,6 @@ async def create_manual_tuition_invoice(
         ]
         blocking_line_ids: set[uuid.UUID] = set()
         if linked_line_ids:
-            # A purchase only counts as billed while its linked line sits on a
-            # live invoice — a voided invoice frees the package for re-billing.
             blocking = await db.execute(
                 select(TuitionInvoiceLine.id)
                 .join(TuitionInvoice, TuitionInvoiceLine.invoice_id == TuitionInvoice.id)
@@ -368,33 +379,84 @@ async def create_manual_tuition_invoice(
                 )
             )
             blocking_line_ids = {row[0] for row in blocking.all()}
+            if ignore_line_ids:
+                blocking_line_ids -= ignore_line_ids
         for purchase in purchases.values():
             if purchase.billed_invoice_line_id in blocking_line_ids:
                 raise HTTPException(
                     status_code=409,
                     detail="This session package has already been billed on another invoice.",
                 )
-            # A package always belongs to a real student, so it can never be
-            # settled on an anonymous walk-in invoice.
-            if body.unit_id is None or purchase.enrollment.unit_id != body.unit_id:
+            if unit_id is None or purchase.enrollment.unit_id != unit_id:
                 raise HTTPException(
                     status_code=422,
                     detail="This session package belongs to a different student.",
                 )
 
-    invoice_no = body.invoice_no.strip() if body.invoice_no and body.invoice_no.strip() else None
-    if invoice_no:
-        manual_no = _parse_numeric_invoice_no(invoice_no)
-        if manual_no is not None:
-            await _bump_invoice_counter(db, manual_no, body.location_id)
-    else:
-        invoice_no = str(await _allocate_invoice_no(db, body.location_id))
+    existing_by_id = {line.id: line for line in existing_lines or []}
+    unused_existing = set(existing_by_id)
+
+    def take_existing(line_in: TuitionInvoiceManualLine) -> TuitionInvoiceLine | None:
+        if line_in.id is not None:
+            if not existing_by_id:
+                return None
+            existing = existing_by_id.get(line_in.id)
+            if existing is None or existing.id not in unused_existing:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Line id does not belong to this invoice",
+                )
+            unused_existing.discard(existing.id)
+            return existing
+        matches = [
+            existing_by_id[line_id]
+            for line_id in unused_existing
+            if existing_by_id[line_id].enrollment_id is not None
+            and existing_by_id[line_id].name_zh == line_in.course
+            and (
+                not existing_by_id[line_id].month_label
+                or existing_by_id[line_id].month_label == (line_in.month or "")
+            )
+        ]
+        if not matches:
+            leftover = [
+                existing_by_id[line_id]
+                for line_id in unused_existing
+                if existing_by_id[line_id].enrollment_id is not None
+            ]
+            if len(leftover) == 1:
+                matches = leftover
+        if len(matches) == 1:
+            unused_existing.discard(matches[0].id)
+            return matches[0]
+        return None
 
     lines: list[TuitionInvoiceLine] = []
     purchase_links: list[tuple[TuitionInvoiceLine, EnrollmentPurchase]] = []
-    for line_in in body.lines:
+    for line_in in lines_in:
         purchase = purchases.get(line_in.purchase_id) if line_in.purchase_id else None
         if purchase is None:
+            existing = take_existing(line_in)
+            if existing is not None:
+                lines.append(
+                    TuitionInvoiceLine(
+                        enrollment_id=existing.enrollment_id,
+                        sku_id=existing.sku_id,
+                        sku_code=existing.sku_code,
+                        name_zh=line_in.course,
+                        billing_unit=existing.billing_unit,
+                        unit_price=line_in.fee,
+                        quantity=line_in.qty,
+                        amount=line_in.fee * line_in.qty,
+                        month_label=line_in.month,
+                        staff_name=(
+                            line_in.staff_name.strip()
+                            if line_in.staff_name
+                            else existing.staff_name
+                        ),
+                    )
+                )
+                continue
             lines.append(
                 TuitionInvoiceLine(
                     name_zh=line_in.course,
@@ -409,9 +471,6 @@ async def create_manual_tuition_invoice(
             )
             continue
         sku: CourseSku | None = purchase.enrollment.sku
-        # The typed fee is the charged price — purchases may carry no price
-        # yet (私補). Quantity always comes from the purchase so a package is
-        # billed whole.
         quantity = float(purchase.purchased_quantity)
         line = TuitionInvoiceLine(
             enrollment_id=purchase.enrollment_id,
@@ -423,8 +482,6 @@ async def create_manual_tuition_invoice(
             quantity=quantity,
             amount=line_in.fee * quantity,
             month_label=line_in.month or purchase.purchased_at.strftime("%Y-%m"),
-            # Invoice-level staff (who gets commission) wins; blank falls back
-            # to the class teacher.
             staff_name=(
                 (line_in.staff_name.strip() if line_in.staff_name else None)
                 or (sku.staff.full_name if sku and sku.staff else None)
@@ -432,6 +489,37 @@ async def create_manual_tuition_invoice(
         )
         lines.append(line)
         purchase_links.append((line, purchase))
+    return lines, purchase_links
+
+
+@router.post("/manual", response_model=TuitionInvoiceOut, status_code=status.HTTP_201_CREATED)
+async def create_manual_tuition_invoice(
+    body: TuitionInvoiceManualCreate,
+    _admin: AdminOnly,
+    db: DB,
+) -> TuitionInvoiceOut:
+    """Create and issue a manual (ad-hoc) invoice, storing it for reprint/payment tracking."""
+    location = await db.get(Location, body.location_id)
+    if not location:
+        raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+
+    if body.unit_id is not None:
+        unit = await db.get(Unit, body.unit_id)
+        if not unit:
+            raise HTTPException(status_code=422, detail="unit_id does not reference an existing unit")
+
+    # Validate purchase-linked lines before allocating an invoice number —
+    # a failed create must not consume a number.
+    lines, purchase_links = await _build_manual_lines(db, body.lines, body.unit_id)
+
+    invoice_no = body.invoice_no.strip() if body.invoice_no and body.invoice_no.strip() else None
+    if invoice_no:
+        manual_no = _parse_numeric_invoice_no(invoice_no)
+        if manual_no is not None:
+            await _bump_invoice_counter(db, manual_no, body.location_id)
+    else:
+        invoice_no = str(await _allocate_invoice_no(db, body.location_id))
+
     total = sum(line.amount for line in lines)
 
     invoice = TuitionInvoice(
@@ -493,6 +581,17 @@ async def update_tuition_invoice(
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    line_payload = update_data.pop("lines", None)
+    if invoice.status not in _EDITABLE_STATUS:
+        extra_fields = set(update_data) - {"status"}
+        if extra_fields or line_payload is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot edit a paid or cancelled invoice",
+            )
+    if line_payload is not None:
+        if not body.lines:
+            raise HTTPException(status_code=422, detail="At least one line is required")
     new_status = update_data.get("status")
     if new_status is not None:
         allowed = _ALLOWED_STATUS.get(invoice.status, set())
@@ -525,6 +624,24 @@ async def update_tuition_invoice(
 
     for field, value in update_data.items():
         setattr(invoice, field, value)
+    if line_payload is not None:
+        ignore_ids = {line.id for line in invoice.lines}
+        lines, purchase_links = await _build_manual_lines(
+            db,
+            body.lines or [],
+            invoice.unit_id,
+            ignore_line_ids=ignore_ids,
+            existing_lines=list(invoice.lines),
+        )
+        invoice.lines.clear()
+        invoice.total = sum(line.amount for line in lines)
+        for line in lines:
+            invoice.lines.append(line)
+        await db.flush()
+        for line, purchase in purchase_links:
+            purchase.billed_invoice_line_id = line.id
+            if purchase.unit_price is None:
+                purchase.unit_price = line.unit_price
     if new_status == TuitionInvoiceStatus.issued.value:
         location_id = invoice.location_id or (invoice.unit.registered_location_id if invoice.unit else None)
         invoice.location_id = location_id
@@ -558,3 +675,42 @@ async def update_tuition_invoice(
         select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice.id)
     )
     return (await _invoices_to_out(db, [result.scalar_one()]))[0]
+
+
+@router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tuition_invoice(invoice_id: uuid.UUID, admin: AdminOnly, db: DB) -> None:
+    result = await db.execute(
+        select(TuitionInvoice).where(TuitionInvoice.id == invoice_id).with_for_update()
+    )
+    invoice = result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.status != TuitionInvoiceStatus.void.value:
+        raise HTTPException(status_code=422, detail="Only cancelled invoices can be deleted")
+
+    posted = await db.scalar(
+        select(TuitionReceiptInvoice.id).where(
+            TuitionReceiptInvoice.invoice_id == invoice.id,
+            TuitionReceiptInvoice.is_posted.is_(True),
+        ).limit(1)
+    )
+    if posted:
+        raise HTTPException(status_code=409, detail="Void the receipt before deleting this invoice")
+
+    await db.execute(
+        delete(TuitionReceiptInvoice).where(
+            TuitionReceiptInvoice.invoice_id == invoice.id,
+            TuitionReceiptInvoice.is_posted.is_(False),
+        )
+    )
+    invoice_no = invoice.invoice_no
+    await db.delete(invoice)
+    await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="DELETE",
+        table_name="tuition_invoices",
+        record_id=invoice_id,
+        description=f"Deleted cancelled invoice {invoice_no or invoice_id}",
+    )

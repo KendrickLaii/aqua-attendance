@@ -2,6 +2,7 @@
 import {
   type TuitionInvoice,
   type TuitionInvoiceStatus,
+  deleteTuitionInvoice,
   generateTuitionInvoices,
   getNextInvoiceNo,
   listAllTuitionInvoices,
@@ -15,6 +16,11 @@ import StatCards from '@/components/attendance/StatCards.vue'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import {
+  GENERATE_CONFIRM,
+  INVOICE_CANCEL_GENERATED,
+  REMOVE_CANCELLED_INVOICE,
+} from '@/utils/billingStaffCopy'
 import {
   filterTuitionInvoices,
   formatInvoiceMoney,
@@ -70,6 +76,9 @@ const issueNoError = ref('')
 const issueRemark = ref('')
 const issueStaff = ref('')
 const manualInvoiceOpen = ref(false)
+const editingInvoice = ref<TuitionInvoice | null>(null)
+const creditFromInvoice = ref<TuitionInvoice | null>(null)
+const pendingRemove = ref<TuitionInvoice | null>(null)
 const locations = ref<LocationItem[]>([])
 
 const LOCATION_FILTER_KEY = 'tuition-invoice-location'
@@ -353,6 +362,49 @@ function goMarkPaid(invoice: TuitionInvoice) {
   })
 }
 
+function openManualInvoice() {
+  editingInvoice.value = null
+  creditFromInvoice.value = null
+  manualInvoiceOpen.value = true
+}
+
+function openEditInvoice(invoice: TuitionInvoice) {
+  creditFromInvoice.value = null
+  editingInvoice.value = invoice
+  manualInvoiceOpen.value = true
+}
+
+function openCreditNote(invoice: TuitionInvoice) {
+  editingInvoice.value = null
+  creditFromInvoice.value = invoice
+  manualInvoiceOpen.value = true
+}
+
+function closeManualInvoice() {
+  manualInvoiceOpen.value = false
+  editingInvoice.value = null
+  creditFromInvoice.value = null
+}
+
+async function confirmRemoveCancelled() {
+  const invoice = pendingRemove.value
+  if (!invoice)
+    return
+  statusUpdatingId.value = invoice.id
+  generateError.value = ''
+  try {
+    await deleteTuitionInvoice(invoice.id)
+    invoices.value = invoices.value.filter(row => row.id !== invoice.id)
+    pendingRemove.value = null
+  }
+  catch (e) {
+    generateError.value = formatApiError(e, 'Could not remove this cancelled bill.')
+  }
+  finally {
+    statusUpdatingId.value = null
+  }
+}
+
 function askStatus(invoice: TuitionInvoice, status: 'issued' | 'void') {
   issueNoInput.value = status === 'issued' ? (invoice.invoice_no ?? '') : ''
   issueNoEdited.value = status === 'issued' && invoice.invoice_no != null
@@ -631,7 +683,7 @@ watch(yearMonth, () => {
           <VBtn
             variant="tonal"
             prepend-icon="ri-file-add-line"
-            @click="manualInvoiceOpen = true"
+            @click="openManualInvoice"
           >
             Manual invoice
           </VBtn>
@@ -764,9 +816,12 @@ watch(yearMonth, () => {
       @toggle-expand="toggleExpand"
       @row-keydown="onInvoiceRowKeydown"
       @print="printInvoice"
+      @edit="openEditInvoice"
+      @credit="openCreditNote"
       @issue="askStatus($event, 'issued')"
       @pay="goMarkPaid"
       @void="askStatus($event, 'void')"
+      @remove="pendingRemove = $event"
       @clear-filters="clearFilters"
     >
       <template #pagination>
@@ -850,12 +905,12 @@ watch(yearMonth, () => {
       <template v-else-if="pendingStatus?.status === 'void'">
         <p class="text-body-2 mb-0">
           <strong>{{ invoiceStudentLabel(pendingStatus.invoice) }}</strong>
-          will be cancelled. The invoice number is not used again.
+          will be cancelled. The invoice number is held until you Remove this cancelled bill.
           <template v-if="pendingStatus.invoice.kind === 'manual'">
             Any class package on it can be billed again.
           </template>
           <template v-else>
-            Generate will make a new draft if the student is still in class this month, with a new number.
+            {{ INVOICE_CANCEL_GENERATED }}
           </template>
         </p>
       </template>
@@ -871,7 +926,25 @@ watch(yearMonth, () => {
       @confirm="confirmGenerate"
       @cancel="pendingGenerate = false"
     >
-      Replaces drafts for {{ locationId ? (locationName(locationId) || 'this campus') : 'all campuses' }}. Skips issued and paid bills, and may bring back cancelled bills if the student is still in class.
+      Replaces drafts for {{ locationId ? (locationName(locationId) || 'this campus') : 'all campuses' }}. {{ GENERATE_CONFIRM }}
+    </AttendanceConfirmDialog>
+
+    <AttendanceConfirmDialog
+      :model-value="pendingRemove != null"
+      title="Remove this cancelled bill?"
+      confirm-label="Remove"
+      cancel-label="Keep bill"
+      confirm-color="error"
+      :loading="statusUpdatingId === pendingRemove?.id"
+      :error="generateError"
+      @update:model-value="value => { if (!value) pendingRemove = null }"
+      @confirm="confirmRemoveCancelled"
+      @cancel="pendingRemove = null"
+      @clear-error="generateError = ''"
+    >
+      <p class="text-body-2 mb-0">
+        {{ REMOVE_CANCELLED_INVOICE }}
+      </p>
     </AttendanceConfirmDialog>
 
     <InvoiceManualDialog
@@ -880,6 +953,9 @@ watch(yearMonth, () => {
       :location-options="locationOptions"
       :locations="locations"
       :default-month-label="defaultManualMonthLabel"
+      :editing-invoice="editingInvoice"
+      :credit-from-invoice="creditFromInvoice"
+      @update:model-value="value => { if (!value) closeManualInvoice() }"
       @created="loadInvoices"
     />
   </VContainer>

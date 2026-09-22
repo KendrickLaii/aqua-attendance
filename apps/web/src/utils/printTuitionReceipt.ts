@@ -12,6 +12,7 @@ export interface TuitionReceiptPrintData {
   lines: TuitionInvoicePrintLine[]
   logoUrl?: string
   header?: TuitionInvoicePrintHeader
+  title?: string
 }
 
 const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
@@ -68,6 +69,7 @@ export function tuitionReceiptPrintData(
     description: receipt.description ?? '',
     logoUrl: options?.logoUrl,
     header: options?.header,
+    title: Number(receipt.amount) < 0 ? 'CREDIT NOTE' : 'OFFICIAL RECEIPT',
     lines: receipt.print_lines.map(line => ({
       month: line.month,
       course: line.course,
@@ -114,7 +116,7 @@ function receiptCopyHtml(
           ${centreLines}
         </div>
         <div class="cell title-cell">
-          <div class="title">OFFICIAL RECEIPT</div>
+          <div class="title">${escapeHtml(data.title || 'OFFICIAL RECEIPT')}</div>
           ${copyLabel ? `<div class="copy-label">${escapeHtml(copyLabel)}</div>` : ''}
         </div>
       </div>

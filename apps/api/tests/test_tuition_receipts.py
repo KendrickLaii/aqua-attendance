@@ -534,3 +534,157 @@ async def test_create_receipt_rejects_adjustment_when_amount_does_not_fit(
         headers=_auth(admin_token),
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_delete_voided_receipt_allows_reusing_number(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
+    created = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    receipt_id = created.json()["id"]
+    receipt_no = created.json()["receipt_no"]
+
+    voided = await client.post(
+        f"/api/tuition-receipts/{receipt_id}/void",
+        headers=_auth(admin_token),
+    )
+    assert voided.status_code == 200, voided.text
+
+    deleted = await client.delete(
+        f"/api/tuition-receipts/{receipt_id}",
+        headers=_auth(admin_token),
+    )
+    assert deleted.status_code == 204, deleted.text
+
+    invoice2 = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], date="2026-09-03",
+    )
+    again = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice2["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert again.status_code == 201, again.text
+    assert again.json()["receipt_no"] == receipt_no
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_posted_receipt(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
+    created = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    resp = await client.delete(
+        f"/api/tuition-receipts/{created.json()['id']}",
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_delete_void_invoice_after_voided_receipt(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
+    created = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    await client.post(
+        f"/api/tuition-receipts/{created.json()['id']}/void",
+        headers=_auth(admin_token),
+    )
+    voided = await client.patch(
+        f"/api/tuition-invoices/{invoice['id']}",
+        json={"status": "void"},
+        headers=_auth(admin_token),
+    )
+    assert voided.status_code == 200, voided.text
+    deleted = await client.delete(
+        f"/api/tuition-invoices/{invoice['id']}",
+        headers=_auth(admin_token),
+    )
+    assert deleted.status_code == 204, deleted.text
+
+
+@pytest.mark.asyncio
+async def test_receipt_for_negative_manual_invoice(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], fee=-200,
+    )
+    resp = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert float(resp.json()["amount"]) == -200
+
+
+@pytest.mark.asyncio
+async def test_receipt_nets_positive_and_negative_invoices(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    charge = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], fee=500,
+    )
+    credit = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"],
+        date="2026-09-03", fee=-200,
+    )
+    resp = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-03",
+            "invoice_ids": [charge["id"], credit["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert float(resp.json()["amount"]) == 300

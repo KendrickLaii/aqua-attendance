@@ -1,16 +1,23 @@
 <script setup lang="ts">
 import type { TuitionInvoice } from '@/api/attendance/tuitionInvoices'
 import {
+  BILLING_HELP_DONT_ONLY_CANCEL,
+  BILLING_HELP_FIX,
+  BILLING_HELP_STOP,
+} from '@/utils/billingStaffCopy'
+import {
   billingLabel,
   classPreview,
   formatInvoiceMoney,
   invoiceClassNames,
   invoiceLineFormula,
+  invoiceLinesEditable,
   invoiceOpenedBy,
   invoicePeriodLabel,
   invoiceStatusColor,
   invoiceStatusLabel,
   invoiceStudentLabel,
+  isCreditInvoice,
 } from '@/utils/invoiceDisplay'
 
 defineProps<{
@@ -32,9 +39,12 @@ const emit = defineEmits<{
   'toggle-expand': [id: string]
   'row-keydown': [event: KeyboardEvent, id: string]
   print: [invoice: TuitionInvoice]
+  edit: [invoice: TuitionInvoice]
+  credit: [invoice: TuitionInvoice]
   issue: [invoice: TuitionInvoice]
   pay: [invoice: TuitionInvoice]
   void: [invoice: TuitionInvoice]
+  remove: [invoice: TuitionInvoice]
   'clear-filters': []
 }>()
 </script>
@@ -79,6 +89,9 @@ const emit = defineEmits<{
         @click:close="emit('update:showBillingHelp', false)"
       >
         <ul class="text-body-2 ps-4 mb-0">
+          <li>{{ BILLING_HELP_FIX }}</li>
+          <li>{{ BILLING_HELP_STOP }}</li>
+          <li>{{ BILLING_HELP_DONT_ONLY_CANCEL }}</li>
           <li>One draft bill per student whose classes overlap this month.</li>
           <li>Monthly classes: billed once for the month, even if they miss days.</li>
           <li>Per-class packages: billed once for the package they bought — not from attendance.</li>
@@ -170,6 +183,14 @@ const emit = defineEmits<{
                     >
                       Manual
                     </VChip>
+                    <VChip
+                      v-if="isCreditInvoice(invoice)"
+                      size="x-small"
+                      color="secondary"
+                      label
+                    >
+                      Credit
+                    </VChip>
                     <span
                       v-if="allLocations && locationName(invoice.location_id)"
                       class="text-no-wrap"
@@ -243,6 +264,24 @@ const emit = defineEmits<{
                     @click="emit('print', invoice)"
                   />
                   <VBtn
+                    v-if="invoiceLinesEditable(invoice.status)"
+                    icon="ri-pencil-line"
+                    size="x-small"
+                    variant="text"
+                    aria-label="Edit bill"
+                    title="Edit this bill"
+                    @click="emit('edit', invoice)"
+                  />
+                  <VBtn
+                    v-if="invoice.status === 'paid'"
+                    icon="ri-refund-2-line"
+                    size="x-small"
+                    variant="text"
+                    aria-label="Credit note"
+                    title="Credit note"
+                    @click="emit('credit', invoice)"
+                  />
+                  <VBtn
                     v-if="invoice.status === 'draft'"
                     icon="ri-file-check-line"
                     size="x-small"
@@ -273,6 +312,17 @@ const emit = defineEmits<{
                     title="Cancel this bill"
                     :loading="statusUpdatingId === invoice.id"
                     @click="emit('void', invoice)"
+                  />
+                  <VBtn
+                    v-if="invoice.status === 'void'"
+                    icon="ri-delete-bin-line"
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    aria-label="Remove cancelled bill"
+                    title="Remove cancelled bill"
+                    :loading="statusUpdatingId === invoice.id"
+                    @click="emit('remove', invoice)"
                   />
                 </td>
               </tr>
@@ -377,7 +427,7 @@ const emit = defineEmits<{
                         Pick a month and generate, or create a manual invoice.
                       </template>
                       <template v-else>
-                        Enroll students with billed dates (and packages bought for per-class courses), then Generate.
+                        Join students with billed dates (and packages bought for per-class courses), then Generate.
                       </template>
                     </div>
                   </template>
