@@ -203,7 +203,7 @@ ${lineRows}
   </article>`
 }
 
-export function renderTuitionInvoicePrintWindow(printWindow: Window, data: TuitionInvoicePrintData) {
+export function buildTuitionInvoicePrintHtml(data: TuitionInvoicePrintData): string {
   const rows = [...data.lines]
   while (rows.length < MIN_ROWS)
     rows.push({ month: '', course: '', fee: null, qty: null, amount: null })
@@ -474,13 +474,106 @@ ${copies}
 </body>
 </html>`
 
+  return html
+}
+
+export function renderTuitionInvoicePrintWindow(printWindow: Window, data: TuitionInvoicePrintData) {
+  const html = buildTuitionInvoicePrintHtml(data)
+
   printWindow.document.open()
   printWindow.document.write(html)
   printWindow.document.close()
 }
 
-export function printTuitionInvoice(printWindow: Window, data: TuitionInvoicePrintData) {
-  renderTuitionInvoicePrintWindow(printWindow, data)
-  printWindow.focus()
-  printWindow.print()
+function readAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read logo'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+/** Embed the logo so the print document does not depend on a second request. */
+async function inlineLogoForPrint(url: string): Promise<string> {
+  if (!url || url.startsWith('data:'))
+    return url
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok)
+      return url
+
+    return (await readAsDataUrl(await response.blob())) || url
+  }
+  catch {
+    return url
+  }
+}
+
+function waitForImages(doc: Document): Promise<void> {
+  const images = Array.from(doc.images)
+  const loaded = Promise.all(images.map(async img => {
+    if (!img.complete) {
+      await new Promise<void>(resolve => {
+        img.addEventListener('load', () => resolve(), { once: true })
+        img.addEventListener('error', () => resolve(), { once: true })
+      })
+    }
+    if (typeof img.decode === 'function')
+      await img.decode().catch(() => undefined)
+  })).then(() => undefined)
+
+  const timeout = new Promise<void>(resolve => {
+    window.setTimeout(resolve, 2500)
+  })
+
+  return Promise.race([loaded, timeout])
+}
+
+function printFromWindow(printWindow: Window): Promise<void> {
+  return new Promise(resolve => {
+    const script = printWindow.document.createElement('script')
+
+    // Run inside the invoice window. Edge ignores print() that the opener
+    // calls before this document has finished painting.
+    script.textContent = `
+      window.setTimeout(function () {
+        var paint = window.requestAnimationFrame
+          ? window.requestAnimationFrame.bind(window)
+          : function (cb) { window.setTimeout(cb, 16) }
+        paint(function () {
+          paint(function () {
+            window.focus()
+            window.print()
+          })
+        })
+      }, 50)
+    `
+    printWindow.document.body.appendChild(script)
+    window.setTimeout(resolve, 300)
+  })
+}
+
+export async function printTuitionInvoice(printWindow: Window, data: TuitionInvoicePrintData) {
+  const logoUrl = data.logoUrl || INVOICE_LOGO_URL
+  const inlinedLogo = logoUrl ? await inlineLogoForPrint(logoUrl) : ''
+  if (printWindow.closed)
+    return
+
+  renderTuitionInvoicePrintWindow(printWindow, {
+    ...data,
+    logoUrl: inlinedLogo,
+  })
+  if (printWindow.closed)
+    return
+
+  // print() before the logo has decoded captures a blank image. Edge also
+  // ignores that early call, so the print dialog never opens.
+  await waitForImages(printWindow.document)
+  if (printWindow.closed)
+    return
+
+  await printFromWindow(printWindow)
 }

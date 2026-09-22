@@ -578,7 +578,7 @@ async function printManualInvoice() {
         }
       }
 
-      printTuitionInvoice(
+      await printTuitionInvoice(
         printWindow,
         tuitionInvoicePrintData(saved, await printOptionsFor(saved)),
       )

@@ -460,7 +460,7 @@ async function printInvoice(invoice: TuitionInvoice) {
   try {
     const printWindow = openTuitionInvoicePrintPlaceholder()
 
-    printTuitionInvoice(
+    await printTuitionInvoice(
       printWindow,
       tuitionInvoicePrintData(invoice, await printOptionsFor(invoice)),
     )
@@ -505,7 +505,7 @@ async function confirmPendingStatus() {
     return
   }
   if (printWindow) {
-    printTuitionInvoice(
+    await printTuitionInvoice(
       printWindow,
       tuitionInvoicePrintData(updated, await printOptionsFor(updated)),
     )

@@ -53,6 +53,7 @@ declare global {
   const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
   const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
+  const buildTuitionInvoicePrintHtml: typeof import('./src/utils/printTuitionInvoice')['buildTuitionInvoicePrintHtml']
   const buildUnitEnrollmentRows: typeof import('./src/utils/courseEnrollmentDisplay')['buildUnitEnrollmentRows']
   const buildUnitSavePayload: typeof import('./src/utils/unitFormPayload')['buildUnitSavePayload']
   const canApprovePayroll: typeof import('./src/utils/payrollDisplay')['canApprovePayroll']
@@ -629,6 +630,7 @@ declare module 'vue' {
     readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
     readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
+    readonly buildTuitionInvoicePrintHtml: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['buildTuitionInvoicePrintHtml']>
     readonly buildUnitEnrollmentRows: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['buildUnitEnrollmentRows']>
     readonly buildUnitSavePayload: UnwrapRef<typeof import('./src/utils/unitFormPayload')['buildUnitSavePayload']>
     readonly canApprovePayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canApprovePayroll']>
