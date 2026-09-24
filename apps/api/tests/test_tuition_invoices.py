@@ -2330,6 +2330,59 @@ async def test_manual_invoice_saves_payable_names(
 
 
 @pytest.mark.asyncio
+async def test_credit_note_auto_assigns_rf_number(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    peeked = await client.get(
+        f"/api/tuition-invoices/next-no?location_id={sample_location['id']}&series=credit",
+        headers=_auth(admin_token),
+    )
+    assert peeked.status_code == 200, peeked.text
+    assert peeked.json()["invoice_no"] == "RF0001"
+    assert peeked.json()["next_no"] == 1
+
+    first = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{"month": "2026-09", "course": "Credit note", "fee": -200, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["invoice_no"] == "RF0001"
+
+    second = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-03",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{"month": "2026-09", "course": "Credit note", "fee": -100, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["invoice_no"] == "RF0002"
+
+    invoice = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-04",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "lines": [{"month": "2026-09", "course": "Tuition", "fee": 800, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert invoice.status_code == 201, invoice.text
+    assert invoice.json()["invoice_no"] != "RF0003"
+    assert invoice.json()["invoice_no"].isdigit()
+
+
+@pytest.mark.asyncio
 async def test_manual_invoice_rejects_negative_fee_on_purchase(
     client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:

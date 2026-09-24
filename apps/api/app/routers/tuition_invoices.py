@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.deps import AdminOnly, DB
 from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
 from app.models.course_sku import CourseSku
+from app.models.credit_note_counter import CreditNoteCounter
 from app.models.invoice_counter import InvoiceCounter
 from app.models.location import Location
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
@@ -316,13 +317,150 @@ async def _allocate_invoice_no(db: AsyncSession, location_id: uuid.UUID | None =
     raise HTTPException(status_code=422, detail="Could not allocate a free invoice number.")
 
 
+_CREDIT_PREFIX = "RF"
+_CREDIT_NO_WIDTH = 4
+_CREDIT_NO_MAX = 9999
+
+
+def _format_credit_no(n: int) -> str:
+    return f"{_CREDIT_PREFIX}{n:0{_CREDIT_NO_WIDTH}d}"
+
+
+def _parse_credit_no(value: str | None) -> int | None:
+    if not value:
+        return None
+    text = value.strip().upper()
+    if text.startswith(_CREDIT_PREFIX):
+        text = text[len(_CREDIT_PREFIX) :]
+    if not text.isdigit():
+        return None
+    return int(text)
+
+
+async def _max_credit_no(db: AsyncSession, location_id: uuid.UUID | None) -> int:
+    result = await db.execute(
+        select(TuitionInvoice.invoice_no).where(
+            TuitionInvoice.invoice_no.is_not(None),
+            TuitionInvoice.location_id == location_id,
+        )
+    )
+    max_no = 0
+    for value in result.scalars().all():
+        parsed = _parse_credit_no(value)
+        if parsed is not None and str(value).upper().startswith(_CREDIT_PREFIX):
+            max_no = max(max_no, parsed)
+    return max_no
+
+
+async def _peek_next_credit_no(db: AsyncSession, location_id: uuid.UUID | None = None) -> int:
+    counter = await db.execute(
+        select(CreditNoteCounter).where(CreditNoteCounter.location_id == location_id)
+    )
+    row = counter.scalar_one_or_none()
+    if row is not None:
+        return row.next_no
+    return await _max_credit_no(db, location_id) + 1
+
+
+async def _bump_credit_counter(db: AsyncSession, n: int, location_id: uuid.UUID | None = None) -> None:
+    if n < 1:
+        return
+    if n > _CREDIT_NO_MAX:
+        raise HTTPException(status_code=422, detail="Credit note number exceeds maximum RF9999.")
+    session = await _counter_session(db)
+    async with session, session.begin():
+        counter = await session.execute(
+            select(CreditNoteCounter).where(CreditNoteCounter.location_id == location_id).with_for_update()
+        )
+        counter = counter.scalar_one_or_none()
+        target = n + 1
+        if counter is None:
+            seed = await _max_credit_no(session, location_id)
+            target = max(target, seed + 1)
+            try:
+                async with session.begin_nested():
+                    session.add(CreditNoteCounter(location_id=location_id, next_no=target))
+                    await session.flush()
+            except IntegrityError:
+                await session.execute(
+                    update(CreditNoteCounter)
+                    .where(
+                        CreditNoteCounter.location_id == location_id,
+                        CreditNoteCounter.next_no < target,
+                    )
+                    .values(next_no=target)
+                )
+        elif counter.next_no < target:
+            counter.next_no = target
+
+
+async def _allocate_credit_no(db: AsyncSession, location_id: uuid.UUID | None = None) -> str:
+    session = await _counter_session(db)
+    async with session, session.begin():
+        for _ in range(1000):
+            result = await session.execute(
+                update(CreditNoteCounter)
+                .where(CreditNoteCounter.location_id == location_id)
+                .values(next_no=CreditNoteCounter.next_no + 1)
+                .returning(CreditNoteCounter.next_no)
+            )
+            next_after = result.scalar_one_or_none()
+            if next_after is None:
+                allocated = await _max_credit_no(session, location_id) + 1
+                if allocated > _CREDIT_NO_MAX:
+                    raise HTTPException(status_code=422, detail="Credit note numbers exhausted (max RF9999).")
+                try:
+                    async with session.begin_nested():
+                        session.add(CreditNoteCounter(location_id=location_id, next_no=allocated + 1))
+                        await session.flush()
+                except IntegrityError:
+                    continue
+                formatted = _format_credit_no(allocated)
+                exists = await session.scalar(
+                    select(TuitionInvoice.id).where(
+                        TuitionInvoice.location_id == location_id,
+                        TuitionInvoice.invoice_no == formatted,
+                    )
+                )
+                if not exists:
+                    return formatted
+                continue
+
+            allocated = next_after - 1
+            if allocated > _CREDIT_NO_MAX:
+                raise HTTPException(status_code=422, detail="Credit note numbers exhausted (max RF9999).")
+            formatted = _format_credit_no(allocated)
+            exists = await session.scalar(
+                select(TuitionInvoice.id).where(
+                    TuitionInvoice.location_id == location_id,
+                    TuitionInvoice.invoice_no == formatted,
+                )
+            )
+            if not exists:
+                return formatted
+
+    raise HTTPException(status_code=422, detail="Could not allocate a free credit note number.")
+
+
+def _normalize_credit_no(value: str) -> str:
+    parsed = _parse_credit_no(value)
+    if parsed is None:
+        return value.strip()
+    return _format_credit_no(parsed)
+
+
 @router.get("/next-no", response_model=TuitionInvoiceNextNo)
 async def next_invoice_no(
     _admin: AdminOnly,
     db: DB,
     location_id: uuid.UUID | None = Query(default=None),
+    series: str = Query(default="invoice"),
 ) -> TuitionInvoiceNextNo:
-    return TuitionInvoiceNextNo(next_no=await _peek_next_invoice_no(db, location_id))
+    if series == "credit":
+        next_no = await _peek_next_credit_no(db, location_id)
+        return TuitionInvoiceNextNo(next_no=next_no, invoice_no=_format_credit_no(next_no))
+    next_no = await _peek_next_invoice_no(db, location_id)
+    return TuitionInvoiceNextNo(next_no=next_no, invoice_no=str(next_no))
 
 
 @router.post("/allocate-no", response_model=TuitionInvoiceNextNo)
@@ -512,15 +650,23 @@ async def create_manual_tuition_invoice(
     # a failed create must not consume a number.
     lines, purchase_links = await _build_manual_lines(db, body.lines, body.unit_id)
 
+    total = sum(line.amount for line in lines)
     invoice_no = body.invoice_no.strip() if body.invoice_no and body.invoice_no.strip() else None
+    is_credit = total < 0
     if invoice_no:
-        manual_no = _parse_numeric_invoice_no(invoice_no)
-        if manual_no is not None:
-            await _bump_invoice_counter(db, manual_no, body.location_id)
+        if is_credit:
+            invoice_no = _normalize_credit_no(invoice_no)
+            credit_no = _parse_credit_no(invoice_no)
+            if credit_no is not None:
+                await _bump_credit_counter(db, credit_no, body.location_id)
+        else:
+            manual_no = _parse_numeric_invoice_no(invoice_no)
+            if manual_no is not None:
+                await _bump_invoice_counter(db, manual_no, body.location_id)
+    elif is_credit:
+        invoice_no = await _allocate_credit_no(db, body.location_id)
     else:
         invoice_no = str(await _allocate_invoice_no(db, body.location_id))
-
-    total = sum(line.amount for line in lines)
 
     invoice = TuitionInvoice(
         unit_id=body.unit_id,
@@ -652,7 +798,16 @@ async def update_tuition_invoice(
         location_id = invoice.location_id or (invoice.unit.registered_location_id if invoice.unit else None)
         invoice.location_id = location_id
         if not invoice.invoice_no:
-            invoice.invoice_no = str(await _allocate_invoice_no(db, location_id))
+            invoice.invoice_no = (
+                await _allocate_credit_no(db, location_id)
+                if invoice.total < 0
+                else str(await _allocate_invoice_no(db, location_id))
+            )
+        elif invoice.total < 0:
+            invoice.invoice_no = _normalize_credit_no(invoice.invoice_no)
+            credit_no = _parse_credit_no(invoice.invoice_no)
+            if credit_no is not None:
+                await _bump_credit_counter(db, credit_no, location_id)
         else:
             # Reserve this manual number so the counter never collides with it.
             manual_no = _parse_numeric_invoice_no(invoice.invoice_no)

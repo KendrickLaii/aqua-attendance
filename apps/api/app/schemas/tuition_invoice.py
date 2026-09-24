@@ -82,6 +82,7 @@ class TuitionInvoiceGenerateResult(BaseModel):
 
 class TuitionInvoiceNextNo(BaseModel):
     next_no: int
+    invoice_no: str | None = None
 
 
 class TuitionInvoiceManualLine(BaseModel):

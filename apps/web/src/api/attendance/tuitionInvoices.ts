@@ -98,10 +98,15 @@ export async function generateTuitionInvoices(
   return await $attendanceApi(`/tuition-invoices/generate?${params.toString()}`, { method: 'POST' })
 }
 
-export async function getNextInvoiceNo(locationId: string): Promise<number> {
-  const result = await $attendanceApi<{ next_no: number }>(`/tuition-invoices/next-no?location_id=${locationId}`)
+export async function getNextInvoiceNo(
+  locationId: string,
+  series: 'invoice' | 'credit' = 'invoice',
+): Promise<string> {
+  const result = await $attendanceApi<{ next_no: number; invoice_no?: string }>(
+    `/tuition-invoices/next-no?location_id=${locationId}&series=${series}`,
+  )
 
-  return result.next_no
+  return result.invoice_no ?? String(result.next_no)
 }
 
 export async function allocateInvoiceNo(locationId: string): Promise<number> {

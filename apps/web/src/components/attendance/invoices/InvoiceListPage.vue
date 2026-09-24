@@ -442,9 +442,9 @@ async function suggestIssueNo() {
     const locId = pendingStatus.value?.invoice.location_id ?? locationId.value
     if (!locId)
       return
-    const next = await getNextInvoiceNo(locId)
+    const next = await getNextInvoiceNo(locId, isCreditPage.value ? 'credit' : 'invoice')
     if (pendingStatus.value?.status === 'issued' && !issueNoInput.value.trim())
-      issueNoInput.value = String(next)
+      issueNoInput.value = next
   }
   catch (e) {
     issueNoError.value = formatApiError(e, 'Could not suggest the next invoice number. Enter it yourself.')

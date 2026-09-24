@@ -342,10 +342,13 @@ async function suggestManualInvoiceNo() {
   try {
     if (!manualLocationId.value)
       return
-    const next = await getNextInvoiceNo(manualLocationId.value)
+    const next = await getNextInvoiceNo(
+      manualLocationId.value,
+      isCredit.value ? 'credit' : 'invoice',
+    )
 
     if (open.value && !manualNoEdited.value)
-      manualForm.value.invoiceNo = String(next)
+      manualForm.value.invoiceNo = next
   }
   catch (e) {
     manualError.value = formatApiError(e, 'Could not suggest the next invoice number. Enter it yourself.')
