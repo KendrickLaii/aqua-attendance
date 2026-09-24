@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`；Alembic head **c3e7a95b2d10**）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。2026-08-28（§1.9 SKU `meeting_weekdays`、§1.10 堂費按上課日計堂、§1.11 ERP 路線；Alembic head **038**。本地 migration 請用 `python -m alembic upgrade head`）。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-09-24（Credit Notes 獨立頁、退款單列印、`payable_to_name`／`payee_name`；收條編號改手打；上傳圖公開讀取；Alembic head **d4b8e2a1c7f0**）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。本地 migration 請用 `python -m alembic upgrade head`。
 
 ---
 
@@ -9,6 +9,7 @@
 1. [專案概述](#1-專案概述)
    - [1.9 課程資料模型](#19-課程資料模型)
    - [1.10 學費發票](#110-學費發票)
+   - [1.12 學費收條](#112-學費收條)
    - [1.11 ERP 不在本專案範圍](#111-erp-不在本專案範圍)
 2. [本地開發與快速開始](#2-本地開發與快速開始)
 3. [生產部署](#3-生產部署)
@@ -137,6 +138,12 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `POST /api/tuition-invoices/manual` | Admin（手動發票，建立即 issued） |
 | `GET /api/tuition-invoices/next-no?location_id=` | Admin（預覽下一編號） |
 | `POST /api/tuition-invoices/allocate-no` | Admin（實際取號） |
+| `GET/POST /api/tuition-receipts` | Admin（列表／開收條；`receipt_no` 手打） |
+| `GET /api/tuition-receipts/open-invoices` | Admin（未收齊 issued 發票） |
+| `POST /api/tuition-receipts/{id}/void` | Admin |
+| `DELETE /api/tuition-receipts/{id}` | Admin（只准 voided） |
+| `POST /api/uploads` | Admin |
+| `GET /api/uploads/{key}` | 無（UUID 路徑；上傳仍要 admin） |
 | `GET /api/health` | 無 |
 
 ### 1.7 環境變數
@@ -215,7 +222,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 | 層級 | 資料表 | 說明 |
 | ------ | ------ | ------ |
-| Invoice | `tuition_invoices` | `kind = tuition` 時一學生一曆月一張；唯一 `(unit_id, period_start, period_end)`。`kind = manual` 為手動發票（`unit_id` 可空、`manual_student_name` 給 walk-in）。狀態 `draft` / `issued` / `paid` / `void`。發出後有 `invoice_no`（字串）與 `issued_at`，編號**每中心獨立系列**（`location_id`），唯一鍵 `(location_id, invoice_no)`。 |
+| Invoice | `tuition_invoices` | `kind = tuition` 時一學生一曆月一張；唯一 `(unit_id, period_start, period_end)`。`kind = manual` 為手動發票（`unit_id` 可空、`manual_student_name` 給 walk-in）。狀態 `draft` / `issued` / `paid` / `void`。發出後有 `invoice_no`（字串）與 `issued_at`，編號**每中心獨立系列**（`location_id`），唯一鍵 `(location_id, invoice_no)`。`total < 0` 視為 credit note。`payable_to_name`／`payee_name` 印喺退款單（CHEQUE PAYABLE TO / NAME）。 |
 | Line | `tuition_invoice_lines` | 出賬當下快照 SKU 代碼、中文名、`billing_unit`、單價、數量、金額；手動行另有 `month_label`。 |
 | Purchase | `enrollment_purchases` | 堂費購買記錄：堂數、單價（可空＝出單時先定，私補）、購買日、`billed_invoice_line_id`；出單後與發票行雙向連結。 |
 
@@ -223,19 +230,19 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 - `POST /api/tuition-invoices/generate?year=&month=`：納入該月與 **active** 報名日期視窗重疊的列；跳過 cancelled、完全落在該月外、未啟用 SKU；月費行另跳過 SKU `price` 為空（堂費不受 SKU 價限制，價錢在 purchase）。
 - 已 `issued`／`paid` 的該月發票跳過；`draft` 可重產（替換行項目）。沒有有效報名的 `draft` 會刪除。
-- **未 Paid 可 Edit**（`draft`／`issued`）：PATCH `lines` 重算 `total`，編號預設不變。Generated 行保留 `enrollment_id`／SKU，避免 Edit 之後可以刪走仍有帳單的報名。Edit **不會**改 Courses：唔會改班價、學生價錢、入班日期，亦**不會** Join class。在單上 Add a class 只係多一行收費，名冊同 In class 人數不變。要入班必須去 Courses 撳 Join class，再 Generate。堂費 package 原本無價時，第一次出單寫入的 fee 會記在該次購買（`enrollment_purchases.unit_price`），唔係改 SKU。`paid`／`void` 連編號、備註、開單人都唔准改 → 422。Paid 之後用負數 Manual invoice（credit note）或先 Void receipt 變返 Issued。負數總額列印標題為 **CREDIT NOTE**。
+- **未 Paid 可 Edit**（`draft`／`issued`）：PATCH `lines` 重算 `total`，編號預設不變。Generated 行保留 `enrollment_id`／SKU，避免 Edit 之後可以刪走仍有帳單的報名。Edit **不會**改 Courses：唔會改班價、學生價錢、入班日期，亦**不會** Join class。在單上 Add a class 只係多一行收費，名冊同 In class 人數不變。要入班必須去 Courses 撳 Join class，再 Generate。堂費 package 原本無價時，第一次出單寫入的 fee 會記在該次購買（`enrollment_purchases.unit_price`），唔係改 SKU。`paid`／`void` 連編號、備註、開單人、行項目都唔准改 → 422。例外：`payable_to_name`／`payee_name` 即使已 Paid 仍可改（補印退款抬頭）。Paid 之後用負數 Manual invoice（credit note）或先 Void receipt 變返 Issued。
 - `void`：PATCH 不能改回 draft。再 Generate 時，若仍有重疊的 active 報名則復活成 draft（清走舊 `invoice_no`／`issued_at`，再 Issue 派新號）；若已無有效報名則保持 void。要張單唔出返嚟：**先 Leave class／改 Courses，再 Generate**。
 - `DELETE /tuition-invoices/{id}`：只准 `void`；有 posted receipt 連結 → 409；否則刪非 posted 連結再刪單，編號釋放。
 - `DELETE /tuition-receipts/{id}`：只准 voided receipt；posted → 422。Void 後 Remove 先可以重用收條編號。
 - 兩人同時 Generate 撞唯一約束回 **409**（不是 500）。
 - **堂費** = `enrollment_purchases` 中 `billed_invoice_line_id` 為空（或所連行屬 void/本期重產）且 `purchased_at <=` 月末的購買，每條一行、行與 purchase 連結防止重複收費；月費每 enrollment 一行，數量 1。
 - 發票編號：Issue 或 Manual 建立時按 `location_id` 從 `invoice_counters` 取下一號（1–999999）；手打編號會推進該中心 counter，自動派號跳過已佔用號碼。
-- Web：`/attendance/invoices`（選月份 → Generate → Issue / Mark paid / Edit / Void / Credit note；Issue 後自動開列印；手動發票可選學生並一鍵加入其未出單堂費 package）。Courses 名冊掣名 **Join class / Leave class / Back in class / Remove record**；hint 同確認框用粵語。
+- Web：`/attendance/invoices` 只顯示收費單（`total >= 0`）；`/attendance/credit-notes` 只顯示退款單（`total < 0`）。兩邊共用 `InvoiceListPage`。收費單：選月份 → Generate → Issue / Mark paid / Edit / Void。退款單：Manual credit note、列印退款單（REFUND REQUEST + REFUND ACKNOWLEDGEMENT）。Issue 後自動開列印；手動發票可選學生並一鍵加入其未出單堂費 package。Courses 名冊掣名 **Join class / Leave class / Back in class / Remove record**；hint 同確認框用粵語。
 
 #### 手動發票
 
 - `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。`fee` 可以係負數（credit note）；綁 `purchase_id` 嘅行不准負數。
-- `PATCH /api/tuition-invoices/{id}`：未 Paid 可改 `lines`／notes／staff；Generated 行會保留 `enrollment_id`／SKU。Paid 或 Cancelled 連編號都唔准改 → 422。
+- `PATCH /api/tuition-invoices/{id}`：未 Paid 可改 `lines`／notes／staff／退款抬頭；Generated 行會保留 `enrollment_id`／SKU。Paid 或 Cancelled 連編號、行項目都唔准改 → 422，但 `payable_to_name`／`payee_name` 仍可改。
 - purchase 檢查在派號**之前**：購買須存在、屬所選學生、未被出單；失敗不消耗編號。void 手動發票後其 purchase 回復可出單。行項目 GET 會帶 `purchase_id`（如該行結算咗一條購買），Edit 要原封交返去，唔好拆咗連結。
 
 #### 尚未做（刻意延後）
@@ -249,6 +256,23 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 | ERP／家具庫存 | **不在本 repo 做**，以後是獨立新專案 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
 
 完整 schema 見 [database-changes.md](database-changes.md) § 學費發票。
+
+### 1.12 學費收條
+
+收條係真實收款紀錄，**唔係**發票本身。一張 posted 收條可以結算一張或多張 `issued` 發票，並把那些發票標成 `paid`。
+
+| 層級 | 資料表 | 說明 |
+| ------ | ------ | ------ |
+| Receipt | `tuition_receipts` | 每中心 `(location_id, receipt_no)` 唯一。`receipt_no` **由職員手打**（2026-09-24 起不再自動派號，已刪 `GET /tuition-receipts/next-no`）。狀態 `posted` / `void`。`adjustments` JSON 可加額外加減行，實收 = 發票合計 + adjustments。 |
+| Link | `tuition_receipt_invoices` | 收條與發票的結算列；`is_posted=true` 時一張發票只能掛一張有效收條。 |
+
+#### 流程
+
+- Web：`/attendance/receipts` 列表；`/attendance/receipts/new` 開新收條（可從發票 Mark paid 帶入 `invoice_id`）。
+- `POST /api/tuition-receipts`：必填 `receipt_no`、`paid_by`、`receipt_date`、`invoice_ids`；金額須等於所選發票合計 + adjustments，否則 422。撞號 409。
+- `POST .../void`：收條變 void，連結 `is_posted=false`，發票回復 `issued`（可以再開收條或改發票）。
+- `DELETE`：只准 voided；posted → 422。Remove 之後同一個收條號可以再用。
+- 列印：Official Receipt；負數金額標題為 CREDIT NOTE。
 
 ### 1.11 ERP 不在本專案範圍
 
@@ -714,7 +738,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-09-17 更新**：手動發票不再受 `(unit_id, period_start, period_end)` 唯一限制（改 partial unique index，僅 `kind = 'tuition'`；b8f2c4d6a1e9）；發票 PATCH 至 `void` 時會即時清掉`enrollment_purchases.billed_invoice_line_id`，所以「未出單」只有一個判斷式；`course_enrollments.purchased_quantity` 已移除（c3e7a95b2d10），堂數只存 `enrollment_purchases`。手動發票拒絕同一張單重複結算同一購買（422）及 walk-in 單結算實名學生購買（422）。Alembic head **c3e7a95b2d10**。測試：全套 **164 passed**。
+> **2026-09-24 更新**：Credit Notes 獨立頁；退款單列印；`payable_to_name`／`payee_name`（d4b8e2a1c7f0，Paid 後仍可改）；收條編號改手打；`GET /api/uploads/{key}` 公開讀取。Alembic head **d4b8e2a1c7f0**。
+> **2026-09-17 更新**：手動發票不再受 `(unit_id, period_start, period_end)` 唯一限制（改 partial unique index，僅 `kind = 'tuition'`；b8f2c4d6a1e9）；發票 PATCH 至 `void` 時會即時清掉`enrollment_purchases.billed_invoice_line_id`，所以「未出單」只有一個判斷式；`course_enrollments.purchased_quantity` 已移除（c3e7a95b2d10），堂數只存 `enrollment_purchases`。手動發票拒絕同一張單重複結算同一購買（422）及 walk-in 單結算實名學生購買（422）。測試：全套 **164 passed**。
 > **2026-09-15 更新**：手動發票落庫（`kind=manual`、可結算堂費 `purchase_ids`）；發票編號改每中心系列（`location_id` + `invoice_counters`）；堂費改由 `enrollment_purchases` 記錄追蹤，Generate 出未出單購買。Alembic head **7d340d0ce7de**。
 > **2026-09-04 更新**：堂費（per_session）改為報名時輸入 `purchased_quantity` 一次性收費（Migration 038），不再按出勤∩上課日計算，#M23 已失效。ERP／庫存確認不在本 repo 做，是獨立新專案，見 [erp-roadmap.md](erp-roadmap.md)（#F1）。  
 > **2026-08-28 更新**：SKU `meeting_weekdays` 已上線（Migration 037）；堂費 Generate 按上課日∩出勤計堂。剩餘產品缺口見 [known-gaps.md](known-gaps.md) #M22、#M24。  
@@ -865,7 +890,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 c3e7a95b2d10**（前序含 034 課程、036 學費發票、040 發票編號、71296d8b9d7f 手動發票、f5d44789754d 每中心編號、7d340d0ce7de 堂費購買、bfb6cd4eb3b9 發票行老師名、a1c9e4d7f2b3 購買價可空、b8f2c4d6a1e9 手動發票 partial unique、c3e7a95b2d10 drop `purchased_quantity`）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 d4b8e2a1c7f0**（前序含收條 a7f3c1e8d4b2、adjustments c9d2e4f1a8b3、credit note 抬頭 d4b8e2a1c7f0；再之前是 c3e7a95b2d10 drop `purchased_quantity`）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1085,7 +1110,7 @@ apps/mobile/
 ### 7.5 Mobile 發布檢查清單
 
 #### 後端準備
-- [ ] `python -m alembic upgrade head` on production DB（migrations through `c3e7a95b2d10`，含課程計價、學費發票、手動發票、每中心編號系列、堂費購買記錄、手動發票 partial unique、drop `purchased_quantity`）
+- [ ] `python -m alembic upgrade head` on production DB（migrations through `d4b8e2a1c7f0`，含學費收條、收條 adjustments、credit note `payable_to_name`／`payee_name`）
 - [ ] `ENV=production` with strong `SECRET_KEY` and `QR_SECRET`
 - [ ] 透過 Web User Management 建立 admin users
 - [ ] Health check：`GET https://<api-host>/api/health` → `{"status":"ok","database":"ok"}`
@@ -1354,13 +1379,14 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 | API | 結構化 logging | 待實作 |
 | Data | Location photo upload | ✅ Done — `POST/GET /api/uploads` + Photos tab picker；S3/R2 仍延後 |
 | API / Web | 課程資料（SPU/SKU/Enrollment） | Done — 模型、Router、Migration 034；SKU `billing_unit`（035）、`meeting_weekdays`（037，僅供顯示）、`staff_id`（041）；`course_enrollments.unit_price`（041）；`enrollment_purchases`（7d340d0ce7de）；Web 班次名冊 + 起迄日 + 購買堂數 + unbilled 標示 |
-| API / Web | 學費發票 | Done — `tuition_invoices` / lines、Generate、`/attendance/invoices`；發票編號＋列印（040）、手動發票落庫＋`purchase_ids` 結算（71296d8b9d7f）、每中心編號系列（f5d44789754d）。堂費經 `enrollment_purchases` 追蹤（#M23 已失效）；Vuexy `/apps/invoice` 仍非真實帳單 |
+| API / Web | 學費發票 | Done — Generate、`/attendance/invoices` + `/attendance/credit-notes`；收條 `/attendance/receipts`；退款抬頭 d4b8e2a1c7f0。Vuexy `/apps/invoice` 仍非真實帳單 |
 
 ### 9.3 文件評分卡（2026-08-04 複核）
 
 > 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→80）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
 >
-> **2026-09-17 補記**：Alembic head 為 **c3e7a95b2d10**（手動發票 partial unique b8f2c4d6a1e9；drop `course_enrollments.purchased_quantity` c3e7a95b2d10）。堂數單一來源 = `enrollment_purchases`；作廢發票即時釋放購買。
+> **2026-09-24 補記**：Alembic head 為 **d4b8e2a1c7f0**（credit note 抬頭；收條 a7f3c1e8d4b2／c9d2e4f1a8b3）。§1.10／§1.12 已同步。
+> **2026-09-17 補記**：當時 head 為 **c3e7a95b2d10**（手動發票 partial unique b8f2c4d6a1e9；drop `course_enrollments.purchased_quantity`）。堂數單一來源 = `enrollment_purchases`；作廢發票即時釋放購買。
 > **2026-09-15 補記**：Alembic head 為 **a1c9e4d7f2b3**（`enrollment_purchases.unit_price` 可空；另含手動發票 71296d8b9d7f、每中心編號 f5d44789754d、發票行老師名 bfb6cd4eb3b9）。§1.10 已同步：手動發票落庫、堂費由購買記錄追蹤、私補出單時先定價。
 > **2026-09-04 補記**：Alembic head 為 **038**（`course_enrollments.purchased_quantity`；堂費改一次性收費，不再看出勤）。§1.10／§1.11 已同步。
 > **2026-08-28 補記**：Alembic head 為 **037**（SKU `meeting_weekdays`；堂費按上課日計堂）。§1.9／§1.10／§10 已同步。下表「本次複核」仍為 2026-08-04 當日證據，請以本補記與程式碼為準。
@@ -1690,6 +1716,8 @@ erDiagram
         date period_start
         date period_end
         string status "draft / issued / paid / void"
+        string payable_to_name "credit note 支票抬頭"
+        string payee_name "credit note 收款人"
         numeric total
         text notes
         datetime created_at
@@ -1727,6 +1755,24 @@ erDiagram
         int next_number
     }
 
+    tuition_receipts {
+        uuid id PK
+        uuid location_id FK
+        uuid unit_id FK "可空"
+        string receipt_no
+        date receipt_date
+        numeric amount
+        string status "posted / void"
+        json adjustments
+    }
+
+    tuition_receipt_invoices {
+        uuid id PK
+        uuid receipt_id FK
+        uuid invoice_id FK
+        boolean is_posted
+    }
+
     users ||--o{ refresh_tokens : has
     users ||--o{ notifications : receives
     users ||--o{ attendance_events : "records (recorded_by_user_id)"
@@ -1757,10 +1803,13 @@ erDiagram
     course_skus ||--o{ tuition_invoice_lines : "source"
     course_enrollments ||--o{ enrollment_purchases : "purchases"
     tuition_invoice_lines ||--o{ enrollment_purchases : "bills"
+    tuition_receipts ||--o{ tuition_receipt_invoices : "settles"
+    tuition_invoices ||--o{ tuition_receipt_invoices : "paid by"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **c3e7a95b2d10**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **d4b8e2a1c7f0**）。
 >
+> **2026-09-24 更新**：`tuition_invoices` 新增 `payable_to_name`／`payee_name`；`tuition_receipts`／`tuition_receipt_invoices` 入 ER（收條編號手打）。
 > **2026-09-15 更新**：`tuition_invoices` 新增 `kind`/`location_id`/`invoice_no`/`issued_at`/`manual_student_name`，`unit_id` 可空；新增 `enrollment_purchases`（堂費購買追蹤，與發票行連結）與每中心 `invoice_counters`；`tuition_invoice_lines` 新增 `month_label`。
 > **2026-09-04 更新**：`course_enrollments` 新增 `purchased_quantity`（038）。堂費 Generate 改用該欄位一次性收費，不再依出勤∩上課日計算；`meeting_weekdays`（037）僅保留供課表顯示。`(unit_id, sku_id)` 永久唯一仍為已知限制（#M22）。
 > **2026-08-28 更新**：ER 圖已與 [database-changes.md](database-changes.md) 同步：SKU `meeting_weekdays`（037）。堂費 Generate 按上課日∩該據點出勤計 `quantity`（未到已扣）；不減公眾假期日曆。`(unit_id, sku_id)` 永久唯一仍為已知限制。

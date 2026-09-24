@@ -1,4 +1,5 @@
 import type { TuitionInvoice } from '@/api/attendance/tuitionInvoices'
+import { buildTuitionCreditNotePrintHtml, isCreditNotePrint } from '@/utils/printTuitionCreditNote'
 
 // Hosted logo shown top-left on the printed invoice (same pattern as
 // location photo URLs). Paste the image URL here; leave empty to hide it.
@@ -29,6 +30,8 @@ export interface TuitionInvoicePrintData {
   header?: TuitionInvoicePrintHeader
   remark?: string
   title?: string
+  payableTo?: string
+  payeeName?: string
 }
 
 const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
@@ -84,7 +87,12 @@ export function invoiceMonthLabel(periodStart: string): string {
 
 export function tuitionInvoicePrintData(
   invoice: TuitionInvoice,
-  options?: { logoUrl?: string; header?: TuitionInvoicePrintHeader },
+  options?: {
+    logoUrl?: string
+    header?: TuitionInvoicePrintHeader
+    payableTo?: string
+    payeeName?: string
+  },
 ): TuitionInvoicePrintData {
   const studentName = invoice.unit_name
     ? `${invoice.unit_name}${invoice.unit_code ? ` (${invoice.unit_code})` : ''}`
@@ -98,6 +106,8 @@ export function tuitionInvoicePrintData(
     header: options?.header,
     remark: invoice.notes ?? '',
     title: Number(invoice.total) < 0 ? 'CREDIT NOTE' : 'INVOICE',
+    payableTo: options?.payableTo ?? invoice.payable_to_name ?? undefined,
+    payeeName: options?.payeeName ?? invoice.payee_name ?? undefined,
     lines: invoice.lines.map(line => ({
       month: line.month_label ?? invoiceMonthLabel(invoice.period_start),
       course: line.name_zh || line.sku_code,
@@ -204,6 +214,9 @@ ${lineRows}
 }
 
 export function buildTuitionInvoicePrintHtml(data: TuitionInvoicePrintData): string {
+  if (isCreditNotePrint(data))
+    return buildTuitionCreditNotePrintHtml(data)
+
   const rows = [...data.lines]
   while (rows.length < MIN_ROWS)
     rows.push({ month: '', course: '', fee: null, qty: null, amount: null })

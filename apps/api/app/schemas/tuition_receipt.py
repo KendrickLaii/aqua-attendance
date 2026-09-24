@@ -69,6 +69,7 @@ class TuitionReceiptCreate(BaseModel):
     unit_id: uuid.UUID | None = None
     payer_name: str | None = Field(default=None, max_length=255)
     paid_by: str = Field(..., min_length=1, max_length=100)
+    receipt_no: str = Field(..., min_length=1, max_length=50)
     receipt_date: date
     invoice_ids: list[uuid.UUID] = Field(..., min_length=1)
     amount: float | None = None
@@ -83,6 +84,14 @@ class TuitionReceiptCreate(BaseModel):
             raise ValueError("paid_by is required")
         return cleaned
 
+    @field_validator("receipt_no")
+    @classmethod
+    def strip_receipt_no(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("receipt_no is required")
+        return cleaned
+
     @field_validator("payer_name")
     @classmethod
     def strip_payer_name(cls, value: str | None) -> str | None:
@@ -95,7 +104,3 @@ class TuitionReceiptCreate(BaseModel):
     @classmethod
     def unique_invoice_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
         return list(dict.fromkeys(value))
-
-
-class TuitionReceiptNextNo(BaseModel):
-    next_no: str

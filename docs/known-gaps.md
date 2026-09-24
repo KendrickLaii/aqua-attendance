@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-09-22（未收款可 Edit 且保留報名連結；Paid 用 credit note；作廢單／作廢收條 Remove 後可重用編號；Courses 班次表顯示 In class 人數。以下缺口不變）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、堂數單一來源（drop `purchased_quantity`））。2026-09-15（手動發票落庫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
+> 最後更新：2026-09-24（Credit Notes 獨立頁、退款單列印與支票抬頭、收條編號改手打、上傳圖公開讀取。以下缺口不變）。2026-09-22（未收款可 Edit 且保留報名連結；Paid 用 credit note；作廢單／作廢收條 Remove 後可重用編號；Courses 班次表顯示 In class 人數）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、堂數單一來源（drop `purchased_quantity`））。2026-09-15（手動發票落庫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 

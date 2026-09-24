@@ -625,6 +625,7 @@ async def test_paid_invoice_cannot_change_status(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice_id],
         },
@@ -2112,6 +2113,7 @@ async def test_patch_rejects_line_edit_on_paid_invoice(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice_id],
         },
@@ -2294,6 +2296,37 @@ async def test_manual_invoice_accepts_negative_fee(
     )
     assert resp.status_code == 201, resp.text
     assert float(resp.json()["total"]) == -200
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_saves_payable_names(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    created = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-02",
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "payable_to_name": "TANG WING YIN",
+            "payee_name": "Testing",
+            "lines": [{"month": "2026-09", "course": "Credit note", "fee": -200, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["payable_to_name"] == "TANG WING YIN"
+    assert body["payee_name"] == "Testing"
+
+    updated = await client.patch(
+        f"/api/tuition-invoices/{body['id']}",
+        json={"payable_to_name": "CHAN TAI MAN", "payee_name": "Ada"},
+        headers=_auth(admin_token),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["payable_to_name"] == "CHAN TAI MAN"
+    assert updated.json()["payee_name"] == "Ada"
 
 
 @pytest.mark.asyncio

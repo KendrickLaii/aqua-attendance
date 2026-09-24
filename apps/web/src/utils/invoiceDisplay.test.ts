@@ -5,6 +5,9 @@ import {
   billingLabel,
   classPreview,
   creditLinesFromInvoice,
+  defaultCreditFee,
+  filterChargeInvoices,
+  filterCreditNoteInvoices,
   filterTuitionInvoices,
   formatInvoiceMoney,
   formatInvoiceQty,
@@ -13,6 +16,7 @@ import {
   invoiceOpenedBy,
   invoicePeriodLabel,
   invoiceStudentLabel,
+  isChargeInvoice,
   isCreditInvoice,
 } from './invoiceDisplay'
 
@@ -43,6 +47,8 @@ function invoice(over: Partial<TuitionInvoice> = {}): TuitionInvoice {
     unit_code: 'S001',
     manual_student_name: null,
     staff_name: 'Ada',
+    payable_to_name: null,
+    payee_name: null,
     location_id: 'loc-1',
     period_start: '2026-09-01',
     period_end: '2026-09-30',
@@ -79,6 +85,23 @@ describe('invoiceDisplay', () => {
     assert.deepEqual(creditLinesFromInvoice(invoice({
       lines: [line({ month_label: 'Sept-26', name_zh: '私補', unit_price: 200, quantity: 1 })],
     })), [{ month: 'Sept-26', course: '私補', fee: -200, qty: 1 }])
+  })
+
+  it('defaults a class fee to a negative credit amount', () => {
+    assert.equal(defaultCreditFee(1785), '-1785')
+    assert.equal(defaultCreditFee(-1785), '-1785')
+    assert.equal(defaultCreditFee(null), '')
+  })
+
+  it('splits charge invoices from credit notes', () => {
+    const charge = invoice({ id: 'inv-1', total: 800 })
+    const credit = invoice({ id: 'cn-1', total: -1785 })
+    const rows = [charge, credit]
+
+    assert.equal(isChargeInvoice(charge), true)
+    assert.equal(isChargeInvoice(credit), false)
+    assert.deepEqual(filterChargeInvoices(rows, { status: 'all', query: '' }).map(row => row.id), ['inv-1'])
+    assert.deepEqual(filterCreditNoteInvoices(rows, { status: 'all', query: '' }).map(row => row.id), ['cn-1'])
   })
 
   it('labels billing units in staff English', () => {

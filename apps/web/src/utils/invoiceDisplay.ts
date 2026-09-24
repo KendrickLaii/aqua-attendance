@@ -38,6 +38,18 @@ export function isCreditInvoice(invoice: { total: number }): boolean {
   return Number(invoice.total) < 0
 }
 
+export function isChargeInvoice(invoice: { total: number }): boolean {
+  return !isCreditInvoice(invoice)
+}
+
+/** Class price shown on a credit-note line — always a negative amount. */
+export function defaultCreditFee(price: number | null | undefined): string {
+  if (price == null || Number.isNaN(Number(price)))
+    return ''
+
+  return String(-Math.abs(Number(price)))
+}
+
 export function invoiceLinesEditable(status: string): boolean {
   return status === 'draft' || status === 'issued'
 }
@@ -151,4 +163,18 @@ export function filterTuitionInvoices(
 
     return haystack.includes(query)
   })
+}
+
+export function filterChargeInvoices(
+  invoices: TuitionInvoice[],
+  opts: { status: 'all' | TuitionInvoiceStatus; query: string },
+): TuitionInvoice[] {
+  return filterTuitionInvoices(invoices.filter(isChargeInvoice), opts)
+}
+
+export function filterCreditNoteInvoices(
+  invoices: TuitionInvoice[],
+  opts: { status: 'all' | TuitionInvoiceStatus; query: string },
+): TuitionInvoice[] {
+  return filterTuitionInvoices(invoices.filter(isCreditInvoice), opts)
 }

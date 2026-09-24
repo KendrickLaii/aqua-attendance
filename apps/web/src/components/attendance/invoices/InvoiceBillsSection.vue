@@ -19,6 +19,9 @@ import {
   invoiceStudentLabel,
   isCreditInvoice,
 } from '@/utils/invoiceDisplay'
+import { type CancellableTableSort, sortHeaderTitle, sortIconFor } from '@/utils/tableSort'
+
+export type InvoiceSortKey = 'student' | 'no' | 'staff' | 'classes' | 'status' | 'total'
 
 defineProps<{
   invoices: TuitionInvoice[]
@@ -32,7 +35,16 @@ defineProps<{
   statusUpdatingId: string | null
   showBillingHelp: boolean
   locationName: (id: string) => string
+  variant?: 'invoice' | 'credit'
+  sort: CancellableTableSort<InvoiceSortKey>
 }>()
+
+function ariaSort(state: CancellableTableSort<InvoiceSortKey>, key: InvoiceSortKey) {
+  if (state.key !== key)
+    return 'none'
+
+  return state.dir === 1 ? 'ascending' : 'descending'
+}
 
 const emit = defineEmits<{
   'update:showBillingHelp': [value: boolean]
@@ -46,6 +58,7 @@ const emit = defineEmits<{
   void: [invoice: TuitionInvoice]
   remove: [invoice: TuitionInvoice]
   'clear-filters': []
+  sort: [key: InvoiceSortKey]
 }>()
 </script>
 
@@ -53,7 +66,7 @@ const emit = defineEmits<{
   <VCard>
     <VCardItem>
       <VCardTitle class="d-flex align-center flex-wrap gap-2">
-        <span>Bills</span>
+        <span>{{ variant === 'credit' ? 'Credit notes' : 'Bills' }}</span>
         <span
           v-if="billsCaption"
           class="text-caption text-medium-emphasis font-weight-regular"
@@ -66,6 +79,7 @@ const emit = defineEmits<{
       </VCardTitle>
       <template #append>
         <VBtn
+          v-if="variant !== 'credit'"
           variant="text"
           size="small"
           :prepend-icon="showBillingHelp ? 'ri-question-fill' : 'ri-question-line'"
@@ -75,7 +89,9 @@ const emit = defineEmits<{
         </VBtn>
       </template>
       <VCardSubtitle>
-        {{ allMonths ? 'All bills. Open a row for line items.' : 'One bill per student for this calendar month. Open a row for line items.' }}
+        {{ variant === 'credit'
+          ? (allMonths ? 'All credit notes. Open a row for line items.' : 'Credit notes for this calendar month. Open a row for line items.')
+          : (allMonths ? 'All bills. Open a row for line items.' : 'One bill per student for this calendar month. Open a row for line items.') }}
       </VCardSubtitle>
     </VCardItem>
     <VCardText>
@@ -126,23 +142,91 @@ const emit = defineEmits<{
         >
           <thead>
             <tr>
-              <th class="col-student">
+              <th
+                class="sortable col-student"
+                :aria-sort="ariaSort(sort, 'student')"
+                :title="sortHeaderTitle(sort, 'student', 'Student')"
+                @click="emit('sort', 'student')"
+              >
                 Student
+                <VIcon
+                  :icon="sortIconFor(sort, 'student')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': sort.key === 'student' }"
+                />
               </th>
-              <th class="col-no">
+              <th
+                class="sortable col-no"
+                :aria-sort="ariaSort(sort, 'no')"
+                :title="sortHeaderTitle(sort, 'no', 'No.')"
+                @click="emit('sort', 'no')"
+              >
                 No.
+                <VIcon
+                  :icon="sortIconFor(sort, 'no')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': sort.key === 'no' }"
+                />
               </th>
-              <th class="col-staff">
+              <th
+                class="sortable col-staff"
+                :aria-sort="ariaSort(sort, 'staff')"
+                :title="sortHeaderTitle(sort, 'staff', 'Opened by')"
+                @click="emit('sort', 'staff')"
+              >
                 Opened by
+                <VIcon
+                  :icon="sortIconFor(sort, 'staff')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': sort.key === 'staff' }"
+                />
               </th>
-              <th class="col-classes">
+              <th
+                class="sortable col-classes"
+                :aria-sort="ariaSort(sort, 'classes')"
+                :title="sortHeaderTitle(sort, 'classes', 'Classes')"
+                @click="emit('sort', 'classes')"
+              >
                 Classes
+                <VIcon
+                  :icon="sortIconFor(sort, 'classes')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': sort.key === 'classes' }"
+                />
               </th>
-              <th class="col-status">
+              <th
+                class="sortable col-status"
+                :aria-sort="ariaSort(sort, 'status')"
+                :title="sortHeaderTitle(sort, 'status', 'Status')"
+                @click="emit('sort', 'status')"
+              >
                 Status
+                <VIcon
+                  :icon="sortIconFor(sort, 'status')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': sort.key === 'status' }"
+                />
               </th>
-              <th class="col-total text-end">
-                Total
+              <th
+                class="sortable col-total text-end"
+                :aria-sort="ariaSort(sort, 'total')"
+                :title="sortHeaderTitle(sort, 'total', 'Total')"
+                @click="emit('sort', 'total')"
+              >
+                <span class="sort-label">
+                  Total
+                  <VIcon
+                    :icon="sortIconFor(sort, 'total')"
+                    size="14"
+                    class="ms-1 sort-icon"
+                    :class="{ 'sort-icon--active': sort.key === 'total' }"
+                  />
+                </span>
               </th>
               <th class="col-actions">
                 Actions
@@ -273,7 +357,7 @@ const emit = defineEmits<{
                     @click="emit('edit', invoice)"
                   />
                   <VBtn
-                    v-if="invoice.status === 'paid'"
+                    v-if="variant !== 'credit' && invoice.status === 'paid'"
                     icon="ri-refund-2-line"
                     size="x-small"
                     variant="text"
@@ -420,10 +504,15 @@ const emit = defineEmits<{
                   </VIcon>
                   <template v-if="invoices.length === 0">
                     <div class="text-body-1 font-weight-medium">
-                      {{ allMonths ? 'No bills yet' : 'No bills this month' }}
+                      {{ variant === 'credit'
+                        ? (allMonths ? 'No credit notes yet' : 'No credit notes this month')
+                        : (allMonths ? 'No bills yet' : 'No bills this month') }}
                     </div>
                     <div class="text-medium-emphasis mt-1">
-                      <template v-if="allMonths">
+                      <template v-if="variant === 'credit'">
+                        Create a credit note, or open a paid invoice and issue a refund.
+                      </template>
+                      <template v-else-if="allMonths">
                         Pick a month and generate, or create a manual invoice.
                       </template>
                       <template v-else>
@@ -433,7 +522,7 @@ const emit = defineEmits<{
                   </template>
                   <template v-else>
                     <div class="text-body-1 font-weight-medium">
-                      No bills match this search or status
+                      {{ variant === 'credit' ? 'No credit notes match this search or status' : 'No bills match this search or status' }}
                     </div>
                     <VBtn
                       class="mt-3"
@@ -531,6 +620,30 @@ const emit = defineEmits<{
 .invoice-no {
   letter-spacing: 0.02em;
   font-weight: 600;
+}
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th.sortable:hover {
+  color: rgb(var(--v-theme-primary));
+}
+
+.sort-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sort-icon {
+  opacity: 0.3;
+}
+
+.sort-icon--active {
+  opacity: 1;
+  color: rgb(var(--v-theme-primary));
 }
 
 .invoice-row {

@@ -35,7 +35,8 @@ Branding is generic (“AQUA Attendance”). The data model still fits education
 | **Course SPU** (`course_spus`) | Course subject / curriculum family, e.g. “Primary Math” |
 | **Course SKU** (`course_skus`) | A concrete class under an SPU, e.g. “Primary Math P3 Tue 18:00”. Holds `price` and `billing_unit` (`monthly` or `per_session`) |
 | **Course enrollment** (`course_enrollments`) | Links a student unit to a course SKU (active / completed / cancelled), with optional start/end dates |
-| **Tuition invoice** (`tuition_invoices`) | One student bill per calendar month (`kind=tuition`), generated from overlapping active enrollments — per-session charges come from `enrollment_purchases`. `kind=manual` for ad-hoc/walk-in invoices (can settle session purchases). Per-location invoice numbering + printable layout. Line items snapshot SKU price. Not the Vuexy `/apps/invoice` demo |
+| **Tuition invoice** (`tuition_invoices`) | One student bill per calendar month (`kind=tuition`), generated from overlapping active enrollments — per-session charges come from `enrollment_purchases`. `kind=manual` for ad-hoc/walk-in invoices (can settle session purchases). Negative totals are **credit notes** (`/attendance/credit-notes`) with printable refund slips and `payable_to_name` / `payee_name`. Per-location invoice numbering + printable layout. Line items snapshot SKU price. Not the Vuexy `/apps/invoice` demo |
+| **Tuition receipt** (`tuition_receipts`) | Posted payment that marks one or more issued invoices `paid`. Staff types `receipt_no`. Void + remove reuses the number |
 
 ## Repository layout
 
@@ -210,6 +211,8 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 | Auto-checkout | `/api/auto-checkout/run` | Admin |
 | Courses | `/api/course-spus`, `/course-skus`, `/course-enrollments` (incl. `POST /course-enrollments/{id}/purchases`) | Admin |
 | Tuition invoices | `/api/tuition-invoices` (list/get/patch, `POST /generate`, `POST /manual`, `GET /next-no`, `POST /allocate-no`) | Admin |
+| Tuition receipts | `/api/tuition-receipts` (list/create, `open-invoices`, `/{id}/void`, `DELETE`) | Admin |
+| Uploads | `POST /api/uploads` (admin); `GET /api/uploads/{key}` (public UUID URL) | Mixed |
 | Health | `/api/health` | None |
 
 Full OpenAPI: http://localhost:8000/docs
@@ -232,7 +235,9 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/audit-logs` | Superadmin | Audit log query |
 | `/attendance/users` | Admin (CASL) | User CRUD |
 | `/attendance/courses` | Admin | Course catalog (class roster + enroll with start/end dates) |
-| `/attendance/invoices` | Admin | Monthly tuition invoices (Generate → issue / paid / void), manual invoices, print/reprint |
+| `/attendance/invoices` | Admin | Charge invoices only (Generate → issue / paid / void), manual invoices, print/reprint |
+| `/attendance/credit-notes` | Admin | Negative invoices (credit / refund slips) |
+| `/attendance/receipts` | Admin | Posted receipts, void / remove, print |
 
 Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos / legacy tax UI (not used in production nav).
 

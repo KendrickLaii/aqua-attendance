@@ -18,17 +18,7 @@ export function resolveMediaUrl(url: string | null | undefined): string {
   return `${origin}${path}`
 }
 
-export function needsAuthenticatedMediaFetch(url: string | null | undefined): boolean {
-  const trimmed = (url ?? '').trim()
-  if (!trimmed || /^(blob:|data:)/i.test(trimmed))
-    return false
-  if (/\/(?:api\/)?uploads(?:\/|$)/.test(trimmed))
-    return true
-  try {
-    const parsed = new URL(trimmed)
-    return /\/(?:api\/)?uploads(?:\/|$)/.test(parsed.pathname)
-  }
-  catch {
-    return false
-  }
+/** Uploads are public UUID URLs, so <img> and print load them directly. */
+export function needsAuthenticatedMediaFetch(_url: string | null | undefined): boolean {
+  return false
 }

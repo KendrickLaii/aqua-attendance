@@ -60,18 +60,15 @@ async def test_admin_upload_png_returns_relative_url(client: AsyncClient, admin_
 
 
 @pytest.mark.asyncio
-async def test_get_uploaded_file_requires_auth(client: AsyncClient, admin_token: str) -> None:
+async def test_get_uploaded_file_is_public(client: AsyncClient, admin_token: str) -> None:
     uploaded = await _upload(client, admin_token, MIN_PNG, "icon.png", "image/png")
     url = uploaded.json()["url"]
 
     client.cookies.clear()
     anonymous = await client.get(url)
-    assert anonymous.status_code in (401, 403)
-
-    resp = await client.get(url, headers={"Authorization": f"Bearer {admin_token}"})
-    assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("image/png")
-    assert resp.content == MIN_PNG
+    assert anonymous.status_code == 200
+    assert anonymous.headers["content-type"].startswith("image/png")
+    assert anonymous.content == MIN_PNG
 
 
 @pytest.mark.asyncio

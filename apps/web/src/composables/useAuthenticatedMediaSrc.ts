@@ -2,8 +2,8 @@ import { fetchUploadObjectUrl } from '@/api/attendance/uploads'
 import { needsAuthenticatedMediaFetch, resolveMediaUrl } from '@/utils/mediaUrl'
 
 /**
- * <img src> for stored media. Local /api/uploads paths are fetched with the
- * admin cookie and turned into a blob URL so cross-origin localhost previews work.
+ * <img src> for stored media. Upload files are public UUID URLs, so this
+ * resolves them to an address the browser can load without a Bearer token.
  */
 export function useAuthenticatedMediaSrc(url: MaybeRefOrGetter<string | null | undefined>) {
   const src = ref('')

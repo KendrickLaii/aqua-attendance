@@ -72,12 +72,12 @@ app/
   models/           # User、Unit、StaffProfile、StudentProfile、AttendanceEvent、
                     # Location、RefreshToken、Notification、AttendanceSummary、
                     # PayrollRecord、AuditLog、CourseSpu、CourseSku、CourseEnrollment、
-                    # TuitionInvoice、TuitionInvoiceLine
+                    # TuitionInvoice、TuitionInvoiceLine、TuitionReceipt
   schemas/          # Pydantic request/response models
   routers/          # auth、users、units、locations、qr、attendance、
                     # student-profiles、staff-profiles、notifications、
                     # attendance-summaries、payroll-records、audit-logs、auto-checkout、
-                    # course-spus、course-skus、course-enrollments、tuition-invoices、uploads
+                    # course-spus、course-skus、course-enrollments、tuition-invoices、tuition-receipts、uploads
   services/         # auth、qr、attendance、unit、overtime、auto_checkout、
                     # media_storage、summary_generator、payroll_generator、tuition_invoice_generator
   utils/            # 搜尋輔助（safe ILIKE）

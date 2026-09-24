@@ -18,7 +18,6 @@ from app.schemas.tuition_receipt import (
     TuitionReceiptAdjustment,
     TuitionReceiptCreate,
     TuitionReceiptLinkedInvoice,
-    TuitionReceiptNextNo,
     TuitionReceiptOut,
     TuitionReceiptPrintLine,
 )
@@ -71,27 +70,6 @@ def _month_label(invoice: TuitionInvoice, line: TuitionInvoiceLine) -> str:
         return line.month_label
     start = invoice.period_start
     return f"{_MONTH_LABELS[start.month - 1]}-{str(start.year)[2:]}"
-
-
-def _receipt_no_base(receipt_date: date) -> str:
-    return f"R{receipt_date.strftime('%y%m%d')}"
-
-
-async def _next_receipt_no(db: DB, location_id: uuid.UUID, receipt_date: date) -> str:
-    base = _receipt_no_base(receipt_date)
-    result = await db.execute(
-        select(TuitionReceipt.receipt_no).where(
-            TuitionReceipt.location_id == location_id,
-            TuitionReceipt.receipt_no.startswith(base),
-        )
-    )
-    existing = set(result.scalars().all())
-    if base not in existing:
-        return base
-    n = 2
-    while f"{base}-{n}" in existing:
-        n += 1
-    return f"{base}-{n}"
 
 
 def _receipt_to_out(receipt: TuitionReceipt) -> TuitionReceiptOut:
@@ -214,16 +192,6 @@ async def list_tuition_receipts(
     return [_receipt_to_out(row) for row in result.scalars().unique().all()]
 
 
-@router.get("/next-no", response_model=TuitionReceiptNextNo)
-async def next_receipt_no(
-    _admin: AdminOnly,
-    db: DB,
-    location_id: uuid.UUID,
-    date_value: date = Query(alias="date"),
-) -> TuitionReceiptNextNo:
-    return TuitionReceiptNextNo(next_no=await _next_receipt_no(db, location_id, date_value))
-
-
 @router.get("/open-invoices", response_model=list[TuitionInvoiceOut])
 async def list_open_invoices(
     _admin: AdminOnly,
@@ -327,7 +295,7 @@ async def create_tuition_receipt(
             status_code=422,
             detail=f"Amount does not match invoices plus adjustments (expected {expected:.2f})",
         )
-    receipt_no = await _next_receipt_no(db, body.location_id, body.receipt_date)
+    receipt_no = body.receipt_no
     receipt = TuitionReceipt(
         location_id=body.location_id,
         unit_id=body.unit_id,
@@ -341,19 +309,18 @@ async def create_tuition_receipt(
         adjustments=[row.model_dump() for row in adjustments],
     )
     db.add(receipt)
-    await db.flush()
-    for invoice in ordered:
-        db.add(
-            TuitionReceiptInvoice(
-                receipt_id=receipt.id,
-                invoice_id=invoice.id,
-                amount=invoice.total,
-                is_posted=True,
-            )
-        )
-        invoice.status = TuitionInvoiceStatus.paid.value
-
     try:
+        await db.flush()
+        for invoice in ordered:
+            db.add(
+                TuitionReceiptInvoice(
+                    receipt_id=receipt.id,
+                    invoice_id=invoice.id,
+                    amount=invoice.total,
+                    is_posted=True,
+                )
+            )
+            invoice.status = TuitionInvoiceStatus.paid.value
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

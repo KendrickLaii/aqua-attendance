@@ -3,9 +3,9 @@ import { describe, it } from 'node:test'
 import { needsAuthenticatedMediaFetch } from './mediaUrl'
 
 describe('needsAuthenticatedMediaFetch', () => {
-  it('requires a cookie fetch for local upload paths', () => {
-    assert.equal(needsAuthenticatedMediaFetch('/api/uploads/abc.jpg'), true)
-    assert.equal(needsAuthenticatedMediaFetch('http://localhost:8000/api/uploads/abc.jpg'), true)
+  it('loads upload paths directly in img and print', () => {
+    assert.equal(needsAuthenticatedMediaFetch('/api/uploads/abc.jpg'), false)
+    assert.equal(needsAuthenticatedMediaFetch('http://localhost:8000/api/uploads/abc.jpg'), false)
   })
 
   it('leaves public https and data URLs alone', () => {

@@ -29,7 +29,11 @@ async def upload_media(file: UploadFile, _admin: AdminOnly) -> UploadOut:
 
 
 @router.get("/{key:path}")
-async def get_media(key: str, _admin: AdminOnly) -> FileResponse:
+async def get_media(key: str) -> FileResponse:
+    """Public read. <img> and invoice print cannot send a Bearer token.
+
+    Keys are unguessable UUIDs. Uploading still requires an admin.
+    """
     try:
         path = resolve_upload_path(key)
     except MediaStorageError as exc:
@@ -40,5 +44,5 @@ async def get_media(key: str, _admin: AdminOnly) -> FileResponse:
     return FileResponse(
         path,
         media_type=content_type_for_key(key),
-        headers={"Cache-Control": "private, max-age=3600"},
+        headers={"Cache-Control": "public, max-age=3600"},
     )

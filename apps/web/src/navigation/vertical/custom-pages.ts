@@ -40,6 +40,11 @@ export default [
     to: 'attendance-invoices',
   },
   {
+    title: 'Credit Notes',
+    icon: { icon: 'ri-refund-2-line' },
+    to: 'attendance-credit-notes',
+  },
+  {
     title: 'Receipts',
     icon: { icon: 'ri-receipt-line' },
     to: 'attendance-receipts',

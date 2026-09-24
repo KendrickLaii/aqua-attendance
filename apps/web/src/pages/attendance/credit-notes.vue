@@ -5,5 +5,5 @@ definePage({ meta: {} })
 </script>
 
 <template>
-  <InvoiceListPage variant="invoice" />
+  <InvoiceListPage variant="credit" />
 </template>

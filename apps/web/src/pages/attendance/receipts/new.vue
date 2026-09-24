@@ -36,6 +36,7 @@ interface AdjustmentRow {
 
 const locations = ref<LocationItem[]>([])
 const paidBy = ref('')
+const receiptNo = ref('')
 const amount = ref(0)
 const adjustments = ref<AdjustmentRow[]>([])
 let adjustmentKey = 0
@@ -87,6 +88,7 @@ const amountFits = computed(() =>
   Math.round(Number(amount.value) * 100) / 100 === expectedAmount.value,
 )
 const paidByOk = computed(() => Boolean(paidBy.value.trim()))
+const receiptNoOk = computed(() => Boolean(receiptNo.value.trim()))
 const lockedStudentLabel = computed(() => {
   const first = openInvoices.value.find(row => row.id === seedInvoiceId) ?? openInvoices.value[0]
   if (first)
@@ -262,6 +264,10 @@ async function submit() {
     formError.value = 'PAID BY is required.'
     return
   }
+  if (!receiptNo.value.trim()) {
+    formError.value = 'Receipt no. / Reference no. is required.'
+    return
+  }
   if (!selectedIds.value.length) {
     formError.value = 'Select at least one issued invoice.'
     return
@@ -289,6 +295,7 @@ async function submit() {
       unit_id: first?.unit_id ?? student.value?.id ?? null,
       payer_name: first?.unit_id ? null : (walkInName.value || first?.manual_student_name || null),
       paid_by: paidBy.value.trim(),
+      receipt_no: receiptNo.value.trim(),
       receipt_date: receiptDate.value,
       invoice_ids: selectedIds.value,
       amount: roundMoney(Number(amount.value)),
@@ -365,7 +372,7 @@ onMounted(async () => {
         <VRow>
           <VCol
             cols="12"
-            md="4"
+            md="3"
           >
             <VSelect
               v-model="locationId"
@@ -380,7 +387,7 @@ onMounted(async () => {
           </VCol>
           <VCol
             cols="12"
-            md="4"
+            md="3"
           >
             <VTextField
               v-model="receiptDate"
@@ -392,7 +399,25 @@ onMounted(async () => {
           </VCol>
           <VCol
             cols="12"
-            md="4"
+            md="3"
+          >
+            <VTextField
+              v-model="receiptNo"
+              density="compact"
+              required
+              :rules="[requiredValidator]"
+              hide-details="auto"
+              maxlength="50"
+              autocomplete="off"
+            >
+              <template #label>
+                Receipt no. / Reference no. <span class="text-error">*</span>
+              </template>
+            </VTextField>
+          </VCol>
+          <VCol
+            cols="12"
+            md="3"
           >
             <VTextField
               v-model="paidBy"
@@ -623,7 +648,7 @@ onMounted(async () => {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="!selectedIds.length || !paidByOk"
+            :disabled="!selectedIds.length || !paidByOk || !receiptNoOk"
             @click="submit"
           >
             Save and print

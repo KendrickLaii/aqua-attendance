@@ -381,6 +381,7 @@ declare module 'vue' {
     History: typeof import('./src/components/dialogs/tax/client-dialog-tabs/History.vue')['default']
     I18n: typeof import('./src/@core/components/I18n.vue')['default']
     InvoiceBillsSection: typeof import('./src/components/attendance/invoices/InvoiceBillsSection.vue')['default']
+    InvoiceListPage: typeof import('./src/components/attendance/invoices/InvoiceListPage.vue')['default']
     InvoiceManualDialog: typeof import('./src/components/attendance/invoices/InvoiceManualDialog.vue')['default']
     LocationBasicTab: typeof import('./src/components/attendance/locations/LocationBasicTab.vue')['default']
     LocationCard: typeof import('./src/components/attendance/locations/LocationCard.vue')['default']

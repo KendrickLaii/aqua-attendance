@@ -527,6 +527,8 @@ async def create_manual_tuition_invoice(
         location_id=body.location_id,
         manual_student_name=body.manual_student_name.strip() if body.manual_student_name else None,
         staff_name=body.staff_name.strip() if body.staff_name else None,
+        payable_to_name=body.payable_to_name.strip() if body.payable_to_name else None,
+        payee_name=body.payee_name.strip() if body.payee_name else None,
         period_start=body.date,
         period_end=body.date,
         status=TuitionInvoiceStatus.issued.value,
@@ -583,7 +585,7 @@ async def update_tuition_invoice(
     update_data = body.model_dump(exclude_unset=True)
     line_payload = update_data.pop("lines", None)
     if invoice.status not in _EDITABLE_STATUS:
-        extra_fields = set(update_data) - {"status"}
+        extra_fields = set(update_data) - {"status", "payable_to_name", "payee_name"}
         if extra_fields or line_payload is not None:
             raise HTTPException(
                 status_code=422,
@@ -621,6 +623,10 @@ async def update_tuition_invoice(
         update_data["invoice_no"] = update_data["invoice_no"].strip() or None
     if "staff_name" in update_data and isinstance(update_data["staff_name"], str):
         update_data["staff_name"] = update_data["staff_name"].strip() or None
+    if "payable_to_name" in update_data and isinstance(update_data["payable_to_name"], str):
+        update_data["payable_to_name"] = update_data["payable_to_name"].strip() or None
+    if "payee_name" in update_data and isinstance(update_data["payee_name"], str):
+        update_data["payee_name"] = update_data["payee_name"].strip() or None
 
     for field, value in update_data.items():
         setattr(invoice, field, value)

@@ -26,6 +26,8 @@
 | 18 | 手動發票 | ✅ `tuition_invoices.kind`/`manual_student_name`、`unit_id` 改可空、`lines.month_label`（71296d8b9d7f）— 文具什費／私補出單可持久化、重印、付款與作廢 |
 | 20 | 堂費單一來源 | ✅ drop `course_enrollments.purchased_quantity`（c3e7a95b2d10）— 堂數只存在 `enrollment_purchases`；報名 API 仍收 `purchased_quantity` 但僅作建首條 purchase 的輸入 |
 | 19 | 堂費購買記錄 | ✅ `enrollment_purchases`（7d340d0ce7de）— 每次購買/top-up 一列（堂數、單價、日期、billed 連結），取代 `purchased_quantity` 作為計費來源；manual invoice 可直接結算未出單購買 |
+| 21 | 學費收條 | ✅ `tuition_receipts` / `tuition_receipt_invoices`（a7f3c1e8d4b2）＋ `adjustments` JSON（c9d2e4f1a8b3）— 一張收條可結算多張 issued 發票；`(location_id, receipt_no)` 唯一；編號由開單人手打 |
+| 22 | Credit note 退款抬頭 | ✅ `tuition_invoices.payable_to_name` / `payee_name`（d4b8e2a1c7f0）— 列印退款單 CHEQUE PAYABLE TO / NAME；負數發票走獨立 Credit Notes 頁 |
 
 ## 完整 ER 圖 (Mermaid)
 
@@ -297,6 +299,8 @@ erDiagram
         string manual_student_name "walk-in 姓名（kind=manual 用）"
         string invoice_no "發票編號；(location_id, invoice_no) 唯一"
         datetime issued_at "發出時間"
+        string payable_to_name "支票抬頭 CHEQUE PAYABLE TO（credit note）"
+        string payee_name "收款人 NAME（credit note）"
         numeric total "行項目加總"
         text notes "備註"
         datetime created_at "建立時間"
@@ -320,6 +324,28 @@ erDiagram
         int id PK
         uuid location_id FK "所屬中心（一中心一列）"
         int next_no "下一個可用編號（1–999999）"
+    }
+    tuition_receipts {
+        uuid id PK
+        uuid location_id FK "收條中心（編號系列）"
+        uuid unit_id FK "學生（可空）"
+        string payer_name "walk-in 付款人"
+        string paid_by "收款職員"
+        string receipt_no "收條編號；(location_id, receipt_no) 唯一"
+        date receipt_date "收款日"
+        numeric amount "實收（發票合計＋adjustments）"
+        string status "posted / void"
+        json adjustments "額外加減行（月份、課程、金額）"
+        text description "備註"
+        datetime created_at "建立時間"
+        datetime updated_at "更新時間"
+    }
+    tuition_receipt_invoices {
+        uuid id PK
+        uuid receipt_id FK
+        uuid invoice_id FK
+        numeric amount "該張發票結算金額"
+        boolean is_posted "posted 時一發票只能掛一張有效收條"
     }
 
     users ||--o{ refresh_tokens : "擁有"
@@ -353,6 +379,10 @@ erDiagram
     tuition_invoice_lines ||--o{ enrollment_purchases : "已結算購買"
     course_skus ||--o{ tuition_invoice_lines : "來源班次"
     units ||--o{ course_skus : "負責教師"
+    units ||--o{ tuition_receipts : "付款學生"
+    locations ||--o{ tuition_receipts : "收款中心"
+    tuition_receipts ||--o{ tuition_receipt_invoices : "結算"
+    tuition_invoices ||--o{ tuition_receipt_invoices : "已收"
 ```
 
 ## 課程資料模型（2026-08-04）
@@ -390,7 +420,9 @@ erDiagram
 | 5 | `price` 為空則跳過該報名 | 未定價班次不進發票，避免產生 $0 或錯誤行。per_session 例外：價錢在 purchase 列，無須 SKU/enrollment 價。 |
 | 6 | 發票編號每中心獨立系列 | `invoice_counters` 每 `location_id` 一列；派號以獨立 session `UPDATE…RETURNING` 原子遞增，跳過已被手打佔用的號碼；`(location_id, invoice_no)` 唯一。`void` 後復活的發票會清空 `invoice_no`/`issued_at`，再 Issue 派新號。編號預設佔住；**Remove cancelled invoice / voided receipt** 之後可以再用同一個號。 |
 | 7 | 手動發票為真實記錄 | `kind='manual'`、`unit_id` 可空、`manual_student_name` 存 walk-in 姓名；`POST /manual` 建立即 `issued`，可重印／付款／作廢。可帶 `purchase_id` 直接結算堂費購買（私補主要出單路徑）。`location_id` 必填，決定編號系列與列印抬頭。`fee` 可負數做 credit note。 |
-| 8 | 未 Paid 可 Edit | `draft`／`issued` 可用 PATCH `lines` 改行項目並重算 `total`，編號保留。帶 `id` 的舊行會保留 `enrollment_id`／SKU（唔會變成 manual 行）。Edit 只改發票快照，不寫回 `course_skus`／`course_enrollments`，也不會建立報名；單上加一行不等於 Join class。唯一寫回：堂費購買原本 `unit_price` 為空時，出單 fee 會填入該 purchase。`paid`／`void` 任何欄位（包括 `invoice_no`）都 422。Paid 之後用負數 Manual invoice（credit note）或 Void receipt。 |
+| 8 | 未 Paid 可 Edit | `draft`／`issued` 可用 PATCH `lines` 改行項目並重算 `total`，編號保留。帶 `id` 的舊行會保留 `enrollment_id`／SKU（唔會變成 manual 行）。Edit 只改發票快照，不寫回 `course_skus`／`course_enrollments`，也不會建立報名；單上加一行不等於 Join class。唯一寫回：堂費購買原本 `unit_price` 為空時，出單 fee 會填入該 purchase。`paid`／`void` 一般欄位（包括 `invoice_no`、行項目）都 422。例外：`payable_to_name`／`payee_name` 即使已 Paid 仍可改，方便補印退款單抬頭。Paid 之後用負數 Manual invoice（credit note）或 Void receipt。 |
+| 12 | 負數單＝Credit Note | `total < 0` 的發票在 Web 獨立頁 `/attendance/credit-notes`；列印用退款單（REFUND REQUEST + REFUND ACKNOWLEDGEMENT），不是普通 INVOICE。 |
+| 13 | 收條編號手打 | `POST /tuition-receipts` 必填 `receipt_no`；已刪除 `GET /next-no`。撞 `(location_id, receipt_no)` → 409。 |
 | 9 | 作廢單可刪、編號可重用 | `DELETE` 只准 `void` invoice／voided receipt。Posted receipt 仍在時唔准刪／Cancel invoice。刪 cancelled invoice 會拆非 posted receipt 連結。 |
 
 ### Generate 規則（`POST /api/tuition-invoices/generate?year=&month=`）
@@ -400,7 +432,7 @@ erDiagram
 - 排除：`cancelled`／`completed`、完全落在該月之外、SKU `is_active=false`、inactive 學生；月費另須 SKU 或 enrollment 有價。
 - 月費：`quantity = 1`；價錢 = `enrollment.unit_price` ?? `sku.price`。
 - 堂費：逐條未出單 `enrollment_purchases` 各出一行（`quantity` = 該次購買堂數、單價 = `purchase.unit_price`，若為 NULL 則退回 `enrollment.unit_price` ?? `sku.price`，兩者皆無則跳過留俾手動發票）；無購買則不出行。
-- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`，亦可 Edit 行項目（保留報名連結）。已 `paid`／`void` 不可再改任何欄。`void` 只能靠 Generate 在仍有報名時回收成 draft（同時清空編號）。`DELETE` 只准 void invoice／voided receipt，並寫 audit log。
+- 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`，亦可 Edit 行項目（保留報名連結）。已 `paid`／`void` 不可再改行項目／編號。例外：`payable_to_name`／`payee_name` 仍可改。`void` 只能靠 Generate 在仍有報名時回收成 draft（同時清空編號）。`DELETE` 只准 void invoice／voided receipt，並寫 audit log。
 
 ### 手動發票（`POST /api/tuition-invoices/manual`）
 
@@ -594,6 +626,7 @@ ot_hours      = ot_slots * 0.25
 | 22 | `course_enrollments` | 學生與場次報名記錄 | ✅ 完成 |
 | 23 | `tuition_invoices` | 學生每月學費發票（一 unit 一帳單期一張） | ✅ 完成 |
 | 24 | `tuition_invoice_lines` | 發票行項目（快照 SKU 價錢與 billing_unit） | ✅ 完成 |
+| 25 | `tuition_receipts` / `tuition_receipt_invoices` | 學費收條與結算連結（可含 adjustments） | ✅ 完成 |
 
 ### 🔄 未來擴充 - 預留設計
 
@@ -666,7 +699,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10 → e5a1c3d7f9b2 → a7f3c1e8d4b2 → c9d2e4f1a8b3 → d4b8e2a1c7f0
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -696,8 +729,12 @@ ot_hours      = ot_slots * 0.25
 
 25. ✅ 手動發票不受一人一期一單限制（b8f2c4d6a1e9）— `(unit_id, period_start, period_end)` 改為 partial unique index，僅 `kind = 'tuition'`；修好同一學生同一日開不到第二張手動發票（作廢後補開）
 26. ✅ 堂數單一來源（c3e7a95b2d10）— drop `course_enrollments.purchased_quantity`；遷移前先把尚未建 purchase 的舊列回填為 purchase，並清掉指向作廢發票的 stale `billed_invoice_line_id`
+27. ✅ 發票開單人（e5a1c3d7f9b2）— `tuition_invoices.staff_name`（佣金用，唔印喺發票）
+28. ✅ 學費收條（a7f3c1e8d4b2）— `tuition_receipts` + `tuition_receipt_invoices`；posted 收條把發票標 `paid`
+29. ✅ 收條加減行（c9d2e4f1a8b3）— `tuition_receipts.adjustments` JSON
+30. ✅ Credit note 抬頭（d4b8e2a1c7f0）— `tuition_invoices.payable_to_name` / `payee_name`
 
-> **目前 Alembic 版本：c3e7a95b2d10**（堂數單一來源：`enrollment_purchases`）
+> **目前 Alembic 版本：d4b8e2a1c7f0**（Credit note 支票抬頭；前序含收條 a7f3c1e8d4b2／c9d2e4f1a8b3）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

@@ -47,6 +47,8 @@ class TuitionInvoice(Base):
     # Invoice-level 開單人 — the staff/teacher who opened the invoice, for
     # commission records. Lines keep their own class-teacher snapshot.
     staff_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payable_to_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payee_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     invoice_no: Mapped[str | None] = mapped_column(String(50), nullable=True)

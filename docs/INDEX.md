@@ -22,9 +22,9 @@
 | 文件 | 類型 | 內容 | 更新頻率 |
 | ------ | ------ | ------ | ---------- |
 | [../README.md](../README.md) | 總覽 | 系統架構、概念對照表（Unit vs User）、QR 流程、快速開始、倉庫結構 | 架構變更時 |
-| [project-handbook.md](project-handbook.md) | 手冊 | 本地開發、生產部署（Docker/Caddy）、CI/CD 流程、運維手冊、已知缺口與評分、Mobile 發布、發布紀錄、課程資料模型、學費發票 | 持續累積 |
+| [project-handbook.md](project-handbook.md) | 手冊 | 本地開發、生產部署（Docker/Caddy）、CI/CD 流程、運維手冊、已知缺口與評分、Mobile 發布、發布紀錄、課程資料模型、學費發票／Credit Notes／收條 | 持續累積 |
 | [../apps/api/README.md](../apps/api/README.md) | 開發 | FastAPI 啟動、測試、環境變數、Alembic、seed 資料、課程 API、學費發票 API | API 變更時 |
-| [../apps/web/README.md](../apps/web/README.md) | 開發 | Vue 3 開發伺服器、Vite 設定、出勤頁面路由、AQUA 模板注意事項 | Web 變更時 |
+| [../apps/web/README.md](../apps/web/README.md) | 開發 | Vue 3 開發伺服器、Vite 設定、出勤頁面路由（含 Invoices／Credit Notes／Receipts）、AQUA 模板注意事項 | Web 變更時 |
 | [../apps/mobile/README.md](../apps/mobile/README.md) | 開發 | Expo 啟動、QR Scanner 設定、實體裝置 LAN IP 設定、entry-point 限制 | Mobile 變更時 |
 | [../REVIEW-PROMPT.md](../REVIEW-PROMPT.md) | 流程 | 合併前檢查清單與 Code Review 提示 | 流程調整時 |
 | [../deploy/README.md](../deploy/README.md) | 部署 | 生產主機目錄結構、輔助腳本說明（`first-boot.sh`、`update.sh`、`reset-db.sh`） | 部署腳本變更時 |

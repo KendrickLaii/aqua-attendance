@@ -88,6 +88,7 @@ async def test_create_receipt_pays_multiple_invoices_for_one_student(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "FPS",
+            "receipt_no": "FPS-88421",
             "receipt_date": "2026-09-02",
             "invoice_ids": [june["id"], july["id"]],
         },
@@ -95,7 +96,7 @@ async def test_create_receipt_pays_multiple_invoices_for_one_student(
     )
     assert resp.status_code == 201, resp.text
     receipt = resp.json()
-    assert receipt["receipt_no"] == "R260902"
+    assert receipt["receipt_no"] == "FPS-88421"
     assert receipt["status"] == "posted"
     assert receipt["paid_by"] == "FPS"
     assert float(receipt["amount"]) == 1600
@@ -106,7 +107,7 @@ async def test_create_receipt_pays_multiple_invoices_for_one_student(
     for invoice_id in (june["id"], july["id"]):
         fetched = await client.get(f"/api/tuition-invoices/{invoice_id}", headers=_auth(admin_token))
         assert fetched.json()["status"] == "paid"
-        assert fetched.json()["receipt_no"] == "R260902"
+        assert fetched.json()["receipt_no"] == "FPS-88421"
 
 
 @pytest.mark.asyncio
@@ -134,6 +135,7 @@ async def test_create_receipt_rejects_invoices_from_another_student(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [mine["id"], theirs["id"]],
         },
@@ -156,6 +158,7 @@ async def test_create_receipt_rejects_draft_and_empty_invoices(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [],
         },
@@ -169,6 +172,7 @@ async def test_create_receipt_rejects_draft_and_empty_invoices(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [draft_id],
         },
@@ -188,6 +192,7 @@ async def test_create_receipt_rejects_already_paid_invoice(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -201,6 +206,7 @@ async def test_create_receipt_rejects_already_paid_invoice(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -210,7 +216,7 @@ async def test_create_receipt_rejects_already_paid_invoice(
 
 
 @pytest.mark.asyncio
-async def test_second_receipt_same_day_gets_suffix(
+async def test_second_receipt_same_day_keeps_manual_numbers(
     client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:
     first_inv = await _manual_invoice(
@@ -225,6 +231,7 @@ async def test_second_receipt_same_day_gets_suffix(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [first_inv["id"]],
         },
@@ -236,6 +243,7 @@ async def test_second_receipt_same_day_gets_suffix(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "FPS",
+            "receipt_no": "FPS-88421",
             "receipt_date": "2026-09-02",
             "invoice_ids": [second_inv["id"]],
         },
@@ -243,8 +251,102 @@ async def test_second_receipt_same_day_gets_suffix(
     )
     assert first.status_code == 201, first.text
     assert second.status_code == 201, second.text
-    assert first.json()["receipt_no"] == "R260902"
-    assert second.json()["receipt_no"] == "R260902-2"
+    assert first.json()["receipt_no"] == "1001"
+    assert second.json()["receipt_no"] == "FPS-88421"
+
+
+@pytest.mark.asyncio
+async def test_create_receipt_uses_manual_receipt_no(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
+    resp = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "FPS",
+            "receipt_no": "  FPS-88421  ",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["receipt_no"] == "FPS-88421"
+    fetched = await client.get(f"/api/tuition-invoices/{invoice['id']}", headers=_auth(admin_token))
+    assert fetched.json()["receipt_no"] == "FPS-88421"
+
+
+@pytest.mark.asyncio
+async def test_create_receipt_rejects_blank_receipt_no(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
+    missing = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert missing.status_code == 422
+    blank = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_no": "   ",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [invoice["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert blank.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_receipt_rejects_duplicate_receipt_no(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    first_inv = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], date="2026-09-01", fee=50
+    )
+    second_inv = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], date="2026-09-03", fee=60
+    )
+    first = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_no": "CHQ-1001",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [first_inv["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert first.status_code == 201, first.text
+    second = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_no": "CHQ-1001",
+            "receipt_date": "2026-09-02",
+            "invoice_ids": [second_inv["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert second.status_code == 422
+    assert "already in use" in second.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -258,6 +360,7 @@ async def test_void_receipt_reopens_invoices(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -282,6 +385,7 @@ async def test_void_receipt_reopens_invoices(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1002",
             "receipt_date": "2026-09-03",
             "invoice_ids": [invoice["id"]],
         },
@@ -318,6 +422,7 @@ async def test_walk_in_receipt_uses_invoice_ids_not_name_match(
         json={
             "location_id": sample_location["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [a["id"], b["id"]],
         },
@@ -331,6 +436,7 @@ async def test_walk_in_receipt_uses_invoice_ids_not_name_match(
             "location_id": sample_location["id"],
             "payer_name": "Walk In A",
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [a["id"]],
         },
@@ -359,6 +465,7 @@ async def test_open_invoices_and_list_receipts(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "HSBC",
+            "receipt_no": "HSBC-918",
             "receipt_date": "2026-09-18",
             "invoice_ids": [invoice["id"]],
         },
@@ -373,14 +480,7 @@ async def test_open_invoices_and_list_receipts(
     )
     assert listed.status_code == 200, listed.text
     assert listed.json()[0]["id"] == created.json()["id"]
-
-    peeked = await client.get(
-        "/api/tuition-receipts/next-no",
-        params={"location_id": sample_location["id"], "date": "2026-09-18"},
-        headers=_auth(admin_token),
-    )
-    assert peeked.status_code == 200, peeked.text
-    assert peeked.json()["next_no"] == "R260918-2"
+    assert listed.json()[0]["receipt_no"] == "HSBC-918"
 
 
 @pytest.mark.asyncio
@@ -394,6 +494,7 @@ async def test_open_invoices_rejects_unissued_seed(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -455,6 +556,7 @@ async def test_create_receipt_stores_description(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "FPS",
+            "receipt_no": "FPS-88421",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
             "description": "Sept tuition",
@@ -476,6 +578,7 @@ async def test_create_receipt_rejects_amount_that_does_not_fit(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
             "amount": 80,
@@ -497,6 +600,7 @@ async def test_create_receipt_accepts_adjustment_when_amount_fits(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
             "amount": 80,
@@ -526,6 +630,7 @@ async def test_create_receipt_rejects_adjustment_when_amount_does_not_fit(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
             "amount": 90,
@@ -547,6 +652,7 @@ async def test_delete_voided_receipt_allows_reusing_number(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -577,6 +683,7 @@ async def test_delete_voided_receipt_allows_reusing_number(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice2["id"]],
         },
@@ -597,6 +704,7 @@ async def test_delete_rejects_posted_receipt(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -620,6 +728,7 @@ async def test_delete_void_invoice_after_voided_receipt(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -655,6 +764,7 @@ async def test_receipt_for_negative_manual_invoice(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-02",
             "invoice_ids": [invoice["id"]],
         },
@@ -681,6 +791,7 @@ async def test_receipt_nets_positive_and_negative_invoices(
             "location_id": sample_location["id"],
             "unit_id": sample_unit["id"],
             "paid_by": "Cash",
+            "receipt_no": "1001",
             "receipt_date": "2026-09-03",
             "invoice_ids": [charge["id"], credit["id"]],
         },

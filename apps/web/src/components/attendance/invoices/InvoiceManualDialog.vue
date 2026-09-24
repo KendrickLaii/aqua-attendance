@@ -20,9 +20,11 @@ import { formatApiError } from '@/utils/formatApiDetail'
 import { MANUAL_CREDIT_HINT } from '@/utils/billingStaffCopy'
 import {
   creditLinesFromInvoice,
+  defaultCreditFee,
   formatInvoiceMoney,
   invoicePrintHeaderFromLocation,
   invoiceStudentLabel,
+  isCreditInvoice,
 } from '@/utils/invoiceDisplay'
 import {
   invoiceMonthLabel,
@@ -39,6 +41,7 @@ const props = defineProps<{
   defaultMonthLabel: string
   editingInvoice?: TuitionInvoice | null
   creditFromInvoice?: TuitionInvoice | null
+  creditMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -77,6 +80,8 @@ const manualForm = ref<{
   studentName: string
   staff: string
   remark: string
+  payableTo: string
+  payeeName: string
   rows: ManualInvoiceRow[]
 }>({
   invoiceNo: '',
@@ -84,6 +89,8 @@ const manualForm = ref<{
   studentName: '',
   staff: '',
   remark: '',
+  payableTo: '',
+  payeeName: '',
   rows: [],
 })
 
@@ -102,8 +109,12 @@ const lockedUnitId = ref<string | null>(null)
 const hydratingForm = ref(false)
 
 const isEdit = computed(() => Boolean(props.editingInvoice))
-const isCredit = computed(() => Boolean(props.creditFromInvoice) && !props.editingInvoice)
-const studentLocked = computed(() => isEdit.value || isCredit.value)
+const isCredit = computed(() =>
+  Boolean(props.creditFromInvoice && !props.editingInvoice)
+  || Boolean(props.creditMode && !props.editingInvoice)
+  || Boolean(props.editingInvoice && isCreditInvoice(props.editingInvoice)),
+)
+const studentLocked = computed(() => isEdit.value || Boolean(props.creditFromInvoice))
 
 const staffName = (id: string | null | undefined) =>
   manualStaffUnits.value.find(u => u.id === id)?.full_name ?? ''
@@ -302,7 +313,9 @@ function onClassPicked(id: string | null) {
   if (!id)
     return
 
-  const pkg = manualUnbilledPackages.value.find(p => p.enrollment.sku_id === id)
+  const pkg = !isCredit.value
+    ? manualUnbilledPackages.value.find(p => p.enrollment.sku_id === id)
+    : undefined
   if (pkg) {
     addPurchaseLine(pkg)
 
@@ -316,7 +329,9 @@ function onClassPicked(id: string | null) {
   const row = blankManualRow()
 
   row.course = sku.name_zh
-  row.fee = sku.price != null ? String(sku.price) : ''
+  row.fee = sku.price != null
+    ? (isCredit.value ? defaultCreditFee(sku.price) : String(sku.price))
+    : ''
   row.qty = sku.billing_unit === 'per_session' ? '' : '1'
 
   suggestManualStaff(sku.staff_id)
@@ -377,6 +392,8 @@ function fillFromInvoice(invoice: TuitionInvoice, negateFee: boolean) {
     studentName: invoiceStudentLabel(invoice),
     staff: invoice.staff_name ?? '',
     remark: negateFee ? '' : (invoice.notes ?? ''),
+    payableTo: negateFee ? '' : (invoice.payable_to_name ?? ''),
+    payeeName: negateFee ? '' : (invoice.payee_name ?? ''),
     rows: rowsFromInvoice(invoice, negateFee),
   }
   manualStudent.value = invoiceStudentLabel(invoice)
@@ -401,6 +418,8 @@ function resetForm() {
     studentName: '',
     staff: '',
     remark: '',
+    payableTo: '',
+    payeeName: '',
     rows: [blankManualRow()],
   }
   manualStudent.value = null
@@ -465,6 +484,8 @@ async function printOptionsFor(invoice: { location_id: string }) {
   return {
     logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
     header: location ? invoicePrintHeaderFromLocation(location) : undefined,
+    payableTo: (manualForm.value.payableTo ?? '').trim(),
+    payeeName: (manualForm.value.payeeName ?? '').trim(),
   }
 }
 
@@ -487,15 +508,19 @@ async function printManualInvoice() {
     }
 
     const validLines = manualForm.value.rows
-      .map(row => ({
-        id: isEdit.value ? row.lineId : undefined,
-        month: row.month.trim(),
-        course: row.course.trim(),
-        fee: manualNumber(row.fee),
-        qty: manualNumber(row.qty),
-        staff_name: (manualForm.value.staff ?? '').trim() || null,
-        purchase_id: row.purchaseId || undefined,
-      }))
+      .map(row => {
+        const fee = manualNumber(row.fee)
+
+        return {
+          id: isEdit.value ? row.lineId : undefined,
+          month: row.month.trim(),
+          course: row.course.trim(),
+          fee: fee == null ? null : (isCredit.value ? -Math.abs(fee) : fee),
+          qty: manualNumber(row.qty),
+          staff_name: (manualForm.value.staff ?? '').trim() || null,
+          purchase_id: isCredit.value ? undefined : (row.purchaseId || undefined),
+        }
+      })
       .filter(row => row.course && row.fee != null && row.qty != null && row.qty > 0)
 
     const touchedRows = manualForm.value.rows.filter(
@@ -552,6 +577,8 @@ async function printManualInvoice() {
       const saved = isEdit.value && props.editingInvoice
         ? await updateTuitionInvoice(props.editingInvoice.id, {
             staff_name: (manualForm.value.staff ?? '').trim() || null,
+            payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
+            payee_name: (manualForm.value.payeeName ?? '').trim() || null,
             notes: (manualForm.value.remark ?? '').trim() || null,
             lines: validLines as ManualInvoiceLine[],
           })
@@ -561,6 +588,8 @@ async function printManualInvoice() {
             unit_id: unitId,
             manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
             staff_name: (manualForm.value.staff ?? '').trim() || null,
+            payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
+            payee_name: (manualForm.value.payeeName ?? '').trim() || null,
             invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
             notes: (manualForm.value.remark ?? '').trim() || null,
             lines: validLines as ManualInvoiceLine[],
@@ -632,7 +661,7 @@ async function printManualInvoice() {
           >
             <VTextField
               v-model="manualForm.invoiceNo"
-              label="Invoice no."
+              :label="isCredit ? 'Credit note no.' : 'Invoice no.'"
               density="compact"
               :hint="isEdit ? 'Kept on Edit' : 'Auto-generated — editable'"
               persistent-hint
@@ -712,7 +741,36 @@ async function printManualInvoice() {
             />
           </VCol>
           <VCol
-            v-if="manualUnbilledPackages.length && manualCanAddRow"
+            v-if="isCredit"
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="manualForm.payableTo"
+              label="Payable to name"
+              density="compact"
+              hint="Printed on CHEQUE PAYABLE TO"
+              persistent-hint
+              autocomplete="off"
+              @update:model-value="value => { if (!(manualForm.payeeName ?? '').trim()) manualForm.payeeName = value }"
+            />
+          </VCol>
+          <VCol
+            v-if="isCredit"
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="manualForm.payeeName"
+              label="Name"
+              density="compact"
+              hint="Printed on NAME. Paid by and Supervisor stay blank."
+              persistent-hint
+              autocomplete="off"
+            />
+          </VCol>
+          <VCol
+            v-if="!isCredit && manualUnbilledPackages.length && manualCanAddRow"
             cols="12"
           >
             <div class="text-caption text-medium-emphasis mb-1">
@@ -806,6 +864,7 @@ async function printManualInvoice() {
                   hide-details
                   type="number"
                   step="0.01"
+                  :placeholder="isCredit ? '-1785' : undefined"
                 />
               </td>
               <td>
@@ -877,7 +936,7 @@ async function printManualInvoice() {
           label="Remark"
           density="compact"
           class="mt-3"
-          placeholder="Optional — printed on the invoice"
+          :placeholder="isCredit ? 'Optional — printed on the credit note' : 'Optional — printed on the invoice'"
           clearable
         />
       </VCardText>

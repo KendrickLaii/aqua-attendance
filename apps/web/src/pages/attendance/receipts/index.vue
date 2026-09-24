@@ -15,6 +15,7 @@ import {
   VOID_RECEIPT_HINT,
 } from '@/utils/billingStaffCopy'
 import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
+import { type CancellableTableSort, type SortValue, compareSortValues, cycleSort, sortHeaderTitle, sortIconFor } from '@/utils/tableSort'
 import {
   type TuitionInvoicePrintHeader,
 } from '@/utils/printTuitionInvoice'
@@ -60,6 +61,9 @@ const locations = ref<LocationItem[]>([])
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'posted' | 'void'>('all')
 
+type ReceiptSortKey = 'student' | 'no' | 'date' | 'paidBy' | 'status' | 'amount'
+const receiptSort = reactive<CancellableTableSort<ReceiptSortKey>>({ key: null, dir: 1 })
+
 const LOCATION_FILTER_KEY = 'tuition-receipt-location'
 const locationId = ref<string | null>(localStorage.getItem(LOCATION_FILTER_KEY))
 
@@ -100,10 +104,50 @@ const filteredReceipts = computed(() => {
   })
 })
 
+function receiptSortValue(receipt: TuitionReceipt, key: ReceiptSortKey): SortValue {
+  if (key === 'student') {
+    const label = studentLabel(receipt)
+    return label === '—' ? null : label
+  }
+  if (key === 'no')
+    return receipt.receipt_no
+  if (key === 'date')
+    return receipt.receipt_date
+  if (key === 'paidBy')
+    return receipt.paid_by || null
+  if (key === 'status')
+    return receipt.status
+
+  return Number(receipt.amount)
+}
+
+const sortedReceipts = computed(() => {
+  const key = receiptSort.key
+  if (!key)
+    return filteredReceipts.value
+
+  return [...filteredReceipts.value].sort(
+    (a, b) => compareSortValues(receiptSortValue(a, key), receiptSortValue(b, key)) * receiptSort.dir,
+  )
+})
+
 const pagedReceipts = computed(() => {
   const start = (page.value - 1) * pageSize.value
-  return filteredReceipts.value.slice(start, start + pageSize.value)
+  return sortedReceipts.value.slice(start, start + pageSize.value)
 })
+
+function ariaSort(key: ReceiptSortKey) {
+  if (receiptSort.key !== key)
+    return 'none'
+
+  return receiptSort.dir === 1 ? 'ascending' : 'descending'
+}
+
+function onReceiptSort(key: ReceiptSortKey) {
+  cycleSort(receiptSort, key)
+  resetPage()
+  expandedId.value = null
+}
 
 const allMonths = computed(() => !parsedYearMonth.value)
 const locationOptions = computed(() =>
@@ -486,13 +530,91 @@ onMounted(async () => {
         >
           <thead>
             <tr>
-              <th>Student</th>
-              <th>No.</th>
-              <th>Date</th>
-              <th>Paid by</th>
-              <th>Status</th>
-              <th class="text-end">
-                Amount
+              <th
+                class="sortable"
+                :aria-sort="ariaSort('student')"
+                :title="sortHeaderTitle(receiptSort, 'student', 'Student')"
+                @click="onReceiptSort('student')"
+              >
+                Student
+                <VIcon
+                  :icon="sortIconFor(receiptSort, 'student')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': receiptSort.key === 'student' }"
+                />
+              </th>
+              <th
+                class="sortable"
+                :aria-sort="ariaSort('no')"
+                :title="sortHeaderTitle(receiptSort, 'no', 'Receipt no.')"
+                @click="onReceiptSort('no')"
+              >
+                Receipt no.
+                <VIcon
+                  :icon="sortIconFor(receiptSort, 'no')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': receiptSort.key === 'no' }"
+                />
+              </th>
+              <th
+                class="sortable"
+                :aria-sort="ariaSort('date')"
+                :title="sortHeaderTitle(receiptSort, 'date', 'Date')"
+                @click="onReceiptSort('date')"
+              >
+                Date
+                <VIcon
+                  :icon="sortIconFor(receiptSort, 'date')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': receiptSort.key === 'date' }"
+                />
+              </th>
+              <th
+                class="sortable"
+                :aria-sort="ariaSort('paidBy')"
+                :title="sortHeaderTitle(receiptSort, 'paidBy', 'Paid by')"
+                @click="onReceiptSort('paidBy')"
+              >
+                Paid by
+                <VIcon
+                  :icon="sortIconFor(receiptSort, 'paidBy')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': receiptSort.key === 'paidBy' }"
+                />
+              </th>
+              <th
+                class="sortable"
+                :aria-sort="ariaSort('status')"
+                :title="sortHeaderTitle(receiptSort, 'status', 'Status')"
+                @click="onReceiptSort('status')"
+              >
+                Status
+                <VIcon
+                  :icon="sortIconFor(receiptSort, 'status')"
+                  size="14"
+                  class="ms-1 sort-icon"
+                  :class="{ 'sort-icon--active': receiptSort.key === 'status' }"
+                />
+              </th>
+              <th
+                class="sortable text-end"
+                :aria-sort="ariaSort('amount')"
+                :title="sortHeaderTitle(receiptSort, 'amount', 'Amount')"
+                @click="onReceiptSort('amount')"
+              >
+                <span class="sort-label">
+                  Amount
+                  <VIcon
+                    :icon="sortIconFor(receiptSort, 'amount')"
+                    size="14"
+                    class="ms-1 sort-icon"
+                    :class="{ 'sort-icon--active': receiptSort.key === 'amount' }"
+                  />
+                </span>
               </th>
               <th class="text-end">
                 Actions
@@ -655,3 +777,29 @@ onMounted(async () => {
   </div>
   </VContainer>
 </template>
+
+<style scoped>
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th.sortable:hover {
+  color: rgb(var(--v-theme-primary));
+}
+
+.sort-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sort-icon {
+  opacity: 0.3;
+}
+
+.sort-icon--active {
+  opacity: 1;
+  color: rgb(var(--v-theme-primary));
+}
+</style>

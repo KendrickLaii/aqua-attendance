@@ -56,6 +56,7 @@ export interface TuitionReceiptCreatePayload {
   unit_id?: string | null
   payer_name?: string | null
   paid_by: string
+  receipt_no: string
   receipt_date: string
   invoice_ids: string[]
   amount?: number
@@ -109,13 +110,6 @@ export async function voidTuitionReceipt(receiptId: string): Promise<TuitionRece
 
 export async function deleteTuitionReceipt(receiptId: string): Promise<void> {
   await $attendanceApi(`/tuition-receipts/${receiptId}`, { method: 'DELETE' })
-}
-
-export async function getNextReceiptNo(locationId: string, date: string): Promise<string> {
-  const result = await $attendanceApi<{ next_no: string }>('/tuition-receipts/next-no', {
-    params: { location_id: locationId, date },
-  })
-  return result.next_no
 }
 
 export async function listOpenInvoices(params: {
