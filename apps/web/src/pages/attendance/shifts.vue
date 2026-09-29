@@ -461,7 +461,7 @@ function exportCsv() {
           Shift Schedule
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          撳格仔加更 · 撳更可以改或者刪 · 拖放搬更（揿住 Ctrl 拖就係複製）
+          撳格仔加更 · 撳更可以改或者刪 · 拖放搬更（撳住 Ctrl 拖就係複製）
         </div>
       </div>
       <VBtn
