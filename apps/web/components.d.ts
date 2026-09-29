@@ -406,6 +406,10 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     ScrollToTop: typeof import('./src/@core/components/ScrollToTop.vue')['default']
     ShareProjectDialog: typeof import('./src/components/dialogs/ShareProjectDialog.vue')['default']
+    ShiftDialog: typeof import('./src/components/attendance/shifts/ShiftDialog.vue')['default']
+    ShiftPrintDialog: typeof import('./src/components/attendance/shifts/ShiftPrintDialog.vue')['default']
+    ShiftTemplatesDialog: typeof import('./src/components/attendance/shifts/ShiftTemplatesDialog.vue')['default']
+    ShiftWeekGrid: typeof import('./src/components/attendance/shifts/ShiftWeekGrid.vue')['default']
     Shortcuts: typeof import('./src/@core/components/Shortcuts.vue')['default']
     StatCards: typeof import('./src/components/attendance/StatCards.vue')['default']
     SummariesDetailView: typeof import('./src/components/attendance/summaries/SummariesDetailView.vue')['default']
@@ -426,6 +430,7 @@ declare module 'vue' {
     UnitQrDialogs: typeof import('./src/components/attendance/UnitQrDialogs.vue')['default']
     UserInfoEditDialog: typeof import('./src/components/dialogs/UserInfoEditDialog.vue')['default']
     UserUpgradePlanDialog: typeof import('./src/components/dialogs/UserUpgradePlanDialog.vue')['default']
+    VueApexCharts: typeof import('vue3-apexcharts')['default']
     WorkingSectionDialog: typeof import('./src/components/dialogs/tax/WorkingSectionDialog.vue')['default']
   }
 }

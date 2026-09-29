@@ -25,6 +25,11 @@ export default [
     to: 'attendance-summaries',
   },
   {
+    title: 'Shifts',
+    icon: { icon: 'ri-calendar-schedule-line' },
+    to: 'attendance-shifts',
+  },
+  {
     title: 'Payroll',
     icon: { icon: 'ri-money-cny-circle-line' },
     to: 'attendance-payroll',

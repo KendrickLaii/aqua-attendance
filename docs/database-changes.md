@@ -453,6 +453,23 @@ erDiagram
 
 優先順序：唯一約束（#M22）→ 發送（#M24）。
 
+## 員工更表（2026-09-29）
+
+Migration `f2a6c8d0b4e1`（down `e1c9a4b7d2f3`）。純記錄，唔同 `attendance_*`／`payroll_records` 有任何關聯。
+
+| 表 | 欄位 | 約束／索引 |
+| --- | --- | --- |
+| `shift_templates` | `id`, `name` varchar(100), `start_time` time, `end_time` time, `color` varchar(7), `sort_order` int default 0, `created_at`, `updated_at` | — |
+| `shifts` | `id`, `unit_id`, `location_id`, `shift_date` date, `start_time` time, `end_time` time, `title` varchar(100) NULL, `color` varchar(7), `notes` text NULL, `template_id` NULL, `created_by_id` NULL, `updated_by_id` NULL, `created_at`, `updated_at` | FK `units` CASCADE、`locations` RESTRICT、`shift_templates` SET NULL、`users` SET NULL；index `unit_id`、`location_id`、`shift_date`、`(shift_date, unit_id)` |
+
+| # | 決定 | 原因 |
+| --- | --- | --- |
+| 1 | 更掛 staff **unit** 唔係 `users` | users 同 units 冇關聯；週格按員工排 |
+| 2 | 模板值複製落更 | 改／刪模板唔會改寫已排嘅更 |
+| 3 | `end_time > start_time`（API 422） | 過夜更延後；將來可加 `ends_next_day` |
+| 4 | 重疊唔擋 | 需求：只提示 |
+| 5 | 刪分店被已有更擋住（RESTRICT） | 避免更表無聲消失；刪員工則連更一齊刪（CASCADE） |
+
 ## 薪資／加班（OT）計算設計
 
 ### 確認的決定

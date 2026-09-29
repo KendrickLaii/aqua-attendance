@@ -37,6 +37,7 @@ Branding is generic (“AQUA Attendance”). The data model still fits education
 | **Course enrollment** (`course_enrollments`) | Links a student unit to a course SKU (active / completed / cancelled), with optional start/end dates |
 | **Tuition invoice** (`tuition_invoices`) | One student bill per calendar month (`kind=tuition`), generated from overlapping active enrollments — per-session charges come from `enrollment_purchases`. `kind=manual` for ad-hoc/walk-in invoices (can settle session purchases). Negative totals are **credit notes** (`/attendance/credit-notes`) with printable refund slips and `payable_to_name` / `payee_name`. Per-location invoice numbering + printable layout. Line items snapshot SKU price. Not the Vuexy `/apps/invoice` demo |
 | **Tuition receipt** (`tuition_receipts`) | Posted payment that marks one or more issued invoices `paid`. Staff types `receipt_no`. Void + remove reuses the number |
+| **Shift** (`shifts`, `shift_templates`) | Simple Teams-style staff rota: one row per staff unit + date + start/end time + location. Templates (name, times, colour) are copied onto the shift when used. **Record only** — not read by attendance, summaries or payroll |
 
 ## Repository layout
 
@@ -212,6 +213,7 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 | Courses | `/api/course-spus`, `/course-skus`, `/course-enrollments` (incl. `POST /course-enrollments/{id}/purchases`) | Admin |
 | Tuition invoices | `/api/tuition-invoices` (list/get/patch, `POST /generate`, `POST /manual`, `GET /next-no`, `POST /allocate-no`) | Admin |
 | Tuition receipts | `/api/tuition-receipts` (list/create, `open-invoices`, `/{id}/void`, `DELETE`) | Admin |
+| Shifts | `/api/shift-templates` (CRUD), `/api/shifts` (`GET ?start=&end=&location_id=`, CRUD, `POST /copy-week`) | Admin |
 | Uploads | `POST /api/uploads` (admin); `GET /api/uploads/{key}` (public UUID URL) | Mixed |
 | Health | `/api/health` | None |
 
@@ -230,6 +232,7 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/scanner` | Logged in | Web scanner (token + location) |
 | `/attendance/log` | Logged in | Event log, manual correction, CSV export |
 | `/attendance/summaries` | Admin | Monthly attendance summaries (overview → detail, Generate) |
+| `/attendance/shifts` | Admin | Weekly staff shift schedule (templates, one-click add, drag to move, copy last week, print whole week or per-staff sheets for a week or a month, CSV) |
 | `/attendance/payroll` | Admin | Payroll records, approve, generate from summaries |
 | `/attendance/notifications` | Admin | Notification center |
 | `/attendance/audit-logs` | Superadmin | Audit log query |

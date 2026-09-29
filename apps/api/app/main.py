@@ -21,6 +21,7 @@ from app.routers import (
     notifications,
     payroll_records,
     qr,
+    shifts,
     staff_profiles,
     student_profiles,
     tuition_invoices,
@@ -66,6 +67,8 @@ app.include_router(course_skus.router, prefix="/api")
 app.include_router(course_enrollments.router, prefix="/api")
 app.include_router(tuition_invoices.router, prefix="/api")
 app.include_router(tuition_receipts.router, prefix="/api")  # receipts settle issued invoices
+app.include_router(shifts.templates_router, prefix="/api")
+app.include_router(shifts.router, prefix="/api")
 
 
 

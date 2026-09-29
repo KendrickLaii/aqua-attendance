@@ -598,7 +598,7 @@ async function printManualInvoice() {
             lines: validLines as ManualInvoiceLine[],
           })
 
-      if (isEdit.value) {
+      if (!printWindow) {
         try {
           printWindow = openTuitionInvoicePrintPlaceholder()
         }

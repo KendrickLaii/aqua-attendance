@@ -28,11 +28,13 @@ declare global {
   const REMOVE_VOIDED_RECEIPT: typeof import('./src/utils/billingStaffCopy')['REMOVE_VOIDED_RECEIPT']
   const SCAN_ENTRY_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']
   const SCAN_TOKEN_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']
+  const SHIFT_COLORS: typeof import('./src/utils/shiftDisplay')['SHIFT_COLORS']
   const UNIT_QR_CARD_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']
   const UNIT_QR_IMAGE_SIZE: typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']
   const UNIT_QR_PRINT_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']
   const VOID_RECEIPT_HINT: typeof import('./src/utils/billingStaffCopy')['VOID_RECEIPT_HINT']
   const acceptHMRUpdate: typeof import('pinia')['acceptHMRUpdate']
+  const addDays: typeof import('./src/utils/shiftDisplay')['addDays']
   const addDetailPhotoRow: typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
@@ -41,6 +43,7 @@ declare global {
   const attendanceCreatePasswordValidator: typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']
   const attendanceRoleToCaslRules: typeof import('./src/utils/attendanceCasl')['attendanceRoleToCaslRules']
   const autoResetRef: typeof import('@vueuse/core')['autoResetRef']
+  const avatarColor: typeof import('./src/utils/shiftDisplay')['avatarColor']
   const avatarText: typeof import('./src/@core/utils/formatters')['avatarText']
   const betweenValidator: typeof import('./src/@core/utils/validators')['betweenValidator']
   const billingLabel: typeof import('./src/utils/invoiceDisplay')['billingLabel']
@@ -50,6 +53,8 @@ declare global {
   const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
   const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
+  const buildShiftCsv: typeof import('./src/utils/shiftDisplay')['buildShiftCsv']
+  const buildShiftPrintHtml: typeof import('./src/utils/printShiftWeek')['buildShiftPrintHtml']
   const buildTuitionCreditNotePrintHtml: typeof import('./src/utils/printTuitionCreditNote')['buildTuitionCreditNotePrintHtml']
   const buildTuitionInvoicePrintHtml: typeof import('./src/utils/printTuitionInvoice')['buildTuitionInvoicePrintHtml']
   const buildUnitEnrollmentRows: typeof import('./src/utils/courseEnrollmentDisplay')['buildUnitEnrollmentRows']
@@ -58,6 +63,7 @@ declare global {
   const canEditPayrollAdjustments: typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']
   const canPayPayroll: typeof import('./src/utils/payrollDisplay')['canPayPayroll']
   const cardCoverUrl: typeof import('./src/utils/locationHours')['cardCoverUrl']
+  const cellKey: typeof import('./src/utils/shiftDisplay')['cellKey']
   const classPreview: typeof import('./src/utils/invoiceDisplay')['classPreview']
   const clearAttendanceSessionCookies: typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']
   const compareSortValues: typeof import('./src/utils/tableSort')['compareSortValues']
@@ -124,6 +130,7 @@ declare global {
   const filterSelectedTableRows: typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']
   const filterSummariesByDetailStatus: typeof import('./src/utils/summaryDisplay')['filterSummariesByDetailStatus']
   const filterTuitionInvoices: typeof import('./src/utils/invoiceDisplay')['filterTuitionInvoices']
+  const findOverlaps: typeof import('./src/utils/shiftDisplay')['findOverlaps']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
   const formatApiDetail: typeof import('./src/utils/formatApiDetail')['formatApiDetail']
   const formatApiError: typeof import('./src/utils/formatApiDetail')['formatApiError']
@@ -133,6 +140,7 @@ declare global {
   const formatCardBusinessHours: typeof import('./src/utils/locationHours')['formatCardBusinessHours']
   const formatDate: typeof import('./src/@core/utils/formatters')['formatDate']
   const formatDateToMonthShort: typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']
+  const formatDayHeader: typeof import('./src/utils/shiftDisplay')['formatDayHeader']
   const formatDayHours: typeof import('./src/utils/summaryDisplay')['formatDayHours']
   const formatDaySlots: typeof import('./src/utils/summaryDisplay')['formatDaySlots']
   const formatEnrollmentRange: typeof import('./src/utils/courseEnrollmentDisplay')['formatEnrollmentRange']
@@ -141,6 +149,7 @@ declare global {
   const formatInvoiceQty: typeof import('./src/utils/invoiceDisplay')['formatInvoiceQty']
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
+  const formatMonthLabel: typeof import('./src/utils/shiftDisplay')['formatMonthLabel']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
   const formatPayrollChequeNumber: typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']
   const formatPayrollCurrency: typeof import('./src/utils/payrollDisplay')['formatPayrollCurrency']
@@ -149,11 +158,13 @@ declare global {
   const formatPayrollHours: typeof import('./src/utils/payrollDisplay')['formatPayrollHours']
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
   const formatRosterDate: typeof import('./src/utils/courseRosterDisplay')['formatRosterDate']
+  const formatShiftHours: typeof import('./src/utils/shiftDisplay')['formatShiftHours']
   const formatSummaryDateWithWeekday: typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']
   const formatSummaryGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']
   const formatTotalHours: typeof import('./src/utils/summaryDisplay')['formatTotalHours']
   const formatTotalSlots: typeof import('./src/utils/summaryDisplay')['formatTotalSlots']
   const formatValue: typeof import('./src/utils/review-format')['formatValue']
+  const formatWeekRange: typeof import('./src/utils/shiftDisplay')['formatWeekRange']
   const getActivePinia: typeof import('pinia')['getActivePinia']
   const getAttendanceRole: typeof import('./src/utils/attendanceSession')['getAttendanceRole']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
@@ -161,8 +172,10 @@ declare global {
   const getDateRangeIso: typeof import('./src/utils/attendanceDisplay')['getDateRangeIso']
   const getSummaryDateParts: typeof import('./src/utils/attendanceDisplay')['getSummaryDateParts']
   const getTodayRangeIso: typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']
+  const groupShiftsByCell: typeof import('./src/utils/shiftDisplay')['groupShiftsByCell']
   const h: typeof import('vue')['h']
   const hexToRgb: typeof import('./src/@core/utils/colorConverter')['hexToRgb']
+  const hhmm: typeof import('./src/utils/shiftDisplay')['hhmm']
   const hoursScheduleToBusinessHours: typeof import('./src/utils/locationHours')['hoursScheduleToBusinessHours']
   const hoursScheduleToPayload: typeof import('./src/utils/locationHours')['hoursScheduleToPayload']
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
@@ -205,6 +218,7 @@ declare global {
   const isTableContent: typeof import('./src/composables/useTaxComputationReview')['isTableContent']
   const isTaxScheduleEntry: typeof import('./src/composables/useTaxComputationReview')['isTaxScheduleEntry']
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
+  const isWeekend: typeof import('./src/utils/shiftDisplay')['isWeekend']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
   const leaveClassUnbilledNote: typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
@@ -224,6 +238,10 @@ declare global {
   const matchesRosterSearch: typeof import('./src/utils/courseRosterDisplay')['matchesRosterSearch']
   const maxCharsRule: typeof import('./src/@core/utils/validators')['maxCharsRule']
   const meetingDaysLabel: typeof import('./src/utils/courseRosterDisplay')['meetingDaysLabel']
+  const mondayOf: typeof import('./src/utils/shiftDisplay')['mondayOf']
+  const monthDates: typeof import('./src/utils/shiftDisplay')['monthDates']
+  const monthOfWeek: typeof import('./src/utils/shiftDisplay')['monthOfWeek']
+  const monthOptions: typeof import('./src/utils/shiftDisplay')['monthOptions']
   const needsAuthenticatedMediaFetch: typeof import('./src/utils/mediaUrl')['needsAuthenticatedMediaFetch']
   const needsManualReview: typeof import('./src/utils/summaryDisplay')['needsManualReview']
   const nextTick: typeof import('vue')['nextTick']
@@ -254,7 +272,9 @@ declare global {
   const openTuitionInvoicePrintPlaceholder: typeof import('./src/utils/printTuitionInvoice')['openTuitionInvoicePrintPlaceholder']
   const openTuitionReceiptPrintPlaceholder: typeof import('./src/utils/printTuitionReceipt')['openTuitionReceiptPrintPlaceholder']
   const openUnitQrPrintPlaceholder: typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']
+  const overlappingShiftIds: typeof import('./src/utils/shiftDisplay')['overlappingShiftIds']
   const paginationMeta: typeof import('./src/utils/paginationMeta')['paginationMeta']
+  const parseIsoDate: typeof import('./src/utils/shiftDisplay')['parseIsoDate']
   const parsePayrollCurrencyInput: typeof import('./src/utils/payrollDisplay')['parsePayrollCurrencyInput']
   const passwordValidator: typeof import('./src/@core/utils/validators')['passwordValidator']
   const pausableWatch: typeof import('@vueuse/core')['pausableWatch']
@@ -271,6 +291,7 @@ declare global {
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const printAttendanceSummaries: typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']
   const printPayrollSlip: typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']
+  const printShiftWeek: typeof import('./src/utils/printShiftWeek')['printShiftWeek']
   const printTuitionInvoice: typeof import('./src/utils/printTuitionInvoice')['printTuitionInvoice']
   const printTuitionReceipt: typeof import('./src/utils/printTuitionReceipt')['printTuitionReceipt']
   const printUnitQrs: typeof import('./src/utils/printUnitQrs')['printUnitQrs']
@@ -284,6 +305,7 @@ declare global {
   const reactiveComputed: typeof import('@vueuse/core')['reactiveComputed']
   const reactiveOmit: typeof import('@vueuse/core')['reactiveOmit']
   const reactivePick: typeof import('@vueuse/core')['reactivePick']
+  const readableTextColor: typeof import('./src/utils/shiftDisplay')['readableTextColor']
   const readonly: typeof import('vue')['readonly']
   const ref: typeof import('vue')['ref']
   const refAutoReset: typeof import('@vueuse/core')['refAutoReset']
@@ -316,11 +338,14 @@ declare global {
   const shallowReadonly: typeof import('vue')['shallowReadonly']
   const shallowRef: typeof import('vue')['shallowRef']
   const shiftDateKey: typeof import('./src/utils/attendanceDisplay')['shiftDateKey']
+  const shiftMinutes: typeof import('./src/utils/shiftDisplay')['shiftMinutes']
   const showCardIcon: typeof import('./src/utils/locationHours')['showCardIcon']
   const skuBillingPreview: typeof import('./src/utils/courseRosterDisplay')['skuBillingPreview']
   const skuIdFromRouteQuery: typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']
   const sortHeaderTitle: typeof import('./src/utils/tableSort')['sortHeaderTitle']
   const sortIconFor: typeof import('./src/utils/tableSort')['sortIconFor']
+  const staffInitials: typeof import('./src/utils/shiftDisplay')['staffInitials']
+  const staffRowsForLocation: typeof import('./src/utils/shiftDisplay')['staffRowsForLocation']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const studentCode: typeof import('./src/utils/courseRosterDisplay')['studentCode']
   const studentLabel: typeof import('./src/utils/courseRosterDisplay')['studentLabel']
@@ -332,6 +357,8 @@ declare global {
   const templateRef: typeof import('@vueuse/core')['templateRef']
   const throttledRef: typeof import('@vueuse/core')['throttledRef']
   const throttledWatch: typeof import('@vueuse/core')['throttledWatch']
+  const timeToMinutes: typeof import('./src/utils/shiftDisplay')['timeToMinutes']
+  const toIsoDate: typeof import('./src/utils/shiftDisplay')['toIsoDate']
   const toQrDataUrl: typeof import('./src/utils/qrCodeDataUrl')['toQrDataUrl']
   const toRaw: typeof import('vue')['toRaw']
   const toReactive: typeof import('@vueuse/core')['toReactive']
@@ -340,6 +367,7 @@ declare global {
   const toRoman: typeof import('./src/utils/review-format')['toRoman']
   const toValue: typeof import('vue')['toValue']
   const toggleSort: typeof import('./src/utils/tableSort')['toggleSort']
+  const totalMinutes: typeof import('./src/utils/shiftDisplay')['totalMinutes']
   const triggerRef: typeof import('vue')['triggerRef']
   const tryOnBeforeMount: typeof import('@vueuse/core')['tryOnBeforeMount']
   const tryOnBeforeUnmount: typeof import('@vueuse/core')['tryOnBeforeUnmount']
@@ -567,6 +595,8 @@ declare global {
   const watchThrottled: typeof import('@vueuse/core')['watchThrottled']
   const watchTriggerable: typeof import('@vueuse/core')['watchTriggerable']
   const watchWithFilter: typeof import('@vueuse/core')['watchWithFilter']
+  const weekDates: typeof import('./src/utils/shiftDisplay')['weekDates']
+  const weekFromQuery: typeof import('./src/utils/shiftDisplay')['weekFromQuery']
   const weekdayOptions: typeof import('./src/utils/courseRosterDisplay')['weekdayOptions']
   const whenever: typeof import('@vueuse/core')['whenever']
   const zonedTimeToUtc: typeof import('./src/utils/attendanceDisplay')['zonedTimeToUtc']
@@ -605,11 +635,13 @@ declare module 'vue' {
     readonly REMOVE_VOIDED_RECEIPT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_VOIDED_RECEIPT']>
     readonly SCAN_ENTRY_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']>
     readonly SCAN_TOKEN_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']>
+    readonly SHIFT_COLORS: UnwrapRef<typeof import('./src/utils/shiftDisplay')['SHIFT_COLORS']>
     readonly UNIT_QR_CARD_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']>
     readonly UNIT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']>
     readonly UNIT_QR_PRINT_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']>
     readonly VOID_RECEIPT_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['VOID_RECEIPT_HINT']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
+    readonly addDays: UnwrapRef<typeof import('./src/utils/shiftDisplay')['addDays']>
     readonly addDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
@@ -618,6 +650,7 @@ declare module 'vue' {
     readonly attendanceCreatePasswordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']>
     readonly attendanceRoleToCaslRules: UnwrapRef<typeof import('./src/utils/attendanceCasl')['attendanceRoleToCaslRules']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
+    readonly avatarColor: UnwrapRef<typeof import('./src/utils/shiftDisplay')['avatarColor']>
     readonly avatarText: UnwrapRef<typeof import('./src/@core/utils/formatters')['avatarText']>
     readonly betweenValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['betweenValidator']>
     readonly billingLabel: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['billingLabel']>
@@ -627,6 +660,8 @@ declare module 'vue' {
     readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
     readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
+    readonly buildShiftCsv: UnwrapRef<typeof import('./src/utils/shiftDisplay')['buildShiftCsv']>
+    readonly buildShiftPrintHtml: UnwrapRef<typeof import('./src/utils/printShiftWeek')['buildShiftPrintHtml']>
     readonly buildTuitionCreditNotePrintHtml: UnwrapRef<typeof import('./src/utils/printTuitionCreditNote')['buildTuitionCreditNotePrintHtml']>
     readonly buildTuitionInvoicePrintHtml: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['buildTuitionInvoicePrintHtml']>
     readonly buildUnitEnrollmentRows: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['buildUnitEnrollmentRows']>
@@ -635,6 +670,7 @@ declare module 'vue' {
     readonly canEditPayrollAdjustments: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']>
     readonly canPayPayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canPayPayroll']>
     readonly cardCoverUrl: UnwrapRef<typeof import('./src/utils/locationHours')['cardCoverUrl']>
+    readonly cellKey: UnwrapRef<typeof import('./src/utils/shiftDisplay')['cellKey']>
     readonly classPreview: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['classPreview']>
     readonly clearAttendanceSessionCookies: UnwrapRef<typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']>
     readonly compareSortValues: UnwrapRef<typeof import('./src/utils/tableSort')['compareSortValues']>
@@ -701,6 +737,7 @@ declare module 'vue' {
     readonly filterSelectedTableRows: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['filterSelectedTableRows']>
     readonly filterSummariesByDetailStatus: UnwrapRef<typeof import('./src/utils/summaryDisplay')['filterSummariesByDetailStatus']>
     readonly filterTuitionInvoices: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['filterTuitionInvoices']>
+    readonly findOverlaps: UnwrapRef<typeof import('./src/utils/shiftDisplay')['findOverlaps']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
     readonly formatApiDetail: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiDetail']>
     readonly formatApiError: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiError']>
@@ -710,6 +747,7 @@ declare module 'vue' {
     readonly formatCardBusinessHours: UnwrapRef<typeof import('./src/utils/locationHours')['formatCardBusinessHours']>
     readonly formatDate: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDate']>
     readonly formatDateToMonthShort: UnwrapRef<typeof import('./src/@core/utils/formatters')['formatDateToMonthShort']>
+    readonly formatDayHeader: UnwrapRef<typeof import('./src/utils/shiftDisplay')['formatDayHeader']>
     readonly formatDayHours: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatDayHours']>
     readonly formatDaySlots: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatDaySlots']>
     readonly formatEnrollmentRange: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['formatEnrollmentRange']>
@@ -718,6 +756,7 @@ declare module 'vue' {
     readonly formatInvoiceQty: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['formatInvoiceQty']>
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
+    readonly formatMonthLabel: UnwrapRef<typeof import('./src/utils/shiftDisplay')['formatMonthLabel']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
     readonly formatPayrollChequeNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']>
     readonly formatPayrollCurrency: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollCurrency']>
@@ -726,11 +765,13 @@ declare module 'vue' {
     readonly formatPayrollHours: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollHours']>
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
     readonly formatRosterDate: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['formatRosterDate']>
+    readonly formatShiftHours: UnwrapRef<typeof import('./src/utils/shiftDisplay')['formatShiftHours']>
     readonly formatSummaryDateWithWeekday: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']>
     readonly formatSummaryGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']>
     readonly formatTotalHours: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatTotalHours']>
     readonly formatTotalSlots: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatTotalSlots']>
     readonly formatValue: UnwrapRef<typeof import('./src/utils/review-format')['formatValue']>
+    readonly formatWeekRange: UnwrapRef<typeof import('./src/utils/shiftDisplay')['formatWeekRange']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getAttendanceRole: UnwrapRef<typeof import('./src/utils/attendanceSession')['getAttendanceRole']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
@@ -738,8 +779,10 @@ declare module 'vue' {
     readonly getDateRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getDateRangeIso']>
     readonly getSummaryDateParts: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getSummaryDateParts']>
     readonly getTodayRangeIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['getTodayRangeIso']>
+    readonly groupShiftsByCell: UnwrapRef<typeof import('./src/utils/shiftDisplay')['groupShiftsByCell']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hexToRgb: UnwrapRef<typeof import('./src/@core/utils/colorConverter')['hexToRgb']>
+    readonly hhmm: UnwrapRef<typeof import('./src/utils/shiftDisplay')['hhmm']>
     readonly hoursScheduleToBusinessHours: UnwrapRef<typeof import('./src/utils/locationHours')['hoursScheduleToBusinessHours']>
     readonly hoursScheduleToPayload: UnwrapRef<typeof import('./src/utils/locationHours')['hoursScheduleToPayload']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
@@ -782,6 +825,7 @@ declare module 'vue' {
     readonly isTableContent: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['isTableContent']>
     readonly isTaxScheduleEntry: UnwrapRef<typeof import('./src/composables/useTaxComputationReview')['isTaxScheduleEntry']>
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
+    readonly isWeekend: UnwrapRef<typeof import('./src/utils/shiftDisplay')['isWeekend']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
     readonly leaveClassUnbilledNote: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
@@ -801,6 +845,10 @@ declare module 'vue' {
     readonly matchesRosterSearch: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['matchesRosterSearch']>
     readonly maxCharsRule: UnwrapRef<typeof import('./src/@core/utils/validators')['maxCharsRule']>
     readonly meetingDaysLabel: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['meetingDaysLabel']>
+    readonly mondayOf: UnwrapRef<typeof import('./src/utils/shiftDisplay')['mondayOf']>
+    readonly monthDates: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthDates']>
+    readonly monthOfWeek: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthOfWeek']>
+    readonly monthOptions: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthOptions']>
     readonly needsAuthenticatedMediaFetch: UnwrapRef<typeof import('./src/utils/mediaUrl')['needsAuthenticatedMediaFetch']>
     readonly needsManualReview: UnwrapRef<typeof import('./src/utils/summaryDisplay')['needsManualReview']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
@@ -831,7 +879,9 @@ declare module 'vue' {
     readonly openTuitionInvoicePrintPlaceholder: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['openTuitionInvoicePrintPlaceholder']>
     readonly openTuitionReceiptPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printTuitionReceipt')['openTuitionReceiptPrintPlaceholder']>
     readonly openUnitQrPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printUnitQrs')['openUnitQrPrintPlaceholder']>
+    readonly overlappingShiftIds: UnwrapRef<typeof import('./src/utils/shiftDisplay')['overlappingShiftIds']>
     readonly paginationMeta: UnwrapRef<typeof import('./src/utils/paginationMeta')['paginationMeta']>
+    readonly parseIsoDate: UnwrapRef<typeof import('./src/utils/shiftDisplay')['parseIsoDate']>
     readonly parsePayrollCurrencyInput: UnwrapRef<typeof import('./src/utils/payrollDisplay')['parsePayrollCurrencyInput']>
     readonly passwordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['passwordValidator']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
@@ -848,6 +898,7 @@ declare module 'vue' {
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly printAttendanceSummaries: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']>
     readonly printPayrollSlip: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']>
+    readonly printShiftWeek: UnwrapRef<typeof import('./src/utils/printShiftWeek')['printShiftWeek']>
     readonly printTuitionInvoice: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['printTuitionInvoice']>
     readonly printTuitionReceipt: UnwrapRef<typeof import('./src/utils/printTuitionReceipt')['printTuitionReceipt']>
     readonly printUnitQrs: UnwrapRef<typeof import('./src/utils/printUnitQrs')['printUnitQrs']>
@@ -861,6 +912,7 @@ declare module 'vue' {
     readonly reactiveComputed: UnwrapRef<typeof import('@vueuse/core')['reactiveComputed']>
     readonly reactiveOmit: UnwrapRef<typeof import('@vueuse/core')['reactiveOmit']>
     readonly reactivePick: UnwrapRef<typeof import('@vueuse/core')['reactivePick']>
+    readonly readableTextColor: UnwrapRef<typeof import('./src/utils/shiftDisplay')['readableTextColor']>
     readonly readonly: UnwrapRef<typeof import('vue')['readonly']>
     readonly ref: UnwrapRef<typeof import('vue')['ref']>
     readonly refAutoReset: UnwrapRef<typeof import('@vueuse/core')['refAutoReset']>
@@ -893,11 +945,14 @@ declare module 'vue' {
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly shiftDateKey: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['shiftDateKey']>
+    readonly shiftMinutes: UnwrapRef<typeof import('./src/utils/shiftDisplay')['shiftMinutes']>
     readonly showCardIcon: UnwrapRef<typeof import('./src/utils/locationHours')['showCardIcon']>
     readonly skuBillingPreview: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['skuBillingPreview']>
     readonly skuIdFromRouteQuery: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']>
     readonly sortHeaderTitle: UnwrapRef<typeof import('./src/utils/tableSort')['sortHeaderTitle']>
     readonly sortIconFor: UnwrapRef<typeof import('./src/utils/tableSort')['sortIconFor']>
+    readonly staffInitials: UnwrapRef<typeof import('./src/utils/shiftDisplay')['staffInitials']>
+    readonly staffRowsForLocation: UnwrapRef<typeof import('./src/utils/shiftDisplay')['staffRowsForLocation']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly studentCode: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['studentCode']>
     readonly studentLabel: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['studentLabel']>
@@ -909,6 +964,8 @@ declare module 'vue' {
     readonly templateRef: UnwrapRef<typeof import('@vueuse/core')['templateRef']>
     readonly throttledRef: UnwrapRef<typeof import('@vueuse/core')['throttledRef']>
     readonly throttledWatch: UnwrapRef<typeof import('@vueuse/core')['throttledWatch']>
+    readonly timeToMinutes: UnwrapRef<typeof import('./src/utils/shiftDisplay')['timeToMinutes']>
+    readonly toIsoDate: UnwrapRef<typeof import('./src/utils/shiftDisplay')['toIsoDate']>
     readonly toQrDataUrl: UnwrapRef<typeof import('./src/utils/qrCodeDataUrl')['toQrDataUrl']>
     readonly toRaw: UnwrapRef<typeof import('vue')['toRaw']>
     readonly toReactive: UnwrapRef<typeof import('@vueuse/core')['toReactive']>
@@ -917,6 +974,7 @@ declare module 'vue' {
     readonly toRoman: UnwrapRef<typeof import('./src/utils/review-format')['toRoman']>
     readonly toValue: UnwrapRef<typeof import('vue')['toValue']>
     readonly toggleSort: UnwrapRef<typeof import('./src/utils/tableSort')['toggleSort']>
+    readonly totalMinutes: UnwrapRef<typeof import('./src/utils/shiftDisplay')['totalMinutes']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>
     readonly tryOnBeforeMount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeMount']>
     readonly tryOnBeforeUnmount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeUnmount']>
@@ -1144,6 +1202,8 @@ declare module 'vue' {
     readonly watchThrottled: UnwrapRef<typeof import('@vueuse/core')['watchThrottled']>
     readonly watchTriggerable: UnwrapRef<typeof import('@vueuse/core')['watchTriggerable']>
     readonly watchWithFilter: UnwrapRef<typeof import('@vueuse/core')['watchWithFilter']>
+    readonly weekDates: UnwrapRef<typeof import('./src/utils/shiftDisplay')['weekDates']>
+    readonly weekFromQuery: UnwrapRef<typeof import('./src/utils/shiftDisplay')['weekFromQuery']>
     readonly weekdayOptions: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['weekdayOptions']>
     readonly whenever: UnwrapRef<typeof import('@vueuse/core')['whenever']>
     readonly zonedTimeToUtc: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['zonedTimeToUtc']>

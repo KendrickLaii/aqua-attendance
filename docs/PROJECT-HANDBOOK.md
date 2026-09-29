@@ -10,6 +10,7 @@
    - [1.9 課程資料模型](#19-課程資料模型)
    - [1.10 學費發票](#110-學費發票)
    - [1.12 學費收條](#112-學費收條)
+   - [1.13 員工更表](#113-員工更表)
    - [1.11 ERP 不在本專案範圍](#111-erp-不在本專案範圍)
 2. [本地開發與快速開始](#2-本地開發與快速開始)
 3. [生產部署](#3-生產部署)
@@ -273,6 +274,34 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - `POST .../void`：收條變 void，連結 `is_posted=false`，發票回復 `issued`（可以再開收條或改發票）。
 - `DELETE`：只准 voided；posted → 422。Remove 之後同一個收條號可以再用。
 - 列印：Official Receipt；負數金額標題為 CREDIT NOTE。
+
+### 1.13 員工更表
+
+簡化版 Teams Shifts，俾 admin（本身即員工）自己報更／排更。**純記錄**：出勤、Summaries、Payroll 完全唔讀呢兩個表。需求與設計見 [需求理解.md](需求理解.md)、[方案設計.md](方案設計.md)（2026-09-29）。
+
+| 層級 | 資料表 | 說明 |
+| ------ | ------ | ------ |
+| 模板 | `shift_templates` | 名稱、開始／結束時間、顏色 `#RRGGBB`、`sort_order`。 |
+| 更 | `shifts` | 一行 = 一個 staff unit 喺某日某分店嘅一更。`title`／`color`／時間喺儲存時由模板**複製**，改／刪模板唔會改舊更（`template_id` SET NULL）。記錄 `created_by_id`／`updated_by_id`。 |
+
+#### 規則
+
+- 只可以排俾 `unit_type=staff`；`end_time` 必須遲過 `start_time`（**過夜更未支援**，P2）。
+- 同人同日可以有多更；時間重疊只喺 UI 提示，後端唔擋。
+- `GET /api/shifts?start=&end=` 包頭包尾，最多 62 日；`location_id` 只篩更嘅分店。
+- `POST /api/shifts/copy-week`：`source_week_start`、`target_week_start` 必須係星期一；目標週已有「同人同分店同日同時間」嘅更、或員工已 inactive → 跳過；回 `{created, skipped}`，重複撳唔會抄多份。
+
+#### Web（`/attendance/shifts`）
+
+- 週視圖：行 = 註冊喺／可以喺該分店打卡嘅 active staff，加上該週已有更嘅人；欄 = 星期一至日，標題顯示當日更數同時數；員工名下顯示週時數。
+- 撳格仔 → 模板選單一撳加更（冇模板就直接開表單）；撳更 → 編輯／刪除。
+- 拖放搬更（改人或改日）；按住 Ctrl／Alt／⌘ 拖放 = 複製。
+- 週次同分店寫入 URL（`?week=YYYY-MM-DD&location=`），重新整理或分享連結保留畫面。
+- 「Export」→「Print…」開列印對話框，或下載 CSV（UTF-8 BOM）。
+- 期間：**Week**（目前週）／**Month**（揀月份；預設為目前週所屬月份，即包含星期四嗰個月）。月份會另外載入該月嘅更（仍跟分店篩選）。
+- 版面：**Week grid**（全部人一張，A4 橫向，只限 Week）／**Personal schedule**（每人一張，A4 直向，逐日列時間、更名、時數同總時數；Month 會喺每個星期日後加「Week total」小計）。
+- 揀印邊啲人：全部顯示中嘅員工／只印該期間有更嘅員工／自己揀（可多選）。員工名旁邊嘅列印掣 = 直接揀咗嗰個人 + Personal schedule；想印佢成個月就喺對話框轉 Month。
+- 開關（switch）：備註、休息日（Off）、每人一頁、簽名欄（員工簽名確認報更）。版面同開關會存喺瀏覽器 `localStorage`（`aqua.shiftPrint.prefs`），每部機記住自己嘅預設，例如簽名欄一直開住。揀「All locations」時每更會顯示分店。
 
 ### 1.11 ERP 不在本專案範圍
 

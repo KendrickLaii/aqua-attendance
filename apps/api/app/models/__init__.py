@@ -16,10 +16,11 @@ from app.models.tuition_invoice import TuitionInvoice
 from app.models.invoice_counter import InvoiceCounter
 from app.models.credit_note_counter import CreditNoteCounter
 from app.models.tuition_receipt import TuitionReceipt
+from app.models.shift import Shift, ShiftTemplate
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
     "Notification", "AttendanceSummary", "PayrollRecord", "AuditLog",
     "CourseSpu", "CourseSku", "CourseEnrollment", "EnrollmentPurchase", "TuitionInvoice", "InvoiceCounter",
-    "CreditNoteCounter", "TuitionReceipt",
+    "CreditNoteCounter", "TuitionReceipt", "Shift", "ShiftTemplate",
 ]
