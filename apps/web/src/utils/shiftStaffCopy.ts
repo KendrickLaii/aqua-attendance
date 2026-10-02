@@ -28,7 +28,7 @@ export const STAFF_PIN_NONE_HINT =
 export const STAFF_PIN_SAVE_FIRST_HINT = '先儲存呢個員工，然後先可以產生 PIN。'
 
 export const STAFF_PIN_REVEALED_HINT =
-  '即場交俾員工。系統只留哈希，關咗呢度就睇唔返。'
+  '即場交俾員工。系統只留Hash，關咗呢度就睇唔返。'
 
 export const STAFF_PIN_GENERATED_TOAST =
   'Shift PIN 已產生。即場抄低交俾員工——之後唔會再顯示。'
