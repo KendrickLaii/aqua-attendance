@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -18,7 +18,18 @@ class CourseEnrollment(Base):
     """Links a student unit to a course SKU they are (or were) enrolled in."""
 
     __tablename__ = "course_enrollments"
-    __table_args__ = (UniqueConstraint("unit_id", "sku_id", name="uq_course_enrollment_unit_sku"),)
+    __table_args__ = (
+        # One in-class row per student per class. Left / completed rows stay
+        # so invoices keep their enrollment, and the student can join again.
+        Index(
+            "uq_course_enrollment_unit_sku_active",
+            "unit_id",
+            "sku_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), nullable=False, index=True)

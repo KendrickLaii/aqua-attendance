@@ -7,8 +7,10 @@ import {
   deleteShift,
   updateShift,
 } from '@/api/attendance/shifts'
+import type { LocationItem } from '@/api/attendance/locations'
 import type { Unit } from '@/api/attendance/units'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { openCloseForLocationDate } from '@/utils/locationHours'
 import {
   SHIFT_COLORS,
   findOverlaps,
@@ -30,6 +32,7 @@ const props = defineProps<{
   initialLocationId: string | null
   staffOptions: Option[]
   locationOptions: Option[]
+  locations: LocationItem[]
   templates: ShiftTemplate[]
   existingShifts: Shift[]
   staffById: Map<string, Unit>
@@ -97,6 +100,29 @@ const headerSubtitle = computed(() => {
 /** Location we filled in automatically; a user-picked location is never overwritten. */
 let autoLocation: string | null = null
 
+/** Skip location-hour fills while the form is being loaded from a shift or defaults. */
+let suppressLocationHours = false
+
+/** Start/end still match the last location hours we applied, so a date change can refresh them. */
+let timesFromLocation = false
+
+let pendingLocationTimes: { start: string; end: string } | null = null
+
+function fillTimesFromLocation(locationId: string) {
+  const location = props.locations.find(item => item.id === locationId)
+  const span = openCloseForLocationDate(location, form.shift_date)
+  if (!span)
+    return false
+
+  pendingLocationTimes = { start: span.open, end: span.close }
+  form.start_time = span.open
+  form.end_time = span.close
+  form.template_id = null
+  timesFromLocation = true
+
+  return true
+}
+
 const homeOf = (unitId: string) => props.staffById.get(unitId)?.registered_location_id ?? null
 
 function onStaffPicked(unitId: string | null) {
@@ -123,8 +149,11 @@ watch(() => props.modelValue, open => {
   if (!open)
     return
   saveError.value = ''
+  timesFromLocation = false
+  pendingLocationTimes = null
 
   const s = props.editingShift
+  suppressLocationHours = true
   if (s) {
     Object.assign(form, {
       unit_id: s.unit_id,
@@ -147,10 +176,41 @@ watch(() => props.modelValue, open => {
     autoLocation = form.unit_id && form.location_id === homeOf(form.unit_id) ? form.location_id : null
     if (props.templates.length)
       applyTemplate(props.templates[0])
+    if (form.location_id)
+      fillTimesFromLocation(form.location_id)
   }
+  suppressLocationHours = false
+})
+
+watch(() => form.location_id, locationId => {
+  if (suppressLocationHours || !props.modelValue || !locationId)
+    return
+  fillTimesFromLocation(locationId)
+}, { flush: 'sync' })
+
+watch(() => form.shift_date, () => {
+  if (suppressLocationHours || !props.modelValue || !timesFromLocation || !form.location_id)
+    return
+  fillTimesFromLocation(form.location_id)
+}, { flush: 'sync' })
+
+watch(() => [form.start_time, form.end_time] as const, () => {
+  if (
+    pendingLocationTimes
+    && form.start_time === pendingLocationTimes.start
+    && form.end_time === pendingLocationTimes.end
+  ) {
+    timesFromLocation = true
+
+    return
+  }
+
+  timesFromLocation = false
 })
 
 function applyTemplate(t: ShiftTemplate) {
+  timesFromLocation = false
+  pendingLocationTimes = null
   Object.assign(form, {
     start_time: hhmm(t.start_time),
     end_time: hhmm(t.end_time),

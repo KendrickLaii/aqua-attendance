@@ -158,7 +158,7 @@ async def generate_monthly_tuition_invoices(
     last_day = date(year, month, calendar.monthrange(year, month)[1])
 
     enrollment_clauses = [
-        CourseEnrollment.status == "active",
+        CourseEnrollment.status.in_(["active", "completed"]),
         or_(CourseEnrollment.start_date.is_(None), CourseEnrollment.start_date <= last_day),
         or_(CourseEnrollment.end_date.is_(None), CourseEnrollment.end_date >= first_day),
         # per_session prices live on EnrollmentPurchase, not the SKU/enrollment.

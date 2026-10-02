@@ -17,10 +17,14 @@ const props = withDefaults(
 
     /** Seed list for searchable unit picker (Log page). Ignored when `unit` is set. */
     unitCatalog?: Unit[]
+
+    /** Person already chosen on the log filter. Pre-filled, still changeable. */
+    initialUnit?: Unit | null
   }>(),
   {
     unit: null,
     unitCatalog: () => [],
+    initialUnit: null,
   },
 )
 
@@ -32,7 +36,7 @@ const emit = defineEmits<{
 const locked = computed(() => !!props.unit)
 
 const form = reactive({
-  mode: 'full_day' as CorrectionMode,
+  mode: 'single' as CorrectionMode,
   unit_id: '',
   event_type: 'check_in' as 'check_in' | 'check_out',
   recorded_at: '',
@@ -325,7 +329,7 @@ function resetForm(presetUnit: Unit | null = null) {
   selectedUnit.value = presetUnit
 
   Object.assign(form, {
-    mode: 'full_day' as CorrectionMode,
+    mode: 'single' as CorrectionMode,
     unit_id: presetUnit?.id ?? '',
     event_type: 'check_in',
     recorded_at: '',
@@ -335,13 +339,12 @@ function resetForm(presetUnit: Unit | null = null) {
     notes: '',
   })
 
+  seedUnitOptions()
+
   if (presetUnit) {
     const scanIds = presetUnit.scan_locations?.map(l => l.id) ?? []
     if (scanIds.length === 1)
       form.location_id = scanIds[0]
-  }
-  else {
-    seedUnitOptions()
   }
 }
 
@@ -358,7 +361,7 @@ watch(
       await checkDuplicates()
     }
     else {
-      resetForm(null)
+      resetForm(props.initialUnit ?? null)
     }
   },
 )
@@ -471,7 +474,7 @@ function confirmDuplicateSave() {
 <template>
   <AttendanceFormDialog
     :model-value="modelValue"
-    title="Manual Correction !"
+    title="Manual Correction"
     icon="ri-edit-box-line"
     :max-width="520"
     :saving="saving"

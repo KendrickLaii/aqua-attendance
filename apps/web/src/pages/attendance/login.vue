@@ -131,6 +131,17 @@ async function handleLogin() {
           Sign In
         </VBtn>
       </VForm>
+      <div class="text-center mt-4">
+        <RouterLink
+          class="text-primary"
+          to="/staff/shifts"
+        >
+          Staff shift login
+        </RouterLink>
+        <div class="text-caption text-medium-emphasis mt-1">
+          員工用編號同 PIN 自己報更
+        </div>
+      </div>
     </VCard>
   </div>
 </template>

@@ -734,8 +734,8 @@ async function printManualInvoice() {
             <VCombobox
               v-model="manualForm.staff"
               :items="manualStaffOptions"
-              label="Opened by"
-              placeholder="Who opened this bill — for commission…"
+              label="Tutor"
+              placeholder="Tutor for this bill — for commission…"
               prepend-inner-icon="ri-user-star-line"
               density="compact"
               hint="Applies to every line; not printed on the invoice."

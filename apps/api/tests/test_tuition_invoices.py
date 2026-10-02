@@ -212,6 +212,50 @@ async def test_generate_skips_cancelled_enrollment(
     assert resp.json()["created"] == 0
 
 
+@pytest.mark.asyncio
+async def test_generate_september_after_end_date_auto_leave(
+    client: AsyncClient, admin_token: str, sample_unit: dict, monkeypatch
+) -> None:
+    from datetime import date
+
+    from app.services import course_enrollment_expiry as course_enrollment_expiry
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 9, 15))
+    spu = await _create_spu(client, admin_token)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    enrollment = await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        sku["id"],
+        start_date="2026-09-01",
+        end_date="2026-09-30",
+    )
+    assert enrollment["status"] == "active"
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 10, 2))
+    listed = await client.get(
+        f"/api/course-enrollments?sku_id={sku['id']}",
+        headers=_auth(admin_token),
+    )
+    assert listed.status_code == 200
+    assert listed.json()[0]["status"] == "completed"
+
+    september = await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=9",
+        headers=_auth(admin_token),
+    )
+    assert september.status_code == 200, september.text
+    assert september.json()["created"] == 1
+
+    october = await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=10",
+        headers=_auth(admin_token),
+    )
+    assert october.status_code == 200, october.text
+    assert october.json()["created"] == 0
+
+
 def _purchase(quantity=8, price=150, billed_line_id=None, purchased_at=date(2026, 6, 1)):
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -644,7 +688,7 @@ async def test_paid_invoice_cannot_change_status(
 
 
 @pytest.mark.asyncio
-async def test_generate_skips_null_price_and_completed_enrollment(
+async def test_generate_skips_null_price_and_bills_completed_enrollment(
     client: AsyncClient, admin_token: str, sample_unit: dict
 ) -> None:
     spu = await _create_spu(client, admin_token)
@@ -678,12 +722,14 @@ async def test_generate_skips_null_price_and_completed_enrollment(
         headers=_auth(admin_token),
     )
     assert resp.status_code == 200
-    assert resp.json()["created"] == 0
+    assert resp.json()["created"] == 1
     listed = await client.get(
         "/api/tuition-invoices?year=2026&month=6",
         headers=_auth(admin_token),
     )
-    assert listed.json() == []
+    invoices = listed.json()
+    assert len(invoices) == 1
+    assert len(invoices[0]["lines"]) == 1
 
 
 @pytest.mark.asyncio

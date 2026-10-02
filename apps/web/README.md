@@ -56,7 +56,8 @@ npm run dev
 | `/attendance/scanner` | Web 掃描（token + location） |
 | `/attendance/log` | 事件紀錄、手動校正、CSV 匯出 |
 | `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [attendance-summaries.md](../../docs/attendance-summaries.md) |
-| `/attendance/shifts` | 員工更表（週視圖；模板一撳加更、拖放搬更／Ctrl 複製、複製上週、列印（全週格或每人一張，可揀員工，可印成個月）／CSV；純記錄，唔影響出勤同薪資）— 見 [project-handbook.md](../../docs/project-handbook.md) §1.13 |
+| `/attendance/shifts` | 員工更表（週視圖；模板一撳加更、拖放搬更／Ctrl 複製、複製上週、列印／CSV；頁頂批核員工申請；純記錄，唔影響出勤同薪資）— 見 [project-handbook.md](../../docs/project-handbook.md) §1.13 |
+| `/staff/shifts` | 員工自助報更（員工編號 + PIN；英文介面，粵語只作提示；申請要等 admin 批准） |
 | `/attendance/payroll` | 月度薪資（總覽 → 每日彙總明細、審核、Generate）— 見 [attendance-summaries.md](../../docs/attendance-summaries.md) |
 | `/attendance/notifications` | 通知中心 |
 | `/attendance/audit-logs` | 稽核查詢（superadmin） |
@@ -71,7 +72,7 @@ npm run dev
 ## API 客戶端
 
 - `src/utils/attendanceApi.ts` — `ofetch`，Bearer token，401 自動 refresh
-- `src/api/attendance/` — 型別化的 endpoint（`courses.ts`、`tuitionInvoices.ts`、`tuitionReceipts.ts`、`shifts.ts`）
+- `src/api/attendance/` — 型別化的 endpoint（`courses.ts`、`tuitionInvoices.ts`、`tuitionReceipts.ts`、`shifts.ts`、`staffShifts.ts`）
 - `src/stores/useAttendanceAuthStore.ts` — session + cookie
 
 Token 儲存在 cookie（`attendanceAccessToken`）。相關注意事項請見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md)。

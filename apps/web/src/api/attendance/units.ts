@@ -41,6 +41,8 @@ export interface StaffProfileOut {
   work_schedule: string | null
   supervisor_id: string | null
   employment_notes: string | null
+  shift_pin_set: boolean
+  shift_pin_set_at: string | null
 }
 
 export interface Unit {
@@ -196,6 +198,10 @@ export async function updateUnit(unitId: string, payload: {
 
 export async function deleteUnit(unitId: string): Promise<void> {
   await $attendanceApi(`/units/${unitId}`, { method: 'DELETE' })
+}
+
+export async function resetStaffShiftPin(unitId: string): Promise<{ pin: string; shift_pin_set_at: string }> {
+  return await $attendanceApi(`/staff-profiles/${unitId}/shift-pin`, { method: 'POST' })
 }
 
 export async function updateStaffProfile(unitId: string, payload: StaffProfileInput): Promise<void> {

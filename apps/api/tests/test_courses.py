@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 import pytest
 from httpx import AsyncClient
@@ -385,20 +386,22 @@ async def test_enroll_with_term_dates_and_list_by_sku(
         json={
             "unit_id": sample_unit["id"],
             "sku_id": sku["id"],
-            "start_date": "2026-06-01",
-            "end_date": "2026-08-31",
+            "start_date": "2026-11-01",
+            "end_date": "2026-12-31",
         },
         headers=_auth(admin_token),
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["start_date"] == "2026-06-01"
-    assert body["end_date"] == "2026-08-31"
+    assert body["start_date"] == "2026-11-01"
+    assert body["end_date"] == "2026-12-31"
+    assert body["status"] == "active"
 
     listed = await client.get(f"/api/course-enrollments?sku_id={sku['id']}", headers=_auth(admin_token))
     assert listed.status_code == 200
     assert len(listed.json()) == 1
     assert listed.json()[0]["unit_id"] == sample_unit["id"]
+    assert listed.json()[0]["status"] == "active"
 
 
 @pytest.mark.asyncio
@@ -549,20 +552,20 @@ async def test_patch_enrollment_dates(
         json={
             "unit_id": sample_unit["id"],
             "sku_id": sku["id"],
-            "start_date": "2026-06-01",
-            "end_date": "2026-08-31",
+            "start_date": "2026-11-01",
+            "end_date": "2026-12-31",
         },
         headers=_auth(admin_token),
     )
     enrollment_id = created.json()["id"]
     patched = await client.patch(
         f"/api/course-enrollments/{enrollment_id}",
-        json={"start_date": "2026-07-01", "end_date": "2026-07-31"},
+        json={"start_date": "2026-11-15", "end_date": "2026-12-15"},
         headers=_auth(admin_token),
     )
     assert patched.status_code == 200, patched.text
-    assert patched.json()["start_date"] == "2026-07-01"
-    assert patched.json()["end_date"] == "2026-07-31"
+    assert patched.json()["start_date"] == "2026-11-15"
+    assert patched.json()["end_date"] == "2026-12-15"
 
 
 @pytest.mark.asyncio
@@ -576,14 +579,224 @@ async def test_patch_enrollment_start_after_existing_end_rejected(
         json={
             "unit_id": sample_unit["id"],
             "sku_id": sku["id"],
-            "start_date": "2026-06-01",
-            "end_date": "2026-06-30",
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-30",
         },
         headers=_auth(admin_token),
     )
     resp = await client.patch(
         f"/api/course-enrollments/{created.json()['id']}",
-        json={"start_date": "2026-07-01"},
+        json={"start_date": "2026-12-01"},
         headers=_auth(admin_token),
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reenroll_after_leave_keeps_old_row(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    first = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"], "start_date": "2026-11-01", "end_date": "2026-12-31"},
+        headers=_auth(admin_token),
+    )
+    assert first.status_code == 201, first.text
+    first_id = first.json()["id"]
+    cancel = await client.patch(
+        f"/api/course-enrollments/{first_id}",
+        json={"status": "cancelled"},
+        headers=_auth(admin_token),
+    )
+    assert cancel.status_code == 200
+
+    second = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"], "start_date": "2027-01-01"},
+        headers=_auth(admin_token),
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] != first_id
+    assert second.json()["status"] == "active"
+
+    listed = await client.get(
+        "/api/course-enrollments",
+        params={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert listed.status_code == 200
+    assert {row["id"] for row in listed.json()} == {first_id, second.json()["id"]}
+
+
+@pytest.mark.asyncio
+async def test_second_active_enrollment_still_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    first = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert first.status_code == 201, first.text
+    second = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_reactivate_blocked_while_another_enrollment_is_active(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    first = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert first.status_code == 201, first.text
+    cancel = await client.patch(
+        f"/api/course-enrollments/{first.json()['id']}",
+        json={"status": "completed"},
+        headers=_auth(admin_token),
+    )
+    assert cancel.status_code == 200
+    second = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert second.status_code == 201, second.text
+    reactivate = await client.patch(
+        f"/api/course-enrollments/{first.json()['id']}",
+        json={"status": "active"},
+        headers=_auth(admin_token),
+    )
+    assert reactivate.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_list_auto_leaves_when_end_date_passed(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict, monkeypatch
+) -> None:
+    from app.services import course_enrollment_expiry as course_enrollment_expiry
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 9, 15))
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    created = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+        },
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["status"] == "active"
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 10, 2))
+    listed = await client.get(
+        "/api/course-enrollments",
+        params={"sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    assert listed.status_code == 200
+    row = next(r for r in listed.json() if r["id"] == created.json()["id"])
+    assert row["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_patch_end_date_in_past_auto_leaves(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict, monkeypatch
+) -> None:
+    from app.services import course_enrollment_expiry as course_enrollment_expiry
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 10, 2))
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    created = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"], "start_date": "2026-09-01"},
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    patched = await client.patch(
+        f"/api/course-enrollments/{created.json()['id']}",
+        json={"end_date": "2026-09-30"},
+        headers=_auth(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["status"] == "completed"
+    assert patched.json()["end_date"] == "2026-09-30"
+
+
+@pytest.mark.asyncio
+async def test_end_date_today_stays_in_class(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict, monkeypatch
+) -> None:
+    from app.services import course_enrollment_expiry as course_enrollment_expiry
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 9, 30))
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"])
+    created = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+        },
+        headers=_auth(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    listed = await client.get(
+        "/api/course-enrollments",
+        params={"sku_id": sku["id"]},
+        headers=_auth(admin_token),
+    )
+    row = next(r for r in listed.json() if r["id"] == created.json()["id"])
+    assert row["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_rejoin_after_end_date_without_opening_roster(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict, monkeypatch
+) -> None:
+    from app.services import course_enrollment_expiry as course_enrollment_expiry
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 9, 15))
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], capacity=None)
+    first = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+        },
+        headers=_auth(admin_token),
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["status"] == "active"
+
+    monkeypatch.setattr(course_enrollment_expiry, "hong_kong_today", lambda: date(2026, 10, 2))
+    second = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"], "start_date": "2026-10-01"},
+        headers=_auth(admin_token),
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["status"] == "active"
+    assert second.json()["id"] != first.json()["id"]

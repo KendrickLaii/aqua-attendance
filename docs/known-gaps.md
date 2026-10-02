@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-09-24（Credit Notes 獨立頁、退款單列印與支票抬頭、收條編號改手打、上傳圖公開讀取。以下缺口不變）。2026-09-22（未收款可 Edit 且保留報名連結；Paid 用 credit note；作廢單／作廢收條 Remove 後可重用編號；Courses 班次表顯示 In class 人數）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、堂數單一來源（drop `purchased_quantity`））。2026-09-15（手動發票落庫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
+> 最後更新：2026-10-02（**#M22** 已做；Courses **Renew**／**Set end**；結束日過後自動 Leave。Migration `a4e8c1d9b6f2`）。2026-09-24（Credit Notes 獨立頁、退款單列印與支票抬頭、收條編號改手打、上傳圖公開讀取）。2026-09-22（未收款可 Edit 且保留報名連結；Paid 用 credit note；作廢單／作廢收條 Remove 後可重用編號；Courses 班次表顯示 In class 人數）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、堂數單一來源（drop `purchased_quantity`））。2026-09-15（手動發票落庫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -19,16 +19,16 @@
 
 ## 學費／課程 — 刻意尚未做（2026-09-15）
 
-> 計價在 SKU、班次名冊、按月 Generate **已做**。堂費（per_session）由 `enrollment_purchases` 記錄追蹤：報名記「買咗幾多堂 × 每堂價」，出單主要經 **Manual invoice** 揀學生後一鍵加入未出單 package（私補場景），Generate 亦會補收未出單購買；**不再看出勤**（見 #M23）。手動發票已落庫（`kind=manual`），發票編號每中心獨立系列，列印已做。下面兩項是明確延後的。細節見 #M22、#M24。
+> 計價在 SKU、班次名冊、按月 Generate **已做**。堂費（per_session）由 `enrollment_purchases` 記錄追蹤：報名記「買咗幾多堂 × 每堂價」，出單主要經 **Manual invoice** 揀學生後一鍵加入未出單 package（私補場景），Generate 亦會補收未出單購買；**不再看出勤**（見 #M23）。手動發票已落庫（`kind=manual`），發票編號每中心獨立系列，列印已做。**#M22** 已於 2026-10-02 落地。仍然延後的是 **#M24**。
 
 | # | 尚未做 | 現況 | 影響 |
 |---|--------|------|------|
-| **#M22** | 下學年重報同一班號 | `(unit_id, sku_id)` **永久唯一**；取消後再報仍 409 | 不能保留舊報名又開新學年 A1 |
+| ~~**#M22**~~ | ~~下學年重報同一班號~~ | **2026-10-02 已做**：partial unique 只鎖 `status = active`（`a4e8c1d9b6f2`）。離開後再 Join 開新報名；Back in class 仍係同一筆。結束日過後自動 Leave | 無 |
 | ~~#M23~~ | ~~堂費扣公眾假期~~ | **2026-09-04 已失效**：堂費不再按出勤∩上課日計算；2026-09-17 起堂數只存於 `enrollment_purchases`（每次購買一列，一次性收費），無假期扣除的必要 | 無 |
 | **#M24** | 把帳單發給家長 | 後台 `draft` → `issued` → `paid`；列印發票已做（2026-09-15） | 沒有 WhatsApp／電郵發送 |
 | — | Vuexy `/apps/invoice` | AQUA 模板假資料 | **不是**學費系統（見 **D5**） |
 
-建議下一件產品工作：**#M22 唯一約束** → **#M24 發送**。
+建議下一件產品工作：**#M24 發送**。
 
 ---
 
@@ -230,14 +230,17 @@
 - **影響**：不影響功能，但影響可維護性和 DB 工具的可讀性。
 - **建議**：在未來的 migration 中統一重新命名。詳見 [database-changes.md](database-changes.md) § Legacy 約束與索引名稱。
 
-### #M22 同一學生同一 SKU 永久唯一（無法下學年重報）
+### ~~#M22 同一學生同一 SKU 永久唯一（無法下學年重報）~~ — 已做（2026-10-02）
 
-> **2026-08-27 新增** — 刻意延後。月費可靠 `start_date` / `end_date` 出賬，不必立刻改約束。
+> **2026-08-27 新增** — 當時刻意延後。
+> **2026-10-02 更新** — 改為 partial unique index `uq_course_enrollment_unit_sku_active`（Migration `a4e8c1d9b6f2`）；同日加結束日過後自動 Leave。
 
-- **位置**：`course_enrollments` 唯一約束 `uq_course_enrollment_unit_sku`
-- **問題**：同一學生不能再次報名同一班次（例如下學年 A1）。取消後重報仍 409，除非刪除舊列。
-- **影響**：新學期無法保留歷史報名又再開同一 SKU。
-- **建議**：改為「同一學生同一 SKU 僅一筆 `active`」，或加入學期／學年維度。
+- **位置**：`course_enrollments`；`apps/api/app/routers/course_enrollments.py`；`apps/api/app/services/course_enrollment_expiry.py`
+- **現況**：同一個學生、同一個班，同時只可以有一筆 `active`。`cancelled`／`completed` 留低，發票繼續連住舊 `enrollment_id`。離開後再 Join class 會開一筆新報名（新日期、新堂費購買）。**Back in class** 仍然打開舊嗰筆；如果已經有另一筆在讀，會 409。結束日已過又想 Back in class → 要先改新結束日，否則 422。
+- **名冊 UI（2026-10-02）**：月費且有結束日 → **Renew**；月費 Ongoing → **Set end**。堂費用 **Top up**。改日期唔會自動 Generate。
+- **自動 Leave**：`end_date <` 香港今日時，list／get／容量檢查／建立或改完結束日，以及再 Join 前嘅在讀檢查，會把 `active` 改成 `completed`（畫面顯示 Left）。員工撳 Leave 仍然係 `cancelled`。Generate 計 `active` 同 `completed`（日期要重疊該月）；`cancelled` 唔計。結束日當日仍 In class。
+- 本機／生產上線要跑 `python -m alembic upgrade head`（至 `a4e8c1d9b6f2`）。
+- **出賬**：Generate 仍然只計 `active`。舊報名未出單嘅堂費購買唔會跟住新報名出單。
 
 ### ~~#M23 堂費未扣公眾假期~~ — 已失效（2026-09-04）
 

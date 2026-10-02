@@ -1039,14 +1039,14 @@ watch(yearMonth, () => {
         <VCombobox
           v-model="issueStaff"
           :items="issueStaffOptions"
-          label="Opened by"
+          label="Tutor"
           density="compact"
           hide-details
           autocomplete="off"
           clearable
         />
         <div class="text-caption text-medium-emphasis mt-1 mb-4">
-          Who opened this bill — for commission. Not printed.
+          Tutor for this bill — for commission. Not printed.
         </div>
         <VTextField
           v-model="issueRemark"

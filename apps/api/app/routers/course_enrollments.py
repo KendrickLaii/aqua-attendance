@@ -18,6 +18,10 @@ from app.schemas.course_enrollment import (
     EnrollmentPurchaseOut,
     _require_start_on_or_before_end,
 )
+from app.services.course_enrollment_expiry import (
+    expire_past_end_date_enrollments,
+    should_auto_leave,
+)
 
 router = APIRouter(prefix="/course-enrollments", tags=["courses"])
 
@@ -42,6 +46,7 @@ async def _require_enrollable_sku(
         raise HTTPException(status_code=422, detail="Cannot enroll in an inactive class")
     if sku.capacity is None:
         return
+    await expire_past_end_date_enrollments(db, sku_id=sku.id)
     clauses = [
         CourseEnrollment.sku_id == sku.id,
         CourseEnrollment.status == EnrollmentStatus.active.value,
@@ -58,6 +63,26 @@ def _require_enrollable_student(unit: Unit) -> None:
         raise HTTPException(status_code=422, detail="Only student units can enroll in courses")
     if not unit.is_active or unit.status != UnitStatus.active.value:
         raise HTTPException(status_code=422, detail="Cannot enroll an inactive or former student")
+
+
+async def _require_single_active_enrollment(
+    db: DB,
+    *,
+    unit_id: uuid.UUID,
+    sku_id: uuid.UUID,
+    exclude_enrollment_id: uuid.UUID | None = None,
+) -> None:
+    await expire_past_end_date_enrollments(db, sku_id=sku_id, unit_id=unit_id)
+    clauses = [
+        CourseEnrollment.unit_id == unit_id,
+        CourseEnrollment.sku_id == sku_id,
+        CourseEnrollment.status == EnrollmentStatus.active.value,
+    ]
+    if exclude_enrollment_id is not None:
+        clauses.append(CourseEnrollment.id != exclude_enrollment_id)
+    existing = await db.scalar(select(CourseEnrollment.id).where(*clauses).limit(1))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="This student is already enrolled in this course")
 
 
 def _require_purchased_quantity_for_per_session(sku: CourseSku, purchased_quantity: int | None) -> None:
@@ -78,6 +103,9 @@ async def list_course_enrollments(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[CourseEnrollmentOut]:
+    await expire_past_end_date_enrollments(db, sku_id=sku_id)
+    await db.commit()
+
     clauses = []
     if unit_id is not None:
         clauses.append(CourseEnrollment.unit_id == unit_id)
@@ -113,10 +141,13 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     if not sku:
         raise HTTPException(status_code=404, detail="Course SKU not found")
     await _require_enrollable_sku(db, sku)
+    await _require_single_active_enrollment(db, unit_id=body.unit_id, sku_id=body.sku_id)
     _require_purchased_quantity_for_per_session(sku, body.purchased_quantity)
 
     # purchased_quantity is create-input only — it seeds the first purchase.
     enrollment = CourseEnrollment(**body.model_dump(exclude={"purchased_quantity"}))
+    if should_auto_leave(end_date=enrollment.end_date, status=enrollment.status):
+        enrollment.status = EnrollmentStatus.completed.value
     db.add(enrollment)
     try:
         if sku.billing_unit == "per_session":
@@ -145,6 +176,8 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
 
 @router.get("/{enrollment_id}", response_model=CourseEnrollmentOut)
 async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB) -> CourseEnrollmentOut:
+    await expire_past_end_date_enrollments(db, enrollment_id=enrollment_id)
+    await db.commit()
     result = await db.execute(
         select(CourseEnrollment)
         .options(*_ENROLLMENT_LOAD)
@@ -177,7 +210,15 @@ async def update_course_enrollment(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     new_status = update_data.get("status", enrollment.status)
-    if new_status == EnrollmentStatus.active.value and enrollment.status != EnrollmentStatus.active.value:
+    reactivating = (
+        new_status == EnrollmentStatus.active.value and enrollment.status != EnrollmentStatus.active.value
+    )
+    if reactivating and should_auto_leave(end_date=new_end, status=new_status):
+        raise HTTPException(
+            status_code=422,
+            detail="end_date is already past — set a new end date before putting this student back in class",
+        )
+    if reactivating:
         unit_result = await db.execute(select(Unit).where(Unit.id == enrollment.unit_id))
         unit = unit_result.scalar_one_or_none()
         if not unit:
@@ -188,10 +229,19 @@ async def update_course_enrollment(
         if not sku:
             raise HTTPException(status_code=404, detail="Course SKU not found")
         await _require_enrollable_sku(db, sku, exclude_enrollment_id=enrollment.id)
+        await _require_single_active_enrollment(
+            db, unit_id=enrollment.unit_id, sku_id=enrollment.sku_id, exclude_enrollment_id=enrollment.id
+        )
         # Re-activating never needs a quantity — existing purchases carry it.
     for field, value in update_data.items():
         setattr(enrollment, field, value)
-    await db.commit()
+    if should_auto_leave(end_date=enrollment.end_date, status=enrollment.status):
+        enrollment.status = EnrollmentStatus.completed.value
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="This student is already enrolled in this course")
     result = await db.execute(
         select(CourseEnrollment)
         .options(*_ENROLLMENT_LOAD)

@@ -429,7 +429,7 @@ erDiagram
 
 - 帳單期 = 該月 1 日～末日。
 - 納入：`course_enrollments.status == active`，且起迄日與該月重疊。
-- 排除：`cancelled`／`completed`、完全落在該月之外、SKU `is_active=false`、inactive 學生；月費另須 SKU 或 enrollment 有價。
+- 排除：`cancelled`（員工 Leave）、完全落在該月之外、SKU `is_active=false`、inactive 學生；月費另須 SKU 或 enrollment 有價。`completed`（讀完／自動 Leave）如果日期重疊該月仍然入單。
 - 月費：`quantity = 1`；價錢 = `enrollment.unit_price` ?? `sku.price`。
 - 堂費：逐條未出單 `enrollment_purchases` 各出一行（`quantity` = 該次購買堂數、單價 = `purchase.unit_price`，若為 NULL 則退回 `enrollment.unit_price` ?? `sku.price`，兩者皆無則跳過留俾手動發票）；無購買則不出行。
 - 狀態：`draft` → `issued` → `paid`；`draft`/`issued` 可 `void`，亦可 Edit 行項目（保留報名連結）。已 `paid`／`void` 不可再改行項目／編號。例外：`payable_to_name`／`payee_name` 仍可改。`void` 只能靠 Generate 在仍有報名時回收成 draft（同時清空編號）。`DELETE` 只准 void invoice／voided receipt，並寫 audit log。
@@ -446,12 +446,22 @@ erDiagram
 | 項目 | 現況 | 追蹤 |
 | --- | --- | --- |
 | ~~堂費扣公眾假期~~ | 2026-09-04 已失效：堂費改一次性 `purchased_quantity` 收費 | [known-gaps.md](known-gaps.md) ~~#M23~~ |
-| 同一學生同一 SKU 可跨學年再報 | 唯一約束永久；重報 409 | **#M22** |
+| ~~同一學生同一 SKU 可跨學年再報~~ | 2026-10-02 已做：`uq_course_enrollment_unit_sku_active` 只鎖 `status = active` | ~~#M22~~ |
 | 發票發送給家長 | 無 WhatsApp／電郵／PDF 發送 API | **#M24** |
 | 把 Vuexy `/apps/invoice` 當真實帳單 | 不做（假資料） | **D5** |
 | ERP／家具庫存 | **不在本 repo 做**，以後是獨立新專案 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
 
-優先順序：唯一約束（#M22）→ 發送（#M24）。
+優先順序：發送（#M24）。
+
+### 報名在讀唯一（2026-10-02）
+
+Migration `a4e8c1d9b6f2`（down `f2a6c8d0b4e1`）。刪除 `uq_course_enrollment_unit_sku`，改為 partial unique index `uq_course_enrollment_unit_sku_active`（`status = 'active'`）。已離開嘅報名可以同新報名並存。Downgrade 若已有同一學生同一班多於一筆（含已離開）會失敗。
+
+Web 名冊：月費 **Renew**／**Set end**（`CourseRosterSection.vue`）；粵語提示見 `billingStaffCopy.ts`。
+
+### 結束日過後自動 Leave（2026-10-02）
+
+`app/services/course_enrollment_expiry.py`：`end_date <` 香港今日嘅 `active` 報名改成 `completed`（畫面 Left）。員工 Leave 仍然係 `cancelled`，Generate 唔計。`completed` 日期重疊該月仍然可以出單。觸發：list／get enrollment、容量檢查、再 Join 前嘅在讀檢查、create／patch 設咗已過結束日。結束日當日仍算在讀。無排程 cron；靠開名冊、Join 或打 API 先過期。
 
 ## 員工更表（2026-09-29）
 
@@ -469,6 +479,23 @@ Migration `f2a6c8d0b4e1`（down `e1c9a4b7d2f3`）。純記錄，唔同 `attendan
 | 3 | `end_time > start_time`（API 422） | 過夜更延後；將來可加 `ends_next_day` |
 | 4 | 重疊唔擋 | 需求：只提示 |
 | 5 | 刪分店被已有更擋住（RESTRICT） | 避免更表無聲消失；刪員工則連更一齊刪（CASCADE） |
+
+## 員工自助報更（2026-10-02）
+
+Migration `b7c1e9a4d2f6`（down `a4e8c1d9b6f2`）。申請同正式更分開，避免未批嘅更被列印或複製上週。
+
+| 變更 | 說明 |
+| --- | --- |
+| `staff_profiles.shift_pin_hash` | varchar(255) NULL。6 位 PIN 嘅哈希，API 唔會回傳。 |
+| `staff_profiles.shift_pin_set_at` | timestamptz NULL。 |
+| `shift_requests` | 欄位同 `shifts` 一樣（人、地點、日期、起迄、title、color、notes、template），另加 `status` varchar(20)、`reject_reason` varchar(500)、`shift_id`、`reviewed_by_id`、`reviewed_at`。FK：`units` CASCADE、`locations` RESTRICT、`shift_templates` SET NULL、`shifts` SET NULL、`users` SET NULL。index：`unit_id`、`location_id`、`shift_date`、`status`。 |
+
+| # | 決定 | 原因 |
+| --- | --- | --- |
+| 1 | PIN 唔做成 `users` 帳號 | 員工只係 unit；同 admin cookie 分開 |
+| 2 | pending 唔寫入 `shifts` | 列印／複製上週只讀正式更 |
+| 3 | 員工申請後端擋重疊；admin 直接開更仍然只係 UI 提示 | 自助提交要嚴，管理員排更保持原行為 |
+| 4 | 批准先複製入 `shifts`，`created_by_id` = 批核人 | 正式更仍然由 admin 負責 |
 
 ## 薪資／加班（OT）計算設計
 

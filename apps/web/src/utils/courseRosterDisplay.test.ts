@@ -9,6 +9,8 @@ import {
   emptyToNull,
   formatRosterDate,
   matchesRosterSearch,
+  lastDayOfMonth,
+  renewEndDate,
   purchaseSummary,
   rosterPriceLabel,
   skuBillingPreview,
@@ -99,6 +101,7 @@ describe('enrollment labels', () => {
   it('maps status and price override vs class price', () => {
     assert.equal(enrollmentStatusLabel('active'), 'In class')
     assert.equal(enrollmentStatusLabel('cancelled'), 'Left')
+    assert.equal(enrollmentStatusLabel('completed'), 'Left')
     assert.deepEqual(enrollmentPriceParts(enrollment({ unit_price: 900 }), sku()), {
       amount: 'HK$900.00',
       hint: 'this student',
@@ -169,6 +172,23 @@ describe('enrollDisabledReason', () => {
       activeUnitIds: new Set(),
       purchasedQuantity: null,
     }), 'Enter how many sessions this student bought.')
+  })
+})
+
+describe('renewEndDate', () => {
+  it('extends to the last day of the month after the current end', () => {
+    assert.equal(renewEndDate('2026-09-30'), '2026-10-31')
+    assert.equal(renewEndDate('2026-01-15'), '2026-02-28')
+    assert.equal(renewEndDate('2024-01-31'), '2024-02-29')
+    assert.equal(renewEndDate('2026-12-01'), '2027-01-31')
+  })
+})
+
+describe('lastDayOfMonth', () => {
+  it('uses the last calendar day of that month', () => {
+    assert.equal(lastDayOfMonth('2026-10-02'), '2026-10-31')
+    assert.equal(lastDayOfMonth('2026-02-10'), '2026-02-28')
+    assert.equal(lastDayOfMonth('2024-02-01'), '2024-02-29')
   })
 })
 

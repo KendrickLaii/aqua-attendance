@@ -91,6 +91,40 @@ export async function deleteShift(id: string): Promise<void> {
   await $attendanceApi(`/shifts/${id}`, { method: 'DELETE' })
 }
 
+export interface ShiftRequest {
+  id: string
+  unit_id: string
+  location_id: string
+  shift_date: string
+  start_time: string
+  end_time: string
+  title: string | null
+  color: string
+  notes: string | null
+  template_id: string | null
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled'
+  reject_reason: string | null
+  shift_id: string | null
+  reviewed_by_id: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+  unit_code: string | null
+  unit_name: string | null
+}
+
+export async function listShiftRequests(status: ShiftRequest['status'] = 'pending'): Promise<ShiftRequest[]> {
+  return await $attendanceApi('/shift-requests', { params: { status } })
+}
+
+export async function approveShiftRequest(id: string): Promise<ShiftRequest> {
+  return await $attendanceApi(`/shift-requests/${id}/approve`, { method: 'POST' })
+}
+
+export async function rejectShiftRequest(id: string, reason: string): Promise<ShiftRequest> {
+  return await $attendanceApi(`/shift-requests/${id}/reject`, { method: 'POST', body: { reason } })
+}
+
 export async function copyShiftWeek(payload: {
   source_week_start: string
   target_week_start: string

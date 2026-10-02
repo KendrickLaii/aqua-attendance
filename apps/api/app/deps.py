@@ -7,8 +7,9 @@ import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth_cookies import ACCESS_COOKIE
+from app.auth_cookies import ACCESS_COOKIE, STAFF_SHIFT_COOKIE
 from app.database import get_db
+from app.models.unit import Unit, UnitStatus
 from app.models.user import Role, User
 from app.services.auth import decode_token
 
@@ -55,3 +56,33 @@ def require_roles(*roles: Role):
 
 AdminOnly = Annotated[User, Depends(require_roles(Role.admin, Role.superadmin))]
 SuperAdminOnly = Annotated[User, Depends(require_roles(Role.superadmin))]
+
+
+async def get_current_staff(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    db: DB,
+) -> Unit:
+    token = credentials.credentials if credentials else None
+    if not token:
+        token = request.cookies.get(STAFF_SHIFT_COOKIE)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    try:
+        payload = decode_token(token, expected_type="staff_shift")
+        unit_id = uuid.UUID(payload["sub"])
+    except (jwt.PyJWTError, KeyError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+    unit = await db.get(Unit, unit_id)
+    if (
+        not unit
+        or unit.unit_type != "staff"
+        or not unit.is_active
+        or unit.status != UnitStatus.active.value
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Staff not found or inactive")
+    return unit
+
+
+CurrentStaff = Annotated[Unit, Depends(get_current_staff)]

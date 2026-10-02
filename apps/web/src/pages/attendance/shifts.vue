@@ -5,9 +5,13 @@ import {
   type ShiftTemplate,
   copyShiftWeek,
   createShift,
+  approveShiftRequest,
+  listShiftRequests,
   listShiftTemplates,
   listShifts,
+  rejectShiftRequest,
   updateShift,
+  type ShiftRequest,
 } from '@/api/attendance/shifts'
 import { type Unit, listAllUnits } from '@/api/attendance/units'
 import ShiftDialog from '@/components/attendance/shifts/ShiftDialog.vue'
@@ -17,6 +21,11 @@ import ShiftWeekGrid from '@/components/attendance/shifts/ShiftWeekGrid.vue'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useToast } from '@/composables/useToast'
 import { formatApiError } from '@/utils/formatApiDetail'
+import {
+  ADMIN_PENDING_REQUESTS_HINT,
+  ADMIN_REJECT_REASON_HINT,
+  ADMIN_SHIFT_PAGE_HINT,
+} from '@/utils/shiftStaffCopy'
 import { type ShiftPrintChoice, type ShiftPrintPeriod, printShiftWeek } from '@/utils/printShiftWeek'
 import {
   addDays,
@@ -57,6 +66,10 @@ const staff = ref<Unit[]>([])
 const locations = ref<LocationItem[]>([])
 const templates = ref<ShiftTemplate[]>([])
 const shifts = ref<Shift[]>([])
+const pendingRequests = ref<ShiftRequest[]>([])
+const rejectTarget = ref<ShiftRequest | null>(null)
+const rejectReason = ref('')
+const reviewBusy = ref(false)
 
 const today = toIsoDate(new Date())
 const thisWeek = mondayOf(new Date())
@@ -131,7 +144,7 @@ async function loadAll() {
     locations.value = [...locationList].sort((a, b) => a.name_en.localeCompare(b.name_en))
     if (locationId.value && !locations.value.some(l => l.id === locationId.value))
       locationId.value = null
-    await loadShifts()
+    await Promise.all([loadShifts(), loadPendingRequests()])
   }
   catch (e) {
     console.error('Failed to load shifts', e)
@@ -425,6 +438,44 @@ function print(choice: ShiftPrintChoice) {
   }
 }
 
+async function loadPendingRequests() {
+  pendingRequests.value = await listShiftRequests('pending')
+}
+
+async function approveRequest(request: ShiftRequest) {
+  reviewBusy.value = true
+  try {
+    await approveShiftRequest(request.id)
+    toast.show('Shift request approved.')
+    await Promise.all([loadShifts(), loadPendingRequests()])
+  }
+  catch (e) {
+    loadError.value = formatApiError(e, 'Could not approve this request.')
+  }
+  finally {
+    reviewBusy.value = false
+  }
+}
+
+async function confirmReject() {
+  if (!rejectTarget.value)
+    return
+  reviewBusy.value = true
+  try {
+    await rejectShiftRequest(rejectTarget.value.id, rejectReason.value.trim())
+    toast.show('Shift request rejected.')
+    rejectTarget.value = null
+    rejectReason.value = ''
+    await loadPendingRequests()
+  }
+  catch (e) {
+    loadError.value = formatApiError(e, 'Could not reject this request.')
+  }
+  finally {
+    reviewBusy.value = false
+  }
+}
+
 function exportCsv() {
   const csvRows = [...shifts.value]
     .sort((a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time))
@@ -461,7 +512,7 @@ function exportCsv() {
           Shift Schedule
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          撳格仔加更 · 撳更可以改或者刪 · 拖放搬更（撳住 Ctrl 拖就係複製）
+          {{ ADMIN_SHIFT_PAGE_HINT }}
         </div>
       </div>
       <VBtn
@@ -535,6 +586,65 @@ function exportCsv() {
     >
       {{ loadError }}
     </VAlert>
+
+    <section
+      v-if="pendingRequests.length"
+      class="request-inbox mb-4"
+      aria-label="Pending staff requests"
+    >
+      <header>
+        <span>Pending staff requests</span>
+        <strong>{{ pendingRequests.length }}</strong>
+        <em>{{ ADMIN_PENDING_REQUESTS_HINT }}</em>
+      </header>
+      <ul>
+        <li
+          v-for="request in pendingRequests"
+          :key="request.id"
+        >
+          <div
+            class="request-mark"
+            :style="{ background: request.color }"
+          />
+          <div class="request-when">
+            <span>{{ formatDayHeader(request.shift_date).weekday }}</span>
+            <strong>{{ formatDayHeader(request.shift_date).day }}</strong>
+          </div>
+          <div class="request-copy">
+            <strong>{{ request.unit_name }}</strong>
+            <span>
+              {{ hhmm(request.start_time) }}–{{ hhmm(request.end_time) }}
+              <template v-if="request.title">
+                · {{ request.title }}
+              </template>
+              <template v-if="locationById.get(request.location_id)">
+                · {{ locationById.get(request.location_id)?.name_zh || locationById.get(request.location_id)?.name_en }}
+              </template>
+            </span>
+            <em>{{ request.unit_code }}</em>
+          </div>
+          <div class="request-actions">
+            <VBtn
+              size="small"
+              color="primary"
+              :loading="reviewBusy"
+              @click="approveRequest(request)"
+            >
+              Approve
+            </VBtn>
+            <VBtn
+              size="small"
+              variant="text"
+              color="error"
+              :disabled="reviewBusy"
+              @click="rejectTarget = request; rejectReason = ''"
+            >
+              Reject
+            </VBtn>
+          </div>
+        </li>
+      </ul>
+    </section>
 
     <VCard>
       <!-- Toolbar: week navigation, filters, stats -->
@@ -781,6 +891,7 @@ function exportCsv() {
       :initial-location-id="newShift.locationId"
       :staff-options="staffOptions"
       :location-options="locationOptions"
+      :locations="locations"
       :templates="templates"
       :existing-shifts="shifts"
       :staff-by-id="unitById"
@@ -816,6 +927,42 @@ function exportCsv() {
       會將 {{ formatWeekRange(addDays(weekStart, -7)) }} 嘅更，抄落 {{ weekLabel }}（{{ locationLabel }}）。
       呢週已經有嘅更會跳過、唔會抄重複；已停用嘅員工都會跳過。
     </AttendanceConfirmDialog>
+
+    <VDialog
+      :model-value="!!rejectTarget"
+      max-width="420"
+      @update:model-value="open => { if (!open) rejectTarget = null }"
+    >
+      <VCard>
+        <VCardTitle>Reject shift request</VCardTitle>
+        <VCardText>
+          <VTextField
+            v-model="rejectReason"
+            label="Reason"
+            placeholder="Optional note the staff member will see"
+            :hint="ADMIN_REJECT_REASON_HINT"
+            persistent-hint
+            autofocus
+          />
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn
+            variant="text"
+            @click="rejectTarget = null"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="error"
+            :loading="reviewBusy"
+            @click="confirmReject"
+          >
+            Reject
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </VContainer>
 </template>
 
@@ -840,5 +987,95 @@ function exportCsv() {
   block-size: 10px;
   inline-size: 10px;
   margin-inline-end: 6px;
+}
+
+.request-inbox {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 12px;
+  background: rgb(var(--v-theme-surface));
+}
+
+.request-inbox header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 16px 0;
+}
+
+.request-inbox header span {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.request-inbox header em {
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  font-size: 0.75rem;
+  font-style: normal;
+}
+
+.request-inbox ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+}
+
+.request-inbox li {
+  display: grid;
+  grid-template-columns: 6px 72px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 8px;
+  border-radius: 10px;
+}
+
+.request-inbox li + li {
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.request-mark {
+  align-self: stretch;
+  border-radius: 99px;
+}
+
+.request-when {
+  display: grid;
+}
+
+.request-when span {
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.request-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.request-copy span,
+.request-copy em {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.82rem;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-actions {
+  display: flex;
+  gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .request-inbox li {
+    grid-template-columns: 6px 1fr;
+  }
+
+  .request-when,
+  .request-actions {
+    grid-column: 2;
+  }
 }
 </style>

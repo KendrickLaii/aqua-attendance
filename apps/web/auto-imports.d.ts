@@ -9,6 +9,11 @@ declare global {
   const $api: typeof import('./src/utils/api')['$api']
   const $attendanceApi: typeof import('./src/utils/attendanceApi')['$attendanceApi']
   const $authApi: typeof import('./src/utils/authApi')['$authApi']
+  const ADMIN_PENDING_REQUESTS_HINT: typeof import('./src/utils/shiftStaffCopy')['ADMIN_PENDING_REQUESTS_HINT']
+  const ADMIN_REJECT_REASON_HINT: typeof import('./src/utils/shiftStaffCopy')['ADMIN_REJECT_REASON_HINT']
+  const ADMIN_REQUEST_APPROVED_TOAST: typeof import('./src/utils/shiftStaffCopy')['ADMIN_REQUEST_APPROVED_TOAST']
+  const ADMIN_REQUEST_REJECTED_TOAST: typeof import('./src/utils/shiftStaffCopy')['ADMIN_REQUEST_REJECTED_TOAST']
+  const ADMIN_SHIFT_PAGE_HINT: typeof import('./src/utils/shiftStaffCopy')['ADMIN_SHIFT_PAGE_HINT']
   const ATTENDANCE_TIMEZONE: typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']
   const BILLING_HELP_DONT_ONLY_CANCEL: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_DONT_ONLY_CANCEL']
   const BILLING_HELP_FIX: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_FIX']
@@ -22,13 +27,32 @@ declare global {
   const LEAVE_CLASS_CONFIRM: typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']
   const LOCATION_DAYS: typeof import('./src/utils/locationHours')['LOCATION_DAYS']
   const MANUAL_CREDIT_HINT: typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']
+  const ONGOING_END_DATE_HINT: typeof import('./src/utils/billingStaffCopy')['ONGOING_END_DATE_HINT']
+  const ONGOING_SET_END_HINT: typeof import('./src/utils/billingStaffCopy')['ONGOING_SET_END_HINT']
   const REMOVE_CANCELLED_INVOICE: typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']
   const REMOVE_RECORD_BILLED: typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_BILLED']
   const REMOVE_RECORD_CONFIRM: typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_CONFIRM']
   const REMOVE_VOIDED_RECEIPT: typeof import('./src/utils/billingStaffCopy')['REMOVE_VOIDED_RECEIPT']
+  const RENEW_DATE_HINT: typeof import('./src/utils/billingStaffCopy')['RENEW_DATE_HINT']
+  const RENEW_END_BEFORE_START: typeof import('./src/utils/billingStaffCopy')['RENEW_END_BEFORE_START']
+  const RENEW_END_NOT_LATER: typeof import('./src/utils/billingStaffCopy')['RENEW_END_NOT_LATER']
+  const RENEW_END_REQUIRED: typeof import('./src/utils/billingStaffCopy')['RENEW_END_REQUIRED']
+  const RENEW_SUBTITLE: typeof import('./src/utils/billingStaffCopy')['RENEW_SUBTITLE']
   const SCAN_ENTRY_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']
   const SCAN_TOKEN_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']
+  const SET_END_HINT: typeof import('./src/utils/billingStaffCopy')['SET_END_HINT']
   const SHIFT_COLORS: typeof import('./src/utils/shiftDisplay')['SHIFT_COLORS']
+  const STAFF_PIN_GENERATED_TOAST: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_GENERATED_TOAST']
+  const STAFF_PIN_NONE_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_NONE_HINT']
+  const STAFF_PIN_REVEALED_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_REVEALED_HINT']
+  const STAFF_PIN_SAVE_FIRST_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_SAVE_FIRST_HINT']
+  const STAFF_PIN_SET_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_SET_HINT']
+  const STAFF_SHIFT_LOGIN_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_LOGIN_HINT']
+  const STAFF_SHIFT_LOGIN_LINK_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_LOGIN_LINK_HINT']
+  const STAFF_SHIFT_REJECTED_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_REJECTED_HINT']
+  const STAFF_SHIFT_REQUEST_DAY_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_REQUEST_DAY_HINT']
+  const STAFF_SHIFT_REQUEST_DIALOG_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_REQUEST_DIALOG_HINT']
+  const STAFF_SHIFT_WEEK_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_WEEK_HINT']
   const UNIT_QR_CARD_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']
   const UNIT_QR_IMAGE_SIZE: typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']
   const UNIT_QR_PRINT_IMAGE_SIZE: typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']
@@ -220,6 +244,7 @@ declare global {
   const isToday: typeof import('./src/@core/utils/helpers')['isToday']
   const isWeekend: typeof import('./src/utils/shiftDisplay')['isWeekend']
   const kFormatter: typeof import('./src/@core/utils/formatters')['kFormatter']
+  const lastDayOfMonth: typeof import('./src/utils/courseRosterDisplay')['lastDayOfMonth']
   const leaveClassUnbilledNote: typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
   const loadHoursSchedule: typeof import('./src/utils/locationHours')['loadHoursSchedule']
@@ -267,6 +292,7 @@ declare global {
   const onUnmounted: typeof import('vue')['onUnmounted']
   const onUpdated: typeof import('vue')['onUpdated']
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
+  const openCloseForLocationDate: typeof import('./src/utils/locationHours')['openCloseForLocationDate']
   const openPayrollSlipPrintPlaceholder: typeof import('./src/utils/printPayrollSlip')['openPayrollSlipPrintPlaceholder']
   const openSummaryPrintPlaceholder: typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']
   const openTuitionInvoicePrintPlaceholder: typeof import('./src/utils/printTuitionInvoice')['openTuitionInvoicePrintPlaceholder']
@@ -321,6 +347,9 @@ declare global {
   const renderTuitionInvoicePrintWindow: typeof import('./src/utils/printTuitionInvoice')['renderTuitionInvoicePrintWindow']
   const renderTuitionReceiptPrintWindow: typeof import('./src/utils/printTuitionReceipt')['renderTuitionReceiptPrintWindow']
   const renderUnitQrPrintWindow: typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']
+  const renewEndDate: typeof import('./src/utils/courseRosterDisplay')['renewEndDate']
+  const renewExtendHint: typeof import('./src/utils/billingStaffCopy')['renewExtendHint']
+  const renewSavedHint: typeof import('./src/utils/billingStaffCopy')['renewSavedHint']
   const requiredValidator: typeof import('./src/@core/utils/validators')['requiredValidator']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveMediaUrl: typeof import('./src/utils/mediaUrl')['resolveMediaUrl']
@@ -333,6 +362,7 @@ declare global {
   const safeNumber: typeof import('./src/utils/summaryDisplay')['safeNumber']
   const safePayrollNumber: typeof import('./src/utils/payrollDisplay')['safePayrollNumber']
   const setActivePinia: typeof import('pinia')['setActivePinia']
+  const setEndSavedHint: typeof import('./src/utils/billingStaffCopy')['setEndSavedHint']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
   const shallowReactive: typeof import('vue')['shallowReactive']
   const shallowReadonly: typeof import('vue')['shallowReadonly']
@@ -366,6 +396,7 @@ declare global {
   const toRefs: typeof import('vue')['toRefs']
   const toRoman: typeof import('./src/utils/review-format')['toRoman']
   const toValue: typeof import('vue')['toValue']
+  const todayIsoDate: typeof import('./src/utils/courseRosterDisplay')['todayIsoDate']
   const toggleSort: typeof import('./src/utils/tableSort')['toggleSort']
   const totalMinutes: typeof import('./src/utils/shiftDisplay')['totalMinutes']
   const triggerRef: typeof import('vue')['triggerRef']
@@ -616,6 +647,9 @@ declare module 'vue' {
     readonly $api: UnwrapRef<typeof import('./src/utils/api')['$api']>
     readonly $attendanceApi: UnwrapRef<typeof import('./src/utils/attendanceApi')['$attendanceApi']>
     readonly $authApi: UnwrapRef<typeof import('./src/utils/authApi')['$authApi']>
+    readonly ADMIN_PENDING_REQUESTS_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['ADMIN_PENDING_REQUESTS_HINT']>
+    readonly ADMIN_REJECT_REASON_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['ADMIN_REJECT_REASON_HINT']>
+    readonly ADMIN_SHIFT_PAGE_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['ADMIN_SHIFT_PAGE_HINT']>
     readonly ATTENDANCE_TIMEZONE: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['ATTENDANCE_TIMEZONE']>
     readonly BILLING_HELP_DONT_ONLY_CANCEL: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_DONT_ONLY_CANCEL']>
     readonly BILLING_HELP_FIX: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_FIX']>
@@ -629,13 +663,31 @@ declare module 'vue' {
     readonly LEAVE_CLASS_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']>
     readonly LOCATION_DAYS: UnwrapRef<typeof import('./src/utils/locationHours')['LOCATION_DAYS']>
     readonly MANUAL_CREDIT_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']>
+    readonly ONGOING_END_DATE_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['ONGOING_END_DATE_HINT']>
+    readonly ONGOING_SET_END_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['ONGOING_SET_END_HINT']>
     readonly REMOVE_CANCELLED_INVOICE: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']>
     readonly REMOVE_RECORD_BILLED: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_BILLED']>
     readonly REMOVE_RECORD_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_RECORD_CONFIRM']>
     readonly REMOVE_VOIDED_RECEIPT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_VOIDED_RECEIPT']>
+    readonly RENEW_DATE_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['RENEW_DATE_HINT']>
+    readonly RENEW_END_BEFORE_START: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['RENEW_END_BEFORE_START']>
+    readonly RENEW_END_NOT_LATER: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['RENEW_END_NOT_LATER']>
+    readonly RENEW_END_REQUIRED: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['RENEW_END_REQUIRED']>
+    readonly RENEW_SUBTITLE: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['RENEW_SUBTITLE']>
     readonly SCAN_ENTRY_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_ENTRY_SESSION_KEY']>
     readonly SCAN_TOKEN_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']>
+    readonly SET_END_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['SET_END_HINT']>
     readonly SHIFT_COLORS: UnwrapRef<typeof import('./src/utils/shiftDisplay')['SHIFT_COLORS']>
+    readonly STAFF_PIN_GENERATED_TOAST: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_GENERATED_TOAST']>
+    readonly STAFF_PIN_NONE_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_NONE_HINT']>
+    readonly STAFF_PIN_REVEALED_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_REVEALED_HINT']>
+    readonly STAFF_PIN_SAVE_FIRST_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_SAVE_FIRST_HINT']>
+    readonly STAFF_PIN_SET_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_SET_HINT']>
+    readonly STAFF_SHIFT_LOGIN_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_LOGIN_HINT']>
+    readonly STAFF_SHIFT_REJECTED_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_REJECTED_HINT']>
+    readonly STAFF_SHIFT_REQUEST_DAY_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_REQUEST_DAY_HINT']>
+    readonly STAFF_SHIFT_REQUEST_DIALOG_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_REQUEST_DIALOG_HINT']>
+    readonly STAFF_SHIFT_WEEK_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_SHIFT_WEEK_HINT']>
     readonly UNIT_QR_CARD_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_CARD_IMAGE_SIZE']>
     readonly UNIT_QR_IMAGE_SIZE: UnwrapRef<typeof import('./src/composables/useUnitQrDialog')['UNIT_QR_IMAGE_SIZE']>
     readonly UNIT_QR_PRINT_IMAGE_SIZE: UnwrapRef<typeof import('./src/utils/printUnitQrs')['UNIT_QR_PRINT_IMAGE_SIZE']>
@@ -827,6 +879,7 @@ declare module 'vue' {
     readonly isToday: UnwrapRef<typeof import('./src/@core/utils/helpers')['isToday']>
     readonly isWeekend: UnwrapRef<typeof import('./src/utils/shiftDisplay')['isWeekend']>
     readonly kFormatter: UnwrapRef<typeof import('./src/@core/utils/formatters')['kFormatter']>
+    readonly lastDayOfMonth: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['lastDayOfMonth']>
     readonly leaveClassUnbilledNote: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
     readonly loadHoursSchedule: UnwrapRef<typeof import('./src/utils/locationHours')['loadHoursSchedule']>
@@ -874,6 +927,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly openCloseForLocationDate: UnwrapRef<typeof import('./src/utils/locationHours')['openCloseForLocationDate']>
     readonly openPayrollSlipPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['openPayrollSlipPrintPlaceholder']>
     readonly openSummaryPrintPlaceholder: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['openSummaryPrintPlaceholder']>
     readonly openTuitionInvoicePrintPlaceholder: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['openTuitionInvoicePrintPlaceholder']>
@@ -928,6 +982,9 @@ declare module 'vue' {
     readonly renderTuitionInvoicePrintWindow: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['renderTuitionInvoicePrintWindow']>
     readonly renderTuitionReceiptPrintWindow: UnwrapRef<typeof import('./src/utils/printTuitionReceipt')['renderTuitionReceiptPrintWindow']>
     readonly renderUnitQrPrintWindow: UnwrapRef<typeof import('./src/utils/printUnitQrs')['renderUnitQrPrintWindow']>
+    readonly renewEndDate: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['renewEndDate']>
+    readonly renewExtendHint: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['renewExtendHint']>
+    readonly renewSavedHint: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['renewSavedHint']>
     readonly requiredValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['requiredValidator']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveMediaUrl: UnwrapRef<typeof import('./src/utils/mediaUrl')['resolveMediaUrl']>
@@ -940,6 +997,7 @@ declare module 'vue' {
     readonly safeNumber: UnwrapRef<typeof import('./src/utils/summaryDisplay')['safeNumber']>
     readonly safePayrollNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['safePayrollNumber']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
+    readonly setEndSavedHint: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['setEndSavedHint']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
@@ -973,6 +1031,7 @@ declare module 'vue' {
     readonly toRefs: UnwrapRef<typeof import('vue')['toRefs']>
     readonly toRoman: UnwrapRef<typeof import('./src/utils/review-format')['toRoman']>
     readonly toValue: UnwrapRef<typeof import('vue')['toValue']>
+    readonly todayIsoDate: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['todayIsoDate']>
     readonly toggleSort: UnwrapRef<typeof import('./src/utils/tableSort')['toggleSort']>
     readonly totalMinutes: UnwrapRef<typeof import('./src/utils/shiftDisplay')['totalMinutes']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>

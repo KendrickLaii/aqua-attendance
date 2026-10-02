@@ -13,6 +13,7 @@ import {
 import {
   type Unit,
   createUnit,
+  resetStaffShiftPin,
   updateStaffProfile,
   updateStudentProfile,
   updateUnit,
@@ -25,6 +26,13 @@ import {
   formatEnrollmentRange,
 } from '@/utils/courseEnrollmentDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
+import {
+  STAFF_PIN_GENERATED_TOAST,
+  STAFF_PIN_NONE_HINT,
+  STAFF_PIN_REVEALED_HINT,
+  STAFF_PIN_SAVE_FIRST_HINT,
+  STAFF_PIN_SET_HINT,
+} from '@/utils/shiftStaffCopy'
 import {
   type UnitFormState,
   buildUnitSavePayload,
@@ -46,6 +54,36 @@ const emit = defineEmits<{
 }>()
 
 const { show: showToast } = useToast()
+
+const pinBusy = ref(false)
+const revealedPin = ref('')
+const pinReadyFor = ref<string | null>(null)
+const pinSet = computed(() =>
+  !!props.editingUnit?.staff_profile?.shift_pin_set || pinReadyFor.value === props.editingUnit?.id,
+)
+
+watch(() => props.editingUnit?.id, () => {
+  revealedPin.value = ''
+})
+
+async function generateShiftPin() {
+  if (!props.editingUnit)
+    return
+  pinBusy.value = true
+  try {
+    const result = await resetStaffShiftPin(props.editingUnit.id)
+
+    revealedPin.value = result.pin
+    pinReadyFor.value = props.editingUnit.id
+    showToast(STAFF_PIN_GENERATED_TOAST)
+  }
+  catch (e) {
+    showToast(formatApiError(e, 'Could not generate shift PIN.'), 'error')
+  }
+  finally {
+    pinBusy.value = false
+  }
+}
 
 const open = computed({
   get: () => props.modelValue,
@@ -747,6 +785,35 @@ async function handleSave() {
         <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">
           Staff profile
         </h4>
+        <div class="d-flex flex-wrap align-center gap-3 mb-3">
+          <VBtn
+            type="button"
+            variant="tonal"
+            color="primary"
+            prepend-icon="ri-key-2-line"
+            :loading="pinBusy"
+            :disabled="!editingUnit"
+            @click="generateShiftPin"
+          >
+            {{ pinSet ? 'Reset shift PIN' : 'Generate shift PIN' }}
+          </VBtn>
+          <span class="text-body-2 text-medium-emphasis">
+            {{
+              editingUnit
+                ? (pinSet ? STAFF_PIN_SET_HINT : STAFF_PIN_NONE_HINT)
+                : STAFF_PIN_SAVE_FIRST_HINT
+            }}
+          </span>
+        </div>
+        <VAlert
+          v-if="revealedPin"
+          type="warning"
+          variant="tonal"
+          class="mb-3"
+        >
+          Shift PIN: <strong>{{ revealedPin }}</strong>
+          <span class="d-block text-caption mt-1">{{ STAFF_PIN_REVEALED_HINT }}</span>
+        </VAlert>
         <VRow class="dense-form-row">
           <VCol
             cols="12"

@@ -78,7 +78,7 @@ export function enrollmentStatusLabel(status: string): string {
   if (status === 'active')
     return 'In class'
   if (status === 'completed')
-    return 'Completed'
+    return 'Left'
   if (status === 'cancelled')
     return 'Left'
 
@@ -87,6 +87,36 @@ export function enrollmentStatusLabel(status: string): string {
 
 export function billingWindowLabel(enrollment: Pick<CourseEnrollment, 'start_date' | 'end_date'>): string {
   return `${formatRosterDate(enrollment.start_date, 'Already started')} → ${formatRosterDate(enrollment.end_date, 'Ongoing')}`
+}
+
+/** Last day of the month after the current end. Same enrollment, one more billed month. */
+export function renewEndDate(currentEnd: string): string {
+  const [yearText, monthText] = currentEnd.slice(0, 10).split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear = month === 12 ? year + 1 : year
+  const lastDay = new Date(nextYear, nextMonth, 0).getDate()
+
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+}
+
+/** Last calendar day of the month containing `isoDate`. Used to end an ongoing enrollment. */
+export function lastDayOfMonth(isoDate: string): string {
+  const [yearText, monthText] = isoDate.slice(0, 10).split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const lastDay = new Date(year, month, 0).getDate()
+
+  return `${yearText}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+}
+
+export function todayIsoDate(now = new Date()): string {
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 export function enrollmentPriceParts(
@@ -143,9 +173,13 @@ export function enrollPriceHint(sku: Pick<CourseSku, 'price' | 'billing_unit'> |
   if (!sku)
     return ''
   if (sku.price == null)
-    return 'No class price — enter this student\'s monthly price, or Generate will skip them.'
+    return '呢班未有價錢。請填呢個學生嘅月費，否則 Generate 會跳過。'
 
-  return `Leave empty to use the class price (${rosterPriceLabel(sku)}).`
+  const amount = `HK$${Number(sku.price).toFixed(2)}`
+
+  return sku.billing_unit === 'per_session'
+    ? `留空就用呢班嘅堂費（${amount}）。`
+    : `留空就用呢班嘅月費（${amount}）。`
 }
 
 export function enrollBillPreview(input: {

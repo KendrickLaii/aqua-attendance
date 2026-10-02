@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -54,5 +54,12 @@ class StaffProfileOut(BaseModel):
     work_schedule: str | None = None
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
+    shift_pin_set: bool = False
+    shift_pin_set_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ShiftPinResetOut(BaseModel):
+    pin: str
+    shift_pin_set_at: datetime

@@ -1,8 +1,8 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -43,6 +43,14 @@ class StaffProfile(Base):
 
     # Notes
     employment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Hashed 6-digit PIN for the staff shift portal. Plaintext is shown once at reset.
+    shift_pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    shift_pin_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def shift_pin_set(self) -> bool:
+        return bool(self.shift_pin_hash)
 
     # Relationships
     unit: Mapped["Unit"] = relationship(

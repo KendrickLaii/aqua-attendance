@@ -255,6 +255,80 @@ export function formatCardBusinessHours(l: LocationItem): string {
   return `${parts[0]} · ${parts[1]}…`
 }
 
+const JS_DAY_TO_KEY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+
+function padClock(value: string | null | undefined): string | null {
+  if (!value)
+    return null
+
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/)
+  if (!match)
+    return null
+
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59)
+    return null
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function localWeekdayKey(isoDate: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate))
+    return null
+
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day)
+    return null
+
+  return JS_DAY_TO_KEY[date.getDay()]
+}
+
+/** Open and close for one calendar day, when the location actually has hours for that weekday. */
+export function openCloseForLocationDate(
+  location: Pick<LocationItem, 'business_hours' | 'details'> | null | undefined,
+  isoDate: string,
+): { open: string; close: string } | null {
+  if (!location)
+    return null
+
+  const dayKey = localWeekdayKey(isoDate)
+  if (!dayKey)
+    return null
+
+  const rawSchedule = location.details?.hours_schedule
+  if (Array.isArray(rawSchedule) && rawSchedule.length) {
+    const entry = (rawSchedule as HoursScheduleEntry[]).find(item => item.day === dayKey)
+    if (!entry?.isOpen)
+      return null
+
+    const open = padClock(entry.openTime)
+    const close = padClock(entry.closeTime)
+    if (!open || !close || close <= open)
+      return null
+
+    return { open, close }
+  }
+
+  const hours = location.business_hours
+  if (hours && typeof hours === 'object') {
+    const full = DAY_KEY_TO_FULL[dayKey]
+    const day = hours[full] ?? hours[dayKey] ?? null
+    if (!day || typeof day !== 'object')
+      return null
+
+    const open = padClock(day.open)
+    const close = padClock(day.close)
+    if (!open || !close || close <= open)
+      return null
+
+    return { open, close }
+  }
+
+  return null
+}
+
 export function showCardIcon(l: LocationItem): boolean {
   return !!l.icon_url && l.icon_url !== l.main_photo_url
 }

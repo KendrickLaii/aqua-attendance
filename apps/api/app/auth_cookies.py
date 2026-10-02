@@ -6,6 +6,8 @@ from app.config import settings
 
 ACCESS_COOKIE = "attendance_access"
 REFRESH_COOKIE = "attendance_refresh"
+STAFF_SHIFT_COOKIE = "staff_shift_access"
+STAFF_SHIFT_COOKIE_MAX_AGE = 12 * 60 * 60
 _COOKIE_PATH = "/api"
 
 
@@ -38,3 +40,19 @@ def set_auth_cookies(response: Response, tokens: dict) -> None:
 def clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(ACCESS_COOKIE, path=_COOKIE_PATH)
     response.delete_cookie(REFRESH_COOKIE, path=_COOKIE_PATH)
+
+
+def set_staff_shift_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=STAFF_SHIFT_COOKIE,
+        value=token,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+        max_age=STAFF_SHIFT_COOKIE_MAX_AGE,
+        path=_COOKIE_PATH,
+    )
+
+
+def clear_staff_shift_cookie(response: Response) -> None:
+    response.delete_cookie(STAFF_SHIFT_COOKIE, path=_COOKIE_PATH)

@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-09-24（Credit Notes 獨立頁、退款單列印、`payable_to_name`／`payee_name`；收條編號改手打；上傳圖公開讀取；Alembic head **d4b8e2a1c7f0**）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。本地 migration 請用 `python -m alembic upgrade head`。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-10-02（同一班可再報 #M22；Courses **Renew**／**Set end**；結束日過後自動 Leave；Alembic head **a4e8c1d9b6f2**）。2026-09-24（Credit Notes 獨立頁、退款單列印、`payable_to_name`／`payee_name`；收條編號改手打；上傳圖公開讀取）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。本地 migration 請用 `python -m alembic upgrade head`。
 
 ---
 
@@ -201,7 +201,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 - SKU 可選掛載到 `locations`（`location_id`）。
 - **計價在 SKU**：一班一種收法（月費或堂費），單一 `price`。功課輔導／A1／F5 共用這兩個單位。
 - 只有 `unit_type == student` 的 unit 能被報名；`staff`/`device`/`goods` 會回傳 422。
-- 同一學生（`unit_id`）與同一 SKU（`sku_id`）目前只允許一筆記錄；重複報名會回傳 409。下學年重報同一班號會撞唯一約束（刻意未改；月費可靠起迄日出賬）。見 [known-gaps.md](known-gaps.md) **#M22**。
+- 同一學生（`unit_id`）與同一 SKU（`sku_id`）同時只准一筆 `active`；第二筆在讀回傳 409。`cancelled`／`completed` 留低。離開後再 Join 開新報名；Back in class 重開舊報名（已有另一筆在讀則 409）。見 [known-gaps.md](known-gaps.md) ~~#M22~~。
 - 刪除 SPU 時，若底下仍有 SKU，會因 `ondelete="RESTRICT"` 回傳 409；刪除 SKU 時若仍有報名記錄，同樣回傳 409。
 - 刪除學生 unit 會 cascade 刪除其報名記錄；刪除 SKU 會限制於已有報名（`RESTRICT`）。
 
@@ -211,8 +211,11 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 - 選 SPU → 選 SKU（或 Class 下拉）→ 該班名冊。
 - Class Offerings 表有 **In class** 欄：該班現正在讀（`status=active`）的學生人數。有容量時顯示 `人數 / 容量`。已 Leave class 的不計。Join／Leave／Back in class 後即時更新。
-- 名冊掣名：**Join class** / **Leave class** / **Back in class** / **Remove record**。按鈕英文；提示同確認框粵語。
-- 名冊新增學生時填 **Start / End** 日期；列上可改日期並 Save（不必刪掉重報）。
+- 名冊掣名：**Join class** / **Leave class** / **Back in class** / **Renew**（月費、有結束日）／**Set end**（月費、Ongoing）／**Remove record**。按鈕英文；提示同確認框粵語。
+- **月費續報**：人仲喺 In class 時撳 **Renew**，同一筆報名把結束日拉長（預設下一個月最後一日，可改）。Ongoing（無結束日）用 **Set end** 設最後計費日。
+- **結束日過後自動 Leave**：結束日 = 最後計費日（當日仍 In class）。香港日期**過咗結束日**之後，開名冊／GET／容量檢查／再 Join 前會自動變成 Left（資料庫 `completed`），唔再佔容量；已經出咗嘅單唔會改。員工撳 Leave 係 `cancelled`，之後 Generate 唔再計呢期。自動結束（`completed`）嘅月份如果未出單，遲啲 Generate 仍然會出（日期要重疊該月）。**Back in class** 若結束日已過，要先改新結束日。改日期唔會自動開單；去 Invoices 撳 Generate 先出該月單。每個月仍然係成個月費，發票印月份（如 Sept-26），唔印日數。
+- **堂費再收**：用 **Top up**，唔用 Renew。
+- 名冊新增學生時填 **Start / End** 日期；列上可改日期並 Save（不必刪掉重報）。留空 End = Ongoing。
 - 學生搜尋仍為分頁（`page_size: 20`）+ 伺服器搜尋，不是一次載入全校。
 - SKU 表單含計價單位（月費／堂費）、上課日（Mon–Sun，僅供顯示）與負責教師（`staff_id`）。
 - 堂費班名冊有 Sessions 欄顯示購買堂數與 unbilled chip；堂費出單主要經 Manual invoice 結算未出單購買（私補），Generate 亦會補收。
@@ -229,7 +232,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 #### 產生規則
 
-- `POST /api/tuition-invoices/generate?year=&month=`：納入該月與 **active** 報名日期視窗重疊的列；跳過 cancelled、完全落在該月外、未啟用 SKU；月費行另跳過 SKU `price` 為空（堂費不受 SKU 價限制，價錢在 purchase）。
+- `POST /api/tuition-invoices/generate?year=&month=`：納入該月與 **active** 或 **completed**（讀完／自動 Leave）報名日期視窗重疊的列；跳過 cancelled（員工 Leave）、完全落在該月外、未啟用 SKU；月費行另跳過 SKU `price` 為空（堂費不受 SKU 價限制，價錢在 purchase）。
 - 已 `issued`／`paid` 的該月發票跳過；`draft` 可重產（替換行項目）。沒有有效報名的 `draft` 會刪除。
 - **未 Paid 可 Edit**（`draft`／`issued`）：PATCH `lines` 重算 `total`，編號預設不變。Generated 行保留 `enrollment_id`／SKU，避免 Edit 之後可以刪走仍有帳單的報名。Edit **不會**改 Courses：唔會改班價、學生價錢、入班日期，亦**不會** Join class。在單上 Add a class 只係多一行收費，名冊同 In class 人數不變。要入班必須去 Courses 撳 Join class，再 Generate。堂費 package 原本無價時，第一次出單寫入的 fee 會記在該次購買（`enrollment_purchases.unit_price`），唔係改 SKU。`paid`／`void` 連編號、備註、開單人、行項目都唔准改 → 422。例外：`payable_to_name`／`payee_name` 即使已 Paid 仍可改（補印退款抬頭）。Paid 之後用負數 Manual invoice（credit note）或先 Void receipt 變返 Issued。
 - `void`：PATCH 不能改回 draft。再 Generate 時，若仍有重疊的 active 報名則復活成 draft（清走舊 `invoice_no`／`issued_at`，再 Issue 派新號）；若已無有效報名則保持 void。要張單唔出返嚟：**先 Leave class／改 Courses，再 Generate**。
@@ -251,7 +254,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 | 項目 | 現況 | 見 |
 | ------ | ------ | --- |
 | ~~堂費扣公眾假期~~ | 2026-09-04 已失效：堂費改為報名時輸入 `purchased_quantity` 一次性收費，不再按出勤∩上課日計算 | [known-gaps.md](known-gaps.md) ~~#M23~~ |
-| 下學年重報同一 SKU | `(unit_id, sku_id)` 永久唯一，409 | **#M22** |
+| ~~下學年重報同一 SKU~~ | 2026-10-02 已做：同時只准一筆在讀（`a4e8c1d9b6f2`） | ~~#M22~~ |
 | WhatsApp／對外發送發票 | 僅後台狀態流 | **#M24** |
 | Vuexy `/apps/invoice` | 模板假資料，不要當產品 | **D5** |
 | ERP／家具庫存 | **不在本 repo 做**，以後是獨立新專案 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
@@ -277,23 +280,39 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 ### 1.13 員工更表
 
-簡化版 Teams Shifts，俾 admin（本身即員工）自己報更／排更。**純記錄**：出勤、Summaries、Payroll 完全唔讀呢兩個表。需求與設計見 [需求理解.md](需求理解.md)、[方案設計.md](方案設計.md)（2026-09-29）。
+簡化版 Teams Shifts。Admin 可以直接排更；員工用**員工編號 + 6 位 PIN** 登入獨立頁自己交申請，管理員批准之後先寫入正式更。**純記錄**：出勤、Summaries、Payroll 唔讀呢啲表。設計見 [方案設計.md](方案設計.md)（2026-10-02）。
 
 | 層級 | 資料表 | 說明 |
 | ------ | ------ | ------ |
 | 模板 | `shift_templates` | 名稱、開始／結束時間、顏色 `#RRGGBB`、`sort_order`。 |
 | 更 | `shifts` | 一行 = 一個 staff unit 喺某日某分店嘅一更。`title`／`color`／時間喺儲存時由模板**複製**，改／刪模板唔會改舊更（`template_id` SET NULL）。記錄 `created_by_id`／`updated_by_id`。 |
+| 申請 | `shift_requests` | 員工提交、未入正式更表。`status`：`pending` / `approved` / `rejected` / `cancelled`。批准後 `shift_id` 指向新建嘅 `shifts` 行。 |
+| PIN | `staff_profiles.shift_pin_hash` | 只存哈希。明文只喺管理員按 Generate / Reset 嗰一下顯示。 |
 
 #### 規則
 
 - 只可以排俾 `unit_type=staff`；`end_time` 必須遲過 `start_time`（**過夜更未支援**，P2）。
-- 同人同日可以有多更；時間重疊只喺 UI 提示，後端唔擋。
+- Admin 直接開更：同人同日可以有多更；時間重疊只喺 UI 提示，後端唔擋。
+- 員工申請：唔可以係過去日期（香港日）；地點必須係註冊地點或可打卡地點；唔可以同自己已確認嘅更、或其他 pending 申請重疊（409）。`unit_id` 來自登入 token，唔接受客戶端傳入。已確認嘅更員工唔可以改或刪。
+- 登入：`POST /api/staff-shifts/login`，body `{code, pin}`。只限 active staff。Cookie 叫 `staff_shift_access`，同 admin 嘅 `attendance_access` 分開，約 12 小時，冇 refresh。呢個 token 唔可以呼叫 `/api/shifts` 寫入。
+- 批准：`POST /api/shift-requests/{id}/approve` 複製一行入 `shifts`，`created_by_id` 係批核嘅 admin。拒絕可填原因，員工喺自己頁睇到。
 - `GET /api/shifts?start=&end=` 包頭包尾，最多 62 日；`location_id` 只篩更嘅分店。
 - `POST /api/shifts/copy-week`：`source_week_start`、`target_week_start` 必須係星期一；目標週已有「同人同分店同日同時間」嘅更、或員工已 inactive → 跳過；回 `{created, skipped}`，重複撳唔會抄多份。
 
-#### Web（`/attendance/shifts`）
+#### Web
+
+**Admin**（`/attendance/shifts`）
 
 - 週視圖：行 = 註冊喺／可以喺該分店打卡嘅 active staff，加上該週已有更嘅人；欄 = 星期一至日，標題顯示當日更數同時數；員工名下顯示週時數。
+- 頁頂「Pending staff requests」先至係員工申請。Approve 先入下面嘅正式週表；Reject 可留一句原因。未批嘅申請唔會出現喺列印、CSV、複製上週。
+
+**員工**（`/staff/shifts`，唔入側欄；admin 登入頁有 Staff shift login）
+
+- 英文介面，粵語（繁體）只作提示，文案喺 `apps/web/src/utils/shiftStaffCopy.ts`。用員工編號 + PIN 登入，只睇到自己嘅週。實心色塊 = Confirmed（已確認）；虛線 = Pending（待確認），可以 Cancel。過去日期唔可以再申請。
+- PIN：員工編輯框 Generate shift PIN / Reset shift PIN。儲存員工之後先可以產生。明文只顯示一次，要即場交俾員工。
+
+Admin 週表其餘操作：
+
 - 撳格仔 → 模板選單一撳加更（冇模板就直接開表單）；撳更 → 編輯／刪除。
 - 拖放搬更（改人或改日）；按住 Ctrl／Alt／⌘ 拖放 = 複製。
 - 週次同分店寫入 URL（`?week=YYYY-MM-DD&location=`），重新整理或分享連結保留畫面。
@@ -800,7 +819,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 9e. Generate 端點互斥鎖 ⬜ — 見 [known-gaps.md](known-gaps.md) #M17
 9f. `units.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
 9g. **個人資料欄位搬移至 profiles**（units 瘦身）✅ — 已於 2026-07-28 建立並執行 Alembic migration `f8e65b7cf82b_align_schema_with_er_diagram`；見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態。
-9h. 同一學生同一 SKU 永久唯一（下學年重報 409）⬜ — 見 [known-gaps.md](known-gaps.md) #M22
+9h. 同一學生同一 SKU 永久唯一（下學年重報 409）✅ — 2026-10-02 改為只鎖在讀（`a4e8c1d9b6f2`）。見 [known-gaps.md](known-gaps.md) ~~#M22~~
 9i. ~~堂費扣公眾假期~~ ✅ 2026-09-04 已失效（堂費改一次性 `purchased_quantity` 收費，不再依出勤／上課日）— 見 [known-gaps.md](known-gaps.md) ~~#M23~~
 9j. 學費發票對外發送（WhatsApp）⬜ — 見 [known-gaps.md](known-gaps.md) #M24
 

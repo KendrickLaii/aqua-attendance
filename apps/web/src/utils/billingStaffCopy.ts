@@ -2,6 +2,35 @@
 
 export const JOIN_CLASS_HINT = '將學生加呢堂。之後去 Invoices 撳 Generate 先會出單。'
 
+export const RENEW_SUBTITLE = '同一筆報名。發票只顯示月份，例如 Sept-26，唔會印開始同結束日。'
+
+export const ONGOING_END_DATE_HINT = '留空就係 Ongoing。入班後可以撳 Set end 設最後計費日；過咗結束日會自動 Leave。'
+
+export const ONGOING_SET_END_HINT = '撳 Set end 就可以設最後計費日。過咗呢日會自動 Leave。'
+
+export const SET_END_HINT =
+  '而家係 Ongoing，之後每個月 Generate 都會包呢個學生。下面個日期預設係今個月最後一日。呢日之後嘅月份唔會再出單。重疊到嘅月份仍然收成個月費。香港日期過咗結束日之後，開名冊會自動 Leave（變 Left）。'
+
+export const RENEW_DATE_HINT = '儲存前可以改呢個日期。'
+
+export const RENEW_END_REQUIRED = '請揀最後計費日。'
+
+export const RENEW_END_BEFORE_START = '最後計費日唔可以早過開始日。'
+
+export const RENEW_END_NOT_LATER = '新結束日一定要遲過而家嘅結束日。如果只想計完今個月，改個日期。'
+
+export function renewExtendHint(start: string, end: string): string {
+  return `而家計 ${start} 至 ${end}。下面個日期預設係下一個月最後一日，所以 9月10日 會變 10月31日，10月就可以出單。如果只想計到今個月，例如 9月30日，儲存前改個日期。每個月仍然係成個月費。`
+}
+
+export function renewSavedHint(name: string, end: string): string {
+  return `${name} 已續到 ${end}。新月份要去 Invoices 撳 Generate 先出單。`
+}
+
+export function setEndSavedHint(name: string, end: string): string {
+  return `${name} 計到 ${end} 為止。之後嘅月份唔會再 Generate。`
+}
+
 export const JOIN_FIRST_STUDENT = 'Join the first student with the form above.'
 
 export const LEAVE_CLASS_CONFIRM =

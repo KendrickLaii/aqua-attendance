@@ -1051,6 +1051,7 @@ async function confirmVoid() {
     <ManualCorrectionDialog
       v-model="correctionDialog"
       :unit-catalog="units"
+      :initial-unit="selectedUnit"
       @saved="loadEvents(true)"
     />
 

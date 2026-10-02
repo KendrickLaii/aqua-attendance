@@ -173,10 +173,10 @@ const emit = defineEmits<{
               <th
                 class="sortable col-staff"
                 :aria-sort="ariaSort(sort, 'staff')"
-                :title="sortHeaderTitle(sort, 'staff', 'Opened by')"
+                :title="sortHeaderTitle(sort, 'staff', 'Tutor')"
                 @click="emit('sort', 'staff')"
               >
-                Opened by
+                Tutor
                 <VIcon
                   :icon="sortIconFor(sort, 'staff')"
                   size="14"
@@ -255,18 +255,19 @@ const emit = defineEmits<{
                     class="student-name"
                     :title="invoiceStudentLabel(invoice)"
                   >
-                    {{ invoiceStudentLabel(invoice) }}
-                  </div>
-                  <div class="text-caption text-medium-emphasis d-flex align-center flex-wrap gap-1">
-                    <span v-if="invoice.unit_code">{{ invoice.unit_code }}</span>
+                    <span class="student-name__text">{{ invoiceStudentLabel(invoice) }}</span>
                     <VChip
                       v-if="invoice.kind === 'manual'"
                       size="x-small"
                       color="info"
                       label
+                      class="student-name__chip"
                     >
                       Manual
                     </VChip>
+                  </div>
+                  <div class="text-caption text-medium-emphasis d-flex align-center flex-wrap gap-1">
+                    <span v-if="invoice.unit_code">{{ invoice.unit_code }}</span>
                     <VChip
                       v-if="isCreditInvoice(invoice)"
                       size="x-small"
@@ -424,7 +425,7 @@ const emit = defineEmits<{
                       </span>
                       <span>Period: {{ invoicePeriodLabel(invoice) }}</span>
                       <span v-if="invoiceOpenedBy(invoice)">
-                        Opened by <strong>{{ invoiceOpenedBy(invoice) }}</strong>
+                        Tutor <strong>{{ invoiceOpenedBy(invoice) }}</strong>
                       </span>
                       <span v-if="invoice.notes">
                         Remark: {{ invoice.notes }}
@@ -603,7 +604,20 @@ const emit = defineEmits<{
 }
 
 .invoices-table :deep(.student-name) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 500;
+}
+
+.invoices-table :deep(.student-name__text) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.invoices-table :deep(.student-name__chip) {
+  flex-shrink: 0;
 }
 
 .invoices-table :deep(.col-no),

@@ -35,6 +35,20 @@ def create_access_token(subject: str, role: str, extra: dict | None = None) -> s
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+def create_staff_shift_token(unit_id: str) -> str:
+    """Short-lived portal token. Distinct type so it cannot be used as an admin access token."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": unit_id,
+        "role": "staff",
+        "type": "staff_shift",
+        "iat": now,
+        "exp": now + timedelta(hours=12),
+        "jti": uuid.uuid4().hex,
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
 def create_refresh_token(subject: str) -> str:
     now = datetime.now(timezone.utc)
     payload = {

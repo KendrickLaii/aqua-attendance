@@ -249,7 +249,7 @@ function removeSku(sku: CourseSku) {
           Course Management
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          Expand Courses to pick a course, then Class Offerings to pick a class. The roster below is who is in that class.
+          展開 Courses 揀科目，再開 Class Offerings 揀班。下面個名冊就係呢班嘅學生。
         </div>
       </VCol>
       <VCol

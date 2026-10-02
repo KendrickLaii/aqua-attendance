@@ -72,13 +72,13 @@ app/
   models/           # User、Unit、StaffProfile、StudentProfile、AttendanceEvent、
                     # Location、RefreshToken、Notification、AttendanceSummary、
                     # PayrollRecord、AuditLog、CourseSpu、CourseSku、CourseEnrollment、
-                    # TuitionInvoice、TuitionInvoiceLine、TuitionReceipt、Shift、ShiftTemplate
+                    # TuitionInvoice、TuitionInvoiceLine、TuitionReceipt、Shift、ShiftTemplate、ShiftRequest
   schemas/          # Pydantic request/response models
   routers/          # auth、users、units、locations、qr、attendance、
                     # student-profiles、staff-profiles、notifications、
                     # attendance-summaries、payroll-records、audit-logs、auto-checkout、
                     # course-spus、course-skus、course-enrollments、tuition-invoices、tuition-receipts、
-                    # shift-templates、shifts、uploads
+                    # shift-templates、shifts、staff-shifts、shift-requests、uploads
   services/         # auth、qr、attendance、unit、overtime、auto_checkout、
                     # media_storage、summary_generator、payroll_generator、tuition_invoice_generator
   utils/            # 搜尋輔助（safe ILIKE）
@@ -136,6 +136,6 @@ API image 由 `Dockerfile` 建置，`.github/workflows/docker-publish.yml` 推�
 
 - 設定 `ENV=production` 與獨立的 `SECRET_KEY` / `QR_SECRET`（各執行 `openssl rand -hex 32`）— 詳見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md)
 - API 會在生產密鑰為佔位符或短於 32 字元時**拒絕啟動**
-- 部署後執行 `python -m alembic upgrade head`（目前 head **c3e7a95b2d10**：課程、SKU `billing_unit`、學費發票、發票編號、手動發票、每中心編號系列、堂費購買記錄、發票行老師名、手動發票 partial unique、drop `purchased_quantity`）
+- 部署後執行 `python -m alembic upgrade head`（目前 head **b7c1e9a4d2f6**：員工更表 PIN、`shift_requests`；沿用之前嘅課程、學費發票同報名變更）
 - 透過 Web **User Management** 建立額外登入使用者 — 公開的 `/api/auth/register` 回傳 403
 - 登出時 client 應呼叫 `POST /api/auth/logout` 並帶 `refresh_token`；過期 refresh row 會在 login、refresh、logout 時自動清理

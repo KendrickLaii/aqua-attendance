@@ -111,3 +111,77 @@ class ShiftCopyWeek(BaseModel):
 class ShiftCopyWeekResult(BaseModel):
     created: int
     skipped: int
+
+
+class ShiftRequestCreate(BaseModel):
+    location_id: uuid.UUID
+    shift_date: date
+    start_time: time
+    end_time: time
+    title: str | None = Field(default=None, max_length=100)
+    color: str = Field(pattern=HEX_COLOR)
+    notes: str | None = None
+    template_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _validate_times(self) -> Self:
+        _check_times(self.start_time, self.end_time)
+        return self
+
+
+class ShiftRequestOut(BaseModel):
+    id: uuid.UUID
+    unit_id: uuid.UUID
+    location_id: uuid.UUID
+    shift_date: date
+    start_time: time
+    end_time: time
+    title: str | None = None
+    color: str
+    notes: str | None = None
+    template_id: uuid.UUID | None = None
+    status: str
+    reject_reason: str | None = None
+    shift_id: uuid.UUID | None = None
+    reviewed_by_id: uuid.UUID | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    unit_code: str | None = None
+    unit_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ShiftRequestReject(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class StaffShiftLogin(BaseModel):
+    code: str = Field(min_length=1, max_length=100)
+    pin: str = Field(min_length=6, max_length=6)
+
+
+class StaffShiftMe(BaseModel):
+    id: uuid.UUID
+    code: str
+    full_name: str
+
+
+class StaffShiftLoginOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    unit: StaffShiftMe
+
+
+class StaffShiftWeek(BaseModel):
+    shifts: list[ShiftOut]
+    requests: list[ShiftRequestOut]
+
+
+class StaffLocationOut(BaseModel):
+    id: uuid.UUID
+    name_en: str
+    name_zh: str | None = None
+
+    model_config = {"from_attributes": True}

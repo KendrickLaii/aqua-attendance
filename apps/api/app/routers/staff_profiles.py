@@ -1,4 +1,6 @@
+import secrets
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
@@ -7,7 +9,8 @@ from sqlalchemy.orm import selectinload
 from app.deps import DB, AdminOnly
 from app.models.unit import Unit
 from app.models.staff_profile import StaffProfile
-from app.schemas.staff_profile import StaffProfileCreate, StaffProfileOut, StaffProfileUpdate
+from app.schemas.staff_profile import StaffProfileCreate, StaffProfileOut, StaffProfileUpdate, ShiftPinResetOut
+from app.services.auth import hash_password
 
 router = APIRouter(prefix="/staff-profiles", tags=["staff-profiles"])
 
@@ -65,6 +68,28 @@ async def update_staff_profile(
     await db.commit()
     await db.refresh(profile)
     return StaffProfileOut.model_validate(profile)
+
+
+@router.post("/{unit_id}/shift-pin", response_model=ShiftPinResetOut)
+async def reset_shift_pin(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> ShiftPinResetOut:
+    result = await db.execute(select(Unit).where(Unit.id == unit_id))
+    unit = result.scalar_one_or_none()
+    if not unit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+    if unit.unit_type != "staff":
+        raise HTTPException(status_code=422, detail="Unit must be of type 'staff'")
+
+    profile = await db.get(StaffProfile, unit_id)
+    if not profile:
+        profile = StaffProfile(id=unit_id)
+        db.add(profile)
+
+    pin = f"{secrets.randbelow(1_000_000):06d}"
+    profile.shift_pin_hash = hash_password(pin)
+    profile.shift_pin_set_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(profile)
+    return ShiftPinResetOut(pin=pin, shift_pin_set_at=profile.shift_pin_set_at)
 
 
 @router.delete("/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)

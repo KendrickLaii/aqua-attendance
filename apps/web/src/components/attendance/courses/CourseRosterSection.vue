@@ -14,9 +14,20 @@ import { type Unit, getUnit, listUnits } from '@/api/attendance/units'
 import { billingUnitShortLabel, enrollmentStatusColor } from '@/utils/courseEnrollmentDisplay'
 import {
   JOIN_CLASS_HINT,
+  ONGOING_END_DATE_HINT,
+  ONGOING_SET_END_HINT,
   JOIN_FIRST_STUDENT,
   LEAVE_CLASS_CONFIRM,
   REMOVE_RECORD_CONFIRM,
+  RENEW_DATE_HINT,
+  RENEW_END_BEFORE_START,
+  RENEW_END_NOT_LATER,
+  RENEW_END_REQUIRED,
+  RENEW_SUBTITLE,
+  SET_END_HINT,
+  renewExtendHint,
+  renewSavedHint,
+  setEndSavedHint,
   leaveClassUnbilledNote,
   mapEnrollmentApiError,
 } from '@/utils/billingStaffCopy'
@@ -32,8 +43,11 @@ import {
   enrollmentStatusLabel,
   formatRosterDate,
   matchesRosterSearch,
+  lastDayOfMonth,
   purchaseSummary,
   purchaseTooltip,
+  renewEndDate,
+  todayIsoDate,
   rosterMetaLine,
   rosterPriceLabel,
   studentCode,
@@ -93,6 +107,11 @@ const rosterAtCapacity = computed(() => {
 })
 
 const rosterEditingId = ref<string | null>(null)
+const renewingEnrollment = ref<CourseEnrollment | null>(null)
+const renewMode = ref<'renew' | 'end'>('renew')
+const renewEnd = ref('')
+const renewSaving = ref(false)
+const renewError = ref('')
 const topUpEnabled = false
 const topUpOpen = ref(false)
 const topUpEnrollment = ref<CourseEnrollment | null>(null)
@@ -531,6 +550,80 @@ async function confirmDelete() {
   }
 }
 
+function openRenew(enrollment: CourseEnrollment) {
+  if (!enrollment.end_date)
+    return
+  renewMode.value = 'renew'
+  renewingEnrollment.value = enrollment
+  renewEnd.value = renewEndDate(enrollment.end_date)
+  renewError.value = ''
+}
+
+function openEndBilling(enrollment: CourseEnrollment) {
+  renewMode.value = 'end'
+  renewingEnrollment.value = enrollment
+  renewEnd.value = lastDayOfMonth(todayIsoDate())
+  renewError.value = ''
+}
+
+function closeRenew() {
+  if (renewSaving.value)
+    return
+  renewingEnrollment.value = null
+  renewError.value = ''
+}
+
+async function confirmRenew() {
+  const enrollment = renewingEnrollment.value
+  if (!enrollment)
+    return
+  if (renewMode.value === 'renew' && !enrollment.end_date)
+    return
+
+  const nextEnd = emptyToNull(renewEnd.value)
+  const startDate = enrollment.start_date
+  if (!nextEnd) {
+    renewError.value = RENEW_END_REQUIRED
+
+    return
+  }
+  if (startDate && nextEnd < startDate) {
+    renewError.value = RENEW_END_BEFORE_START
+
+    return
+  }
+  if (renewMode.value === 'renew' && enrollment.end_date && nextEnd <= enrollment.end_date) {
+    renewError.value = RENEW_END_NOT_LATER
+
+    return
+  }
+
+  renewSaving.value = true
+  renewError.value = ''
+  try {
+    const updated = await updateCourseEnrollment(enrollment.id, { end_date: nextEnd })
+    const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
+    if (idx !== -1)
+      enrollments.value[idx] = updated
+    enrollmentDates.value[enrollment.id] = {
+      start: updated.start_date ?? '',
+      end: updated.end_date ?? '',
+      price: updated.unit_price != null ? String(updated.unit_price) : '',
+    }
+    renewingEnrollment.value = null
+    const savedEnd = formatRosterDate(updated.end_date)
+    enrollSuccess.value = renewMode.value === 'end'
+      ? setEndSavedHint(labelFor(enrollment), savedEnd)
+      : renewSavedHint(labelFor(enrollment), savedEnd)
+  }
+  catch (e) {
+    renewError.value = formatApiError(e, '更新唔到呢個結束日。')
+  }
+  finally {
+    renewSaving.value = false
+  }
+}
+
 function cancelEnrollment(enrollment: CourseEnrollment) {
   const unbilledQty = purchaseSummary(enrollment).unbilledQty
 
@@ -813,7 +906,9 @@ defineExpose({ scrollIntoView })
               label="End date"
               type="date"
               density="comfortable"
-              hide-details
+              :hint="rosterSku?.billing_unit === 'monthly' ? ONGOING_END_DATE_HINT : undefined"
+              :persistent-hint="rosterSku?.billing_unit === 'monthly'"
+              :hide-details="rosterSku?.billing_unit !== 'monthly'"
               :disabled="!skuId"
               clearable
             />
@@ -1105,11 +1200,37 @@ defineExpose({ scrollIntoView })
               </td>
               <td>
                 <div>{{ billingWindowLabel(e) }}</div>
+                <div
+                  v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
+                  class="text-caption text-medium-emphasis"
+                >
+                  {{ ONGOING_SET_END_HINT }}
+                </div>
                 <div class="text-caption text-medium-emphasis">
                   Added {{ formatRosterDate(e.enrolled_at) }}
                 </div>
               </td>
               <td class="text-end text-no-wrap col-actions">
+                <VBtn
+                  v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && e.end_date"
+                  size="x-small"
+                  variant="tonal"
+                  color="primary"
+                  class="roster-action-btn me-1"
+                  @click="openRenew(e)"
+                >
+                  Renew
+                </VBtn>
+                <VBtn
+                  v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
+                  size="x-small"
+                  variant="tonal"
+                  color="warning"
+                  class="roster-action-btn me-1"
+                  @click="openEndBilling(e)"
+                >
+                  Set end
+                </VBtn>
                 <VBtn
                   size="small"
                   variant="text"
@@ -1204,6 +1325,64 @@ defineExpose({ scrollIntoView })
         </VTable>
       </div>
     </VCard>
+
+    <VDialog
+      :model-value="renewingEnrollment != null"
+      max-width="440"
+      @update:model-value="open => { if (!open) closeRenew() }"
+    >
+      <VCard v-if="renewingEnrollment">
+        <VCardTitle>
+          {{ renewMode === 'end' ? 'Set end' : 'Renew' }} {{ labelFor(renewingEnrollment) }}
+        </VCardTitle>
+        <VCardText>
+          <div class="text-body-2 text-medium-emphasis mb-3">
+            {{ RENEW_SUBTITLE }}
+          </div>
+          <div class="text-body-2 mb-4">
+            {{ renewMode === 'end'
+              ? SET_END_HINT
+              : renewExtendHint(formatRosterDate(renewingEnrollment.start_date, '未設開始日'), formatRosterDate(renewingEnrollment.end_date)) }}
+          </div>
+          <VTextField
+            v-model="renewEnd"
+            :label="renewMode === 'end' ? '最後計費日' : '新結束日'"
+            :hint="RENEW_DATE_HINT"
+            persistent-hint
+            type="date"
+            density="comfortable"
+          />
+          <VAlert
+            v-if="renewError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-3"
+            closable
+            @click:close="renewError = ''"
+          >
+            {{ renewError }}
+          </VAlert>
+        </VCardText>
+        <VDivider />
+        <DialogFooter>
+          <VBtn
+            variant="outlined"
+            color="primary"
+            @click="closeRenew"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            :loading="renewSaving"
+            @click="confirmRenew"
+          >
+            {{ renewMode === 'end' ? 'Set end' : 'Renew' }}
+          </VBtn>
+        </DialogFooter>
+      </VCard>
+    </VDialog>
 
     <VDialog
       v-model="editDialogOpen"
@@ -1489,6 +1668,13 @@ defineExpose({ scrollIntoView })
 
 .roster-table-wrap {
   overflow-x: auto;
+}
+
+.roster-action-btn {
+  width: 4.75rem !important;
+  min-width: 4.75rem !important;
+  height: 22px !important;
+  padding-inline: 0;
 }
 
 .roster-table :deep(.col-actions) {
