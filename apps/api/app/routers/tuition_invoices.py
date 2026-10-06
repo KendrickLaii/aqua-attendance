@@ -1,4 +1,5 @@
 import calendar
+import re
 import uuid
 from datetime import date, datetime, timezone
 
@@ -122,8 +123,8 @@ async def list_tuition_invoices(
             raise HTTPException(status_code=422, detail="month must be 1-12")
         first_day = date(year, month, 1)
         last_day = date(year, month, calendar.monthrange(year, month)[1])
-        # Includes tuition invoices for the full month and manual invoices
-        # for any day in the month (manual period_start == period_end == date).
+        # Includes tuition and manual invoices for the full month and credit
+        # notes for any day in the month (period_start == period_end == date).
         clauses.append(TuitionInvoice.period_start >= first_day)
         clauses.append(TuitionInvoice.period_end <= last_day)
     if status_filter is not None:
@@ -630,6 +631,45 @@ async def _build_manual_lines(
     return lines, purchase_links
 
 
+_MONTH_PREFIXES = {
+    name: index
+    for index, name in enumerate(
+        ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), start=1
+    )
+}
+
+
+def _parse_month_label(label: str | None) -> tuple[int, int] | None:
+    """Read "2026-10", "Oct-26" or "Sept-26" as (year, month)."""
+    text = (label or "").strip()
+    iso = re.fullmatch(r"(\d{4})-(\d{1,2})", text)
+    if iso:
+        year, month = int(iso.group(1)), int(iso.group(2))
+        return (year, month) if 1 <= month <= 12 else None
+    named = re.fullmatch(r"([A-Za-z]+)[-\s']*(\d{2}|\d{4})", text)
+    if named:
+        month = _MONTH_PREFIXES.get(named.group(1)[:3].lower())
+        year = int(named.group(2))
+        if month:
+            return (year + 2000 if year < 100 else year, month)
+    return None
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
+
+
+def _manual_period(
+    period: str | None, lines: list[TuitionInvoiceLine], fallback: date
+) -> tuple[date, date]:
+    """Billing month: explicit period, else the latest line month, else the date's month."""
+    year_month = _parse_month_label(period)
+    if year_month is None:
+        line_months = [m for m in (_parse_month_label(line.month_label) for line in lines) if m]
+        year_month = max(line_months) if line_months else (fallback.year, fallback.month)
+    return _month_bounds(*year_month)
+
+
 @router.post("/manual", response_model=TuitionInvoiceOut, status_code=status.HTTP_201_CREATED)
 async def create_manual_tuition_invoice(
     body: TuitionInvoiceManualCreate,
@@ -668,6 +708,12 @@ async def create_manual_tuition_invoice(
     else:
         invoice_no = str(await _allocate_invoice_no(db, body.location_id))
 
+    # Credit notes count in the month they are written; invoices in the
+    # month they bill, even when opened early.
+    period_start, period_end = (
+        (body.date, body.date) if is_credit else _manual_period(body.period, lines, body.date)
+    )
+
     invoice = TuitionInvoice(
         unit_id=body.unit_id,
         location_id=body.location_id,
@@ -675,8 +721,9 @@ async def create_manual_tuition_invoice(
         staff_name=body.staff_name.strip() if body.staff_name else None,
         payable_to_name=body.payable_to_name.strip() if body.payable_to_name else None,
         payee_name=body.payee_name.strip() if body.payee_name else None,
-        period_start=body.date,
-        period_end=body.date,
+        period_start=period_start,
+        period_end=period_end,
+        issue_date=body.date,
         status=TuitionInvoiceStatus.issued.value,
         kind="manual",
         total=total,
@@ -730,9 +777,12 @@ async def update_tuition_invoice(
 
     update_data = body.model_dump(exclude_unset=True)
     line_payload = update_data.pop("lines", None)
+    period = update_data.pop("period", None)
+    if period is not None and invoice.kind != "manual":
+        raise HTTPException(status_code=422, detail="Only manual invoices have an editable month")
     if invoice.status not in _EDITABLE_STATUS:
         extra_fields = set(update_data) - {"status", "payable_to_name", "payee_name"}
-        if extra_fields or line_payload is not None:
+        if extra_fields or line_payload is not None or period is not None:
             raise HTTPException(
                 status_code=422,
                 detail="Cannot edit a paid or cancelled invoice",
@@ -794,6 +844,12 @@ async def update_tuition_invoice(
             purchase.billed_invoice_line_id = line.id
             if purchase.unit_price is None:
                 purchase.unit_price = line.unit_price
+    if period is not None:
+        if invoice.total < 0:
+            raise HTTPException(status_code=422, detail="A credit note stays in the month of its date")
+        invoice.period_start, invoice.period_end = _manual_period(
+            period, list(invoice.lines), invoice.issue_date or invoice.period_start
+        )
     if new_status == TuitionInvoiceStatus.issued.value:
         location_id = invoice.location_id or (invoice.unit.registered_location_id if invoice.unit else None)
         invoice.location_id = location_id

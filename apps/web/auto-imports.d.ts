@@ -265,6 +265,7 @@ declare global {
   const meetingDaysLabel: typeof import('./src/utils/courseRosterDisplay')['meetingDaysLabel']
   const mondayOf: typeof import('./src/utils/shiftDisplay')['mondayOf']
   const monthDates: typeof import('./src/utils/shiftDisplay')['monthDates']
+  const monthLabelToPeriod: typeof import('./src/utils/invoiceDisplay')['monthLabelToPeriod']
   const monthOfWeek: typeof import('./src/utils/shiftDisplay')['monthOfWeek']
   const monthOptions: typeof import('./src/utils/shiftDisplay')['monthOptions']
   const needsAuthenticatedMediaFetch: typeof import('./src/utils/mediaUrl')['needsAuthenticatedMediaFetch']
@@ -313,6 +314,7 @@ declare global {
   const payrollSummaryStatusColor: typeof import('./src/utils/payrollDisplay')['payrollSummaryStatusColor']
   const payrollSummaryStatusIcon: typeof import('./src/utils/payrollDisplay')['payrollSummaryStatusIcon']
   const payrollSummaryStatusLabel: typeof import('./src/utils/payrollDisplay')['payrollSummaryStatusLabel']
+  const periodFromMonthLabels: typeof import('./src/utils/invoiceDisplay')['periodFromMonthLabels']
   const pickCourseSelectionForSku: typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const printAttendanceSummaries: typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']
@@ -900,6 +902,7 @@ declare module 'vue' {
     readonly meetingDaysLabel: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['meetingDaysLabel']>
     readonly mondayOf: UnwrapRef<typeof import('./src/utils/shiftDisplay')['mondayOf']>
     readonly monthDates: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthDates']>
+    readonly monthLabelToPeriod: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['monthLabelToPeriod']>
     readonly monthOfWeek: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthOfWeek']>
     readonly monthOptions: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthOptions']>
     readonly needsAuthenticatedMediaFetch: UnwrapRef<typeof import('./src/utils/mediaUrl')['needsAuthenticatedMediaFetch']>
@@ -948,6 +951,7 @@ declare module 'vue' {
     readonly payrollSummaryStatusColor: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollSummaryStatusColor']>
     readonly payrollSummaryStatusIcon: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollSummaryStatusIcon']>
     readonly payrollSummaryStatusLabel: UnwrapRef<typeof import('./src/utils/payrollDisplay')['payrollSummaryStatusLabel']>
+    readonly periodFromMonthLabels: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['periodFromMonthLabels']>
     readonly pickCourseSelectionForSku: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly printAttendanceSummaries: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']>

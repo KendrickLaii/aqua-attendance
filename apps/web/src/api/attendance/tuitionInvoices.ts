@@ -34,6 +34,9 @@ export interface TuitionInvoice {
   location_id: string
   period_start: string
   period_end: string
+
+  /** Date typed on a manual invoice / credit note; billing month is period_start–period_end. */
+  issue_date: string | null
   status: TuitionInvoiceStatus
   kind: TuitionInvoiceKind
   total: number
@@ -134,6 +137,9 @@ export interface ManualInvoiceLine {
 
 export interface ManualInvoicePayload {
   date: string
+
+  /** Billing month "YYYY-MM". Ignored for credit notes (they stay on `date`). */
+  period?: string
   location_id: string
   unit_id?: string | null
   manual_student_name?: string | null
@@ -160,6 +166,7 @@ export async function updateTuitionInvoice(
     staff_name?: string | null
     payable_to_name?: string | null
     payee_name?: string | null
+    period?: string
     lines?: ManualInvoiceLine[]
   },
 ): Promise<TuitionInvoice> {

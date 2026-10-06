@@ -18,6 +18,8 @@ import {
   invoiceStudentLabel,
   isChargeInvoice,
   isCreditInvoice,
+  monthLabelToPeriod,
+  periodFromMonthLabels,
 } from './invoiceDisplay'
 
 function line(over: Partial<TuitionInvoiceLine> = {}): TuitionInvoiceLine {
@@ -52,6 +54,7 @@ function invoice(over: Partial<TuitionInvoice> = {}): TuitionInvoice {
     location_id: 'loc-1',
     period_start: '2026-09-01',
     period_end: '2026-09-30',
+    issue_date: null,
     status: 'draft',
     kind: 'tuition',
     total: 800,
@@ -135,6 +138,16 @@ describe('invoiceDisplay', () => {
     assert.equal(invoicePeriodLabel(invoice({ period_end: '2026-09-01' })), '2026-09-01')
     assert.equal(invoiceOpenedBy(invoice()), 'Ada')
     assert.equal(invoiceOpenedBy(invoice({ staff_name: '  ' })), '')
+  })
+
+  it('reads line month labels as a billing period', () => {
+    assert.equal(monthLabelToPeriod('Oct-26'), '2026-10')
+    assert.equal(monthLabelToPeriod('Sept-26'), '2026-09')
+    assert.equal(monthLabelToPeriod('2026-6'), '2026-06')
+    assert.equal(monthLabelToPeriod('6,13,20/ Oct'), '')
+    assert.equal(monthLabelToPeriod(''), '')
+    assert.equal(periodFromMonthLabels(['Sept-26', 'Oct-26', '']), '2026-10')
+    assert.equal(periodFromMonthLabels(['', 'n/a']), '')
   })
 
   it('prefers enrolled student name, then walk-in name', () => {

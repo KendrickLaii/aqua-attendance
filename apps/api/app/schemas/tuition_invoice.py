@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field, model_validator
 
 TuitionInvoiceStatusLiteral = Literal["draft", "issued", "paid", "void"]
 
+# Billing month of a manual invoice, e.g. "2026-10".
+PERIOD_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+
 
 class TuitionInvoiceLineOut(BaseModel):
     id: uuid.UUID
@@ -39,6 +42,7 @@ class TuitionInvoiceOut(BaseModel):
     location_id: uuid.UUID
     period_start: date
     period_end: date
+    issue_date: date | None = None
     status: TuitionInvoiceStatusLiteral
     kind: str
     total: float
@@ -60,6 +64,7 @@ class TuitionInvoiceUpdate(BaseModel):
     staff_name: str | None = Field(default=None, max_length=255)
     payable_to_name: str | None = Field(default=None, max_length=255)
     payee_name: str | None = Field(default=None, max_length=255)
+    period: str | None = Field(default=None, pattern=PERIOD_PATTERN)
     lines: list["TuitionInvoiceManualLine"] | None = None
 
 
@@ -106,6 +111,9 @@ class TuitionInvoiceManualLine(BaseModel):
 
 class TuitionInvoiceManualCreate(BaseModel):
     date: date
+    # Billing month ("YYYY-MM"). Omitted → latest line month, else the date's
+    # month. Ignored for credit notes, which stay on their date.
+    period: str | None = Field(default=None, pattern=PERIOD_PATTERN)
     location_id: uuid.UUID
     unit_id: uuid.UUID | None = None
     manual_student_name: str | None = Field(default=None, max_length=255)

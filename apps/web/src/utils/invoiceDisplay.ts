@@ -100,6 +100,33 @@ export function invoicePeriodLabel(invoice: TuitionInvoice): string {
   return `${invoice.period_start} – ${invoice.period_end}`
 }
 
+const MONTH_PREFIXES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+/** "Oct-26" / "Sept-26" / "2026-10" -> "2026-10"; '' when unreadable. Mirrors the API rule. */
+export function monthLabelToPeriod(label: string | null | undefined): string {
+  const text = (label ?? '').trim()
+  const iso = /^(\d{4})-(\d{1,2})$/.exec(text)
+  if (iso) {
+    const month = Number(iso[2])
+
+    return month >= 1 && month <= 12 ? `${iso[1]}-${String(month).padStart(2, '0')}` : ''
+  }
+  const named = /^([A-Z]+)[-\s']*(\d{2}|\d{4})$/i.exec(text)
+  if (!named)
+    return ''
+  const month = MONTH_PREFIXES.indexOf(named[1].slice(0, 3).toLowerCase()) + 1
+  if (!month)
+    return ''
+  const year = Number(named[2])
+
+  return `${year < 100 ? year + 2000 : year}-${String(month).padStart(2, '0')}`
+}
+
+/** Latest month among line labels as "YYYY-MM"; '' when none can be read. */
+export function periodFromMonthLabels(labels: Array<string | null | undefined>): string {
+  return labels.map(monthLabelToPeriod).filter(Boolean).sort().at(-1) ?? ''
+}
+
 export function invoiceStudentLabel(invoice: TuitionInvoice): string {
   return invoice.unit_name ?? invoice.manual_student_name ?? '—'
 }

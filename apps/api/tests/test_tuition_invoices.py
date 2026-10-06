@@ -2456,3 +2456,142 @@ async def test_manual_invoice_rejects_negative_fee_on_purchase(
         headers=_auth(admin_token),
     )
     assert resp.status_code == 422
+
+
+async def _manual_invoice(
+    client: AsyncClient, admin_token: str, location_id: str, *, date: str, months: list[str],
+    fee: float = 190, period: str | None = None,
+) -> dict:
+    payload: dict = {
+        "date": date,
+        "location_id": location_id,
+        "manual_student_name": "Walk-in",
+        "lines": [{"month": m, "course": "中文", "fee": fee, "qty": 1} for m in months],
+    }
+    if period is not None:
+        payload["period"] = period
+    resp = await client.post("/api/tuition-invoices/manual", json=payload, headers=_auth(admin_token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def _month_invoice_ids(client: AsyncClient, admin_token: str, year: int, month: int) -> set[str]:
+    resp = await client.get(
+        "/api/tuition-invoices",
+        params={"year": year, "month": month},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    return {row["id"] for row in resp.json()}
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_opened_early_belongs_to_line_month(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(
+        client, admin_token, sample_location["id"], date="2026-09-30", months=["Oct-26", "Oct-26"],
+    )
+    assert invoice["issue_date"] == "2026-09-30"
+    assert invoice["period_start"] == "2026-10-01"
+    assert invoice["period_end"] == "2026-10-31"
+    assert invoice["id"] in await _month_invoice_ids(client, admin_token, 2026, 10)
+    assert invoice["id"] not in await _month_invoice_ids(client, admin_token, 2026, 9)
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_period_uses_latest_line_month(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(
+        client, admin_token, sample_location["id"], date="2026-09-30", months=["Sept-26", "2026-10"],
+    )
+    assert invoice["period_start"] == "2026-10-01"
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_explicit_period_wins(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(
+        client, admin_token, sample_location["id"], date="2026-09-30", months=["Oct-26"], period="2026-11",
+    )
+    assert invoice["period_start"] == "2026-11-01"
+    assert invoice["period_end"] == "2026-11-30"
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_without_month_labels_uses_date_month(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(
+        client, admin_token, sample_location["id"], date="2026-09-15", months=[""],
+    )
+    assert invoice["period_start"] == "2026-09-01"
+    assert invoice["period_end"] == "2026-09-30"
+
+
+@pytest.mark.asyncio
+async def test_credit_note_period_stays_on_date(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    credit = await _manual_invoice(
+        client, admin_token, sample_location["id"], date="2026-09-30", months=["Oct-26"], fee=-190,
+        period="2026-10",
+    )
+    assert credit["issue_date"] == "2026-09-30"
+    assert credit["period_start"] == "2026-09-30"
+    assert credit["period_end"] == "2026-09-30"
+
+
+@pytest.mark.asyncio
+async def test_patch_manual_invoice_period_moves_month(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    invoice = await _manual_invoice(
+        client, admin_token, sample_location["id"], date="2026-09-30", months=["Sept-26"],
+    )
+    assert invoice["period_start"] == "2026-09-01"
+    resp = await client.patch(
+        f"/api/tuition-invoices/{invoice['id']}",
+        json={"period": "2026-10"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["period_start"] == "2026-10-01"
+    assert body["period_end"] == "2026-10-31"
+    assert body["issue_date"] == "2026-09-30"
+
+
+@pytest.mark.asyncio
+async def test_patch_period_rejected_for_credit_note(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    credit = await _manual_invoice(
+        client, admin_token, sample_location["id"], date="2026-09-30", months=["Oct-26"], fee=-190,
+    )
+    resp = await client.patch(
+        f"/api/tuition-invoices/{credit['id']}",
+        json={"period": "2026-10"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_rejects_bad_period(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-09-30",
+            "location_id": sample_location["id"],
+            "manual_student_name": "Walk-in",
+            "period": "2026-13",
+            "lines": [{"month": "Oct-26", "course": "中文", "fee": 190, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422

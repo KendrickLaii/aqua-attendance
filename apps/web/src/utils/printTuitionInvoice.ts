@@ -100,7 +100,9 @@ export function tuitionInvoicePrintData(
 
   return {
     invoiceNo: invoice.invoice_no ?? '',
-    issueDate: invoice.issued_at ? new Date(invoice.issued_at) : new Date(),
+    issueDate: invoice.issue_date
+      ? new Date(`${invoice.issue_date}T00:00:00`)
+      : (invoice.issued_at ? new Date(invoice.issued_at) : new Date()),
     studentName,
     logoUrl: options?.logoUrl,
     header: options?.header,

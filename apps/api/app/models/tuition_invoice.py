@@ -21,9 +21,10 @@ class TuitionInvoice(Base):
     __tablename__ = "tuition_invoices"
     __table_args__ = (
         # One invoice per student per billing period — for generated tuition
-        # invoices only. Manual invoices set period_start == period_end ==
-        # issue date, so they must be exempt or a student could never get two
-        # manual invoices on the same day (e.g. re-bill after a void).
+        # invoices only. Manual invoices share the month period (and credit
+        # notes use their date), so they must be exempt or a student could
+        # never get two manual invoices in the same month (e.g. re-bill after
+        # a void).
         Index(
             "uq_tuition_invoices_unit_period",
             "unit_id",
@@ -41,6 +42,9 @@ class TuitionInvoice(Base):
     location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True)
     period_start: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     period_end: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # Date typed on a manual invoice / credit note. The billing month lives in
+    # period_start/period_end, so a bill opened early still lands in its month.
+    issue_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=TuitionInvoiceStatus.draft.value)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, default="tuition")
     manual_student_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

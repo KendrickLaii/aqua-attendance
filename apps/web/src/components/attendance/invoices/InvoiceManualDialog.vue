@@ -25,6 +25,7 @@ import {
   invoicePrintHeaderFromLocation,
   invoiceStudentLabel,
   isCreditInvoice,
+  periodFromMonthLabels,
 } from '@/utils/invoiceDisplay'
 import {
   invoiceMonthLabel,
@@ -74,9 +75,11 @@ const manualError = ref('')
 const manualPrinting = ref(false)
 const manualNoEdited = ref(false)
 const manualLocationId = ref<string | null>(null)
+const manualPeriodEdited = ref(false)
 const manualForm = ref<{
   invoiceNo: string
   date: string
+  period: string
   studentName: string
   staff: string
   remark: string
@@ -86,6 +89,7 @@ const manualForm = ref<{
 }>({
   invoiceNo: '',
   date: '',
+  period: '',
   studentName: '',
   staff: '',
   remark: '',
@@ -115,6 +119,21 @@ const isCredit = computed(() =>
   || Boolean(props.editingInvoice && isCreditInvoice(props.editingInvoice)),
 )
 const studentLocked = computed(() => isEdit.value || Boolean(props.creditFromInvoice))
+
+// Credit notes count in the month of their date; generated bills keep their month.
+const showPeriod = computed(() =>
+  !isCredit.value && (!props.editingInvoice || props.editingInvoice.kind === 'manual'),
+)
+
+const linePeriod = computed(() =>
+  periodFromMonthLabels(manualForm.value.rows.map(row => row.month))
+  || (manualForm.value.date ?? '').slice(0, 7),
+)
+
+watch(linePeriod, value => {
+  if (!manualPeriodEdited.value)
+    manualForm.value.period = value
+})
 
 const staffName = (id: string | null | undefined) =>
   manualStaffUnits.value.find(u => u.id === id)?.full_name ?? ''
@@ -389,15 +408,26 @@ function fillFromInvoice(invoice: TuitionInvoice, negateFee: boolean) {
   lockedUnitId.value = invoice.unit_id
   manualError.value = ''
   manualLocationId.value = invoice.location_id
+
+  // Older manual bills stored the typed date as a one-day period; read their
+  // month from the lines instead. Month-range periods were chosen on save.
+  const rows = rowsFromInvoice(invoice, negateFee)
+  const storedPeriod = invoice.period_start.slice(0, 7)
+  const inferredPeriod = periodFromMonthLabels(rows.map(row => row.month))
+  const legacyPeriod = invoice.period_start === invoice.period_end
+  const period = legacyPeriod ? (inferredPeriod || storedPeriod) : storedPeriod
+
+  manualPeriodEdited.value = !legacyPeriod && period !== inferredPeriod
   manualForm.value = {
     invoiceNo: negateFee ? '' : (invoice.invoice_no ?? ''),
-    date: invoice.period_start,
+    date: negateFee ? new Date().toLocaleDateString('en-CA') : (invoice.issue_date ?? invoice.period_start),
+    period,
     studentName: invoiceStudentLabel(invoice),
     staff: invoice.staff_name ?? '',
     remark: negateFee ? '' : (invoice.notes ?? ''),
     payableTo: negateFee ? '' : (invoice.payable_to_name ?? ''),
     payeeName: negateFee ? '' : (invoice.payee_name ?? ''),
-    rows: rowsFromInvoice(invoice, negateFee),
+    rows,
   }
   manualStudent.value = invoiceStudentLabel(invoice)
   manualStudentSearch.value = ''
@@ -415,9 +445,11 @@ function resetForm() {
   hydratingForm.value = true
   lockedUnitId.value = null
   manualError.value = ''
+  manualPeriodEdited.value = false
   manualForm.value = {
     invoiceNo: '',
     date: new Date().toLocaleDateString('en-CA'),
+    period: '',
     studentName: '',
     staff: '',
     remark: '',
@@ -425,6 +457,7 @@ function resetForm() {
     payeeName: '',
     rows: [blankManualRow()],
   }
+  manualForm.value.period = linePeriod.value
   manualStudent.value = null
   manualStudentSearch.value = ''
   manualUnbilledPackages.value = []
@@ -579,24 +612,26 @@ async function printManualInvoice() {
     try {
       const saved = isEdit.value && props.editingInvoice
         ? await updateTuitionInvoice(props.editingInvoice.id, {
-            staff_name: (manualForm.value.staff ?? '').trim() || null,
-            payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
-            payee_name: (manualForm.value.payeeName ?? '').trim() || null,
-            notes: (manualForm.value.remark ?? '').trim() || null,
-            lines: validLines as ManualInvoiceLine[],
-          })
+          staff_name: (manualForm.value.staff ?? '').trim() || null,
+          payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
+          payee_name: (manualForm.value.payeeName ?? '').trim() || null,
+          notes: (manualForm.value.remark ?? '').trim() || null,
+          ...(showPeriod.value && manualForm.value.period ? { period: manualForm.value.period } : {}),
+          lines: validLines as ManualInvoiceLine[],
+        })
         : await createManualTuitionInvoice({
-            date: manualForm.value.date,
-            location_id: manualLocationId.value,
-            unit_id: unitId,
-            manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
-            staff_name: (manualForm.value.staff ?? '').trim() || null,
-            payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
-            payee_name: (manualForm.value.payeeName ?? '').trim() || null,
-            invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
-            notes: (manualForm.value.remark ?? '').trim() || null,
-            lines: validLines as ManualInvoiceLine[],
-          })
+          date: manualForm.value.date,
+          period: showPeriod.value ? manualForm.value.period || undefined : undefined,
+          location_id: manualLocationId.value,
+          unit_id: unitId,
+          manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
+          staff_name: (manualForm.value.staff ?? '').trim() || null,
+          payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
+          payee_name: (manualForm.value.payeeName ?? '').trim() || null,
+          invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
+          notes: (manualForm.value.remark ?? '').trim() || null,
+          lines: validLines as ManualInvoiceLine[],
+        })
 
       if (!printWindow) {
         try {
@@ -660,7 +695,7 @@ async function printManualInvoice() {
         <VRow dense>
           <VCol
             cols="12"
-            sm="4"
+            :sm="showPeriod ? 3 : 4"
           >
             <VTextField
               v-model="manualForm.invoiceNo"
@@ -674,20 +709,37 @@ async function printManualInvoice() {
           </VCol>
           <VCol
             cols="12"
-            sm="4"
+            :sm="showPeriod ? 3 : 4"
           >
             <VTextField
               v-model="manualForm.date"
               label="Date"
               type="date"
               density="compact"
-              hide-details
+              :hint="showPeriod ? 'Printed on the invoice' : 'Printed; counts in this month'"
+              persistent-hint
               :disabled="isEdit"
             />
           </VCol>
           <VCol
+            v-if="showPeriod"
             cols="12"
-            sm="4"
+            sm="3"
+          >
+            <VTextField
+              v-model="manualForm.period"
+              label="Bill month"
+              type="month"
+              density="compact"
+              hint="Month this bill counts in"
+              persistent-hint
+              autocomplete="off"
+              @update:model-value="manualPeriodEdited = true"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            :sm="showPeriod ? 3 : 4"
           >
             <VSelect
               v-model="manualLocationId"
