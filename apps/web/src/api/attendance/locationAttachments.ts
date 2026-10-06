@@ -39,8 +39,12 @@ export function deleteLocationAttachment(locationId: string, attachmentId: strin
   return $attendanceApi<void>(`${base(locationId)}/${attachmentId}`, { method: 'DELETE' })
 }
 
+export function fetchLocationAttachmentBlob(locationId: string, attachmentId: string) {
+  return $attendanceApi<Blob>(`${base(locationId)}/${attachmentId}/download`, { responseType: 'blob' })
+}
+
 export async function downloadLocationAttachment(locationId: string, attachment: LocationAttachment) {
-  const blob = await $attendanceApi<Blob>(`${base(locationId)}/${attachment.id}/download`, { responseType: 'blob' })
+  const blob = await fetchLocationAttachmentBlob(locationId, attachment.id)
   const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement('a')
 
