@@ -2,6 +2,7 @@
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { listAuditLogsWithTotal } from '@/api/attendance/auditLogs'
 import type { AuditLog } from '@/api/attendance/auditLogs'
+import { formatAttendanceDateTime, getDateRangeIso } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
@@ -44,7 +45,18 @@ const actionOptions = [
 const tableOptions = [
   { title: 'Attendance Events', value: 'attendance_events' },
   { title: 'Attendance Summaries', value: 'attendance_summaries' },
+  { title: 'Course Enrollments', value: 'course_enrollments' },
+  { title: 'Course SKUs', value: 'course_skus' },
+  { title: 'Course SPUs', value: 'course_spus' },
+  { title: 'Location Attachments', value: 'location_attachments' },
+  { title: 'Locations', value: 'locations' },
+  { title: 'Notifications', value: 'notifications' },
   { title: 'Payroll Records', value: 'payroll_records' },
+  { title: 'Shift Requests', value: 'shift_requests' },
+  { title: 'Shift Templates', value: 'shift_templates' },
+  { title: 'Shifts', value: 'shifts' },
+  { title: 'Staff Profiles', value: 'staff_profiles' },
+  { title: 'Student Profiles', value: 'student_profiles' },
   { title: 'Tuition Invoices', value: 'tuition_invoices' },
   { title: 'Tuition Receipts', value: 'tuition_receipts' },
   { title: 'Units', value: 'units' },
@@ -134,8 +146,7 @@ async function loadLogs(isRefresh = false, resetPage = false) {
     const result = await listAuditLogsWithTotal({
       action: filterAction.value || undefined,
       table_name: filterTable.value || undefined,
-      date_from: dateFrom.value || undefined,
-      date_to: dateTo.value || undefined,
+      ...getDateRangeIso(dateFrom.value, dateTo.value),
       page: page.value,
       page_size: pageSize.value,
     })
@@ -159,15 +170,9 @@ function resetFilters() {
   dateFrom.value = ''
   dateTo.value = ''
   searchQuery.value = ''
-  loadLogs(true, true)
 }
 
-function setActionFilter(value: string) {
-  filterAction.value = value
-  loadLogs(true, true)
-}
-
-watch([filterTable, dateFrom, dateTo], () => {
+watch([filterAction, filterTable, dateFrom, dateTo], () => {
   loadLogs(true, true)
 })
 
@@ -205,7 +210,7 @@ function actionIcon(action: string) {
 }
 
 function formatTimestamp(iso: string) {
-  return iso?.slice(0, 16).replace('T', ' ') ?? '—'
+  return formatAttendanceDateTime(iso)
 }
 
 function openDetailDialog(log: AuditLog) {
@@ -261,8 +266,8 @@ function closeDetailDialog() {
               <!-- Keyword search -->
               <VTextField
                 v-model="searchQuery"
-                label="Search logs"
-                placeholder="Action, table, user, IP…"
+                label="Filter this page"
+                placeholder="Description, user, IP, record ID…"
                 prepend-inner-icon="ri-search-line"
                 density="comfortable"
                 hide-details
@@ -349,7 +354,7 @@ function closeDetailDialog() {
                 :prepend-icon="filterAction === opt.value ? 'ri-check-line' : undefined"
                 :aria-pressed="filterAction === opt.value"
                 class="action-chip"
-                @click="setActionFilter(opt.value)"
+                @click="filterAction = opt.value"
               >
                 {{ opt.title }}
               </VChip>

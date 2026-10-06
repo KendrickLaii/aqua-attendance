@@ -200,9 +200,21 @@ async def update_unit(unit_id: uuid.UUID, body: UnitUpdate, _admin: AdminOnly, d
         unit.registered_location_id = resolved_registered_id
         await unit_svc.replace_scan_locations(unit, scan_locs)
 
+    old_values = {field: getattr(unit, field) for field in update_data}
     for field, value in update_data.items():
         setattr(unit, field, value)
     await db.commit()
+
+    await audit_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="units",
+        record_id=unit.id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated unit {unit.code}",
+    )
 
     loaded = await unit_svc.load_unit_with_locations(db, unit_id)
     assert loaded is not None
@@ -254,3 +266,12 @@ async def delete_unit(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
 
     await db.delete(unit)
     await db.commit()
+
+    await audit_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="units",
+        record_id=unit_id,
+        description=f"Deleted {unit.unit_type} unit {unit.code}",
+    )

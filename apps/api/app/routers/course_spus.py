@@ -7,6 +7,7 @@ from app.deps import AdminOnly, DB
 from app.models.course_spu import CourseSpu
 from app.models.course_sku import CourseSku
 from app.schemas.course_spu import CourseSpuCreate, CourseSpuOut, CourseSpuUpdate
+from app.services import audit_log as audit_log_svc
 from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/course-spus", tags=["courses"])
@@ -59,6 +60,15 @@ async def create_course_spu(body: CourseSpuCreate, _admin: AdminOnly, db: DB) ->
     db.add(spu)
     await db.commit()
     await db.refresh(spu)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="course_spus",
+        record_id=spu.id,
+        new_values=body.model_dump(),
+        description=f"Created course SPU {spu.code or spu.name_en or spu.id}",
+    )
     return spu
 
 
@@ -85,10 +95,21 @@ async def update_course_spu(spu_id: uuid.UUID, body: CourseSpuUpdate, _admin: Ad
         if exists.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="Course code already exists")
 
+    old_values = {field: getattr(spu, field) for field in update_data}
     for field, value in update_data.items():
         setattr(spu, field, value)
     await db.commit()
     await db.refresh(spu)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="course_spus",
+        record_id=spu_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated course SPU {spu.code or spu.name_en or spu_id}",
+    )
     return spu
 
 
@@ -108,3 +129,11 @@ async def delete_course_spu(spu_id: uuid.UUID, _admin: AdminOnly, db: DB) -> Non
 
     await db.delete(spu)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="course_spus",
+        record_id=spu_id,
+        description=f"Deleted course SPU {spu.code or spu.name_en or spu_id}",
+    )

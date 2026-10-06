@@ -18,6 +18,7 @@ from app.schemas.shift import (
     ShiftTemplateUpdate,
     ShiftUpdate,
 )
+from app.services import audit_log as audit_log_svc
 
 MAX_RANGE_DAYS = 62
 
@@ -73,6 +74,15 @@ async def create_shift_template(body: ShiftTemplateCreate, _admin: AdminOnly, db
     db.add(template)
     await db.commit()
     await db.refresh(template)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="shift_templates",
+        record_id=template.id,
+        new_values=body.model_dump(),
+        description=f"Created shift template {template.name or template.id}",
+    )
     return template
 
 
@@ -81,13 +91,25 @@ async def update_shift_template(
     template_id: uuid.UUID, body: ShiftTemplateUpdate, _admin: AdminOnly, db: DB
 ) -> ShiftTemplate:
     template = await _get_template(db, template_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    old_values = {field: getattr(template, field) for field in update_data}
+    for field, value in update_data.items():
         if value is None:
             raise HTTPException(status_code=422, detail=f"{field} cannot be null")
         setattr(template, field, value)
     _assert_times(template.start_time, template.end_time)
     await db.commit()
     await db.refresh(template)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="shift_templates",
+        record_id=template_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated shift template {template.name or template_id}",
+    )
     return template
 
 
@@ -96,6 +118,14 @@ async def delete_shift_template(template_id: uuid.UUID, _admin: AdminOnly, db: D
     template = await _get_template(db, template_id)
     await db.delete(template)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="shift_templates",
+        record_id=template_id,
+        description=f"Deleted shift template {template.name or template_id}",
+    )
 
 
 # ---- Shifts ----
@@ -131,6 +161,15 @@ async def create_shift(body: ShiftCreate, admin: AdminOnly, db: DB) -> Shift:
     db.add(shift)
     await db.commit()
     await db.refresh(shift)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="CREATE",
+        table_name="shifts",
+        record_id=shift.id,
+        new_values=body.model_dump(),
+        description=f"Created shift for unit {body.unit_id} on {body.shift_date}",
+    )
     return shift
 
 
@@ -181,6 +220,14 @@ async def copy_week(body: ShiftCopyWeek, admin: AdminOnly, db: DB) -> ShiftCopyW
         created += 1
 
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="DATA_EXPORT",
+        table_name="shifts",
+        batch_operation=True,
+        description=f"Copied week {body.source_week_start} -> {body.target_week_start}: {created} created, {skipped} skipped",
+    )
     return ShiftCopyWeekResult(created=created, skipped=skipped)
 
 
@@ -188,7 +235,9 @@ async def copy_week(body: ShiftCopyWeek, admin: AdminOnly, db: DB) -> ShiftCopyW
 async def update_shift(shift_id: uuid.UUID, body: ShiftUpdate, admin: AdminOnly, db: DB) -> Shift:
     shift = await _get_shift(db, shift_id)
     nullable = {"title", "notes", "template_id"}
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    old_values = {field: getattr(shift, field) for field in update_data}
+    for field, value in update_data.items():
         if value is None and field not in nullable:
             raise HTTPException(status_code=422, detail=f"{field} cannot be null")
         setattr(shift, field, value)
@@ -197,6 +246,16 @@ async def update_shift(shift_id: uuid.UUID, body: ShiftUpdate, admin: AdminOnly,
     shift.updated_by_id = admin.id
     await db.commit()
     await db.refresh(shift)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="UPDATE",
+        table_name="shifts",
+        record_id=shift_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated shift {shift_id} on {shift.shift_date}",
+    )
     return shift
 
 
@@ -205,3 +264,11 @@ async def delete_shift(shift_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
     shift = await _get_shift(db, shift_id)
     await db.delete(shift)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="shifts",
+        record_id=shift_id,
+        description=f"Deleted shift {shift_id} on {shift.shift_date}",
+    )

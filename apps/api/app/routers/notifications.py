@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.deps import AdminOnly, CurrentUser, DB
 from app.models.notification import Notification
 from app.schemas.notification import NotificationCreate, NotificationOut, NotificationUpdate
+from app.services import audit_log as audit_log_svc
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -53,6 +54,15 @@ async def create_notification(
     db.add(notification)
     await db.commit()
     await db.refresh(notification)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="notifications",
+        record_id=notification.id,
+        new_values=body.model_dump(),
+        description=f"Created notification {notification.id}",
+    )
     return NotificationOut.model_validate(notification)
 
 
@@ -95,3 +105,11 @@ async def delete_notification(notification_id: uuid.UUID, _admin: AdminOnly, db:
         raise HTTPException(status_code=404, detail="Notification not found")
     await db.delete(notification)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="notifications",
+        record_id=notification_id,
+        description=f"Deleted notification {notification_id}",
+    )

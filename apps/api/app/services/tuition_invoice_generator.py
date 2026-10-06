@@ -31,6 +31,7 @@ from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
 from app.models.course_sku import CourseSku
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
 from app.models.unit import Unit, UnitStatus
+from app.services import audit_log as audit_log_svc
 
 _LOCKED = frozenset({TuitionInvoiceStatus.issued.value, TuitionInvoiceStatus.paid.value})
 
@@ -153,6 +154,7 @@ async def generate_monthly_tuition_invoices(
     year: int,
     month: int,
     location_id: UUID | None = None,
+    user_id: UUID | None = None,
 ) -> dict[str, object]:
     first_day = date(year, month, 1)
     last_day = date(year, month, calendar.monthrange(year, month)[1])
@@ -293,12 +295,14 @@ async def generate_monthly_tuition_invoices(
         updated += 1
 
     deleted = 0
+    deleted_invoices: list[tuple[UUID, str | None]] = []
     for unit_id, invoice in existing_by_unit.items():
         if unit_id in by_unit:
             continue
         if invoice.status in _LOCKED or invoice.status == TuitionInvoiceStatus.void.value:
             skipped += 1
             continue
+        deleted_invoices.append((invoice.id, invoice.invoice_no))
         await db.delete(invoice)
         deleted += 1
 
@@ -310,6 +314,21 @@ async def generate_monthly_tuition_invoices(
     except IntegrityError:
         await db.rollback()
         raise
+
+    if deleted_invoices and user_id is not None:
+        await audit_log_svc.log_audit_many(
+            db,
+            [
+                {
+                    "user_id": user_id,
+                    "action": "DELETE",
+                    "table_name": "tuition_invoices",
+                    "record_id": invoice_id,
+                    "description": f"Generator deleted stale tuition invoice {invoice_no or invoice_id} for {year}-{month:02d}",
+                }
+                for invoice_id, invoice_no in deleted_invoices
+            ],
+        )
     return {
         "created": created,
         "updated": updated,

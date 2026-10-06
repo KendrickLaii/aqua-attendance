@@ -9,6 +9,7 @@ from app.models.location import Location
 from app.models.location_attachment import LocationAttachment
 from app.models.unit import Unit, unit_scan_locations
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
+from app.services import audit_log as audit_log_svc
 from app.services.media_storage import delete_attachment_file
 from app.utils.search import ilike_contains
 
@@ -74,6 +75,15 @@ async def create_location(body: LocationCreate, _admin: AdminOnly, db: DB) -> Lo
     db.add(location)
     await db.commit()
     await db.refresh(location)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="locations",
+        record_id=location.id,
+        new_values=data,
+        description=f"Created location {location.code or location.name_en or location.id}",
+    )
     return location
 
 
@@ -100,6 +110,7 @@ async def update_location(location_id: uuid.UUID, body: LocationUpdate, _admin: 
         if exists.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="Location code already exists")
 
+    old_values = {field: getattr(location, field) for field in update_data}
     for field, value in update_data.items():
         setattr(location, field, value)
 
@@ -112,6 +123,16 @@ async def update_location(location_id: uuid.UUID, body: LocationUpdate, _admin: 
 
     await db.commit()
     await db.refresh(location)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="locations",
+        record_id=location_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated location {location.code or location.name_en or location_id}",
+    )
     return location
 
 
@@ -148,5 +169,13 @@ async def delete_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
     ).scalars().all()
     await db.delete(location)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="locations",
+        record_id=location_id,
+        description=f"Deleted location {location.code or location.name_en or location_id}",
+    )
     for key in attachment_keys:
         delete_attachment_file(key)

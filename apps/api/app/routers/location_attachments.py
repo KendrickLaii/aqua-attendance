@@ -11,6 +11,7 @@ from app.deps import DB, SuperAdminOnly
 from app.models.location import Location
 from app.models.location_attachment import LocationAttachment
 from app.schemas.location_attachment import AttachmentLimitsOut, LocationAttachmentOut
+from app.services import audit_log as audit_log_svc
 from app.services.attachments import (
     current_month,
     earliest_month,
@@ -108,6 +109,20 @@ async def upload_attachment(
     db.add(attachment)
     await db.commit()
     await db.refresh(attachment)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="CREATE",
+        table_name="location_attachments",
+        record_id=attachment.id,
+        new_values={
+            "location_id": str(location_id),
+            "month": month,
+            "original_name": attachment.original_name,
+            "size": attachment.size,
+        },
+        description=f"Uploaded attachment {attachment.original_name} for location {location_id}",
+    )
     return attachment
 
 
@@ -136,5 +151,13 @@ async def delete_attachment(
     key = attachment.file_key
     await db.delete(attachment)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="location_attachments",
+        record_id=attachment_id,
+        description=f"Deleted attachment {attachment.original_name} from location {location_id}",
+    )
     delete_attachment_file(key)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

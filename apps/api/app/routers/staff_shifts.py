@@ -23,6 +23,7 @@ from app.schemas.shift import (
     StaffShiftMe,
     StaffShiftWeek,
 )
+from app.services import audit_log as audit_log_svc
 from app.services.auth import create_staff_shift_token, hash_password, verify_password
 from app.services.staff_shifts import assert_request_slot, copy_request_to_shift, mark_reviewed
 
@@ -153,6 +154,15 @@ async def create_request(body: ShiftRequestCreate, staff: CurrentStaff, db: DB) 
     db.add(row)
     await db.commit()
     await db.refresh(row)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=None,
+        action="CREATE",
+        table_name="shift_requests",
+        record_id=row.id,
+        new_values=body.model_dump(),
+        description=f"Staff {staff.code} ({staff.full_name}) created shift request for {body.shift_date}",
+    )
     return _request_out(row, staff)
 
 
@@ -166,6 +176,16 @@ async def cancel_request(request_id: uuid.UUID, staff: CurrentStaff, db: DB) -> 
     row.status = ShiftRequestStatus.cancelled.value
     await db.commit()
     await db.refresh(row)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=None,
+        action="UPDATE",
+        table_name="shift_requests",
+        record_id=request_id,
+        old_values={"status": ShiftRequestStatus.pending.value},
+        new_values={"status": row.status},
+        description=f"Staff {staff.code} ({staff.full_name}) cancelled shift request {request_id}",
+    )
     return _request_out(row, unit)
 
 
@@ -215,6 +235,16 @@ async def approve_shift_request(request_id: uuid.UUID, admin: AdminOnly, db: DB)
     mark_reviewed(row, admin_id=admin.id, status=ShiftRequestStatus.approved.value)
     await db.commit()
     await db.refresh(row)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="UPDATE",
+        table_name="shift_requests",
+        record_id=request_id,
+        old_values={"status": ShiftRequestStatus.pending.value},
+        new_values={"status": row.status},
+        description=f"Approved shift request {request_id}",
+    )
     return _request_out(row, unit)
 
 
@@ -229,4 +259,14 @@ async def reject_shift_request(
     mark_reviewed(row, admin_id=admin.id, status=ShiftRequestStatus.rejected.value, reason=reason or None)
     await db.commit()
     await db.refresh(row)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=admin.id,
+        action="UPDATE",
+        table_name="shift_requests",
+        record_id=request_id,
+        old_values={"status": ShiftRequestStatus.pending.value},
+        new_values={"status": row.status, "reason": reason},
+        description=f"Rejected shift request {request_id}" + (f": {reason}" if reason else ""),
+    )
     return _request_out(row, unit)

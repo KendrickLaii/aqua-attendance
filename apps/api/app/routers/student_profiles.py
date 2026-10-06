@@ -8,6 +8,7 @@ from app.deps import DB, AdminOnly
 from app.models.unit import Unit
 from app.models.student_profile import StudentProfile
 from app.schemas.student_profile import StudentProfileCreate, StudentProfileOut, StudentProfileUpdate
+from app.services import audit_log as audit_log_svc
 
 router = APIRouter(prefix="/student-profiles", tags=["student-profiles"])
 
@@ -47,6 +48,15 @@ async def create_student_profile(
     db.add(profile)
     await db.commit()
     await db.refresh(profile)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="student_profiles",
+        record_id=unit_id,
+        new_values=body.model_dump(),
+        description=f"Created student profile for unit {unit_id}",
+    )
     return StudentProfileOut.model_validate(profile)
 
 
@@ -60,10 +70,21 @@ async def update_student_profile(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student profile not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    old_values = {field: getattr(profile, field) for field in update_data}
     for field, value in update_data.items():
         setattr(profile, field, value)
     await db.commit()
     await db.refresh(profile)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="student_profiles",
+        record_id=unit_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated student profile for unit {unit_id}",
+    )
     return StudentProfileOut.model_validate(profile)
 
 
@@ -75,3 +96,11 @@ async def delete_student_profile(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student profile not found")
     await db.delete(profile)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="student_profiles",
+        record_id=unit_id,
+        description=f"Deleted student profile for unit {unit_id}",
+    )

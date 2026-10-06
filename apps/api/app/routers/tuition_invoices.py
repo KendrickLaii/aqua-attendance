@@ -158,7 +158,7 @@ async def generate_tuition_invoices(
 
     try:
         result = await generate_monthly_tuition_invoices(
-            db, year=year, month=month, location_id=location_id
+            db, year=year, month=month, location_id=location_id, user_id=admin.id
         )
     except IntegrityError:
         await db.rollback()
@@ -744,6 +744,20 @@ async def create_manual_tuition_invoice(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Invoice no. already in use — pick another.")
     await db.refresh(invoice)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="tuition_invoices",
+        record_id=invoice.id,
+        new_values={
+            "invoice_no": invoice_no,
+            "status": invoice.status,
+            "total": float(invoice.total),
+            "kind": invoice.kind,
+        },
+        description=f"Created manual invoice {invoice_no}",
+    )
     result = await db.execute(
         select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice.id)
     )
@@ -763,7 +777,7 @@ async def get_tuition_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) 
 
 @router.patch("/{invoice_id}", response_model=TuitionInvoiceOut)
 async def update_tuition_invoice(
-    invoice_id: uuid.UUID, body: TuitionInvoiceUpdate, _admin: AdminOnly, db: DB
+    invoice_id: uuid.UUID, body: TuitionInvoiceUpdate, admin: AdminOnly, db: DB
 ) -> TuitionInvoiceOut:
     result = await db.execute(
         select(TuitionInvoice)
@@ -824,6 +838,9 @@ async def update_tuition_invoice(
     if "payee_name" in update_data and isinstance(update_data["payee_name"], str):
         update_data["payee_name"] = update_data["payee_name"].strip() or None
 
+    old_status = invoice.status
+    old_values = {field: getattr(invoice, field) for field in update_data}
+    old_total = invoice.total
     for field, value in update_data.items():
         setattr(invoice, field, value)
     if line_payload is not None:
@@ -888,6 +905,31 @@ async def update_tuition_invoice(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Invoice no. already in use — pick another.")
     await db.refresh(invoice)
+    new_values = dict(update_data)
+    if line_payload is not None:
+        old_values["total"] = old_total
+        new_values["total"] = invoice.total
+        new_values["lines_replaced"] = True
+    if period is not None:
+        new_values["period"] = period
+    if new_values:
+        label = invoice.invoice_no or invoice_id
+        if new_status is not None and new_status != old_status:
+            old_values["status"] = old_status
+            new_values["status"] = new_status
+            description = f"Changed invoice {label} status from {old_status} to {new_status}"
+        else:
+            description = f"Edited invoice {label}"
+        await audit_log_svc.log_audit(
+            db,
+            user_id=admin.id,
+            action="UPDATE",
+            table_name="tuition_invoices",
+            record_id=invoice_id,
+            old_values=old_values,
+            new_values=new_values,
+            description=description,
+        )
     result = await db.execute(
         select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice.id)
     )

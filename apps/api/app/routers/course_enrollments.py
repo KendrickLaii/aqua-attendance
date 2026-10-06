@@ -18,6 +18,7 @@ from app.schemas.course_enrollment import (
     EnrollmentPurchaseOut,
     _require_start_on_or_before_end,
 )
+from app.services import audit_log as audit_log_svc
 from app.services.course_enrollment_expiry import (
     expire_past_end_date_enrollments,
     should_auto_leave,
@@ -171,6 +172,15 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
         .options(*_ENROLLMENT_LOAD)
         .where(CourseEnrollment.id == enrollment.id)
     )
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="course_enrollments",
+        record_id=enrollment.id,
+        new_values=body.model_dump(),
+        description=f"Created enrollment for unit {body.unit_id}",
+    )
     return _enrollment_to_out(result.scalar_one())
 
 
@@ -218,6 +228,7 @@ async def update_course_enrollment(
             status_code=422,
             detail="end_date is already past — set a new end date before putting this student back in class",
         )
+    old_status = enrollment.status
     if reactivating:
         unit_result = await db.execute(select(Unit).where(Unit.id == enrollment.unit_id))
         unit = unit_result.scalar_one_or_none()
@@ -233,6 +244,7 @@ async def update_course_enrollment(
             db, unit_id=enrollment.unit_id, sku_id=enrollment.sku_id, exclude_enrollment_id=enrollment.id
         )
         # Re-activating never needs a quantity — existing purchases carry it.
+    old_values = {field: getattr(enrollment, field) for field in {*update_data, "status"}}
     for field, value in update_data.items():
         setattr(enrollment, field, value)
     if should_auto_leave(end_date=enrollment.end_date, status=enrollment.status):
@@ -242,6 +254,21 @@ async def update_course_enrollment(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="This student is already enrolled in this course")
+    new_values = {**update_data, "status": enrollment.status}
+    if enrollment.status != old_status:
+        description = f"Changed enrollment {enrollment_id} status from {old_status} to {enrollment.status}"
+    else:
+        description = f"Edited enrollment {enrollment_id}"
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="course_enrollments",
+        record_id=enrollment_id,
+        old_values=old_values,
+        new_values=new_values,
+        description=description,
+    )
     result = await db.execute(
         select(CourseEnrollment)
         .options(*_ENROLLMENT_LOAD)
@@ -274,6 +301,15 @@ async def delete_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, 
 
     await db.delete(enrollment)
     await db.commit()
+
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="course_enrollments",
+        record_id=enrollment_id,
+        description=f"Deleted enrollment {enrollment_id}",
+    )
 
 
 @router.post("/{enrollment_id}/purchases", response_model=EnrollmentPurchaseOut, status_code=status.HTTP_201_CREATED)

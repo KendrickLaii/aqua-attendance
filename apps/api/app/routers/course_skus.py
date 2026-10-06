@@ -10,6 +10,7 @@ from app.models.course_spu import CourseSpu
 from app.models.location import Location
 from app.models.unit import Unit
 from app.schemas.course_sku import CourseSkuCreate, CourseSkuOut, CourseSkuUpdate
+from app.services import audit_log as audit_log_svc
 from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/course-skus", tags=["courses"])
@@ -91,6 +92,15 @@ async def create_course_sku(body: CourseSkuCreate, _admin: AdminOnly, db: DB) ->
     db.add(sku)
     await db.commit()
     await db.refresh(sku)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="course_skus",
+        record_id=sku.id,
+        new_values=body.model_dump(),
+        description=f"Created course SKU {sku.code or sku.name_en or sku.id}",
+    )
     return sku
 
 
@@ -124,10 +134,21 @@ async def update_course_sku(sku_id: uuid.UUID, body: CourseSkuUpdate, _admin: Ad
         if exists.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="SKU code already exists")
 
+    old_values = {field: getattr(sku, field) for field in update_data}
     for field, value in update_data.items():
         setattr(sku, field, value)
     await db.commit()
     await db.refresh(sku)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="course_skus",
+        record_id=sku_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated course SKU {sku.code or sku.name_en or sku_id}",
+    )
     return sku
 
 
@@ -149,3 +170,11 @@ async def delete_course_sku(sku_id: uuid.UUID, _admin: AdminOnly, db: DB) -> Non
 
     await db.delete(sku)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="course_skus",
+        record_id=sku_id,
+        description=f"Deleted course SKU {sku.code or sku.name_en or sku_id}",
+    )

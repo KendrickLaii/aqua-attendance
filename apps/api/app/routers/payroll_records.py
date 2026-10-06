@@ -179,6 +179,15 @@ async def create_payroll_record(
     db.add(record)
     await db.commit()
     await db.refresh(record)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="payroll_records",
+        record_id=record.id,
+        new_values=body.model_dump(),
+        description=f"Created payroll record {record.id}",
+    )
     result = await db.execute(
         select(PayrollRecord)
         .options(selectinload(PayrollRecord.unit))
@@ -214,6 +223,7 @@ async def update_payroll_record(
         raise HTTPException(status_code=404, detail="Payroll record not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    old_status = record.status
 
     if "cheque_number" in update_data and isinstance(update_data["cheque_number"], str):
         update_data["cheque_number"] = update_data["cheque_number"].strip() or None
@@ -244,6 +254,9 @@ async def update_payroll_record(
         for field in ("adjustment_1", "adjustment_2", "base_salary", "overtime_pay", "holiday_pay")
     )
 
+    old_values = {field: getattr(record, field) for field in update_data}
+    if should_recompute:
+        old_values.update(gross_pay=record.gross_pay, net_pay=record.net_pay)
     for field, value in update_data.items():
         setattr(record, field, value)
     if should_recompute:
@@ -260,6 +273,24 @@ async def update_payroll_record(
 
     await db.commit()
     await db.refresh(record)
+    if update_data:
+        new_values = dict(update_data)
+        if should_recompute:
+            new_values.update(gross_pay=record.gross_pay, net_pay=record.net_pay)
+        if record.status != old_status:
+            description = f"Changed payroll record {record_id} status from {old_status} to {record.status}"
+        else:
+            description = f"Edited payroll record {record_id}"
+        await audit_log_svc.log_audit(
+            db,
+            user_id=admin.id,
+            action="UPDATE",
+            table_name="payroll_records",
+            record_id=record_id,
+            old_values=old_values,
+            new_values=new_values,
+            description=description,
+        )
     result = await db.execute(
         select(PayrollRecord)
         .options(selectinload(PayrollRecord.unit))

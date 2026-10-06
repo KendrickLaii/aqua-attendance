@@ -10,6 +10,7 @@ from app.deps import DB, AdminOnly
 from app.models.unit import Unit
 from app.models.staff_profile import StaffProfile
 from app.schemas.staff_profile import StaffProfileCreate, StaffProfileOut, StaffProfileUpdate, ShiftPinResetOut
+from app.services import audit_log as audit_log_svc
 from app.services.auth import hash_password
 
 router = APIRouter(prefix="/staff-profiles", tags=["staff-profiles"])
@@ -50,6 +51,15 @@ async def create_staff_profile(
     db.add(profile)
     await db.commit()
     await db.refresh(profile)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="staff_profiles",
+        record_id=unit_id,
+        new_values=body.model_dump(),
+        description=f"Created staff profile for unit {unit_id}",
+    )
     return StaffProfileOut.model_validate(profile)
 
 
@@ -63,10 +73,21 @@ async def update_staff_profile(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff profile not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    old_values = {field: getattr(profile, field) for field in update_data}
     for field, value in update_data.items():
         setattr(profile, field, value)
     await db.commit()
     await db.refresh(profile)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="staff_profiles",
+        record_id=unit_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated staff profile for unit {unit_id}",
+    )
     return StaffProfileOut.model_validate(profile)
 
 
@@ -89,6 +110,14 @@ async def reset_shift_pin(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> Shif
     profile.shift_pin_set_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(profile)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="staff_profiles",
+        record_id=unit_id,
+        description=f"Reset shift PIN for staff {unit.code}",
+    )
     return ShiftPinResetOut(pin=pin, shift_pin_set_at=profile.shift_pin_set_at)
 
 
@@ -100,3 +129,11 @@ async def delete_staff_profile(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) ->
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff profile not found")
     await db.delete(profile)
     await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="staff_profiles",
+        record_id=unit_id,
+        description=f"Deleted staff profile for unit {unit_id}",
+    )
