@@ -6,8 +6,10 @@ from sqlalchemy import func, or_, select
 from app.deps import AdminOnly, DB
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
+from app.models.location_attachment import LocationAttachment
 from app.models.unit import Unit, unit_scan_locations
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
+from app.services.media_storage import delete_attachment_file
 from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/locations", tags=["locations"])
@@ -141,5 +143,10 @@ async def delete_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
             detail="Location is referenced by units or attendance records. Set it inactive instead of deleting.",
         )
 
+    attachment_keys = (
+        await db.execute(select(LocationAttachment.file_key).where(LocationAttachment.location_id == location_id))
+    ).scalars().all()
     await db.delete(location)
     await db.commit()
+    for key in attachment_keys:
+        delete_attachment_file(key)

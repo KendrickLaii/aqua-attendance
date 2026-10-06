@@ -29,7 +29,6 @@ const pageSizeOptions = [12, 24, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
 const { authStore, ensureAccess } = useAttendanceAdminGate()
-const router = useRouter()
 
 const locations = ref<LocationItem[]>([])
 const totalCount = ref(0)
@@ -555,6 +554,12 @@ function displayName(l: LocationItem) {
           <VTab value="extra">
             Notes / Extra
           </VTab>
+          <VTab
+            v-if="authStore.isSuperAdmin"
+            value="attachments"
+          >
+            Attachments
+          </VTab>
         </VTabs>
         <VDivider />
       </template>
@@ -572,7 +577,8 @@ function displayName(l: LocationItem) {
             v-model:detail-photo-rows="detailPhotoRows"
             v-model:icon-preview-error="iconPreviewError"
             v-model:main-preview-error="mainPreviewError"
-            :form="form"
+            v-model:icon-url="form.icon_url"
+            v-model:main-photo-url="form.main_photo_url"
           />
         </VWindowItem>
         <VWindowItem value="contact">
@@ -580,6 +586,12 @@ function displayName(l: LocationItem) {
         </VWindowItem>
         <VWindowItem value="extra">
           <LocationExtraTab :form="form" />
+        </VWindowItem>
+        <VWindowItem
+          v-if="authStore.isSuperAdmin"
+          value="attachments"
+        >
+          <LocationAttachmentsTab :location-id="editing?.id ?? null" />
         </VWindowItem>
       </VWindow>
     </AttendanceFormDialog>

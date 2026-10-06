@@ -383,6 +383,7 @@ declare module 'vue' {
     InvoiceBillsSection: typeof import('./src/components/attendance/invoices/InvoiceBillsSection.vue')['default']
     InvoiceListPage: typeof import('./src/components/attendance/invoices/InvoiceListPage.vue')['default']
     InvoiceManualDialog: typeof import('./src/components/attendance/invoices/InvoiceManualDialog.vue')['default']
+    LocationAttachmentsTab: typeof import('./src/components/attendance/locations/LocationAttachmentsTab.vue')['default']
     LocationBasicTab: typeof import('./src/components/attendance/locations/LocationBasicTab.vue')['default']
     LocationCard: typeof import('./src/components/attendance/locations/LocationCard.vue')['default']
     LocationContactTab: typeof import('./src/components/attendance/locations/LocationContactTab.vue')['default']

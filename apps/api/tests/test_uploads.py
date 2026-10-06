@@ -124,3 +124,55 @@ async def test_get_missing_upload_is_404(client: AsyncClient, admin_token: str) 
 async def test_get_rejects_path_traversal(client: AsyncClient) -> None:
     resp = await client.get("/api/uploads/../test_uploads.py")
     assert resp.status_code in (400, 404)
+
+
+def _make_image(size: tuple[int, int], mode: str, fmt: str, **kwargs) -> bytes:
+    import os
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.frombytes(mode, size, os.urandom(size[0] * size[1] * len(mode)))
+    buf = BytesIO()
+    img.save(buf, fmt, **kwargs)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_large_photo_is_downscaled_and_compressed(client: AsyncClient, admin_token: str) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    big = _make_image((3000, 2000), "RGB", "JPEG", quality=95)
+    resp = await _upload(client, admin_token, big, "big.jpg", "image/jpeg")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["size"] < len(big)
+    got = await client.get(body["url"], headers={"Authorization": f"Bearer {admin_token}"})
+    img = Image.open(BytesIO(got.content))
+    assert max(img.size) == settings.UPLOAD_MAX_DIMENSION
+
+
+@pytest.mark.asyncio
+async def test_large_transparent_png_stays_png(client: AsyncClient, admin_token: str) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    big = _make_image((2000, 1000), "RGBA", "PNG")
+    resp = await _upload(client, admin_token, big, "logo.png", "image/png")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["url"].endswith(".png")
+    got = await client.get(resp.json()["url"], headers={"Authorization": f"Bearer {admin_token}"})
+    img = Image.open(BytesIO(got.content))
+    assert img.mode == "RGBA"
+    assert max(img.size) == settings.UPLOAD_MAX_DIMENSION
+
+
+@pytest.mark.asyncio
+async def test_gif_is_stored_untouched(client: AsyncClient, admin_token: str) -> None:
+    gif = b"GIF89a" + b"\x00" * 32
+    resp = await _upload(client, admin_token, gif, "a.gif", "image/gif")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["size"] == len(gif)

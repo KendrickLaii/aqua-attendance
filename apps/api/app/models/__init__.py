@@ -18,10 +18,12 @@ from app.models.credit_note_counter import CreditNoteCounter
 from app.models.tuition_receipt import TuitionReceipt
 from app.models.shift import Shift, ShiftTemplate
 from app.models.shift_request import ShiftRequest
+from app.models.location_attachment import LocationAttachment
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
     "Notification", "AttendanceSummary", "PayrollRecord", "AuditLog",
     "CourseSpu", "CourseSku", "CourseEnrollment", "EnrollmentPurchase", "TuitionInvoice", "InvoiceCounter",
     "CreditNoteCounter", "TuitionReceipt", "Shift", "ShiftTemplate", "ShiftRequest",
+    "LocationAttachment",
 ]

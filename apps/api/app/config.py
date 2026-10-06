@@ -87,7 +87,12 @@ class Settings(BaseSettings):
     # Local image uploads (location photos, later unit photos). Docker prod
     # should mount a volume at /data/uploads and set UPLOAD_DIR accordingly.
     UPLOAD_DIR: str = "uploads"
-    UPLOAD_MAX_BYTES: int = 5 * 1024 * 1024
+    UPLOAD_MAX_BYTES: int = 10 * 1024 * 1024
+    UPLOAD_MAX_DIMENSION: int = 1600
+    UPLOAD_JPEG_QUALITY: int = 82
+    ATTACHMENT_RETENTION_MONTHS: int = 24
+    ATTACHMENTS_PER_MONTH: int = 2
+    MAX_DETAIL_PHOTOS: int = 10
 
     model_config = {
         "env_file": ".env",

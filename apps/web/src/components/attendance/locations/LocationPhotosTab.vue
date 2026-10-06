@@ -2,15 +2,10 @@
 import { type DetailPhotoRow, addDetailPhotoRow, removeDetailPhotoRow } from '@/utils/locationPhotos'
 import LocationPhotoSlot from '@/components/attendance/locations/LocationPhotoSlot.vue'
 
-export interface LocationPhotosForm {
-  icon_url: string
-  main_photo_url: string
-}
+const MAX_DETAIL_PHOTOS = 10
 
-defineProps<{
-  form: LocationPhotosForm
-}>()
-
+const iconUrl = defineModel<string>('iconUrl', { required: true })
+const mainPhotoUrl = defineModel<string>('mainPhotoUrl', { required: true })
 const detailPhotoRows = defineModel<DetailPhotoRow[]>('detailPhotoRows', { required: true })
 const iconPreviewError = defineModel<boolean>('iconPreviewError', { required: true })
 const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: true })
@@ -20,7 +15,7 @@ const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: tr
   <VRow class="mt-1">
     <VCol cols="12">
       <LocationPhotoSlot
-        v-model:url="form.icon_url"
+        v-model:url="iconUrl"
         v-model:preview-error="iconPreviewError"
         title="Icon"
         hint="small image for lists"
@@ -31,7 +26,7 @@ const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: tr
     <VCol cols="12">
       <VDivider class="mb-3" />
       <LocationPhotoSlot
-        v-model:url="form.main_photo_url"
+        v-model:url="mainPhotoUrl"
         v-model:preview-error="mainPreviewError"
         title="Main photo"
         hint="cover / hero image"
@@ -47,7 +42,7 @@ const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: tr
           size="16"
           class="me-1"
         />Detail photos
-        <span class="text-caption text-medium-emphasis ml-1">— gallery / additional images</span>
+        <span class="text-caption text-medium-emphasis ms-1">— gallery / additional images</span>
       </div>
       <div
         v-for="(row, index) in detailPhotoRows"
@@ -88,10 +83,12 @@ const mainPreviewError = defineModel<boolean>('mainPreviewError', { required: tr
         size="small"
         variant="tonal"
         prepend-icon="ri-add-line"
+        :disabled="detailPhotoRows.length >= MAX_DETAIL_PHOTOS"
         @click="addDetailPhotoRow(detailPhotoRows)"
       >
         Add photo
       </VBtn>
+      <span class="text-caption text-medium-emphasis ms-2">{{ detailPhotoRows.length }}/{{ MAX_DETAIL_PHOTOS }}</span>
     </VCol>
   </VRow>
 </template>

@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.config import settings
 from app.schemas.location_photo import LocationDetailPhoto
 
 # Structured business hours for OT (see docs/database-changes.md).
@@ -87,7 +88,7 @@ class LocationCreate(BaseModel):
     business_hours: BusinessHours | str | None = None
     icon_url: str | None = Field(default=None, max_length=500)
     main_photo_url: str | None = Field(default=None, max_length=500)
-    detail_photos: list[LocationDetailPhoto] | None = None
+    detail_photos: list[LocationDetailPhoto] | None = Field(default=None, max_length=settings.MAX_DETAIL_PHOTOS)
     address: str | None = Field(default=None, max_length=500)
     contact_person: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
@@ -142,7 +143,7 @@ class LocationUpdate(BaseModel):
     business_hours: BusinessHours | str | None = None
     icon_url: str | None = Field(default=None, max_length=500)
     main_photo_url: str | None = Field(default=None, max_length=500)
-    detail_photos: list[LocationDetailPhoto] | None = None
+    detail_photos: list[LocationDetailPhoto] | None = Field(default=None, max_length=settings.MAX_DETAIL_PHOTOS)
     address: str | None = Field(default=None, max_length=500)
     contact_person: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
