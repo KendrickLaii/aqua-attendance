@@ -140,7 +140,7 @@ async function loadAll() {
       loadTemplates(),
     ])
 
-    staff.value = [...staffList].sort((a, b) => a.full_name.localeCompare(b.full_name))
+    staff.value = [...staffList].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' }) || a.full_name.localeCompare(b.full_name))
     locations.value = [...locationList].sort((a, b) => a.name_en.localeCompare(b.name_en))
     if (locationId.value && !locations.value.some(l => l.id === locationId.value))
       locationId.value = null
