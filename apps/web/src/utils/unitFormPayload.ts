@@ -44,6 +44,7 @@ export interface UnitFormState {
     hourly_rate: string
     monthly_salary: string
     ot_multiplier: string
+    commission_rate: string
     work_schedule: string
     supervisor_id: string
     employment_notes: string
@@ -113,6 +114,7 @@ export function emptyUnitForm(defaults?: { registered_location_id?: string; scan
       hourly_rate: '',
       monthly_salary: '',
       ot_multiplier: '',
+      commission_rate: '',
       work_schedule: '',
       supervisor_id: '',
       employment_notes: '',
@@ -216,6 +218,7 @@ export function buildUnitSavePayload(form: UnitFormState): UnitSavePayload {
       hourly_rate: normalizeFormNumber(form.staff_profile.hourly_rate),
       monthly_salary: normalizeFormNumber(form.staff_profile.monthly_salary),
       ot_multiplier: normalizeFormNumber(form.staff_profile.ot_multiplier),
+      commission_rate: normalizeFormNumber(form.staff_profile.commission_rate),
       work_schedule: normalizeFormString(form.staff_profile.work_schedule),
       supervisor_id: normalizeFormString(form.staff_profile.supervisor_id),
       employment_notes: normalizeFormString(form.staff_profile.employment_notes),

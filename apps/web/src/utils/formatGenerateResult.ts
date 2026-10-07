@@ -18,6 +18,7 @@ export interface PayrollGenerateResult {
   updated: number
   skipped: number
   stale_summaries?: StaleSummaryUnit[]
+  commission_warnings?: string[]
 }
 
 function formatPeriod(year: number, month: number): string {
@@ -125,7 +126,13 @@ export function formatPayrollGenerateMessage(
   const period = formatPeriod(year, month)
   const { created, updated, skipped } = result
   const processed = created + updated
-  const warning = staleWarning(result.stale_summaries, period)
+
+  const warnings = [
+    staleWarning(result.stale_summaries, period),
+    ...(result.commission_warnings ?? []),
+  ].filter(Boolean)
+
+  const warning = warnings.length > 0 ? warnings.join(' ') : undefined
 
   if (processed === 0 && skipped === 0) {
     return {

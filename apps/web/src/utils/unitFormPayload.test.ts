@@ -72,11 +72,16 @@ describe('unitFormPayload', () => {
     form.staff_profile.pay_type = 'hourly'
     form.staff_profile.hourly_rate = '120.5'
     form.staff_profile.ot_multiplier = ''
+    form.staff_profile.commission_rate = '70'
 
     const payload = buildUnitSavePayload(form)
 
     assert.equal(payload.staff_profile?.hourly_rate, 120.5)
     assert.equal(payload.staff_profile?.ot_multiplier, null)
+    assert.equal(payload.staff_profile?.commission_rate, 70)
+
+    form.staff_profile.commission_rate = ''
+    assert.equal(buildUnitSavePayload(form).staff_profile?.commission_rate, null)
     assert.equal(payload.staff_profile?.employment_type, 'full_time')
     assert.equal('student_profile' in payload, false)
   })

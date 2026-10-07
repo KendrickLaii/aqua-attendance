@@ -91,6 +91,14 @@ const open = computed({
 })
 
 const form = reactive<UnitFormState>(emptyUnitForm())
+
+const commissionEnabled = computed({
+  get: () => form.staff_profile.commission_rate !== '',
+  set: on => {
+    form.staff_profile.commission_rate = on ? '70' : ''
+  },
+})
+
 const unitFormRef = ref<VForm>()
 const saving = ref(false)
 const saveError = ref<string | null>(null)
@@ -164,6 +172,7 @@ watch(() => form.unit_type, type => {
     form.staff_profile.hourly_rate = ''
     form.staff_profile.monthly_salary = ''
     form.staff_profile.ot_multiplier = ''
+    form.staff_profile.commission_rate = ''
     form.staff_profile.work_schedule = ''
     form.staff_profile.supervisor_id = ''
     form.staff_profile.employment_notes = ''
@@ -249,6 +258,7 @@ function fillForm(unit: Unit) {
       hourly_rate: stp?.hourly_rate != null ? String(stp.hourly_rate) : '',
       monthly_salary: stp?.monthly_salary != null ? String(stp.monthly_salary) : '',
       ot_multiplier: stp?.ot_multiplier != null ? String(stp.ot_multiplier) : '',
+      commission_rate: stp?.commission_rate != null ? String(stp.commission_rate) : '',
       work_schedule: stp?.work_schedule ?? '',
       supervisor_id: stp?.supervisor_id ?? '',
       employment_notes: stp?.employment_notes ?? '',
@@ -925,6 +935,30 @@ async function handleSave() {
               step="0.01"
               hint="Defaults to 1.5x when left blank"
               persistent-hint
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+            md="4"
+          >
+            <VSwitch
+              v-model="commissionEnabled"
+              label="Commission / sharing"
+              hide-details
+              density="compact"
+            />
+            <VTextField
+              v-if="commissionEnabled"
+              v-model="form.staff_profile.commission_rate"
+              label="Commission %"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              hint="Share of paid bills where this staff is the Tutor"
+              persistent-hint
+              class="mt-2"
             />
           </VCol>
         </VRow>

@@ -116,12 +116,15 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 
 從當月 `attendance_summaries` 聚合為 `payroll_records`（鍵：`unit_id` + `payroll_period_start/end`）。
 
-回傳：`{ created, updated, skipped, year, month }`
+回傳：`{ created, updated, skipped, year, month, commission_warnings }`
 
 - 狀態為 `approved` / `paid` 的記錄 → **skipped**，不覆寫
 - 聚合 `regular_slots` / `ot_slots`，依 `staff_profiles` 薪資率計算 `base_salary` / `overtime_pay` / `gross_pay` / `net_pay`
 - 凍結 `hourly_rate_snapshot` / `ot_multiplier_snapshot`，避免之後調薪影響歷史
-- 手動調整欄位 `adjustment_1` / `adjustment_2`（及 remark）在重算時會保留；`gross_pay = base + OT + adj1`，`net_pay = gross + adj2`
+- 一般員工的手動調整欄位 `adjustment_1` / `adjustment_2`（及 remark）在重算時會保留；`gross_pay = base + OT + adj1`，`net_pay = gross + adj2`
+- 設有 `staff_profiles.commission_rate` 的員工會按發票級 Tutor 名字匹配：當月已付正數發票加總、已開或已付的 credit note 扣減，再乘分成比例寫入 `adjustment_1`；每次 Generate 均覆蓋該員工的 Adjustment 1 及 remark
+- 發票未填 Tutor 不計分成；Tutor 找不到員工或同名不唯一時不會派發，詳情由 `commission_warnings` 回傳並在 Web 提示
+- 分成员工即使當月沒有考勤，只要有符合的發票，也會建立薪資記錄
 
 實作：`app/services/payroll_generator.py`
 
@@ -170,6 +173,8 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 | **統計卡** | 本月記錄數、總常規工時、總 OT 工時、總 Net pay（當前頁加總） |
 | **總覽** | 每個 unit 當月一筆薪資；點列進入明細；分頁；亦有 Generate wizard 卡片檢視 |
 | **明細** | 該 unit 當月 `attendance_summaries`：日期、上下班、Regular / Reg slots / OT / OT slots、狀態與 Total；可編輯 Adjustment 1/2 與 remark |
+
+分成员工可在 Unit 編輯表單的 **Compensation** 區開啟 `Commission / sharing`，預設比例為 70%，可改為 0–100%。Generate 後的自動分成顯示在 Adjustment 1，Adjustment 2 仍可用作其他人工調整。
 
 ### 4.2 狀態流程
 

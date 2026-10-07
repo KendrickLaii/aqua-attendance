@@ -7,16 +7,19 @@ snapshot at generation time.
 """
 
 import calendar
+import uuid
 from collections import defaultdict
 from datetime import date, datetime, time, timezone
+from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.attendance_tz import ATTENDANCE_TZ
 from app.models.attendance import AttendanceEvent
 from app.models.attendance_summary import AttendanceSummary
 from app.models.payroll_record import PayrollRecord, PayrollStatus
+from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceStatus
 from app.models.unit import Unit
 from app.models.staff_profile import StaffProfile
 
@@ -122,6 +125,112 @@ async def detect_stale_summary_units(
     ]
 
 
+async def _commission_by_unit(
+    db: AsyncSession,
+    first_day: date,
+    last_day: date,
+    unit_type: str | None = None,
+    unit_ids: list | None = None,
+) -> tuple[dict[uuid.UUID, tuple[Decimal, int]], dict[uuid.UUID, StaffProfile], list[str]]:
+    """Aggregate invoice commission per staff unit for the month.
+
+    Returns (commissions, commission_staff, warnings):
+        commissions: unit_id -> (invoice total Decimal, invoice count)
+        commission_staff: unit_id -> StaffProfile (commission_rate IS NOT NULL)
+        warnings: one entry per unmatched/ambiguous Tutor name
+    """
+    if unit_type and unit_type != "staff":
+        return {}, {}, []
+
+    # Name map covers ALL staff units so an out-of-scope tutor name still
+    # resolves (and stays silent); unit_ids only limits who earns commission.
+    staff_q = (
+        select(StaffProfile, Unit.full_name)
+        .join(Unit, Unit.id == StaffProfile.id)
+        .where(Unit.unit_type == "staff")
+    )
+    staff_rows = (await db.execute(staff_q)).all()
+
+    name_to_units: dict[str, list[uuid.UUID]] = defaultdict(list)
+    commission_staff: dict[uuid.UUID, StaffProfile] = {}
+    requested = set(unit_ids) if unit_ids else None
+    for staff, full_name in staff_rows:
+        if staff.commission_rate is not None and (requested is None or staff.id in requested):
+            commission_staff[staff.id] = staff
+        key = (full_name or "").strip().casefold()
+        if key:
+            name_to_units[key].append(staff.id)
+
+    if not commission_staff:
+        return {}, {}, []
+
+    # Commission counts paid invoices (positive) and issued/paid credit notes
+    # (negative) in the payroll month; void/draft and unpaid positives don't.
+    inv_q = select(TuitionInvoice).where(
+        TuitionInvoice.period_start >= first_day,
+        TuitionInvoice.period_start <= last_day,
+        TuitionInvoice.staff_name.is_not(None),
+        func.trim(TuitionInvoice.staff_name) != "",
+        or_(
+            and_(
+                TuitionInvoice.total > 0,
+                TuitionInvoice.status == TuitionInvoiceStatus.paid.value,
+            ),
+            and_(
+                TuitionInvoice.total < 0,
+                TuitionInvoice.status.in_(
+                    [TuitionInvoiceStatus.issued.value, TuitionInvoiceStatus.paid.value]
+                ),
+            ),
+        ),
+    )
+    invoices = (await db.execute(inv_q)).scalars().all()
+
+    commissions: dict[uuid.UUID, list] = {}
+    unmatched: dict[str, dict] = {}  # name -> {"ref": first invoice ref, "count": n}
+    ambiguous: dict[str, int] = {}   # name -> invoice count
+    for inv in invoices:
+        name = inv.staff_name.strip()
+        key = name.casefold()
+        matches = name_to_units.get(key) or []
+        if len(matches) > 1:
+            ambiguous[name] = ambiguous.get(name, 0) + 1
+            continue
+        if not matches:
+            entry = unmatched.setdefault(
+                name, {"ref": inv.invoice_no or str(inv.id), "count": 0}
+            )
+            entry["count"] += 1
+            continue
+        unit_id = matches[0]
+        if unit_id not in commission_staff:
+            continue  # matched a non-commission staff — ignore silently
+        entry = commissions.setdefault(unit_id, [Decimal("0"), 0])
+        entry[0] += Decimal(str(inv.total))
+        entry[1] += 1
+
+    warnings: list[str] = []
+    for name, entry in unmatched.items():
+        if entry["count"] == 1:
+            warnings.append(
+                f'Tutor "{name}" on invoice {entry["ref"]} matches no staff'
+            )
+        else:
+            warnings.append(
+                f'Tutor "{name}" on {entry["count"]} invoices matches no staff'
+            )
+    for name in ambiguous:
+        warnings.append(
+            f'Tutor "{name}" matches multiple staff; commission not assigned'
+        )
+
+    return (
+        {uid: (tot, cnt) for uid, (tot, cnt) in commissions.items()},
+        commission_staff,
+        warnings,
+    )
+
+
 def _pay_from_profile(
     staff: StaffProfile | None,
     regular_slots: int,
@@ -202,12 +311,19 @@ async def generate_monthly_payroll(
     )
     existing_records = {r.unit_id: r for r in existing_result.scalars().all()}
 
-    # Load staff profiles for all grouped units in one query
-    unit_ids = list(grouped.keys())
+    commissions, commission_staff, commission_warnings = await _commission_by_unit(
+        db, first_day, last_day, unit_type=unit_type, unit_ids=unit_ids
+    )
+
+    # Commission staff with invoices but no attendance still get a record
+    all_unit_ids = set(grouped.keys()) | set(commissions.keys())
+
+    # Load staff profiles for all processed units in one query
+    profile_unit_ids = list(all_unit_ids)
     staff_by_unit: dict = {}
-    if unit_ids:
+    if profile_unit_ids:
         staff_result = await db.execute(
-            select(StaffProfile).where(StaffProfile.id.in_(unit_ids))
+            select(StaffProfile).where(StaffProfile.id.in_(profile_unit_ids))
         )
         staff_by_unit = {s.id: s for s in staff_result.scalars().all()}
 
@@ -216,7 +332,8 @@ async def generate_monthly_payroll(
     skipped_count = 0
     now = datetime.now(timezone.utc)
 
-    for unit_id, unit_summaries in grouped.items():
+    for unit_id in all_unit_ids:
+        unit_summaries = grouped.get(unit_id, [])
         record = existing_records.get(unit_id)
 
         regular_slots = sum(s.regular_slots for s in unit_summaries)
@@ -229,7 +346,24 @@ async def generate_monthly_payroll(
             staff, regular_slots, ot_slots
         )
 
-        adjustment_1 = float(record.adjustment_1) if record and record.adjustment_1 is not None else 0.0
+        # Commission staff: adjustment_1 = invoice total × rate, always overwritten
+        commission_remark: str | None = None
+        if staff is not None and staff.commission_rate is not None:
+            rate = Decimal(str(staff.commission_rate))
+            commission_total, commission_count = commissions.get(
+                unit_id, (Decimal("0"), 0)
+            )
+            adjustment_1 = float(
+                (commission_total * rate / 100).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+            )
+            commission_remark = (
+                f"Commission {float(rate):g}% × ${float(commission_total):,.2f} "
+                f"({commission_count} invoices)"
+            )
+        else:
+            adjustment_1 = float(record.adjustment_1) if record and record.adjustment_1 is not None else 0.0
         adjustment_2 = float(record.adjustment_2) if record and record.adjustment_2 is not None else 0.0
 
         gross_pay = round(base_salary + overtime_pay + adjustment_1, 2)
@@ -251,6 +385,9 @@ async def generate_monthly_payroll(
             record.base_salary = base_salary
             record.overtime_pay = overtime_pay
             record.holiday_pay = 0.0
+            if commission_remark is not None:
+                record.adjustment_1 = adjustment_1
+                record.adjustment_1_remark = commission_remark
             record.gross_pay = gross_pay
             record.net_pay = net_pay
             record.status = PayrollStatus.calculated.value
@@ -273,6 +410,8 @@ async def generate_monthly_payroll(
                 base_salary=base_salary,
                 overtime_pay=overtime_pay,
                 holiday_pay=0.0,
+                adjustment_1=adjustment_1,
+                adjustment_1_remark=commission_remark,
                 gross_pay=gross_pay,
                 net_pay=net_pay,
                 status=PayrollStatus.calculated.value,
@@ -291,4 +430,5 @@ async def generate_monthly_payroll(
         "year": year,
         "month": month,
         "stale_summaries": stale_summaries,
+        "commission_warnings": commission_warnings,
     }

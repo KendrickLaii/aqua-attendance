@@ -160,7 +160,7 @@ export async function generatePayroll(
   month: number,
   unitType?: string,
   unitIds?: string[],
-): Promise<{ created: number; updated: number; skipped: number; stale_summaries?: StaleSummaryUnit[] }> {
+): Promise<{ created: number; updated: number; skipped: number; stale_summaries?: StaleSummaryUnit[]; commission_warnings?: string[] }> {
   const params = new URLSearchParams()
 
   params.set('year', String(year))

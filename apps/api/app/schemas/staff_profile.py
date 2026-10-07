@@ -16,6 +16,7 @@ class StaffProfileCreate(BaseModel):
     hourly_rate: float | None = Field(default=None, ge=0)
     monthly_salary: float | None = Field(default=None, ge=0)
     ot_multiplier: float | None = Field(default=None, ge=0)
+    commission_rate: float | None = Field(default=None, ge=0, le=100)
     work_schedule: str | None = Field(default=None, max_length=255)
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
@@ -33,6 +34,7 @@ class StaffProfileUpdate(BaseModel):
     hourly_rate: float | None = Field(default=None, ge=0)
     monthly_salary: float | None = Field(default=None, ge=0)
     ot_multiplier: float | None = Field(default=None, ge=0)
+    commission_rate: float | None = Field(default=None, ge=0, le=100)
     work_schedule: str | None = Field(default=None, max_length=255)
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
@@ -51,6 +53,7 @@ class StaffProfileOut(BaseModel):
     hourly_rate: float | None = None
     monthly_salary: float | None = None
     ot_multiplier: float | None = None
+    commission_rate: float | None = None
     work_schedule: str | None = None
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None

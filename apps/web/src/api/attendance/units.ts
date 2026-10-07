@@ -38,6 +38,7 @@ export interface StaffProfileOut {
   hourly_rate: number | null
   monthly_salary: number | null
   ot_multiplier: number | null
+  commission_rate: number | null
   work_schedule: string | null
   supervisor_id: string | null
   employment_notes: string | null
@@ -99,6 +100,7 @@ export interface StaffProfileInput {
   hourly_rate?: number | null
   monthly_salary?: number | null
   ot_multiplier?: number | null
+  commission_rate?: number | null
   work_schedule?: string | null
   supervisor_id?: string | null
   employment_notes?: string | null

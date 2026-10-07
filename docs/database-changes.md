@@ -103,6 +103,7 @@ erDiagram
         numeric hourly_rate "時薪"
         numeric monthly_salary "月薪"
         numeric ot_multiplier "加班倍率 預設1.5"
+        numeric commission_rate "發票分成比例 0-100 NULL=無"
         string work_schedule "工作班表"
         uuid supervisor_id FK "直屬主管 unit_id"
         string employment_notes "員工備註"
@@ -620,7 +621,7 @@ ot_hours      = ot_slots * 0.25
 | phone, address, email | units（共用聯絡資料） |
 | emergency_contact_name, emergency_contact_phone | units（共用緊急聯絡人） |
 | start_date, exit_date | units（學生入學/退學、員工到職/離職共用 lifecycle 日期） |
-| employment_type, pay_type, hourly_rate, monthly_salary, ot_multiplier, employee_id, department, position, salary_grade, work_schedule, supervisor_id, employment_notes | staff_profiles |
+| employment_type, pay_type, hourly_rate, monthly_salary, ot_multiplier, commission_rate, employee_id, department, position, salary_grade, work_schedule, supervisor_id, employment_notes | staff_profiles |
 | school_name, grade_class, student_id, academic_notes | student_profiles |
 | guardian1/2_*（6個欄位） | student_profiles.guardians JSON |
 
@@ -743,7 +744,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10 → e5a1c3d7f9b2 → a7f3c1e8d4b2 → c9d2e4f1a8b3 → d4b8e2a1c7f0
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10 → e5a1c3d7f9b2 → a7f3c1e8d4b2 → c9d2e4f1a8b3 → d4b8e2a1c7f0 → e1c9a4b7d2f3 → f2a6c8d0b4e1 → a4e8c1d9b6f2 → b7c1e9a4d2f6 → a3d5f7b9c1e2 → c5e8a2f4d6b1 → e7b3f9a1c2d4
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -777,8 +778,9 @@ ot_hours      = ot_slots * 0.25
 28. ✅ 學費收條（a7f3c1e8d4b2）— `tuition_receipts` + `tuition_receipt_invoices`；posted 收條把發票標 `paid`
 29. ✅ 收條加減行（c9d2e4f1a8b3）— `tuition_receipts.adjustments` JSON
 30. ✅ Credit note 抬頭（d4b8e2a1c7f0）— `tuition_invoices.payable_to_name` / `payee_name`
+31. ✅ 員工分成比例（e7b3f9a1c2d4）— `staff_profiles.commission_rate` Numeric(5,2)；工資單生成時按發票級 Tutor（`tuition_invoices.staff_name`）加總當月已收發票 × 比例寫入 `adjustment_1`（credit note 扣減），每次生成覆蓋；同名/搵唔到人 → `commission_warnings`
 
-> **目前 Alembic 版本：d4b8e2a1c7f0**（Credit note 支票抬頭；前序含收條 a7f3c1e8d4b2／c9d2e4f1a8b3）
+> **目前 Alembic 版本：e7b3f9a1c2d4**（員工分成比例；前序含 Credit note 抬頭 d4b8e2a1c7f0）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

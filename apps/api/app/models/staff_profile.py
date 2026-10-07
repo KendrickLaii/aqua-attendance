@@ -36,6 +36,8 @@ class StaffProfile(Base):
     hourly_rate: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     monthly_salary: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     ot_multiplier: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True, default=1.5)
+    # Commission % of paid invoices where this staff is the invoice Tutor (NULL = no commission)
+    commission_rate: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     # Work information
     work_schedule: Mapped[str | None] = mapped_column(String(255), nullable=True)

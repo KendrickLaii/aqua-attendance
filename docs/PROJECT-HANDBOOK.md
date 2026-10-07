@@ -1347,6 +1347,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | New | `POST /api/payroll-records/generate` — 從 summaries 聚合薪資記錄 |
 | Enhancement | `GET /api/payroll-records` — 新增 `year`/`month`/`unit_type`/`status` 篩選 |
 | Enhancement | Payroll generate 依 `staff_profiles` 薪資率計算 `base_salary`/`overtime_pay`/`gross_pay`/`net_pay` |
+| Enhancement | 員工可設定 `commission_rate`（0–100%）；Generate 按發票級 Tutor 匹配當月已付發票，扣除 credit note 後將分成寫入 Adjustment 1；名字無法唯一匹配時回傳 `commission_warnings` |
 | Enhancement | `payroll_records` 凍結 `hourly_rate_snapshot`/`ot_multiplier_snapshot`（防歷史污染） |
 | Enhancement | Generate 寫入 audit log（`DATA_EXPORT`） |
 | Migration | `026_add_slots_and_pay_rates.py` — slots + 薪資率欄位；`032_rename_products_to_units.py` — product → unit 重新命名 |
@@ -1357,6 +1358,8 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | ------ | ------ |
 | New | `/attendance/summaries` — 主從式頁面（總覽 → 每日明細） |
 | New | `/attendance/payroll` — 主從式頁面（月度薪資 → 明細） |
+| Enhancement | Unit 表單 Compensation 區新增 `Commission / sharing` 開關與可編輯比例（開啟時預設 70%） |
+| Enhancement | Payroll Generate 提示 Tutor 找不到員工或同名不唯一的 commission warnings |
 | Enhancement | Summaries：月份切換、Type 篩選（預設 Staff）、Generate、統計卡 |
 | Enhancement | Payroll：狀態流程（draft → calculated → approved → paid）、Approve/Pay 動作 |
 | Enhancement | Generate 成功提示（區分首次/重算/無事件/seed 既有資料） |
