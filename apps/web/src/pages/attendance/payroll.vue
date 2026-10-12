@@ -238,7 +238,7 @@ function onCardAdjChange(record: PayrollRecord) {
 
   const adj1 = Number(record.adjustment_1) || 0
   const adj2 = Number(record.adjustment_2) || 0
-  const gross = record.base_salary + record.overtime_pay + record.holiday_pay + adj1
+  const gross = record.base_salary + record.overtime_pay + record.holiday_pay + (Number(record.commission_pay) || 0) + adj1
   const net = gross + adj2
 
   record.gross_pay = gross

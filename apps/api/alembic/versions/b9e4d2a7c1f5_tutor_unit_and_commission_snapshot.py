@@ -1,9 +1,11 @@
-"""add tuition_invoices.tutor_unit_id + payroll_records.commission_rate_snapshot
+"""add tuition_invoices.tutor_unit_id + payroll_records.commission_rate_snapshot + commission_pay
 
 tutor_unit_id links an invoice's Tutor (開單人) to a staff unit so payroll
 commission matches by id instead of by name; staff_name stays as the display
 snapshot. commission_rate_snapshot freezes the rate used at payroll
 generation so regenerating a draft record keeps the original rate.
+commission_pay holds the computed commission as its own payroll row —
+adjustment_1 reverts to a pure manual adjustment.
 
 Revision ID: b9e4d2a7c1f5
 Revises: e7b3f9a1c2d4
@@ -46,9 +48,19 @@ def upgrade() -> None:
         'payroll_records',
         sa.Column('commission_rate_snapshot', sa.Numeric(5, 2), nullable=True),
     )
+    op.add_column(
+        'payroll_records',
+        sa.Column(
+            'commission_pay',
+            sa.Numeric(10, 2),
+            nullable=False,
+            server_default='0',
+        ),
+    )
 
 
 def downgrade() -> None:
+    op.drop_column('payroll_records', 'commission_pay')
     op.drop_column('payroll_records', 'commission_rate_snapshot')
     with op.batch_alter_table('tuition_invoices') as batch:
         batch.drop_index('ix_tuition_invoices_tutor_unit_id')

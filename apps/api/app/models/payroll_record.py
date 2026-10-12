@@ -56,6 +56,9 @@ class PayrollRecord(Base):
     ot_multiplier_snapshot: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
     commission_rate_snapshot: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
+    # Commission row (staff commission_rate × that month's paid invoices)
+    commission_pay: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
+
     # Compensation calculations
     base_salary: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     overtime_pay: Mapped[float] = mapped_column(Numeric(10, 2), default=0)

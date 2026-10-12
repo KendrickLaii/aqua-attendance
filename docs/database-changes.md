@@ -779,7 +779,7 @@ ot_hours      = ot_slots * 0.25
 29. ✅ 收條加減行（c9d2e4f1a8b3）— `tuition_receipts.adjustments` JSON
 30. ✅ Credit note 抬頭（d4b8e2a1c7f0）— `tuition_invoices.payable_to_name` / `payee_name`
 31. ✅ 員工分成比例（e7b3f9a1c2d4）— `staff_profiles.commission_rate` Numeric(5,2)；工資單生成時按發票級 Tutor（`tuition_invoices.staff_name`）加總當月已收發票 × 比例寫入 `adjustment_1`（credit note 扣減），每次生成覆蓋；同名/搵唔到人 → `commission_warnings`
-32. ✅ Tutor 連結 + 分成快照（b9e4d2a7c1f5）— `tuition_invoices.tutor_unit_id`（FK→units，SET NULL，indexed；id 匹配優先，`staff_name` 名字匹配僅作舊單 fallback）、`payroll_records.commission_rate_snapshot` Numeric(5,2)；正數發票改按**收款月**計分成（posted receipt 的 `receipt_date` 落在工資月），credit note 仍按 bill month；重新 Generate 已存在記錄時用 snapshot 比例（要套用新比例需刪除該記錄再 Generate）
+32. ✅ Tutor 連結 + 分成快照 + 分成欄（b9e4d2a7c1f5）— `tuition_invoices.tutor_unit_id`（FK→units，SET NULL，indexed；id 匹配優先，`staff_name` 名字匹配僅作舊單 fallback）、`payroll_records.commission_rate_snapshot` Numeric(5,2)、`payroll_records.commission_pay` Numeric(10,2) NOT NULL default 0；正數發票改按**收款月**計分成（posted receipt 的 `receipt_date` 落在工資月），credit note 仍按 bill month；分成獨立寫入 `commission_pay`（`gross = base + OT + holiday + commission_pay + adj1`），`adjustment_1` 回復為純手動調整、Generate 永不覆寫；重新 Generate 已存在記錄時用 snapshot 比例（要套用新比例需刪除該記錄再 Generate）
 
 > **目前 Alembic 版本：b9e4d2a7c1f5**（Tutor 連結 + 分成快照；前序含員工分成比例 e7b3f9a1c2d4）
 >

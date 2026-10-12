@@ -45,6 +45,7 @@ def _recompute_payroll_totals(record: PayrollRecord) -> None:
         _money(record.base_salary)
         + _money(record.overtime_pay)
         + _money(record.holiday_pay)
+        + _money(record.commission_pay)
         + _money(record.adjustment_1)
     )
     net = gross + _money(record.adjustment_2)
@@ -337,6 +338,7 @@ async def update_payroll_record(
 
     update_data.pop("gross_pay", None)
     update_data.pop("net_pay", None)
+    update_data.pop("commission_pay", None)  # generator-owned; never client-set
     should_recompute = any(
         field in update_data
         for field in ("adjustment_1", "adjustment_2", "base_salary", "overtime_pay", "holiday_pay")

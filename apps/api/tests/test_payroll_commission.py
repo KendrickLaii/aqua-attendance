@@ -1,4 +1,4 @@
-"""Payroll commission: invoice-level Tutor × staff commission_rate → adjustment_1."""
+"""Payroll commission: invoice-level Tutor × staff commission_rate → commission_pay."""
 
 import uuid
 from datetime import date
@@ -145,8 +145,9 @@ async def test_commission_matches_invoice_tutor_case_and_space(
 
     record = await _record_for(staff["id"])
     assert record is not None
-    assert float(record.adjustment_1) == 700.0
-    assert record.adjustment_1_remark == "Commission 70% × $1,000.00 (1 invoices)"
+    assert float(record.commission_pay) == 700.0
+    assert float(record.adjustment_1) == 0.0
+    assert record.adjustment_1_remark is None
     assert float(record.gross_pay) == float(record.base_salary) + 700.0
     assert result["commission_warnings"] == []
 
@@ -175,8 +176,8 @@ async def test_blank_and_ineligible_invoices_not_counted(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 140.0
-    assert "(1 invoices)" in record.adjustment_1_remark
+    assert float(record.commission_pay) == 140.0
+    assert record.adjustment_1_remark is None
     assert result["commission_warnings"] == []
 
 
@@ -205,8 +206,7 @@ async def test_credit_note_deducts_commission(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 350.0
-    assert record.adjustment_1_remark == "Commission 50% × $700.00 (2 invoices)"
+    assert float(record.commission_pay) == 350.0
 
 
 @pytest.mark.asyncio
@@ -240,8 +240,7 @@ async def test_payment_month_counts_not_bill_month(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 700.0
-    assert record.adjustment_1_remark == "Commission 70% × $1,000.00 (1 invoices)"
+    assert float(record.commission_pay) == 700.0
 
     async with TestSessionLocal() as session:
         feb = await session.scalar(
@@ -250,7 +249,7 @@ async def test_payment_month_counts_not_bill_month(
                 PayrollRecord.payroll_period_start == date(2026, 2, 1),
             )
         )
-        assert feb is None or float(feb.adjustment_1) == 0.0
+        assert feb is None or float(feb.commission_pay) == 0.0
 
 
 @pytest.mark.asyncio
@@ -278,8 +277,7 @@ async def test_receipt_outside_month_not_counted(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 0.0
-    assert record.adjustment_1_remark == "Commission 70% × $0.00 (0 invoices)"
+    assert float(record.commission_pay) == 0.0
 
 
 @pytest.mark.asyncio
@@ -300,8 +298,7 @@ async def test_paid_invoice_without_receipt_not_counted(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 0.0
-    assert "(0 invoices)" in record.adjustment_1_remark
+    assert float(record.commission_pay) == 0.0
 
 
 @pytest.mark.asyncio
@@ -326,8 +323,7 @@ async def test_voided_receipt_not_counted(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 0.0
-    assert "(0 invoices)" in record.adjustment_1_remark
+    assert float(record.commission_pay) == 0.0
 
 
 @pytest.mark.asyncio
@@ -359,7 +355,7 @@ async def test_tutor_unit_id_matches_after_rename(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 700.0
+    assert float(record.commission_pay) == 700.0
     assert result["commission_warnings"] == []
 
 
@@ -390,8 +386,7 @@ async def test_rate_snapshot_survives_regenerate(
 
     record = await _record_for(staff["id"])
     assert float(record.commission_rate_snapshot) == 70.0
-    assert float(record.adjustment_1) == 700.0
-    assert record.adjustment_1_remark.startswith("Commission 70%")
+    assert float(record.commission_pay) == 700.0
 
 
 @pytest.mark.asyncio
@@ -420,9 +415,10 @@ async def test_warnings_scoped_to_requested_unit_locations(
 
 
 @pytest.mark.asyncio
-async def test_awaiting_payment_remark(
+async def test_awaiting_invoice_earns_nothing(
     client: AsyncClient, admin_token: str, sample_location: dict
 ) -> None:
+    """Issued-but-unpaid bills earn no commission (see detail endpoint's list)."""
     loc = sample_location["id"]
     staff = await _staff_unit(
         client, admin_token, loc, full_name="Ada Wong", commission_rate=70
@@ -439,11 +435,8 @@ async def test_awaiting_payment_remark(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 0.0
-    assert (
-        record.adjustment_1_remark
-        == "Commission 70% × $0.00 (0 invoices; 1 awaiting payment)"
-    )
+    assert float(record.commission_pay) == 0.0
+    assert float(record.commission_rate_snapshot) == 70.0
 
 
 @pytest.mark.asyncio
@@ -464,8 +457,7 @@ async def test_duplicate_staff_name_warns_and_skips(
 
     for unit in (a, b):
         record = await _record_for(unit["id"])
-        assert float(record.adjustment_1) == 0.0
-        assert "(0 invoices)" in record.adjustment_1_remark
+        assert float(record.commission_pay) == 0.0
     assert any(
         'Tutor "Dup Name" matches multiple staff' in w
         for w in result["commission_warnings"]
@@ -514,6 +506,7 @@ async def test_invoice_matching_non_commission_staff_is_silent(
         )
 
     record = await _record_for(plain["id"])
+    assert float(record.commission_pay) == 0.0
     assert float(record.adjustment_1) == 0.0
     assert record.adjustment_1_remark is None
     assert result["commission_warnings"] == []
@@ -538,7 +531,7 @@ async def test_commission_staff_without_attendance_gets_record(
     record = await _record_for(staff["id"])
     assert record is not None
     assert record.regular_slots == 0
-    assert float(record.adjustment_1) == 350.0
+    assert float(record.commission_pay) == 350.0
     assert result["created"] == 1
 
 
@@ -626,7 +619,7 @@ async def test_null_commission_rate_leaves_adjustment_untouched(
 
 
 @pytest.mark.asyncio
-async def test_regenerate_overwrites_manual_adjustment_for_commission_staff(
+async def test_regenerate_preserves_manual_adjustment_for_commission_staff(
     client: AsyncClient, admin_token: str, sample_location: dict
 ) -> None:
     loc = sample_location["id"]
@@ -641,7 +634,7 @@ async def test_regenerate_overwrites_manual_adjustment_for_commission_staff(
                 unit_id=uuid.UUID(staff["id"]),
                 payroll_period_start=FIRST_DAY,
                 payroll_period_end=LAST_DAY,
-                adjustment_1=999.0,
+                adjustment_1=50.0,
                 adjustment_1_remark="manual override",
                 status="calculated",
             )
@@ -653,8 +646,11 @@ async def test_regenerate_overwrites_manual_adjustment_for_commission_staff(
         )
 
     record = await _record_for(staff["id"])
-    assert float(record.adjustment_1) == 700.0
-    assert record.adjustment_1_remark == "Commission 70% × $1,000.00 (1 invoices)"
+    # Manual adjustment is preserved; commission is its own row in gross.
+    assert float(record.adjustment_1) == 50.0
+    assert record.adjustment_1_remark == "manual override"
+    assert float(record.commission_pay) == 700.0
+    assert float(record.gross_pay) == float(record.base_salary) + 700.0 + 50.0
 
 
 @pytest.mark.asyncio

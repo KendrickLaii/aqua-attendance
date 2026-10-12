@@ -373,6 +373,13 @@ function onRemarkChange(record: PayrollRecord) {
               <span>Holiday pay</span>
               <span class="font-weight-medium">{{ formatPayrollCurrency(record.holiday_pay) }}</span>
             </div>
+            <div
+              v-if="record.commission_rate_snapshot != null"
+              class="invoice-line"
+            >
+              <span>Commission</span>
+              <span class="font-weight-medium">{{ formatPayrollCurrency(record.commission_pay) }}</span>
+            </div>
             <div class="invoice-adj-row">
               <VTextField
                 v-model="record.adjustment_1_remark"

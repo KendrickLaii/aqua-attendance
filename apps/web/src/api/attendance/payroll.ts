@@ -18,6 +18,7 @@ export interface PayrollRecord {
   hourly_rate_snapshot: number | null
   ot_multiplier_snapshot: number | null
   commission_rate_snapshot: number | null
+  commission_pay: number
   base_salary: number
   overtime_pay: number
   holiday_pay: number

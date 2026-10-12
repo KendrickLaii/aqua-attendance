@@ -148,6 +148,20 @@ watch(() => props.record.id, async () => {
             · Holiday {{ formatPayrollCurrency(record.holiday_pay) }}
           </div>
         </div>
+        <div
+          v-if="record.commission_rate_snapshot != null"
+          class="payroll-metric"
+        >
+          <div class="text-caption text-medium-emphasis">
+            Commission
+          </div>
+          <div class="text-h6 font-weight-bold">
+            {{ formatPayrollCurrency(record.commission_pay) }}
+          </div>
+          <div class="text-caption text-medium-emphasis mt-1">
+            Rate {{ record.commission_rate_snapshot }}%
+          </div>
+        </div>
         <div class="payroll-metric">
           <div class="text-caption text-medium-emphasis">
             Adjustment 1

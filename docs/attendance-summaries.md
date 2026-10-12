@@ -122,7 +122,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 - 聚合 `regular_slots` / `ot_slots`，依 `staff_profiles` 薪資率計算 `base_salary` / `overtime_pay` / `gross_pay` / `net_pay`
 - 凍結 `hourly_rate_snapshot` / `ot_multiplier_snapshot`，避免之後調薪影響歷史
 - 一般員工的手動調整欄位 `adjustment_1` / `adjustment_2`（及 remark）在重算時會保留；`gross_pay = base + OT + adj1`，`net_pay = gross + adj2`
-- 設有 `staff_profiles.commission_rate` 的員工會按發票級 Tutor 匹配：正數發票在**收款月**計分成（需有 posted receipt 且 `receipt_date` 落在工資月，發票本身嘅 bill month 無關）、已開或已付的 credit note 仍按 bill month 扣減，再乘分成比例寫入 `adjustment_1`；每次 Generate 均覆蓋該員工的 Adjustment 1 及 remark
+- 設有 `staff_profiles.commission_rate` 的員工會按發票級 Tutor 匹配：正數發票在**收款月**計分成（需有 posted receipt 且 `receipt_date` 落在工資月，發票本身嘅 bill month 無關）、已開或已付的 credit note 仍按 bill month 扣減，再乘分成比例寫入 `commission_pay`；`gross = base + OT + holiday + commission_pay + adj1`。`adjustment_1` 係純手動調整，Generate 永不覆寫
 - Tutor 匹配：發票 `tutor_unit_id` 有值 → 只按 id 匹配（員工改名不受影響，亦不會產生 warning）；無值 → fallback 舊有不分大小寫 trim 名字匹配
 - 比例快照：已存在記錄有 `commission_rate_snapshot` → 繼續用舊比例；否則用 staff 現時比例並寫入 snapshot。要對未批核記錄套用新比例，需先刪除該記錄再 Generate
 - 發票未填 Tutor 不計分成；名字匹配搵唔到員工或同名不唯一時不會派發，詳情由 `commission_warnings` 回傳並在 Web 提示（`unit_ids` 生成時只對所選 unit 註冊地點嘅發票發警告）；`GET /api/payroll-records/{id}/commission-detail` 返回分成明細（已收發票、credit note、awaiting payment）
@@ -176,7 +176,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 | **總覽** | 每個 unit 當月一筆薪資；點列進入明細；分頁；亦有 Generate wizard 卡片檢視 |
 | **明細** | 該 unit 當月 `attendance_summaries`：日期、上下班、Regular / Reg slots / OT / OT slots、狀態與 Total；可編輯 Adjustment 1/2 與 remark |
 
-分成员工可在 Unit 編輯表單的 **Compensation** 區開啟 `Commission / sharing`，預設比例為 70%，可改為 0–100%。Generate 後的自動分成顯示在 Adjustment 1，Adjustment 2 仍可用作其他人工調整。Payroll 明細頁會顯示 **Commission** 區（已收發票連收條號碼/日期、credit notes、awaiting payment 嘅已開未收單）。
+分成员工可在 Unit 編輯表單的 **Compensation** 區開啟 `Commission / sharing`，預設比例為 70%，可改為 0–100%。Generate 後的自動分成顯示在獨立嘅 **Commission** 金額欄（`commission_pay`），Adjustment 1/2 都係手動調整。Payroll 明細頁會顯示 **Commission** 區（已收發票連收條號碼/日期、credit notes、awaiting payment 嘅已開未收單）。
 
 ### 4.2 狀態流程
 

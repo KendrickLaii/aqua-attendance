@@ -442,41 +442,29 @@ async def generate_monthly_payroll(
             staff, regular_slots, ot_slots
         )
 
-        # Commission staff: adjustment_1 = invoice total × rate, always
-        # overwritten. The rate comes from the record's snapshot when one was
+        # Commission staff: commission_pay = invoice total × rate, always
+        # recomputed. The rate comes from the record's snapshot when one was
         # frozen by an earlier generate; delete the record to re-apply a new
-        # staff rate.
-        commission_remark: str | None = None
+        # staff rate. adjustment_1 is a pure manual adjustment — never
+        # written by generate.
+        commission_pay = 0.0
         commission_rate_used: float | None = None
         if staff is not None and staff.commission_rate is not None:
             if record is not None and record.commission_rate_snapshot is not None:
                 rate = Decimal(str(record.commission_rate_snapshot))
             else:
                 rate = Decimal(str(staff.commission_rate))
-            rows = commission_rows.get(unit_id)
-            commission_total, commission_count = commission_base(rows)
-            awaiting_count = len(rows["awaiting"]) if rows else 0
-            adjustment_1 = float(
+            commission_total, _ = commission_base(commission_rows.get(unit_id))
+            commission_pay = float(
                 (commission_total * rate / 100).quantize(
                     Decimal("0.01"), rounding=ROUND_HALF_UP
                 )
             )
-            commission_remark = (
-                f"Commission {float(rate):g}% × ${float(commission_total):,.2f} "
-                f"({commission_count} invoices"
-                + (
-                    f"; {awaiting_count} awaiting payment"
-                    if commission_count == 0 and awaiting_count
-                    else ""
-                )
-                + ")"
-            )
             commission_rate_used = float(rate)
-        else:
-            adjustment_1 = float(record.adjustment_1) if record and record.adjustment_1 is not None else 0.0
+        adjustment_1 = float(record.adjustment_1) if record and record.adjustment_1 is not None else 0.0
         adjustment_2 = float(record.adjustment_2) if record and record.adjustment_2 is not None else 0.0
 
-        gross_pay = round(base_salary + overtime_pay + adjustment_1, 2)
+        gross_pay = round(base_salary + overtime_pay + commission_pay + adjustment_1, 2)
         net_pay = round(gross_pay + adjustment_2, 2)
 
         if record:
@@ -495,9 +483,8 @@ async def generate_monthly_payroll(
             record.base_salary = base_salary
             record.overtime_pay = overtime_pay
             record.holiday_pay = 0.0
-            if commission_remark is not None:
-                record.adjustment_1 = adjustment_1
-                record.adjustment_1_remark = commission_remark
+            record.commission_pay = commission_pay
+            if commission_rate_used is not None:
                 record.commission_rate_snapshot = commission_rate_used
             record.gross_pay = gross_pay
             record.net_pay = net_pay
@@ -522,8 +509,7 @@ async def generate_monthly_payroll(
                 base_salary=base_salary,
                 overtime_pay=overtime_pay,
                 holiday_pay=0.0,
-                adjustment_1=adjustment_1,
-                adjustment_1_remark=commission_remark,
+                commission_pay=commission_pay,
                 gross_pay=gross_pay,
                 net_pay=net_pay,
                 status=PayrollStatus.calculated.value,

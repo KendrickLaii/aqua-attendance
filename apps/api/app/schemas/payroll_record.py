@@ -32,6 +32,7 @@ class PayrollRecordCreate(BaseModel):
     allowance: float = Field(default=0.0, ge=0)
     deduction: float = Field(default=0.0, ge=0)
     bonus: float = Field(default=0.0, ge=0)
+    commission_pay: float = Field(default=0.0)
     adjustment_1: float = Field(default=0.0)
     adjustment_2: float = Field(default=0.0)
     adjustment_1_remark: str | None = None
@@ -53,6 +54,7 @@ class PayrollRecordUpdate(BaseModel):
     payment_date: datetime | None = None
     payroll_notes: str | None = None
     approved_by_user_id: uuid.UUID | None = None
+    commission_pay: float | None = None
     adjustment_1: float | None = None
     adjustment_2: float | None = None
     adjustment_1_remark: str | None = None
@@ -98,6 +100,7 @@ class PayrollRecordOut(BaseModel):
     allowance: float
     deduction: float
     bonus: float
+    commission_pay: float = 0.0
     adjustment_1: float = 0.0
     adjustment_2: float = 0.0
     adjustment_1_remark: str | None = None
