@@ -91,6 +91,7 @@ class PayrollRecordOut(BaseModel):
     ot_slots: int = 0
     hourly_rate_snapshot: float | None = None
     ot_multiplier_snapshot: float | None = None
+    commission_rate_snapshot: float | None = None
     base_salary: float
     overtime_pay: float
     holiday_pay: float

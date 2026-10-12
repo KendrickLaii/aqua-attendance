@@ -17,7 +17,12 @@ from app.schemas.payroll_record import (
     PayrollRecordUpdate,
 )
 from app.services import audit_log as audit_log_svc
-from app.services.payroll_generator import detect_stale_summary_units, generate_monthly_payroll
+from app.services.payroll_generator import (
+    collect_commission_rows,
+    commission_base,
+    detect_stale_summary_units,
+    generate_monthly_payroll,
+)
 from app.services.payroll_status import can_transition_payroll_status
 
 router = APIRouter(prefix="/payroll-records", tags=["payroll-records"])
@@ -209,6 +214,89 @@ async def get_payroll_record(
     if not record:
         raise HTTPException(status_code=404, detail="Payroll record not found")
     return _record_to_out(record)
+
+
+@router.get("/{record_id}/commission-detail")
+async def payroll_commission_detail(
+    record_id: uuid.UUID, _admin: AdminOnly, db: DB
+) -> dict:
+    """Invoice breakdown behind a payroll record's commission adjustment."""
+    record = await db.get(PayrollRecord, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Payroll record not found")
+
+    rows_by_unit, commission_staff, _ = await collect_commission_rows(
+        db,
+        record.payroll_period_start,
+        record.payroll_period_end,
+        unit_type="staff",
+    )
+    rows = rows_by_unit.get(
+        record.unit_id, {"paid": [], "credit_notes": [], "awaiting": []}
+    )
+
+    staff = commission_staff.get(record.unit_id)
+    if record.commission_rate_snapshot is not None:
+        rate = float(record.commission_rate_snapshot)
+    elif staff is not None and staff.commission_rate is not None:
+        rate = float(staff.commission_rate)
+    else:
+        rate = None
+
+    base_total, _ = commission_base(rows)
+    amount = (
+        float((base_total * Decimal(str(rate)) / 100).quantize(Decimal("0.01")))
+        if rate is not None
+        else 0.0
+    )
+
+    def student_name(invoice) -> str | None:
+        if invoice.unit is not None:
+            return invoice.unit.full_name
+        return invoice.manual_student_name
+
+    return {
+        "rate": rate,
+        "rate_snapshot": (
+            float(record.commission_rate_snapshot)
+            if record.commission_rate_snapshot is not None
+            else None
+        ),
+        "base_total": float(base_total),
+        "amount": amount,
+        "paid": [
+            {
+                "invoice_id": row["invoice"].id,
+                "invoice_no": row["invoice"].invoice_no,
+                "student_name": student_name(row["invoice"]),
+                "total": float(row["invoice"].total),
+                "receipt_no": row["receipt_no"],
+                "receipt_date": row["receipt_date"],
+            }
+            for row in rows["paid"]
+        ],
+        "credit_notes": [
+            {
+                "invoice_id": row["invoice"].id,
+                "invoice_no": row["invoice"].invoice_no,
+                "total": float(row["invoice"].total),
+                "date": row["invoice"].issue_date or row["invoice"].period_start,
+                "status": row["invoice"].status,
+            }
+            for row in rows["credit_notes"]
+        ],
+        "awaiting_payment": [
+            {
+                "invoice_id": row["invoice"].id,
+                "invoice_no": row["invoice"].invoice_no,
+                "student_name": student_name(row["invoice"]),
+                "total": float(row["invoice"].total),
+                "bill_month": row["invoice"].period_start.strftime("%Y-%m"),
+                "status": row["invoice"].status,
+            }
+            for row in rows["awaiting"]
+        ],
+    }
 
 
 @router.patch("/{record_id}", response_model=PayrollRecordOut)

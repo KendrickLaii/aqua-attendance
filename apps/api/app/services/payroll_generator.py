@@ -14,12 +14,14 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.attendance_tz import ATTENDANCE_TZ
 from app.models.attendance import AttendanceEvent
 from app.models.attendance_summary import AttendanceSummary
 from app.models.payroll_record import PayrollRecord, PayrollStatus
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceStatus
+from app.models.tuition_receipt import TuitionReceipt, TuitionReceiptInvoice, TuitionReceiptStatus
 from app.models.unit import Unit
 from app.models.staff_profile import StaffProfile
 
@@ -125,19 +127,29 @@ async def detect_stale_summary_units(
     ]
 
 
-async def _commission_by_unit(
+async def collect_commission_rows(
     db: AsyncSession,
     first_day: date,
     last_day: date,
     unit_type: str | None = None,
     unit_ids: list | None = None,
-) -> tuple[dict[uuid.UUID, tuple[Decimal, int]], dict[uuid.UUID, StaffProfile], list[str]]:
-    """Aggregate invoice commission per staff unit for the month.
+) -> tuple[dict[uuid.UUID, dict], dict[uuid.UUID, StaffProfile], list[str]]:
+    """Collect commission-relevant invoices per staff unit for the month.
 
-    Returns (commissions, commission_staff, warnings):
-        commissions: unit_id -> (invoice total Decimal, invoice count)
+    Positive invoices count in the month they were PAID (posted receipt with
+    receipt_date inside the month); credit notes (total < 0, issued/paid)
+    still count in their bill month (period_start). A tutor matches by
+    invoice.tutor_unit_id when set, else by the case-insensitive trimmed
+    staff_name fallback — only name matches can warn.
+
+    Returns (rows_by_unit, commission_staff, warnings):
+        rows_by_unit: unit_id -> {"paid": [...], "credit_notes": [...], "awaiting": [...]}
+          paid row: {"invoice", "receipt_no", "receipt_date"}
+          credit_notes/awaiting row: {"invoice"}
         commission_staff: unit_id -> StaffProfile (commission_rate IS NOT NULL)
-        warnings: one entry per unmatched/ambiguous Tutor name
+        warnings: one entry per unmatched/ambiguous Tutor name. When unit_ids
+          is provided, only invoices at the requested units' registered
+          locations can warn.
     """
     if unit_type and unit_type != "staff":
         return {}, {}, []
@@ -164,50 +176,123 @@ async def _commission_by_unit(
     if not commission_staff:
         return {}, {}, []
 
-    # Commission counts paid invoices (positive) and issued/paid credit notes
-    # (negative) in the payroll month; void/draft and unpaid positives don't.
-    inv_q = select(TuitionInvoice).where(
-        TuitionInvoice.period_start >= first_day,
-        TuitionInvoice.period_start <= last_day,
-        TuitionInvoice.staff_name.is_not(None),
-        func.trim(TuitionInvoice.staff_name) != "",
-        or_(
-            and_(
-                TuitionInvoice.total > 0,
-                TuitionInvoice.status == TuitionInvoiceStatus.paid.value,
-            ),
-            and_(
-                TuitionInvoice.total < 0,
-                TuitionInvoice.status.in_(
-                    [TuitionInvoiceStatus.issued.value, TuitionInvoiceStatus.paid.value]
-                ),
-            ),
+    warn_location_ids: set | None = None
+    if unit_ids:
+        loc_rows = await db.execute(
+            select(Unit.registered_location_id).where(Unit.id.in_(list(requested)))
+        )
+        warn_location_ids = {row[0] for row in loc_rows.all()}
+
+    tutor_clause = or_(
+        TuitionInvoice.tutor_unit_id.is_not(None),
+        and_(
+            TuitionInvoice.staff_name.is_not(None),
+            func.trim(TuitionInvoice.staff_name) != "",
         ),
     )
-    invoices = (await db.execute(inv_q)).scalars().all()
 
-    commissions: dict[uuid.UUID, list] = {}
+    # Positive invoices count when a posted receipt settles them inside the
+    # payroll month — the bill month (period_start) is irrelevant for these.
+    paid_q = (
+        select(TuitionInvoice, TuitionReceipt.receipt_no, TuitionReceipt.receipt_date)
+        .join(
+            TuitionReceiptInvoice,
+            TuitionReceiptInvoice.invoice_id == TuitionInvoice.id,
+        )
+        .join(TuitionReceipt, TuitionReceiptInvoice.receipt_id == TuitionReceipt.id)
+        .options(selectinload(TuitionInvoice.unit))
+        .where(
+            TuitionReceiptInvoice.is_posted.is_(True),
+            TuitionReceipt.status == TuitionReceiptStatus.posted.value,
+            TuitionReceipt.receipt_date >= first_day,
+            TuitionReceipt.receipt_date <= last_day,
+            TuitionInvoice.status == TuitionInvoiceStatus.paid.value,
+            TuitionInvoice.total > 0,
+            tutor_clause,
+        )
+    )
+    paid_rows = (await db.execute(paid_q)).all()
+
+    # Credit notes (negative) count in their bill month — unchanged policy.
+    credit_q = (
+        select(TuitionInvoice)
+        .options(selectinload(TuitionInvoice.unit))
+        .where(
+            TuitionInvoice.period_start >= first_day,
+            TuitionInvoice.period_start <= last_day,
+            TuitionInvoice.total < 0,
+            TuitionInvoice.status.in_(
+                [TuitionInvoiceStatus.issued.value, TuitionInvoiceStatus.paid.value]
+            ),
+            tutor_clause,
+        )
+    )
+    credit_invoices = (await db.execute(credit_q)).scalars().all()
+
+    # Currently unpaid positive bills of each tutor (any bill month), for the
+    # "awaiting payment" remark and commission detail.
+    awaiting_q = (
+        select(TuitionInvoice)
+        .options(selectinload(TuitionInvoice.unit))
+        .where(
+            TuitionInvoice.total > 0,
+            TuitionInvoice.status == TuitionInvoiceStatus.issued.value,
+            tutor_clause,
+        )
+    )
+    awaiting_invoices = (await db.execute(awaiting_q)).scalars().all()
+
+    def match_tutor(inv: TuitionInvoice) -> tuple[uuid.UUID | None, str | None]:
+        """Return (unit_id, problem) — problem is 'ambiguous'/'unmatched' for name misses."""
+        if inv.tutor_unit_id is not None:
+            return inv.tutor_unit_id, None
+        name = (inv.staff_name or "").strip()
+        matches = name_to_units.get(name.casefold()) or []
+        if len(matches) > 1:
+            return None, "ambiguous"
+        if not matches:
+            return None, "unmatched"
+        return matches[0], None
+
+    rows_by_unit: dict[uuid.UUID, dict] = {}
     unmatched: dict[str, dict] = {}  # name -> {"ref": first invoice ref, "count": n}
     ambiguous: dict[str, int] = {}   # name -> invoice count
-    for inv in invoices:
-        name = inv.staff_name.strip()
-        key = name.casefold()
-        matches = name_to_units.get(key) or []
-        if len(matches) > 1:
-            ambiguous[name] = ambiguous.get(name, 0) + 1
-            continue
-        if not matches:
-            entry = unmatched.setdefault(
-                name, {"ref": inv.invoice_no or str(inv.id), "count": 0}
-            )
-            entry["count"] += 1
-            continue
-        unit_id = matches[0]
+
+    def credit_to(inv: TuitionInvoice, bucket: str, extra: dict | None = None) -> None:
+        unit_id, problem = match_tutor(inv)
+        if problem is not None:
+            name = (inv.staff_name or "").strip()
+            if warn_location_ids is None or inv.location_id in warn_location_ids:
+                if problem == "ambiguous":
+                    ambiguous[name] = ambiguous.get(name, 0) + 1
+                else:
+                    entry = unmatched.setdefault(
+                        name, {"ref": inv.invoice_no or str(inv.id), "count": 0}
+                    )
+                    entry["count"] += 1
+            return
         if unit_id not in commission_staff:
-            continue  # matched a non-commission staff — ignore silently
-        entry = commissions.setdefault(unit_id, [Decimal("0"), 0])
-        entry[0] += Decimal(str(inv.total))
-        entry[1] += 1
+            return  # matched a non-commission staff — ignore silently
+        row = {"invoice": inv}
+        if extra:
+            row.update(extra)
+        rows_by_unit.setdefault(
+            unit_id, {"paid": [], "credit_notes": [], "awaiting": []}
+        )[bucket].append(row)
+
+    for inv, receipt_no, receipt_date in paid_rows:
+        credit_to(
+            inv, "paid", {"receipt_no": receipt_no, "receipt_date": receipt_date}
+        )
+    for inv in credit_invoices:
+        credit_to(inv, "credit_notes")
+    for inv in awaiting_invoices:
+        # Awaiting bills are informational — no unmatched-name warnings.
+        unit_id, _ = match_tutor(inv)
+        if unit_id is not None and unit_id in commission_staff:
+            rows_by_unit.setdefault(
+                unit_id, {"paid": [], "credit_notes": [], "awaiting": []}
+            )["awaiting"].append({"invoice": inv})
 
     warnings: list[str] = []
     for name, entry in unmatched.items():
@@ -224,11 +309,17 @@ async def _commission_by_unit(
             f'Tutor "{name}" matches multiple staff; commission not assigned'
         )
 
-    return (
-        {uid: (tot, cnt) for uid, (tot, cnt) in commissions.items()},
-        commission_staff,
-        warnings,
-    )
+    return rows_by_unit, commission_staff, warnings
+
+
+def commission_base(rows: dict | None) -> tuple[Decimal, int]:
+    """(invoice total, invoice count) for one unit's commission rows."""
+    if not rows:
+        return Decimal("0"), 0
+    total = Decimal("0")
+    for row in rows["paid"] + rows["credit_notes"]:
+        total += Decimal(str(row["invoice"].total))
+    return total, len(rows["paid"]) + len(rows["credit_notes"])
 
 
 def _pay_from_profile(
@@ -311,12 +402,17 @@ async def generate_monthly_payroll(
     )
     existing_records = {r.unit_id: r for r in existing_result.scalars().all()}
 
-    commissions, commission_staff, commission_warnings = await _commission_by_unit(
+    commission_rows, commission_staff, commission_warnings = await collect_commission_rows(
         db, first_day, last_day, unit_type=unit_type, unit_ids=unit_ids
     )
 
     # Commission staff with invoices but no attendance still get a record
-    all_unit_ids = set(grouped.keys()) | set(commissions.keys())
+    earning_unit_ids = {
+        uid
+        for uid, rows in commission_rows.items()
+        if rows["paid"] or rows["credit_notes"]
+    }
+    all_unit_ids = set(grouped.keys()) | earning_unit_ids
 
     # Load staff profiles for all processed units in one query
     profile_unit_ids = list(all_unit_ids)
@@ -346,13 +442,20 @@ async def generate_monthly_payroll(
             staff, regular_slots, ot_slots
         )
 
-        # Commission staff: adjustment_1 = invoice total × rate, always overwritten
+        # Commission staff: adjustment_1 = invoice total × rate, always
+        # overwritten. The rate comes from the record's snapshot when one was
+        # frozen by an earlier generate; delete the record to re-apply a new
+        # staff rate.
         commission_remark: str | None = None
+        commission_rate_used: float | None = None
         if staff is not None and staff.commission_rate is not None:
-            rate = Decimal(str(staff.commission_rate))
-            commission_total, commission_count = commissions.get(
-                unit_id, (Decimal("0"), 0)
-            )
+            if record is not None and record.commission_rate_snapshot is not None:
+                rate = Decimal(str(record.commission_rate_snapshot))
+            else:
+                rate = Decimal(str(staff.commission_rate))
+            rows = commission_rows.get(unit_id)
+            commission_total, commission_count = commission_base(rows)
+            awaiting_count = len(rows["awaiting"]) if rows else 0
             adjustment_1 = float(
                 (commission_total * rate / 100).quantize(
                     Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -360,8 +463,15 @@ async def generate_monthly_payroll(
             )
             commission_remark = (
                 f"Commission {float(rate):g}% × ${float(commission_total):,.2f} "
-                f"({commission_count} invoices)"
+                f"({commission_count} invoices"
+                + (
+                    f"; {awaiting_count} awaiting payment"
+                    if commission_count == 0 and awaiting_count
+                    else ""
+                )
+                + ")"
             )
+            commission_rate_used = float(rate)
         else:
             adjustment_1 = float(record.adjustment_1) if record and record.adjustment_1 is not None else 0.0
         adjustment_2 = float(record.adjustment_2) if record and record.adjustment_2 is not None else 0.0
@@ -388,6 +498,7 @@ async def generate_monthly_payroll(
             if commission_remark is not None:
                 record.adjustment_1 = adjustment_1
                 record.adjustment_1_remark = commission_remark
+                record.commission_rate_snapshot = commission_rate_used
             record.gross_pay = gross_pay
             record.net_pay = net_pay
             record.status = PayrollStatus.calculated.value
@@ -407,6 +518,7 @@ async def generate_monthly_payroll(
                 total_work_days=total_work_days,
                 hourly_rate_snapshot=hourly_rate_snapshot,
                 ot_multiplier_snapshot=ot_multiplier_snapshot,
+                commission_rate_snapshot=commission_rate_used,
                 base_salary=base_salary,
                 overtime_pay=overtime_pay,
                 holiday_pay=0.0,

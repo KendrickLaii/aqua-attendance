@@ -29,6 +29,9 @@ export interface TuitionInvoice {
   unit_code: string | null
   manual_student_name: string | null
   staff_name: string | null
+
+  /** Staff unit the Tutor name resolves to — commission matches this id, not the name. */
+  tutor_unit_id: string | null
   payable_to_name: string | null
   payee_name: string | null
   location_id: string
@@ -146,6 +149,9 @@ export interface ManualInvoicePayload {
 
   /** Invoice-level 開單人 — who issued it, for commission records. */
   staff_name?: string | null
+
+  /** Selected staff unit; the server overwrites staff_name with its full_name. */
+  tutor_unit_id?: string | null
   payable_to_name?: string | null
   payee_name?: string | null
   invoice_no?: string | null
@@ -164,6 +170,7 @@ export async function updateTuitionInvoice(
     notes?: string | null
     invoice_no?: string | null
     staff_name?: string | null
+    tutor_unit_id?: string | null
     payable_to_name?: string | null
     payee_name?: string | null
     period?: string

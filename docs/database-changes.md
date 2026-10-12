@@ -103,7 +103,7 @@ erDiagram
         numeric hourly_rate "時薪"
         numeric monthly_salary "月薪"
         numeric ot_multiplier "加班倍率 預設1.5"
-        numeric commission_rate "發票分成比例 0-100 NULL=無"
+        numeric commission_rate "發票分成比例 0-100 NULL=無（見 payroll_records.commission_rate_snapshot）"
         string work_schedule "工作班表"
         uuid supervisor_id FK "直屬主管 unit_id"
         string employment_notes "員工備註"
@@ -779,8 +779,9 @@ ot_hours      = ot_slots * 0.25
 29. ✅ 收條加減行（c9d2e4f1a8b3）— `tuition_receipts.adjustments` JSON
 30. ✅ Credit note 抬頭（d4b8e2a1c7f0）— `tuition_invoices.payable_to_name` / `payee_name`
 31. ✅ 員工分成比例（e7b3f9a1c2d4）— `staff_profiles.commission_rate` Numeric(5,2)；工資單生成時按發票級 Tutor（`tuition_invoices.staff_name`）加總當月已收發票 × 比例寫入 `adjustment_1`（credit note 扣減），每次生成覆蓋；同名/搵唔到人 → `commission_warnings`
+32. ✅ Tutor 連結 + 分成快照（b9e4d2a7c1f5）— `tuition_invoices.tutor_unit_id`（FK→units，SET NULL，indexed；id 匹配優先，`staff_name` 名字匹配僅作舊單 fallback）、`payroll_records.commission_rate_snapshot` Numeric(5,2)；正數發票改按**收款月**計分成（posted receipt 的 `receipt_date` 落在工資月），credit note 仍按 bill month；重新 Generate 已存在記錄時用 snapshot 比例（要套用新比例需刪除該記錄再 Generate）
 
-> **目前 Alembic 版本：e7b3f9a1c2d4**（員工分成比例；前序含 Credit note 抬頭 d4b8e2a1c7f0）
+> **目前 Alembic 版本：b9e4d2a7c1f5**（Tutor 連結 + 分成快照；前序含員工分成比例 e7b3f9a1c2d4）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

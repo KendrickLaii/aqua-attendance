@@ -51,6 +51,11 @@ class TuitionInvoice(Base):
     # Invoice-level 開單人 — the staff/teacher who opened the invoice, for
     # commission records. Lines keep their own class-teacher snapshot.
     staff_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Tutor identity for payroll commission matching. staff_name stays the
+    # display snapshot; this FK survives staff renames.
+    tutor_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("units.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     payable_to_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     payee_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
@@ -64,7 +69,8 @@ class TuitionInvoice(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    unit = relationship("Unit", back_populates="tuition_invoices")
+    unit = relationship("Unit", foreign_keys=[unit_id], back_populates="tuition_invoices")
+    tutor_unit = relationship("Unit", foreign_keys=[tutor_unit_id])
     location = relationship("Location")
     lines = relationship(
         "TuitionInvoiceLine",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { PayrollRecord } from '@/api/attendance/payroll'
+import { type PayrollCommissionDetail, type PayrollRecord, getPayrollCommissionDetail } from '@/api/attendance/payroll'
 import type { AttendanceSummary } from '@/api/attendance/summaries'
 import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
 import SummaryDateCell from '@/components/attendance/SummaryDateCell.vue'
@@ -38,6 +38,20 @@ const detailTotals = computed(() =>
     props.summaries.filter(s => isAutoCheckoutSummaryDay(s)).length,
   ),
 )
+
+const commission = ref<PayrollCommissionDetail | null>(null)
+
+watch(() => props.record.id, async () => {
+  commission.value = null
+  if (props.record.commission_rate_snapshot == null)
+    return
+  try {
+    commission.value = await getPayrollCommissionDetail(props.record.id)
+  }
+  catch {
+    commission.value = null
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -207,6 +221,71 @@ const detailTotals = computed(() =>
         </div>
       </div>
     </VCardText>
+    <template v-if="record.commission_rate_snapshot != null && commission">
+      <VCardText class="text-caption text-medium-emphasis pb-0">
+        Commission — {{ formatPayrollCurrency(commission.base_total) }} billed × {{ commission.rate ?? record.commission_rate_snapshot }}% =
+        <span class="font-weight-medium">{{ formatPayrollCurrency(commission.amount) }}</span>
+      </VCardText>
+      <div class="payroll-table-scroll">
+        <VTable
+          class="payroll-table"
+          density="compact"
+          hover
+        >
+          <tbody>
+            <tr
+              v-for="row in commission.paid"
+              :key="`paid-${row.invoice_id}`"
+            >
+              <td>{{ row.invoice_no || row.invoice_id }}</td>
+              <td>{{ row.student_name || '—' }}</td>
+              <td class="text-end">
+                {{ formatPayrollCurrency(row.total) }}
+              </td>
+              <td>
+                {{ row.receipt_no || '—' }} · {{ row.receipt_date }}
+              </td>
+            </tr>
+            <tr
+              v-for="row in commission.credit_notes"
+              :key="`cn-${row.invoice_id}`"
+            >
+              <td>{{ row.invoice_no || row.invoice_id }}</td>
+              <td class="text-medium-emphasis">
+                Credit note · {{ row.status }}
+              </td>
+              <td class="text-end text-error">
+                {{ formatPayrollCurrency(row.total) }}
+              </td>
+              <td>{{ row.date }}</td>
+            </tr>
+            <tr
+              v-for="row in commission.awaiting_payment"
+              :key="`awaiting-${row.invoice_id}`"
+            >
+              <td>{{ row.invoice_no || row.invoice_id }}</td>
+              <td class="text-medium-emphasis">
+                {{ row.student_name || '—' }} · awaiting payment
+              </td>
+              <td class="text-end text-medium-emphasis">
+                {{ formatPayrollCurrency(row.total) }}
+              </td>
+              <td class="text-medium-emphasis">
+                Bill {{ row.bill_month }}
+              </td>
+            </tr>
+            <tr v-if="!commission.paid.length && !commission.credit_notes.length && !commission.awaiting_payment.length">
+              <td
+                colspan="4"
+                class="text-center text-medium-emphasis py-4"
+              >
+                No commission invoices this month.
+              </td>
+            </tr>
+          </tbody>
+        </VTable>
+      </div>
+    </template>
     <VCardText class="text-caption text-medium-emphasis pb-0">
       Daily attendance summaries used to calculate this payroll record. Adjustments can be edited on calculated slips only.
     </VCardText>

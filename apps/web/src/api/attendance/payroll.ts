@@ -17,6 +17,7 @@ export interface PayrollRecord {
   ot_slots: number
   hourly_rate_snapshot: number | null
   ot_multiplier_snapshot: number | null
+  commission_rate_snapshot: number | null
   base_salary: number
   overtime_pay: number
   holiday_pay: number
@@ -146,6 +147,46 @@ export async function updatePayrollRecord(recordId: string, payload: {
 
 export async function deletePayrollRecord(recordId: string): Promise<void> {
   await $attendanceApi(`/payroll-records/${recordId}`, { method: 'DELETE' })
+}
+
+export interface PayrollCommissionPaidRow {
+  invoice_id: string
+  invoice_no: string | null
+  student_name: string | null
+  total: number
+  receipt_no: string | null
+  receipt_date: string
+}
+
+export interface PayrollCommissionCreditRow {
+  invoice_id: string
+  invoice_no: string | null
+  total: number
+  date: string
+  status: string
+}
+
+export interface PayrollCommissionAwaitingRow {
+  invoice_id: string
+  invoice_no: string | null
+  student_name: string | null
+  total: number
+  bill_month: string
+  status: string
+}
+
+export interface PayrollCommissionDetail {
+  rate: number | null
+  rate_snapshot: number | null
+  base_total: number
+  amount: number
+  paid: PayrollCommissionPaidRow[]
+  credit_notes: PayrollCommissionCreditRow[]
+  awaiting_payment: PayrollCommissionAwaitingRow[]
+}
+
+export async function getPayrollCommissionDetail(recordId: string): Promise<PayrollCommissionDetail> {
+  return await $attendanceApi(`/payroll-records/${recordId}/commission-detail`)
 }
 
 export interface StaleSummaryUnit {

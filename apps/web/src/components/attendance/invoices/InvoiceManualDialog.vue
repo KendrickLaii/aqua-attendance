@@ -110,7 +110,18 @@ const manualStaffLoaded = ref(false)
 const manualUnbilledPackages = ref<UnbilledPackage[]>([])
 const manualRemovedPackages = ref<UnbilledPackage[]>([])
 const lockedUnitId = ref<string | null>(null)
+const manualTutorUnitId = ref<string | null>(null)
 const hydratingForm = ref(false)
+
+// Resolve the typed/picked Tutor name to a staff unit so the invoice stores
+// tutor_unit_id; free text that matches no staff leaves it null.
+watch(() => manualForm.value.staff, name => {
+  if (hydratingForm.value)
+    return
+  const trimmed = (name ?? '').trim()
+
+  manualTutorUnitId.value = manualStaffUnits.value.find(u => u.full_name === trimmed)?.id ?? null
+})
 
 const isEdit = computed(() => Boolean(props.editingInvoice))
 const isCredit = computed(() =>
@@ -238,6 +249,14 @@ async function loadManualStaff() {
   try {
     manualStaffUnits.value = await listAllUnits({ unit_type: 'staff' })
     manualStaffLoaded.value = true
+
+    // Editing: pre-select the Tutor by its stored staff-unit link (the
+    // staff_name snapshot may be stale after a rename).
+    if (manualTutorUnitId.value) {
+      const resolved = staffName(manualTutorUnitId.value)
+      if (resolved)
+        manualForm.value.staff = resolved
+    }
   }
   catch (e) {
     manualStaffUnits.value = []
@@ -406,6 +425,7 @@ function rowsFromInvoice(invoice: TuitionInvoice, negateFee: boolean): ManualInv
 function fillFromInvoice(invoice: TuitionInvoice, negateFee: boolean) {
   hydratingForm.value = true
   lockedUnitId.value = invoice.unit_id
+  manualTutorUnitId.value = negateFee ? null : invoice.tutor_unit_id
   manualError.value = ''
   manualLocationId.value = invoice.location_id
 
@@ -444,6 +464,7 @@ function fillFromInvoice(invoice: TuitionInvoice, negateFee: boolean) {
 function resetForm() {
   hydratingForm.value = true
   lockedUnitId.value = null
+  manualTutorUnitId.value = null
   manualError.value = ''
   manualPeriodEdited.value = false
   manualForm.value = {
@@ -613,6 +634,7 @@ async function printManualInvoice() {
       const saved = isEdit.value && props.editingInvoice
         ? await updateTuitionInvoice(props.editingInvoice.id, {
           staff_name: (manualForm.value.staff ?? '').trim() || null,
+          tutor_unit_id: manualTutorUnitId.value,
           payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
           payee_name: (manualForm.value.payeeName ?? '').trim() || null,
           notes: (manualForm.value.remark ?? '').trim() || null,
@@ -626,6 +648,7 @@ async function printManualInvoice() {
           unit_id: unitId,
           manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
           staff_name: (manualForm.value.staff ?? '').trim() || null,
+          tutor_unit_id: manualTutorUnitId.value,
           payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
           payee_name: (manualForm.value.payeeName ?? '').trim() || null,
           invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,

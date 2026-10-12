@@ -37,6 +37,7 @@ class TuitionInvoiceOut(BaseModel):
     unit_code: str | None = None
     manual_student_name: str | None = None
     staff_name: str | None = None
+    tutor_unit_id: uuid.UUID | None = None
     payable_to_name: str | None = None
     payee_name: str | None = None
     location_id: uuid.UUID
@@ -62,6 +63,7 @@ class TuitionInvoiceUpdate(BaseModel):
     notes: str | None = None
     invoice_no: str | None = Field(default=None, max_length=50)
     staff_name: str | None = Field(default=None, max_length=255)
+    tutor_unit_id: uuid.UUID | None = None
     payable_to_name: str | None = Field(default=None, max_length=255)
     payee_name: str | None = Field(default=None, max_length=255)
     period: str | None = Field(default=None, pattern=PERIOD_PATTERN)
@@ -119,6 +121,9 @@ class TuitionInvoiceManualCreate(BaseModel):
     manual_student_name: str | None = Field(default=None, max_length=255)
     # 開單人 — staff/teacher who opened the invoice (commission record).
     staff_name: str | None = Field(default=None, max_length=255)
+    # Staff unit the Tutor name resolves to; server overwrites staff_name
+    # with the unit's full_name when set.
+    tutor_unit_id: uuid.UUID | None = None
     payable_to_name: str | None = Field(default=None, max_length=255)
     payee_name: str | None = Field(default=None, max_length=255)
     invoice_no: str | None = Field(default=None, max_length=50)

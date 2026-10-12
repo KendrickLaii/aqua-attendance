@@ -681,6 +681,12 @@ async def create_manual_tuition_invoice(
     if not location:
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
 
+    tutor_unit: Unit | None = None
+    if body.tutor_unit_id is not None:
+        tutor_unit = await db.get(Unit, body.tutor_unit_id)
+        if tutor_unit is None or tutor_unit.unit_type != "staff":
+            raise HTTPException(status_code=422, detail="tutor_unit_id does not reference a staff unit")
+
     if body.unit_id is not None:
         unit = await db.get(Unit, body.unit_id)
         if not unit:
@@ -718,7 +724,12 @@ async def create_manual_tuition_invoice(
         unit_id=body.unit_id,
         location_id=body.location_id,
         manual_student_name=body.manual_student_name.strip() if body.manual_student_name else None,
-        staff_name=body.staff_name.strip() if body.staff_name else None,
+        staff_name=(
+            tutor_unit.full_name
+            if tutor_unit is not None
+            else (body.staff_name.strip() if body.staff_name else None)
+        ),
+        tutor_unit_id=tutor_unit.id if tutor_unit is not None else None,
         payable_to_name=body.payable_to_name.strip() if body.payable_to_name else None,
         payee_name=body.payee_name.strip() if body.payee_name else None,
         period_start=period_start,
@@ -831,6 +842,12 @@ async def update_tuition_invoice(
 
     if "invoice_no" in update_data and isinstance(update_data["invoice_no"], str):
         update_data["invoice_no"] = update_data["invoice_no"].strip() or None
+    if "tutor_unit_id" in update_data and update_data["tutor_unit_id"] is not None:
+        tutor_unit = await db.get(Unit, update_data["tutor_unit_id"])
+        if tutor_unit is None or tutor_unit.unit_type != "staff":
+            raise HTTPException(status_code=422, detail="tutor_unit_id does not reference a staff unit")
+        # Id is authoritative — refresh the display snapshot to match.
+        update_data["staff_name"] = tutor_unit.full_name
     if "staff_name" in update_data and isinstance(update_data["staff_name"], str):
         update_data["staff_name"] = update_data["staff_name"].strip() or None
     if "payable_to_name" in update_data and isinstance(update_data["payable_to_name"], str):

@@ -1347,7 +1347,7 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 | New | `POST /api/payroll-records/generate` — 從 summaries 聚合薪資記錄 |
 | Enhancement | `GET /api/payroll-records` — 新增 `year`/`month`/`unit_type`/`status` 篩選 |
 | Enhancement | Payroll generate 依 `staff_profiles` 薪資率計算 `base_salary`/`overtime_pay`/`gross_pay`/`net_pay` |
-| Enhancement | 員工可設定 `commission_rate`（0–100%）；Generate 按發票級 Tutor 匹配當月已付發票，扣除 credit note 後將分成寫入 Adjustment 1；名字無法唯一匹配時回傳 `commission_warnings` |
+| Enhancement | 員工可設定 `commission_rate`（0–100%）；Generate 按發票級 Tutor 匹配（`tutor_unit_id` 優先，舊單 fallback 名字）**收款月**內已收發票，扣除 credit note 後將分成寫入 Adjustment 1；比例由 `commission_rate_snapshot` 凍結（套用新比例需刪記錄重 Generate）；名字無法唯一匹配時回傳 `commission_warnings`；`GET /payroll-records/{id}/commission-detail` 提供明細 |
 | Enhancement | `payroll_records` 凍結 `hourly_rate_snapshot`/`ot_multiplier_snapshot`（防歷史污染） |
 | Enhancement | Generate 寫入 audit log（`DATA_EXPORT`） |
 | Migration | `026_add_slots_and_pay_rates.py` — slots + 薪資率欄位；`032_rename_products_to_units.py` — product → unit 重新命名 |

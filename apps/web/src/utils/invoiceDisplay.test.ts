@@ -49,6 +49,7 @@ function invoice(over: Partial<TuitionInvoice> = {}): TuitionInvoice {
     unit_code: 'S001',
     manual_student_name: null,
     staff_name: 'Ada',
+    tutor_unit_id: null,
     payable_to_name: null,
     payee_name: null,
     location_id: 'loc-1',

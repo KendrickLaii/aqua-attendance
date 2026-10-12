@@ -54,6 +54,7 @@ class PayrollRecord(Base):
     # Pay-rate snapshots (frozen at generation time to prevent historical drift)
     hourly_rate_snapshot: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     ot_multiplier_snapshot: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
+    commission_rate_snapshot: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     # Compensation calculations
     base_salary: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
