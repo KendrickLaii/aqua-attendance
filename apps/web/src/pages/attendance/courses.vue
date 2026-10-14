@@ -10,10 +10,12 @@ import {
 } from '@/api/attendance/courses'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { type Unit, listAllUnits } from '@/api/attendance/units'
+import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import CourseCatalogPanels from '@/components/attendance/courses/CourseCatalogPanels.vue'
 import CourseRosterSection from '@/components/attendance/courses/CourseRosterSection.vue'
 import CourseSkuDialog from '@/components/attendance/courses/CourseSkuDialog.vue'
 import CourseSpuDialog from '@/components/attendance/courses/CourseSpuDialog.vue'
+import { COURSES_PAGE_HINT } from '@/utils/billingStaffCopy'
 import { pickCourseSelectionForSku, skuIdFromRouteQuery } from '@/utils/courseEnrollmentDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -245,11 +247,9 @@ function removeSku(sku: CourseSku) {
       align="center"
     >
       <VCol>
-        <div class="text-h5 font-weight-medium">
+        <div class="text-h5 font-weight-medium d-flex align-center">
           Course Management
-        </div>
-        <div class="text-body-2 text-medium-emphasis">
-          展開 Courses 揀科目，再開 Class Offerings 揀班。下面個名冊就係呢班嘅學生。
+          <HelpBubble :text="COURSES_PAGE_HINT" />
         </div>
       </VCol>
       <VCol

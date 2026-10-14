@@ -14,6 +14,7 @@ import {
   type ShiftRequest,
 } from '@/api/attendance/shifts'
 import { type Unit, listAllUnits } from '@/api/attendance/units'
+import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import ShiftDialog from '@/components/attendance/shifts/ShiftDialog.vue'
 import ShiftPrintDialog from '@/components/attendance/shifts/ShiftPrintDialog.vue'
 import ShiftTemplatesDialog from '@/components/attendance/shifts/ShiftTemplatesDialog.vue'
@@ -508,11 +509,9 @@ function exportCsv() {
     <!-- Title + primary actions -->
     <div class="d-flex flex-wrap align-center gap-4 mb-4">
       <div class="me-auto">
-        <div class="text-h5 font-weight-medium">
+        <div class="text-h5 font-weight-medium d-flex align-center">
           Shift Schedule
-        </div>
-        <div class="text-body-2 text-medium-emphasis">
-          {{ ADMIN_SHIFT_PAGE_HINT }}
+          <HelpBubble :text="ADMIN_SHIFT_PAGE_HINT" />
         </div>
       </div>
       <VBtn

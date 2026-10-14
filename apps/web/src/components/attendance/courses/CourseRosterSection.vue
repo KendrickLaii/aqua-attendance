@@ -11,6 +11,7 @@ import {
 } from '@/api/attendance/courses'
 import type { LocationItem } from '@/api/attendance/locations'
 import { type Unit, getUnit, listUnits } from '@/api/attendance/units'
+import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import { billingUnitShortLabel, enrollmentStatusColor } from '@/utils/courseEnrollmentDisplay'
 import {
   JOIN_CLASS_HINT,
@@ -110,6 +111,18 @@ const rosterEditingId = ref<string | null>(null)
 const renewingEnrollment = ref<CourseEnrollment | null>(null)
 const renewMode = ref<'renew' | 'end'>('renew')
 const renewEnd = ref('')
+
+const renewDialogHint = computed(() => {
+  if (renewingEnrollment.value == null)
+    return ''
+
+  const main = renewMode.value === 'end'
+    ? SET_END_HINT
+    : renewExtendHint(formatRosterDate(renewingEnrollment.value.start_date, '未設開始日'), formatRosterDate(renewingEnrollment.value.end_date))
+
+  return renewMode.value === 'end' ? main : `${RENEW_SUBTITLE} ${main}`
+})
+
 const renewSaving = ref(false)
 const renewError = ref('')
 const topUpEnabled = false
@@ -836,9 +849,9 @@ defineExpose({ scrollIntoView })
         border
       >
         <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
-          <span class="text-subtitle-2">Join a student</span>
-          <span class="text-caption text-medium-emphasis">
-            {{ JOIN_CLASS_HINT }}
+          <span class="text-subtitle-2 d-flex align-center">
+            Join a student
+            <HelpBubble :text="JOIN_CLASS_HINT" />
           </span>
         </div>
         <VRow dense>
@@ -906,12 +919,18 @@ defineExpose({ scrollIntoView })
               label="End date"
               type="date"
               density="comfortable"
-              :hint="rosterSku?.billing_unit === 'monthly' ? ONGOING_END_DATE_HINT : undefined"
-              :persistent-hint="rosterSku?.billing_unit === 'monthly'"
-              :hide-details="rosterSku?.billing_unit !== 'monthly'"
+              hide-details
               :disabled="!skuId"
               clearable
-            />
+            >
+              <template #append-inner>
+                <HelpBubble
+                  v-if="rosterSku?.billing_unit === 'monthly'"
+                  :text="ONGOING_END_DATE_HINT"
+                  inline
+                />
+              </template>
+            </VTextField>
           </VCol>
           <VCol
             v-if="enrollNeedsPurchasedQuantity()"
@@ -1199,12 +1218,13 @@ defineExpose({ scrollIntoView })
                 </template>
               </td>
               <td>
-                <div>{{ billingWindowLabel(e) }}</div>
-                <div
-                  v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
-                  class="text-caption text-medium-emphasis"
-                >
-                  {{ ONGOING_SET_END_HINT }}
+                <div class="d-flex align-center">
+                  <div>{{ billingWindowLabel(e) }}</div>
+                  <HelpBubble
+                    v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
+                    :text="ONGOING_SET_END_HINT"
+                    inline
+                  />
                 </div>
                 <div class="text-caption text-medium-emphasis">
                   Added {{ formatRosterDate(e.enrolled_at) }}
@@ -1332,26 +1352,25 @@ defineExpose({ scrollIntoView })
       @update:model-value="open => { if (!open) closeRenew() }"
     >
       <VCard v-if="renewingEnrollment">
-        <VCardTitle>
+        <VCardTitle class="d-flex align-center">
           {{ renewMode === 'end' ? 'Set end' : 'Renew' }} {{ labelFor(renewingEnrollment) }}
+          <HelpBubble :text="renewDialogHint" />
         </VCardTitle>
         <VCardText>
-          <div class="text-body-2 text-medium-emphasis mb-3">
-            {{ RENEW_SUBTITLE }}
-          </div>
-          <div class="text-body-2 mb-4">
-            {{ renewMode === 'end'
-              ? SET_END_HINT
-              : renewExtendHint(formatRosterDate(renewingEnrollment.start_date, '未設開始日'), formatRosterDate(renewingEnrollment.end_date)) }}
-          </div>
           <VTextField
             v-model="renewEnd"
             :label="renewMode === 'end' ? '最後計費日' : '新結束日'"
-            :hint="RENEW_DATE_HINT"
-            persistent-hint
             type="date"
             density="comfortable"
-          />
+            hide-details
+          >
+            <template #append-inner>
+              <HelpBubble
+                :text="RENEW_DATE_HINT"
+                inline
+              />
+            </template>
+          </VTextField>
           <VAlert
             v-if="renewError"
             type="error"

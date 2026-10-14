@@ -16,6 +16,7 @@ import {
 } from '@/api/attendance/courses'
 import { type Unit, listAllUnits, listUnits } from '@/api/attendance/units'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
+import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { MANUAL_CREDIT_HINT } from '@/utils/billingStaffCopy'
 import {
@@ -696,14 +697,12 @@ async function printManualInvoice() {
     persistent
   >
     <VCard>
-      <VCardTitle class="text-h6 py-4">
+      <VCardTitle class="text-h6 py-4 d-flex align-center">
         {{ dialogTitle }}
+        <HelpBubble :text="MANUAL_CREDIT_HINT" />
       </VCardTitle>
       <VDivider />
       <VCardText class="pa-4">
-        <div class="text-caption text-medium-emphasis mb-3">
-          {{ MANUAL_CREDIT_HINT }}
-        </div>
         <VAlert
           v-if="manualError"
           type="error"

@@ -11,6 +11,9 @@ export const STAFF_SHIFT_REQUEST_DAY_HINT = '申請呢一日嘅更。過去嘅�
 export const STAFF_SHIFT_REQUEST_DIALOG_HINT =
   '交出去之後係 Pending。辦公室 Approve 之後先算正式更。'
 
+export const SHIFT_TEMPLATES_DIALOG_HINT =
+  '預設時間同顏色，之後一撳就排到更。改或者刪模板唔會影響已經排咗嘅更。'
+
 export const ADMIN_SHIFT_PAGE_HINT =
   '撳格仔加更 · 撳更可以改或者刪 · 拖放搬更（撳住 Ctrl 拖就係複製）。上面 Pending 係員工自己交嘅，要 Approve 先入更表。'
 

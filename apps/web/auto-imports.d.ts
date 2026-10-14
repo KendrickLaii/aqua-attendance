@@ -19,6 +19,7 @@ declare global {
   const BILLING_HELP_FIX: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_FIX']
   const BILLING_HELP_STOP: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
+  const COURSES_PAGE_HINT: typeof import('./src/utils/billingStaffCopy')['COURSES_PAGE_HINT']
   const EffectScope: typeof import('vue')['EffectScope']
   const GENERATE_CONFIRM: typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']
   const INVOICE_CANCEL_GENERATED: typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']
@@ -42,6 +43,7 @@ declare global {
   const SCAN_TOKEN_SESSION_KEY: typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']
   const SET_END_HINT: typeof import('./src/utils/billingStaffCopy')['SET_END_HINT']
   const SHIFT_COLORS: typeof import('./src/utils/shiftDisplay')['SHIFT_COLORS']
+  const SHIFT_TEMPLATES_DIALOG_HINT: typeof import('./src/utils/shiftStaffCopy')['SHIFT_TEMPLATES_DIALOG_HINT']
   const STAFF_PIN_GENERATED_TOAST: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_GENERATED_TOAST']
   const STAFF_PIN_NONE_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_NONE_HINT']
   const STAFF_PIN_REVEALED_HINT: typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_REVEALED_HINT']
@@ -657,6 +659,7 @@ declare module 'vue' {
     readonly BILLING_HELP_FIX: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_FIX']>
     readonly BILLING_HELP_STOP: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
+    readonly COURSES_PAGE_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['COURSES_PAGE_HINT']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly GENERATE_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']>
     readonly INVOICE_CANCEL_GENERATED: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']>
@@ -680,6 +683,7 @@ declare module 'vue' {
     readonly SCAN_TOKEN_SESSION_KEY: UnwrapRef<typeof import('./src/utils/attendanceSession')['SCAN_TOKEN_SESSION_KEY']>
     readonly SET_END_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['SET_END_HINT']>
     readonly SHIFT_COLORS: UnwrapRef<typeof import('./src/utils/shiftDisplay')['SHIFT_COLORS']>
+    readonly SHIFT_TEMPLATES_DIALOG_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['SHIFT_TEMPLATES_DIALOG_HINT']>
     readonly STAFF_PIN_GENERATED_TOAST: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_GENERATED_TOAST']>
     readonly STAFF_PIN_NONE_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_NONE_HINT']>
     readonly STAFF_PIN_REVEALED_HINT: UnwrapRef<typeof import('./src/utils/shiftStaffCopy')['STAFF_PIN_REVEALED_HINT']>

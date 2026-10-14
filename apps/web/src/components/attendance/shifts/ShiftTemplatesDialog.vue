@@ -6,8 +6,10 @@ import {
   deleteShiftTemplate,
   updateShiftTemplate,
 } from '@/api/attendance/shifts'
+import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { SHIFT_COLORS, hhmm, timeToMinutes } from '@/utils/shiftDisplay'
+import { SHIFT_TEMPLATES_DIALOG_HINT } from '@/utils/shiftStaffCopy'
 
 const props = defineProps<{
   modelValue: boolean
@@ -103,12 +105,12 @@ async function confirmDelete() {
     max-width="560"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <VCard title="Shift templates">
+    <VCard>
+      <VCardTitle class="d-flex align-center">
+        Shift templates
+        <HelpBubble :text="SHIFT_TEMPLATES_DIALOG_HINT" />
+      </VCardTitle>
       <VCardText>
-        <p class="text-body-2 text-medium-emphasis mb-3">
-          預設時間同顏色，之後一撳就排到更。改或者刪模板唔會影響已經排咗嘅更。
-        </p>
-
         <VList
           v-if="templates.length"
           density="compact"

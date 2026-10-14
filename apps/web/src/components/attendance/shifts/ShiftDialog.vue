@@ -9,6 +9,7 @@ import {
 } from '@/api/attendance/shifts'
 import type { LocationItem } from '@/api/attendance/locations'
 import type { Unit } from '@/api/attendance/units'
+import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { openCloseForLocationDate } from '@/utils/locationHours'
 import {
@@ -397,10 +398,15 @@ async function confirmDelete() {
               v-model="form.title"
               label="Shift name"
               placeholder="Morning"
-              hint="可以唔填。揀模板會自動填。"
-              persistent-hint
               density="comfortable"
-            />
+            >
+              <template #append-inner>
+                <HelpBubble
+                  text="可以唔填。揀模板會自動填。"
+                  inline
+                />
+              </template>
+            </VTextField>
           </VCol>
           <VCol cols="12">
             <div class="text-body-2 text-medium-emphasis mb-2">

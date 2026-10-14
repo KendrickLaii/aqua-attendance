@@ -1,5 +1,7 @@
 /** Staff-facing Cantonese hints. Button labels stay English. */
 
+export const COURSES_PAGE_HINT = '展開 Courses 揀科目，再開 Class Offerings 揀班。下面個名冊就係呢班嘅學生。'
+
 export const JOIN_CLASS_HINT = '將學生加呢堂。之後去 Invoices 撳 Generate 先會出單。'
 
 export const RENEW_SUBTITLE = '同一筆報名。發票只顯示月份，例如 Sept-26，唔會印開始同結束日。'
