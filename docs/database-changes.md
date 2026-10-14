@@ -744,7 +744,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10 → e5a1c3d7f9b2 → a7f3c1e8d4b2 → c9d2e4f1a8b3 → d4b8e2a1c7f0 → e1c9a4b7d2f3 → f2a6c8d0b4e1 → a4e8c1d9b6f2 → b7c1e9a4d2f6 → a3d5f7b9c1e2 → c5e8a2f4d6b1 → e7b3f9a1c2d4
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10 → e5a1c3d7f9b2 → a7f3c1e8d4b2 → c9d2e4f1a8b3 → d4b8e2a1c7f0 → e1c9a4b7d2f3 → f2a6c8d0b4e1 → a4e8c1d9b6f2 → b7c1e9a4d2f6 → a3d5f7b9c1e2 → c5e8a2f4d6b1 → e7b3f9a1c2d4 → b9e4d2a7c1f5 → d1f6b3e8a9c2 → g2a5b8c1d3e4
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -779,9 +779,11 @@ ot_hours      = ot_slots * 0.25
 29. ✅ 收條加減行（c9d2e4f1a8b3）— `tuition_receipts.adjustments` JSON
 30. ✅ Credit note 抬頭（d4b8e2a1c7f0）— `tuition_invoices.payable_to_name` / `payee_name`
 31. ✅ 員工分成比例（e7b3f9a1c2d4）— `staff_profiles.commission_rate` Numeric(5,2)；工資單生成時按發票級 Tutor（`tuition_invoices.staff_name`）加總當月已收發票 × 比例寫入 `adjustment_1`（credit note 扣減），每次生成覆蓋；同名/搵唔到人 → `commission_warnings`
-32. ✅ Tutor 連結 + 分成快照 + 分成欄（b9e4d2a7c1f5）— `tuition_invoices.tutor_unit_id`（FK→units，SET NULL，indexed；id 匹配優先，`staff_name` 名字匹配僅作舊單 fallback）、`payroll_records.commission_rate_snapshot` Numeric(5,2)、`payroll_records.commission_pay` Numeric(10,2) NOT NULL default 0；正數發票改按**收款月**計分成（posted receipt 的 `receipt_date` 落在工資月），credit note 仍按 bill month；分成獨立寫入 `commission_pay`（`gross = base + OT + holiday + commission_pay + adj1`），`adjustment_1` 回復為純手動調整、Generate 永不覆寫；重新 Generate 已存在記錄時用 snapshot 比例（要套用新比例需刪除該記錄再 Generate）
+32. ✅ Tutor 連結 + 分成快照（b9e4d2a7c1f5）— `tuition_invoices.tutor_unit_id`（FK→units，SET NULL，indexed；id 匹配優先，`staff_name` 名字匹配僅作舊單 fallback）、`payroll_records.commission_rate_snapshot` Numeric(5,2)；正數發票改按**收款月**計分成（posted receipt 的 `receipt_date` 落在工資月），credit note 仍按 bill month；重新 Generate 已存在記錄時用 snapshot 比例（要套用新比例需刪除該記錄再 Generate）
+33. ✅ 分成欄（d1f6b3e8a9c2）— `payroll_records.commission_pay` Numeric(10,2) NOT NULL default 0；idempotent（b9e4d2a7c1f5 部署中途曾包含此欄，已存在則 skip）；分成獨立寫入 `commission_pay`（`gross = base + OT + holiday + commission_pay + adj1`），`adjustment_1` 回復為純手動調整、Generate 永不覆寫
+34. ✅ 補單唯一索引（g2a5b8c1d3e4）— `uq_tuition_invoices_unit_period` partial index 收窄為 `kind = 'tuition' AND status = 'draft'`：每學生每月最多一張未出草稿；已出／已收／作廢單唔限，Generate 可以喺已出單隔籬出補單草稿
 
-> **目前 Alembic 版本：b9e4d2a7c1f5**（Tutor 連結 + 分成快照；前序含員工分成比例 e7b3f9a1c2d4）
+> **目前 Alembic 版本：g2a5b8c1d3e4**（補單唯一索引；前序含分成欄 d1f6b3e8a9c2）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

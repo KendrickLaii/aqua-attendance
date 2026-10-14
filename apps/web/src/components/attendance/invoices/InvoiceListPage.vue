@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   type TuitionInvoice,
+  type TuitionInvoiceGenerateResult,
   type TuitionInvoiceStatus,
   deleteTuitionInvoice,
   generateTuitionInvoices,
@@ -79,6 +80,7 @@ const generating = ref(false)
 const loadError = ref('')
 const generateError = ref('')
 const generateSuccess = ref('')
+const generateResult = ref<TuitionInvoiceGenerateResult | null>(null)
 const expandedId = ref<string | null>(null)
 const statusUpdatingId = ref<string | null>(null)
 const pendingStatus = ref<{ invoice: TuitionInvoice; status: 'issued' | 'void' } | null>(null)
@@ -198,6 +200,33 @@ const pagedInvoices = computed(() => {
   const start = (page.value - 1) * pageSize.value
 
   return sortedInvoices.value.slice(start, start + pageSize.value)
+})
+
+// Invoice id → invoice_no of the earliest sibling bill for the same
+// student+month. Marks supplementary drafts (補單) in the bills table.
+const supplementOf = computed(() => {
+  const groups = new Map<string, TuitionInvoice[]>()
+  for (const invoice of invoices.value) {
+    if (invoice.kind !== 'tuition' || invoice.status === 'void' || !invoice.unit_id)
+      continue
+    const key = `${invoice.unit_id}|${invoice.period_start}`
+    const group = groups.get(key) ?? []
+
+    group.push(invoice)
+    groups.set(key, group)
+  }
+
+  const map = new Map<string, string | null>()
+  for (const group of groups.values()) {
+    if (group.length < 2)
+      continue
+    const sorted = [...group].sort((a, b) => a.created_at.localeCompare(b.created_at))
+    const first = sorted[0]
+    for (const invoice of sorted.slice(1))
+      map.set(invoice.id, first.invoice_no)
+  }
+
+  return map
 })
 
 function onInvoiceSort(key: InvoiceSortKey) {
@@ -357,6 +386,31 @@ async function confirmGenerate() {
   pendingGenerate.value = false
 }
 
+const creditReasonText: Record<string, string> = {
+  enrollment_cancelled: 'class cancelled after billing',
+  enrollment_ended: 'left class before this month',
+  sku_inactive: 'class is inactive',
+  unit_inactive: 'student inactive',
+  not_billable: 'no longer billable',
+}
+
+function creditStatusLabel(status: string): string {
+  return invoiceStatusLabel[status as TuitionInvoiceStatus] ?? status
+}
+
+function leftoverSummary(result: TuitionInvoiceGenerateResult): string {
+  const leftover = result.leftover_unbilled ?? 0
+  if (leftover <= 0)
+    return ''
+
+  const samples = (result.leftover_purchases ?? [])
+    .slice(0, 5)
+    .map(p => `${p.unit_code || ''} ${p.unit_name || 'student'} — ${p.sku_code ?? ''} · ${p.purchased_at} · qty ${p.purchased_quantity}`)
+    .join(', ')
+
+  return ` ${leftover} older unbilled session package${leftover === 1 ? '' : 's'} skipped — generate that month first${samples ? ` (${samples})` : ''}.`
+}
+
 async function generate() {
   if (!parsedYearMonth.value)
     return
@@ -364,6 +418,7 @@ async function generate() {
   generating.value = true
   generateError.value = ''
   generateSuccess.value = ''
+  generateResult.value = null
   try {
     const result = await generateTuitionInvoices(
       parsedYearMonth.value.year,
@@ -371,14 +426,17 @@ async function generate() {
       locationId.value,
     )
 
-    const leftover = result.leftover_unbilled ?? 0
-    generateSuccess.value = `Created ${result.created}, updated ${result.updated}, skipped ${result.skipped}, deleted ${result.deleted ?? 0}.`
-    if (leftover > 0) {
-      const samples = (result.leftover_purchases ?? [])
-        .slice(0, 3)
-        .map(p => `${p.unit_code || p.unit_name || 'student'} ${p.purchased_at}`)
-        .join(', ')
-      generateSuccess.value += ` ${leftover} older unbilled session package${leftover === 1 ? '' : 's'} skipped — generate that month first${samples ? ` (${samples})` : ''}.`
+    const summary = `Created ${result.created}, updated ${result.updated}, skipped ${result.skipped}, deleted ${result.deleted ?? 0}.`
+
+    const hasExtras = (result.supplements?.length ?? 0) > 0
+      || (result.needs_credit_note?.length ?? 0) > 0
+
+    if (hasExtras) {
+      // Supplements / credit-note warnings must stay until dismissed.
+      generateResult.value = result
+    }
+    else {
+      generateSuccess.value = summary + leftoverSummary(result)
     }
     await loadInvoices()
   }
@@ -748,6 +806,7 @@ onMounted(async () => {
 
 watch(yearMonth, () => {
   generateSuccess.value = ''
+  generateResult.value = null
   expandedId.value = null
   resetPage()
   loadInvoices()
@@ -951,6 +1010,90 @@ watch(yearMonth, () => {
     >
       {{ generateSuccess }}
     </VAlert>
+    <VAlert
+      v-if="generateResult"
+      :type="generateResult.needs_credit_note?.length ? 'warning' : 'success'"
+      variant="tonal"
+      class="mb-4"
+      closable
+      role="status"
+      aria-live="polite"
+      @click:close="generateResult = null"
+    >
+      <div>
+        Created {{ generateResult.created }}, updated {{ generateResult.updated }},
+        skipped {{ generateResult.skipped }}, deleted {{ generateResult.deleted ?? 0 }}.
+      </div>
+      <div
+        v-if="(generateResult.leftover_unbilled ?? 0) > 0"
+        class="mt-1"
+      >
+        {{ generateResult.leftover_unbilled }} older unbilled session
+        package{{ generateResult.leftover_unbilled === 1 ? '' : 's' }} skipped —
+        generate that month first.
+        <ul class="ps-4 mb-0">
+          <li
+            v-for="(p, i) in (generateResult.leftover_purchases ?? []).slice(0, 5)"
+            :key="`leftover-${i}`"
+          >
+            {{ p.unit_code }} {{ p.unit_name }} — {{ p.sku_code }} · {{ p.purchased_at }} · qty {{ p.purchased_quantity }}
+          </li>
+        </ul>
+      </div>
+      <div
+        v-if="generateResult.supplements?.length"
+        class="mt-2"
+      >
+        <div class="font-weight-medium">
+          補單 Supplementary drafts ({{ generateResult.supplements.length }})
+        </div>
+        <div
+          v-for="s in generateResult.supplements"
+          :key="s.unit_id"
+          class="mt-1"
+        >
+          <ul class="ps-4 mb-0">
+            <li
+              v-for="(l, i) in s.lines"
+              :key="i"
+            >
+              {{ s.unit_code }} {{ s.unit_name }} — {{ l.name_zh }}
+              {{ Number(l.quantity) }} × {{ formatInvoiceMoney(Number(l.unit_price)) }}
+              = {{ formatInvoiceMoney(Number(l.amount)) }}
+            </li>
+          </ul>
+          <div class="text-caption">
+            Total {{ formatInvoiceMoney(Number(s.total)) }}
+            ({{ s.is_new ? 'new draft' : 'draft updated' }})
+            <template v-if="s.prior_invoice_nos.length">
+              · earlier bill {{ s.prior_invoice_nos.map(n => `#${n}`).join(' ') }} already issued
+            </template>
+          </div>
+        </div>
+      </div>
+      <div
+        v-if="generateResult.needs_credit_note?.length"
+        class="mt-2"
+      >
+        <div class="font-weight-medium">
+          Needs a credit note ({{ generateResult.needs_credit_note.length }})
+        </div>
+        <ul class="ps-4 mb-0">
+          <li
+            v-for="(c, i) in generateResult.needs_credit_note"
+            :key="`credit-${i}`"
+          >
+            {{ c.unit_code }} {{ c.unit_name }} — {{ c.name_zh }}
+            {{ formatInvoiceMoney(Number(c.amount)) }} on #{{ c.invoice_no }}
+            ({{ creditStatusLabel(c.invoice_status) }}) —
+            {{ creditReasonText[c.reason] ?? c.reason }}
+          </li>
+        </ul>
+        <div class="text-caption mt-1">
+          Issued/paid bills are never changed — open a Manual credit note.
+        </div>
+      </div>
+    </VAlert>
 
     <StatCards
       v-if="!loading"
@@ -969,6 +1112,7 @@ watch(yearMonth, () => {
       :expanded-id="expandedId"
       :status-updating-id="statusUpdatingId"
       :location-name="locationName"
+      :supplement-of="supplementOf"
       :variant="variant"
       :sort="invoiceSort"
       @sort="onInvoiceSort"
@@ -1085,7 +1229,7 @@ watch(yearMonth, () => {
       @confirm="confirmGenerate"
       @cancel="pendingGenerate = false"
     >
-      Replaces drafts for {{ locationId ? (locationName(locationId) || 'this campus') : 'all campuses' }}. {{ GENERATE_CONFIRM }}
+      Replaces drafts for {{ locationId ? (locationName(locationId) || 'this campus') : 'all campuses' }}. {{ GENERATE_CONFIRM }} Issued and paid bills are left as they are; new classes get a supplementary draft.
     </AttendanceConfirmDialog>
 
     <AttendanceConfirmDialog

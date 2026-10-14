@@ -148,6 +148,27 @@ async def _unbilled_line_ids(
     return {row[0] for row in result.all()}
 
 
+def _credit_reason(
+    enrollment: CourseEnrollment | None,
+    first_day: date,
+    last_day: date,
+) -> str:
+    """Why an enrollment billed on a locked invoice is no longer billable."""
+    if enrollment is None or enrollment.status not in ("active", "completed"):
+        return "enrollment_cancelled"
+    if (enrollment.end_date is not None and enrollment.end_date < first_day) or (
+        enrollment.start_date is not None and enrollment.start_date > last_day
+    ):
+        return "enrollment_ended"
+    sku = enrollment.sku
+    if sku is None or not sku.is_active:
+        return "sku_inactive"
+    unit = enrollment.unit
+    if unit is None or not unit.is_active or unit.status != UnitStatus.active.value:
+        return "unit_inactive"
+    return "not_billable"
+
+
 async def generate_monthly_tuition_invoices(
     db: AsyncSession,
     *,
@@ -201,15 +222,20 @@ async def generate_monthly_tuition_invoices(
     )
 
     by_unit: dict = defaultdict(list)
+    by_unit_links: dict = defaultdict(list)
+    billable_enrollment_ids: dict = defaultdict(set)
     unit_locations: dict = {}
+    unit_infos: dict = {}
     line_purchase_links: list[tuple[TuitionInvoiceLine, EnrollmentPurchase]] = []
     for enrollment in enrollments:
+        unit_infos[enrollment.unit_id] = enrollment.unit
+        unit_locations[enrollment.unit_id] = enrollment.unit.registered_location_id
+        billable_enrollment_ids[enrollment.unit_id].add(enrollment.id)
         lines, links = _lines_from_enrollment(enrollment, ctx)
         if not lines:
             continue
         by_unit[enrollment.unit_id].extend(lines)
-        line_purchase_links.extend(links)
-        unit_locations[enrollment.unit_id] = enrollment.unit.registered_location_id
+        by_unit_links[enrollment.unit_id].extend(links)
 
     leftover_clauses = [
         CourseSku.billing_unit == "per_session",
@@ -250,22 +276,136 @@ async def generate_monthly_tuition_invoices(
         .options(selectinload(TuitionInvoice.lines))
         .where(*existing_clauses)
     )
-    existing_by_unit = {invoice.unit_id: invoice for invoice in existing_result.scalars().all()}
+    existing_by_unit: dict = defaultdict(list)
+    for invoice in existing_result.scalars().all():
+        existing_by_unit[invoice.unit_id].append(invoice)
+
+    # Units referenced by locked invoices but missing from unit_infos (no
+    # billable enrollment this run) still need code/name for the credit-note
+    # report.
+    locked_unit_ids = {
+        unit_id
+        for unit_id, invoices in existing_by_unit.items()
+        if unit_id is not None and any(i.status in _LOCKED for i in invoices)
+    }
+    missing_unit_ids = locked_unit_ids - set(unit_infos)
+    if missing_unit_ids:
+        unit_result = await db.execute(select(Unit).where(Unit.id.in_(missing_unit_ids)))
+        for unit in unit_result.scalars().all():
+            unit_infos[unit.id] = unit
+
+    # Negative-delta report: locked lines whose enrollment is no longer
+    # billable this run (cancelled, ended, SKU/unit inactive). Reported only
+    # — never auto-credited.
+    locked_line_enrollment_ids: set[UUID] = set()
+    for unit_id, invoices in existing_by_unit.items():
+        billable = billable_enrollment_ids.get(unit_id, set())
+        for invoice in invoices:
+            if invoice.status not in _LOCKED:
+                continue
+            for line in invoice.lines:
+                if (
+                    line.billing_unit != "per_session"
+                    and line.enrollment_id is not None
+                    and line.enrollment_id not in billable
+                ):
+                    locked_line_enrollment_ids.add(line.enrollment_id)
+    locked_enrollments: dict[UUID, CourseEnrollment] = {}
+    if locked_line_enrollment_ids:
+        enr_result = await db.execute(
+            select(CourseEnrollment)
+            .options(
+                selectinload(CourseEnrollment.sku),
+                selectinload(CourseEnrollment.unit),
+            )
+            .where(CourseEnrollment.id.in_(locked_line_enrollment_ids))
+        )
+        locked_enrollments = {e.id: e for e in enr_result.scalars().all()}
+
+    needs_credit_note: list[dict[str, object]] = []
+    for unit_id, invoices in existing_by_unit.items():
+        billable = billable_enrollment_ids.get(unit_id, set())
+        unit = unit_infos.get(unit_id)
+        for invoice in invoices:
+            if invoice.status not in _LOCKED:
+                continue
+            for line in invoice.lines:
+                if (
+                    line.billing_unit == "per_session"
+                    or line.enrollment_id is None
+                    or line.enrollment_id in billable
+                ):
+                    continue
+                needs_credit_note.append(
+                    {
+                        "unit_id": unit_id,
+                        "unit_code": unit.code if unit else None,
+                        "unit_name": unit.full_name if unit else None,
+                        "invoice_no": invoice.invoice_no,
+                        "invoice_status": invoice.status,
+                        "sku_code": line.sku_code,
+                        "name_zh": line.name_zh,
+                        "amount": line.amount,
+                        "reason": _credit_reason(
+                            locked_enrollments.get(line.enrollment_id), first_day, last_day
+                        ),
+                    }
+                )
 
     created = 0
     updated = 0
     skipped = 0
+    deleted = 0
+    deleted_invoices: list[tuple[UUID, str | None]] = []
+    supplements: list[dict[str, object]] = []
 
-    for unit_id, unit_enrollments in by_unit.items():
-        invoice = existing_by_unit.get(unit_id)
-        if invoice is not None and invoice.status in _LOCKED:
-            skipped += 1
+    for unit_id in set(by_unit) | set(existing_by_unit):
+        invoices = existing_by_unit.get(unit_id, [])
+        locked = [i for i in invoices if i.status in _LOCKED]
+        draft = next((i for i in invoices if i.status == TuitionInvoiceStatus.draft.value), None)
+        voids = [i for i in invoices if i.status == TuitionInvoiceStatus.void.value]
+
+        # Enrollments already billed on a locked invoice are covered; only
+        # the uncovered delta may be written. Per-session lines are already
+        # filtered by their purchase link, so they always pass through.
+        covered_enrollment_ids = {
+            line.enrollment_id
+            for invoice in locked
+            for line in invoice.lines
+            if line.enrollment_id is not None and line.billing_unit != "per_session"
+        }
+        delta_lines = [
+            line
+            for line in by_unit.get(unit_id, [])
+            if line.enrollment_id not in covered_enrollment_ids
+        ]
+        delta_ids = {id(line) for line in delta_lines}
+        delta_links = [
+            (line, purchase)
+            for line, purchase in by_unit_links.get(unit_id, [])
+            if id(line) in delta_ids
+        ]
+        line_purchase_links.extend(delta_links)
+
+        if not delta_lines:
+            if draft is not None:
+                deleted_invoices.append((draft.id, draft.invoice_no))
+                await db.delete(draft)
+                deleted += 1
+            if locked:
+                # Everything for this student+month is on locked invoices.
+                skipped += 1
             continue
 
-        lines = unit_enrollments
-        total = sum((line.amount for line in lines), Decimal("0.00"))
+        total = sum((line.amount for line in delta_lines), Decimal("0.00"))
+        invoice = draft
+        if invoice is None and voids:
+            # Revive the most recently cancelled invoice rather than
+            # creating a new row.
+            invoice = max(voids, key=lambda i: i.created_at)
 
-        if invoice is None:
+        is_new = invoice is None
+        if is_new:
             invoice = TuitionInvoice(
                 unit_id=unit_id,
                 location_id=unit_locations.get(unit_id),
@@ -274,37 +414,49 @@ async def generate_monthly_tuition_invoices(
                 status=TuitionInvoiceStatus.draft.value,
                 total=total,
             )
-            invoice.lines = lines
+            invoice.lines = delta_lines
             db.add(invoice)
             created += 1
-            continue
+        else:
+            was_void = invoice.status == TuitionInvoiceStatus.void.value
+            invoice.lines.clear()
+            invoice.total = total
+            invoice.status = TuitionInvoiceStatus.draft.value
+            if invoice.location_id is None:
+                invoice.location_id = unit_locations.get(unit_id)
+            if was_void:
+                # A voided invoice has already been printed with its old
+                # number. Re-issuing it must use a fresh number, not reuse
+                # the old one.
+                invoice.invoice_no = None
+                invoice.issued_at = None
+            for line in delta_lines:
+                invoice.lines.append(line)
+            updated += 1
 
-        was_void = invoice.status == TuitionInvoiceStatus.void.value
-        invoice.lines.clear()
-        invoice.total = total
-        invoice.status = TuitionInvoiceStatus.draft.value
-        if invoice.location_id is None:
-            invoice.location_id = unit_locations.get(unit_id)
-        if was_void:
-            # A voided invoice has already been printed with its old number.
-            # Re-issuing it must use a fresh number, not reuse the old one.
-            invoice.invoice_no = None
-            invoice.issued_at = None
-        for line in lines:
-            invoice.lines.append(line)
-        updated += 1
-
-    deleted = 0
-    deleted_invoices: list[tuple[UUID, str | None]] = []
-    for unit_id, invoice in existing_by_unit.items():
-        if unit_id in by_unit:
-            continue
-        if invoice.status in _LOCKED or invoice.status == TuitionInvoiceStatus.void.value:
-            skipped += 1
-            continue
-        deleted_invoices.append((invoice.id, invoice.invoice_no))
-        await db.delete(invoice)
-        deleted += 1
+        if locked:
+            unit = unit_infos.get(unit_id)
+            supplements.append(
+                {
+                    "unit_id": unit_id,
+                    "unit_code": unit.code if unit else None,
+                    "unit_name": unit.full_name if unit else None,
+                    "prior_invoice_nos": [i.invoice_no for i in locked if i.invoice_no],
+                    "lines": [
+                        {
+                            "sku_code": line.sku_code,
+                            "name_zh": line.name_zh,
+                            "billing_unit": line.billing_unit,
+                            "quantity": line.quantity,
+                            "unit_price": line.unit_price,
+                            "amount": line.amount,
+                        }
+                        for line in delta_lines
+                    ],
+                    "total": total,
+                    "is_new": is_new,
+                }
+            )
 
     try:
         await db.flush()
@@ -336,4 +488,6 @@ async def generate_monthly_tuition_invoices(
         "deleted": deleted,
         "leftover_unbilled": len(leftover_purchases),
         "leftover_purchases": leftover_purchases,
+        "supplements": supplements,
+        "needs_credit_note": needs_credit_note,
     }

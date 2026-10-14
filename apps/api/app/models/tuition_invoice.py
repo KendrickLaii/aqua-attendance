@@ -20,19 +20,20 @@ class TuitionInvoice(Base):
 
     __tablename__ = "tuition_invoices"
     __table_args__ = (
-        # One invoice per student per billing period — for generated tuition
-        # invoices only. Manual invoices share the month period (and credit
-        # notes use their date), so they must be exempt or a student could
-        # never get two manual invoices in the same month (e.g. re-bill after
-        # a void).
+        # At most one OPEN DRAFT tuition invoice per student per billing
+        # period. Issued/paid/void invoices are exempt so Generate can add a
+        # supplementary draft (補單) next to an already-issued bill. Manual
+        # invoices share the month period (and credit notes use their date),
+        # so they must stay exempt or a student could never get two manual
+        # invoices in the same month (e.g. re-bill after a void).
         Index(
             "uq_tuition_invoices_unit_period",
             "unit_id",
             "period_start",
             "period_end",
             unique=True,
-            postgresql_where=text("kind = 'tuition'"),
-            sqlite_where=text("kind = 'tuition'"),
+            postgresql_where=text("kind = 'tuition' AND status = 'draft'"),
+            sqlite_where=text("kind = 'tuition' AND status = 'draft'"),
         ),
         UniqueConstraint("location_id", "invoice_no", name="uq_tuition_invoices_location_invoice_no"),
     )

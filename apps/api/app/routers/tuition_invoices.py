@@ -167,6 +167,8 @@ async def generate_tuition_invoices(
             detail="Invoice already exists for this student and period",
         )
     leftover = int(result.get("leftover_unbilled") or 0)
+    supplements = len(result.get("supplements") or [])
+    credits_needed = len(result.get("needs_credit_note") or [])
     await audit_log_svc.log_audit(
         db,
         user_id=admin.id,
@@ -178,6 +180,8 @@ async def generate_tuition_invoices(
             f"{result['created']} created, {result['updated']} updated, "
             f"{result['skipped']} skipped, {result['deleted']} deleted"
             + (f", {leftover} leftover unbilled" if leftover else "")
+            + (f", {supplements} supplements" if supplements else "")
+            + (f", {credits_needed} need credit note" if credits_needed else "")
         ),
     )
     return TuitionInvoiceGenerateResult(**result)

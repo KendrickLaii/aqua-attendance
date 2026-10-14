@@ -529,8 +529,15 @@ async def test_regenerate_updates_draft_and_skips_issued(
         "/api/tuition-invoices/generate?year=2026&month=6",
         headers=_auth(admin_token),
     )
+    assert third.json()["created"] == 0
     assert third.json()["skipped"] == 1
     assert third.json()["updated"] == 0
+
+    listed = await client.get(
+        "/api/tuition-invoices?year=2026&month=6",
+        headers=_auth(admin_token),
+    )
+    assert len(listed.json()) == 1
 
 
 @pytest.mark.asyncio
@@ -817,6 +824,293 @@ async def test_generate_revives_void_when_enrollment_still_active(
         headers=_auth(admin_token),
     )
     assert after.json()["status"] == "draft"
+
+
+async def _setup_supplement(client: AsyncClient, admin_token: str, sample_unit: dict) -> dict:
+    """Monthly $800 billed and issued; per-session 3 × $190 bought in June."""
+    spu = await _create_spu(client, admin_token)
+    monthly = await _create_sku(client, admin_token, spu["id"], price=800)
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        monthly["id"],
+        start_date="2026-06-01",
+        end_date="2026-08-31",
+    )
+    await _generate(client, admin_token, 2026, 6)
+    issued = await client.patch(
+        f"/api/tuition-invoices/{(await _june_invoices(client, admin_token))[0]['id']}",
+        json={"status": "issued"},
+        headers=_auth(admin_token),
+    )
+    assert issued.status_code == 200, issued.text
+
+    per_session = await _create_sku(
+        client, admin_token, spu["id"], billing_unit="per_session", price=190
+    )
+    enrollment = await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        per_session["id"],
+        start_date="2026-06-01",
+        purchased_quantity=3,
+    )
+    return {"issued": issued.json(), "per_session_enrollment": enrollment}
+
+
+@pytest.mark.asyncio
+async def test_generate_creates_supplement_after_issue(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    setup = await _setup_supplement(client, admin_token, sample_unit)
+    issued_invoice = setup["issued"]
+
+    result = await _generate(client, admin_token, 2026, 6)
+    assert result["created"] == 1
+    assert result["updated"] == 0
+    assert len(result["supplements"]) == 1
+    supplement = result["supplements"][0]
+    assert supplement["is_new"] is True
+    assert supplement["unit_id"] == sample_unit["id"]
+    assert supplement["prior_invoice_nos"] == [issued_invoice["invoice_no"]]
+    assert len(supplement["lines"]) == 1
+    assert float(supplement["lines"][0]["quantity"]) == 3
+    assert float(supplement["lines"][0]["amount"]) == 570
+    assert float(supplement["total"]) == 570
+
+    invoices = await _june_invoices(client, admin_token)
+    assert len(invoices) == 2
+    first = next(inv for inv in invoices if inv["id"] == issued_invoice["id"])
+    assert first["status"] == "issued"
+    assert float(first["total"]) == 800
+    assert len(first["lines"]) == 1
+    draft = next(inv for inv in invoices if inv["id"] != issued_invoice["id"])
+    assert draft["status"] == "draft"
+    assert float(draft["total"]) == 570
+
+    async with TestSessionLocal() as session:
+        purchase = (
+            await session.execute(
+                select(EnrollmentPurchase).where(
+                    EnrollmentPurchase.enrollment_id
+                    == uuid.UUID(setup["per_session_enrollment"]["id"])
+                )
+            )
+        ).scalars().one()
+        assert str(purchase.billed_invoice_line_id) == draft["lines"][0]["id"]
+
+    # Re-running while the supplement is still draft updates it in place and
+    # still reports the supplement detail.
+    again = await _generate(client, admin_token, 2026, 6)
+    assert again["created"] == 0
+    assert again["updated"] == 1
+    assert len(again["supplements"]) == 1
+    supplement_again = again["supplements"][0]
+    assert supplement_again["is_new"] is False
+    assert supplement_again["prior_invoice_nos"] == [issued_invoice["invoice_no"]]
+    assert len(supplement_again["lines"]) == 1
+    assert float(supplement_again["lines"][0]["quantity"]) == 3
+    assert float(supplement_again["total"]) == 570
+    assert len(await _june_invoices(client, admin_token)) == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_after_supplement_issued_is_idempotent(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    setup = await _setup_supplement(client, admin_token, sample_unit)
+    await _generate(client, admin_token, 2026, 6)
+
+    draft = next(
+        inv for inv in await _june_invoices(client, admin_token) if inv["status"] == "draft"
+    )
+    issued = await client.patch(
+        f"/api/tuition-invoices/{draft['id']}",
+        json={"status": "issued"},
+        headers=_auth(admin_token),
+    )
+    assert issued.status_code == 200, issued.text
+    assert issued.json()["invoice_no"] != setup["issued"]["invoice_no"]
+
+    result = await _generate(client, admin_token, 2026, 6)
+    assert result["created"] == 0
+    assert result["updated"] == 0
+    assert result["deleted"] == 0
+    assert result["supplements"] == []
+    assert len(await _june_invoices(client, admin_token)) == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_supplement_for_new_monthly_class_after_paid(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    monthly = await _create_sku(client, admin_token, spu["id"], price=800)
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        monthly["id"],
+        start_date="2026-06-01",
+        end_date="2026-08-31",
+    )
+    await _generate(client, admin_token, 2026, 6)
+    invoice_id = (await _june_invoices(client, admin_token))[0]["id"]
+    await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={"status": "issued"},
+        headers=_auth(admin_token),
+    )
+    receipt = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_no": "1001",
+            "receipt_date": "2026-06-05",
+            "invoice_ids": [invoice_id],
+        },
+        headers=_auth(admin_token),
+    )
+    assert receipt.status_code == 201, receipt.text
+
+    second = await _create_sku(client, admin_token, spu["id"], price=500)
+    await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        second["id"],
+        start_date="2026-06-01",
+        end_date="2026-08-31",
+    )
+
+    result = await _generate(client, admin_token, 2026, 6)
+    assert result["created"] == 1
+    assert len(result["supplements"]) == 1
+    assert float(result["supplements"][0]["total"]) == 500
+
+    paid = await client.get(f"/api/tuition-invoices/{invoice_id}", headers=_auth(admin_token))
+    assert paid.json()["status"] == "paid"
+    assert float(paid.json()["total"]) == 800
+
+
+@pytest.mark.asyncio
+async def test_generate_reports_credit_needed_after_paid_then_cancel(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    spu = await _create_spu(client, admin_token)
+    monthly = await _create_sku(client, admin_token, spu["id"], price=800)
+    enrollment = await _enroll(
+        client,
+        admin_token,
+        sample_unit["id"],
+        monthly["id"],
+        start_date="2026-06-01",
+        end_date="2026-08-31",
+    )
+    await _generate(client, admin_token, 2026, 6)
+    invoice_id = (await _june_invoices(client, admin_token))[0]["id"]
+    issued = await client.patch(
+        f"/api/tuition-invoices/{invoice_id}",
+        json={"status": "issued"},
+        headers=_auth(admin_token),
+    )
+    invoice_no = issued.json()["invoice_no"]
+    receipt = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_no": "1001",
+            "receipt_date": "2026-06-05",
+            "invoice_ids": [invoice_id],
+        },
+        headers=_auth(admin_token),
+    )
+    assert receipt.status_code == 201, receipt.text
+
+    cancel = await client.patch(
+        f"/api/course-enrollments/{enrollment['id']}",
+        json={"status": "cancelled"},
+        headers=_auth(admin_token),
+    )
+    assert cancel.status_code == 200
+
+    result = await _generate(client, admin_token, 2026, 6)
+    assert result["created"] == 0
+    assert len(result["needs_credit_note"]) == 1
+    entry = result["needs_credit_note"][0]
+    assert entry["unit_id"] == sample_unit["id"]
+    assert entry["reason"] == "enrollment_cancelled"
+    assert float(entry["amount"]) == 800
+    assert entry["invoice_no"] == invoice_no
+    assert entry["invoice_status"] == "paid"
+
+    paid = await client.get(f"/api/tuition-invoices/{invoice_id}", headers=_auth(admin_token))
+    assert float(paid.json()["total"]) == 800
+
+
+@pytest.mark.asyncio
+async def test_generate_supplement_draft_is_deleted_when_no_longer_needed(
+    client: AsyncClient, admin_token: str, sample_unit: dict
+) -> None:
+    setup = await _setup_supplement(client, admin_token, sample_unit)
+    result = await _generate(client, admin_token, 2026, 6)
+    assert result["created"] == 1
+
+    cancel = await client.patch(
+        f"/api/course-enrollments/{setup['per_session_enrollment']['id']}",
+        json={"status": "cancelled"},
+        headers=_auth(admin_token),
+    )
+    assert cancel.status_code == 200
+
+    result = await _generate(client, admin_token, 2026, 6)
+    assert result["deleted"] == 1
+
+    invoices = await _june_invoices(client, admin_token)
+    assert len(invoices) == 1
+    assert invoices[0]["id"] == setup["issued"]["id"]
+    assert invoices[0]["status"] == "issued"
+
+
+@pytest.mark.asyncio
+async def test_second_draft_for_same_unit_period_rejected(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.tuition_invoice import TuitionInvoice
+
+    async with TestSessionLocal() as session:
+        session.add(
+            TuitionInvoice(
+                unit_id=uuid.UUID(sample_unit["id"]),
+                location_id=uuid.UUID(sample_location["id"]),
+                period_start=date(2026, 6, 1),
+                period_end=date(2026, 6, 30),
+                status="draft",
+                kind="tuition",
+                total=100,
+            )
+        )
+        session.add(
+            TuitionInvoice(
+                unit_id=uuid.UUID(sample_unit["id"]),
+                location_id=uuid.UUID(sample_location["id"]),
+                period_start=date(2026, 6, 1),
+                period_end=date(2026, 6, 30),
+                status="draft",
+                kind="tuition",
+                total=200,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            await session.commit()
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -78,6 +79,37 @@ class LeftoverPurchaseOut(BaseModel):
     purchased_quantity: int
 
 
+class GenerateSupplementLineOut(BaseModel):
+    sku_code: str | None = None
+    name_zh: str
+    billing_unit: str
+    quantity: Decimal
+    unit_price: Decimal
+    amount: Decimal
+
+
+class GenerateSupplementOut(BaseModel):
+    unit_id: uuid.UUID
+    unit_code: str | None = None
+    unit_name: str | None = None
+    prior_invoice_nos: list[str] = Field(default_factory=list)
+    lines: list[GenerateSupplementLineOut] = Field(default_factory=list)
+    total: Decimal
+    is_new: bool = False
+
+
+class GenerateCreditNeededOut(BaseModel):
+    unit_id: uuid.UUID
+    unit_code: str | None = None
+    unit_name: str | None = None
+    invoice_no: str | None = None
+    invoice_status: str
+    sku_code: str | None = None
+    name_zh: str
+    amount: Decimal
+    reason: str
+
+
 class TuitionInvoiceGenerateResult(BaseModel):
     created: int
     updated: int
@@ -85,6 +117,8 @@ class TuitionInvoiceGenerateResult(BaseModel):
     deleted: int = 0
     leftover_unbilled: int = 0
     leftover_purchases: list[LeftoverPurchaseOut] = Field(default_factory=list)
+    supplements: list[GenerateSupplementOut] = Field(default_factory=list)
+    needs_credit_note: list[GenerateCreditNeededOut] = Field(default_factory=list)
 
 
 class TuitionInvoiceNextNo(BaseModel):

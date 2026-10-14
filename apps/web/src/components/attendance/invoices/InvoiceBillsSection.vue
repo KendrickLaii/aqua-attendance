@@ -23,7 +23,7 @@ import { type CancellableTableSort, sortHeaderTitle, sortIconFor } from '@/utils
 
 export type InvoiceSortKey = 'student' | 'no' | 'staff' | 'classes' | 'status' | 'total'
 
-defineProps<{
+const props = defineProps<{
   invoices: TuitionInvoice[]
   filteredInvoices: TuitionInvoice[]
   pagedInvoices: TuitionInvoice[]
@@ -35,9 +35,19 @@ defineProps<{
   statusUpdatingId: string | null
   showBillingHelp: boolean
   locationName: (id: string) => string
+
+  // Invoice id → invoice_no of the earliest sibling bill for the same
+  // student+month; marks supplementary drafts (補單).
+  supplementOf?: Map<string, string | null>
   variant?: 'invoice' | 'credit'
   sort: CancellableTableSort<InvoiceSortKey>
 }>()
+
+function supplementTooltip(invoiceId: string): string {
+  const no = props.supplementOf?.get(invoiceId)
+
+  return no ? `Adds to bill #${no}` : 'Adds to the earlier bill'
+}
 
 function ariaSort(state: CancellableTableSort<InvoiceSortKey>, key: InvoiceSortKey) {
   if (state.key !== key)
@@ -91,7 +101,7 @@ const emit = defineEmits<{
       <VCardSubtitle>
         {{ variant === 'credit'
           ? (allMonths ? 'All credit notes. Open a row for line items.' : 'Credit notes for this calendar month. Open a row for line items.')
-          : (allMonths ? 'All bills. Open a row for line items.' : 'One bill per student for this calendar month. Open a row for line items.') }}
+          : (allMonths ? 'All bills. Open a row for line items.' : 'Bills for this calendar month. A student gets one draft; classes added after a bill is issued go on a supplementary draft. Open a row for line items.') }}
       </VCardSubtitle>
     </VCardItem>
     <VCardText>
@@ -108,12 +118,12 @@ const emit = defineEmits<{
           <li>{{ BILLING_HELP_FIX }}</li>
           <li>{{ BILLING_HELP_STOP }}</li>
           <li>{{ BILLING_HELP_DONT_ONLY_CANCEL }}</li>
-          <li>One draft bill per student whose classes overlap this month.</li>
+          <li>One open draft per student per month. If a bill is already issued or paid, Generate puts anything new (a class joined later, a session top-up) on a separate supplementary draft — the issued bill is never changed.</li>
           <li>Monthly classes: billed once for the month, even if they miss days.</li>
           <li>Per-class packages: billed once for the package they bought — not from attendance.</li>
           <li>Private / variable-price classes: leave the class price empty. Record how many sessions were bought, then set the price on a <strong>Manual invoice</strong>.</li>
           <li>Packages with no price yet are skipped by Generate — bill them with a manual invoice.</li>
-          <li>Inactive classes and monthly classes with no price are skipped. Issued and paid bills are not changed.</li>
+          <li>Inactive classes and monthly classes with no price are skipped. Issued and paid bills are never changed. If a student drops a class after paying, Generate lists it under 'Needs a credit note' — write a Manual credit note.</li>
           <li>The Location filter shows bills for that campus. All months and All locations show every bill.</li>
         </ul>
       </VAlert>
@@ -330,6 +340,21 @@ const emit = defineEmits<{
                     :color="invoiceStatusColor[invoice.status] ?? 'grey'"
                   >
                     {{ invoiceStatusLabel[invoice.status] ?? invoice.status }}
+                  </VChip>
+                  <VChip
+                    v-if="supplementOf?.has(invoice.id)"
+                    size="x-small"
+                    label
+                    color="info"
+                    variant="tonal"
+                    class="ms-1"
+                  >
+                    <VTooltip
+                      activator="parent"
+                      location="top"
+                      :text="supplementTooltip(invoice.id)"
+                    />
+                    補單 · Supplement
                   </VChip>
                 </td>
                 <td class="col-total text-end font-weight-medium tabular-nums">

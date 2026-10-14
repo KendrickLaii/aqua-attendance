@@ -64,14 +64,18 @@ export function purchaseSummary(e: Pick<CourseEnrollment, 'purchases'>) {
 }
 
 export function purchaseTooltip(e: Pick<CourseEnrollment, 'purchases'>): string {
-  return (e.purchases ?? [])
+  const lines = (e.purchases ?? [])
     .map(p => [
       formatRosterDate(p.purchased_at),
       p.unit_price != null ? `${p.purchased_quantity} × ${Number(p.unit_price).toFixed(2)}` : `${p.purchased_quantity} session${p.purchased_quantity === 1 ? '' : 's'} · price TBD`,
       p.billed_invoice_line_id === null ? 'unbilled' : 'billed',
       p.notes ?? '',
     ].filter(Boolean).join(' · '))
-    .join('\n')
+
+  if ((e.purchases ?? []).some(p => p.billed_invoice_line_id === null))
+    lines.push('Run Generate on the Invoices page — unbilled sessions go on this month’s draft, or on a supplementary draft if the bill is already issued.')
+
+  return lines.join('\n')
 }
 
 export function enrollmentStatusLabel(status: string): string {

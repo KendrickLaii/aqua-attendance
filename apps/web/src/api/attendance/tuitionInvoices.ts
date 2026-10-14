@@ -60,6 +60,37 @@ export interface LeftoverPurchase {
   purchased_quantity: number
 }
 
+export interface GenerateSupplementLine {
+  sku_code: string | null
+  name_zh: string
+  billing_unit: string
+  quantity: number
+  unit_price: number
+  amount: number
+}
+
+export interface GenerateSupplement {
+  unit_id: string
+  unit_code: string | null
+  unit_name: string | null
+  prior_invoice_nos: string[]
+  lines: GenerateSupplementLine[]
+  total: number
+  is_new?: boolean
+}
+
+export interface GenerateCreditNeeded {
+  unit_id: string
+  unit_code: string | null
+  unit_name: string | null
+  invoice_no: string | null
+  invoice_status: string
+  sku_code: string | null
+  name_zh: string
+  amount: number
+  reason: string
+}
+
 export interface TuitionInvoiceGenerateResult {
   created: number
   updated: number
@@ -67,6 +98,8 @@ export interface TuitionInvoiceGenerateResult {
   deleted?: number
   leftover_unbilled?: number
   leftover_purchases?: LeftoverPurchase[]
+  supplements?: GenerateSupplement[]
+  needs_credit_note?: GenerateCreditNeeded[]
 }
 
 export async function listTuitionInvoicesWithTotal(params?: {
