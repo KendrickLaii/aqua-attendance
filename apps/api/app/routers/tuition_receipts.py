@@ -72,6 +72,26 @@ def _month_label(invoice: TuitionInvoice, line: TuitionInvoiceLine) -> str:
     return f"{_MONTH_LABELS[start.month - 1]}-{str(start.year)[2:]}"
 
 
+def _receipt_no_prefix(receipt_date: date) -> str:
+    return f"R{receipt_date.strftime('%y%m')}"
+
+
+async def _next_receipt_no(db: DB, location_id: uuid.UUID, receipt_date: date) -> str:
+    prefix = _receipt_no_prefix(receipt_date)
+    result = await db.execute(
+        select(TuitionReceipt.receipt_no).where(
+            TuitionReceipt.location_id == location_id,
+            TuitionReceipt.receipt_no.startswith(prefix),
+        )
+    )
+    indexes = [
+        int(receipt_no[len(prefix):])
+        for receipt_no in result.scalars()
+        if receipt_no[len(prefix):].isdigit()
+    ]
+    return f"{prefix}{max(indexes, default=0) + 1:02d}"
+
+
 def _receipt_to_out(receipt: TuitionReceipt) -> TuitionReceiptOut:
     linked: list[TuitionReceiptLinkedInvoice] = []
     print_lines: list[TuitionReceiptPrintLine] = []
@@ -231,6 +251,16 @@ async def list_open_invoices(
     return await _invoices_to_out(db, list(result.scalars().all()))
 
 
+@router.get("/next-no", response_model=dict[str, str])
+async def next_receipt_no(
+    _admin: AdminOnly,
+    db: DB,
+    location_id: uuid.UUID,
+    date_value: date = Query(alias="date"),
+) -> dict[str, str]:
+    return {"next_no": await _next_receipt_no(db, location_id, date_value)}
+
+
 @router.get("/{receipt_id}", response_model=TuitionReceiptOut)
 async def get_tuition_receipt(receipt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> TuitionReceiptOut:
     return _receipt_to_out(await _get_receipt(db, receipt_id))
@@ -242,7 +272,10 @@ async def create_tuition_receipt(
     admin: AdminOnly,
     db: DB,
 ) -> TuitionReceiptOut:
-    location = await db.get(Location, body.location_id)
+    location_result = await db.execute(
+        select(Location).where(Location.id == body.location_id).with_for_update()
+    )
+    location = location_result.scalar_one_or_none()
     if not location:
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
 
@@ -295,7 +328,7 @@ async def create_tuition_receipt(
             status_code=422,
             detail=f"Amount does not match invoices plus adjustments (expected {expected:.2f})",
         )
-    receipt_no = body.receipt_no
+    receipt_no = body.receipt_no or await _next_receipt_no(db, body.location_id, body.receipt_date)
     receipt = TuitionReceipt(
         location_id=body.location_id,
         unit_id=body.unit_id,

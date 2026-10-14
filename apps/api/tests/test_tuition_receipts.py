@@ -216,6 +216,60 @@ async def test_create_receipt_rejects_already_paid_invoice(
 
 
 @pytest.mark.asyncio
+async def test_create_receipt_generates_monthly_sequential_number(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    first_inv = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], date="2026-10-01", fee=50
+    )
+    second_inv = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], date="2026-10-02", fee=60
+    )
+
+    first = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-10-14",
+            "invoice_ids": [first_inv["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    second = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "FPS",
+            "receipt_date": "2026-10-15",
+            "invoice_ids": [second_inv["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["receipt_no"] == "R261001"
+    assert second.json()["receipt_no"] == "R261002"
+
+
+@pytest.mark.asyncio
+async def test_next_receipt_no_previews_monthly_number(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    resp = await client.get(
+        "/api/tuition-receipts/next-no",
+        params={"location_id": sample_location["id"], "date": "2026-10-14"},
+        headers=_auth(admin_token),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"next_no": "R261001"}
+
+
+@pytest.mark.asyncio
 async def test_second_receipt_same_day_keeps_manual_numbers(
     client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:
@@ -256,7 +310,7 @@ async def test_second_receipt_same_day_keeps_manual_numbers(
 
 
 @pytest.mark.asyncio
-async def test_create_receipt_uses_manual_receipt_no(
+async def test_create_receipt_accepts_manual_receipt_no(
     client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:
     invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
@@ -279,10 +333,11 @@ async def test_create_receipt_uses_manual_receipt_no(
 
 
 @pytest.mark.asyncio
-async def test_create_receipt_rejects_blank_receipt_no(
+async def test_create_receipt_does_not_require_receipt_no(
     client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:
     invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
+    second_invoice = await _manual_invoice(client, admin_token, sample_location["id"], unit_id=sample_unit["id"])
     missing = await client.post(
         "/api/tuition-receipts",
         json={
@@ -294,7 +349,8 @@ async def test_create_receipt_rejects_blank_receipt_no(
         },
         headers=_auth(admin_token),
     )
-    assert missing.status_code == 422
+    assert missing.status_code == 201, missing.text
+    assert missing.json()["receipt_no"] == "R260901"
     blank = await client.post(
         "/api/tuition-receipts",
         json={
@@ -303,15 +359,16 @@ async def test_create_receipt_rejects_blank_receipt_no(
             "paid_by": "Cash",
             "receipt_no": "   ",
             "receipt_date": "2026-09-02",
-            "invoice_ids": [invoice["id"]],
+            "invoice_ids": [second_invoice["id"]],
         },
         headers=_auth(admin_token),
     )
-    assert blank.status_code == 422
+    assert blank.status_code == 201, blank.text
+    assert blank.json()["receipt_no"] == "R260902"
 
 
 @pytest.mark.asyncio
-async def test_create_receipt_rejects_duplicate_receipt_no(
+async def test_create_receipt_rejects_duplicate_manual_receipt_no(
     client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
 ) -> None:
     first_inv = await _manual_invoice(

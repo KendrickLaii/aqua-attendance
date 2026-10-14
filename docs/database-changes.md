@@ -423,7 +423,7 @@ erDiagram
 | 7 | 手動發票為真實記錄 | `kind='manual'`、`unit_id` 可空、`manual_student_name` 存 walk-in 姓名；`POST /manual` 建立即 `issued`，可重印／付款／作廢。可帶 `purchase_id` 直接結算堂費購買（私補主要出單路徑）。`location_id` 必填，決定編號系列與列印抬頭。`fee` 可負數做 credit note。 |
 | 8 | 未 Paid 可 Edit | `draft`／`issued` 可用 PATCH `lines` 改行項目並重算 `total`，編號保留。帶 `id` 的舊行會保留 `enrollment_id`／SKU（唔會變成 manual 行）。Edit 只改發票快照，不寫回 `course_skus`／`course_enrollments`，也不會建立報名；單上加一行不等於 Join class。唯一寫回：堂費購買原本 `unit_price` 為空時，出單 fee 會填入該 purchase。`paid`／`void` 一般欄位（包括 `invoice_no`、行項目）都 422。例外：`payable_to_name`／`payee_name` 即使已 Paid 仍可改，方便補印退款單抬頭。Paid 之後用負數 Manual invoice（credit note）或 Void receipt。 |
 | 12 | 負數單＝Credit Note | `total < 0` 的發票在 Web 獨立頁 `/attendance/credit-notes`；列印用退款單（REFUND REQUEST + REFUND ACKNOWLEDGEMENT），不是普通 INVOICE。 |
-| 13 | 收條編號手打 | `POST /tuition-receipts` 必填 `receipt_no`；已刪除 `GET /next-no`。撞 `(location_id, receipt_no)` → 409。 |
+| 13 | 收條編號可自動或手動輸入 | `POST /tuition-receipts` 未提供 `receipt_no` 時按中心及收條月份生成 `RYYMMNN`；例如 2026 年 10 月第一張為 `R261001`。亦可手動輸入參考編號，但同一中心不可重複。 |
 | 9 | 作廢單可刪、編號可重用 | `DELETE` 只准 `void` invoice／voided receipt。Posted receipt 仍在時唔准刪／Cancel invoice。刪 cancelled invoice 會拆非 posted receipt 連結。 |
 
 ### Generate 規則（`POST /api/tuition-invoices/generate?year=&month=`）

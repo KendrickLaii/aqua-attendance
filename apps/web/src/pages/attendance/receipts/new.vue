@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   createTuitionReceipt,
+  getNextTuitionReceiptNo,
   listOpenInvoices,
 } from '@/api/attendance/tuitionReceipts'
 import { type TuitionInvoice } from '@/api/attendance/tuitionInvoices'
@@ -56,6 +57,7 @@ const walkInName = ref('')
 const seedInvoiceId = typeof route.query.invoice_id === 'string' ? route.query.invoice_id : null
 const lockedFromInvoice = Boolean(seedInvoiceId)
 let studentRequestId = 0
+let receiptNoRequestId = 0
 const locationId = ref<string | null>(
   typeof route.query.location_id === 'string'
     ? route.query.location_id
@@ -88,7 +90,6 @@ const amountFits = computed(() =>
   Math.round(Number(amount.value) * 100) / 100 === expectedAmount.value,
 )
 const paidByOk = computed(() => Boolean(paidBy.value.trim()))
-const receiptNoOk = computed(() => Boolean(receiptNo.value.trim()))
 const lockedStudentLabel = computed(() => {
   const first = openInvoices.value.find(row => row.id === seedInvoiceId) ?? openInvoices.value[0]
   if (first)
@@ -156,6 +157,26 @@ async function loadLocations() {
   if (!locationId.value)
     locationId.value = locationOptions.value[0]?.value ?? null
 }
+
+async function loadReceiptNo() {
+  if (!locationId.value || !receiptDate.value)
+    return
+  const requestId = ++receiptNoRequestId
+  try {
+    const nextNo = await getNextTuitionReceiptNo({
+      location_id: locationId.value,
+      date: receiptDate.value,
+    })
+    if (requestId === receiptNoRequestId)
+      receiptNo.value = nextNo
+  }
+  catch (e) {
+    if (requestId === receiptNoRequestId)
+      formError.value = formatApiError(e, 'Could not generate the receipt number.')
+  }
+}
+
+watch([locationId, receiptDate], loadReceiptNo)
 
 async function loadStudents(search?: string) {
   const requestId = ++studentRequestId
@@ -264,10 +285,6 @@ async function submit() {
     formError.value = 'PAID BY is required.'
     return
   }
-  if (!receiptNo.value.trim()) {
-    formError.value = 'Receipt no. / Reference no. is required.'
-    return
-  }
   if (!selectedIds.value.length) {
     formError.value = 'Select at least one issued invoice.'
     return
@@ -295,7 +312,7 @@ async function submit() {
       unit_id: first?.unit_id ?? student.value?.id ?? null,
       payer_name: first?.unit_id ? null : (walkInName.value || first?.manual_student_name || null),
       paid_by: paidBy.value.trim(),
-      receipt_no: receiptNo.value.trim(),
+      receipt_no: receiptNo.value.trim() || undefined,
       receipt_date: receiptDate.value,
       invoice_ids: selectedIds.value,
       amount: roundMoney(Number(amount.value)),
@@ -323,6 +340,7 @@ onMounted(async () => {
     return
   try {
     await loadLocations()
+    await loadReceiptNo()
     if (!lockedFromInvoice)
       await loadStudents()
     await loadOpenInvoices()
@@ -403,17 +421,12 @@ onMounted(async () => {
           >
             <VTextField
               v-model="receiptNo"
+              label="Receipt no. / Reference no."
               density="compact"
-              required
-              :rules="[requiredValidator]"
-              hide-details="auto"
+              hide-details
               maxlength="50"
               autocomplete="off"
-            >
-              <template #label>
-                Receipt no. / Reference no. <span class="text-error">*</span>
-              </template>
-            </VTextField>
+            />
           </VCol>
           <VCol
             cols="12"
@@ -648,7 +661,7 @@ onMounted(async () => {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="!selectedIds.length || !paidByOk || !receiptNoOk"
+            :disabled="!selectedIds.length || !paidByOk"
             @click="submit"
           >
             Save and print

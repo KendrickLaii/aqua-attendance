@@ -56,7 +56,7 @@ export interface TuitionReceiptCreatePayload {
   unit_id?: string | null
   payer_name?: string | null
   paid_by: string
-  receipt_no: string
+  receipt_no?: string
   receipt_date: string
   invoice_ids: string[]
   amount?: number
@@ -102,6 +102,14 @@ export async function getTuitionReceipt(receiptId: string): Promise<TuitionRecei
 
 export async function createTuitionReceipt(payload: TuitionReceiptCreatePayload): Promise<TuitionReceipt> {
   return await $attendanceApi('/tuition-receipts', { method: 'POST', body: payload })
+}
+
+export async function getNextTuitionReceiptNo(params: {
+  location_id: string
+  date: string
+}): Promise<string> {
+  const result = await $attendanceApi<{ next_no: string }>('/tuition-receipts/next-no', { params })
+  return result.next_no
 }
 
 export async function voidTuitionReceipt(receiptId: string): Promise<TuitionReceipt> {
