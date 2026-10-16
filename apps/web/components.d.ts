@@ -378,6 +378,7 @@ declare module 'vue' {
     EnableOneTimePasswordDialog: typeof import('./src/components/dialogs/EnableOneTimePasswordDialog.vue')['default']
     ErrorHeader: typeof import('./src/components/ErrorHeader.vue')['default']
     FileUploadZone: typeof import('./src/components/FileUploadZone.vue')['default']
+    HelpBubble: typeof import('./src/components/attendance/HelpBubble.vue')['default']
     History: typeof import('./src/components/dialogs/tax/client-dialog-tabs/History.vue')['default']
     I18n: typeof import('./src/@core/components/I18n.vue')['default']
     InvoiceBillsSection: typeof import('./src/components/attendance/invoices/InvoiceBillsSection.vue')['default']
