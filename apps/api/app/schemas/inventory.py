@@ -10,7 +10,9 @@ MovementType = Literal["in", "out", "adjust"]
 MovementTypeOut = Literal["in", "out", "adjust", "transfer_in", "transfer_out"]
 
 InReasonCode = Literal["opening", "other"]
-OutReasonCode = Literal["damage", "loss", "gift", "sample", "internal_use", "supplier_return", "other"]
+OutReasonCode = Literal[
+    "damage", "loss", "gift", "sample", "internal_use", "supplier_return", "sale", "other"
+]
 
 StocktakeStatus = Literal["draft", "applied", "cancelled"]
 

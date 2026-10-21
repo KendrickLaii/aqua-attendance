@@ -51,6 +51,9 @@ export default [
       { title: 'Purchase Orders', to: 'attendance-inventory-purchase-orders' },
       { title: 'Goods Receipts', to: 'attendance-inventory-goods-receipts' },
       { title: 'Purchase Returns', to: 'attendance-inventory-purchase-returns' },
+      { title: 'Customers', to: 'attendance-inventory-customers' },
+      { title: 'Sales Orders', to: 'attendance-inventory-sales-orders' },
+      { title: 'Delivery Orders', to: 'attendance-inventory-delivery-orders' },
     ],
   },
   {

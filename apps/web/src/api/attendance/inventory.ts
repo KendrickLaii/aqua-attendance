@@ -58,7 +58,7 @@ export type InventoryMovementType = 'in' | 'out' | 'adjust'
 export type InventoryMovementTypeOut = 'in' | 'out' | 'adjust' | 'transfer_in' | 'transfer_out'
 
 export type InventoryInReasonCode = 'opening' | 'other'
-export type InventoryOutReasonCode = 'damage' | 'loss' | 'gift' | 'sample' | 'internal_use' | 'supplier_return' | 'other'
+export type InventoryOutReasonCode = 'damage' | 'loss' | 'gift' | 'sample' | 'internal_use' | 'supplier_return' | 'sale' | 'other'
 
 export interface InventoryMovement {
   id: string
