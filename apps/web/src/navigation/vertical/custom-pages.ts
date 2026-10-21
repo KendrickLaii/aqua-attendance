@@ -43,6 +43,7 @@ export default [
     title: 'Inventory',
     icon: { icon: 'ri-archive-line' },
     children: [
+      { title: 'Inventory Dashboard', to: 'attendance-inventory-dashboard' },
       { title: 'Stock Overview', to: 'attendance-inventory' },
       { title: 'Items', to: 'attendance-inventory-items' },
       { title: 'Movements', to: 'attendance-inventory-movements' },
@@ -57,6 +58,7 @@ export default [
       { title: 'Invoices', to: 'attendance-inventory-invoices' },
       { title: 'Receipts', to: 'attendance-inventory-receipts' },
       { title: 'Credit Notes', to: 'attendance-inventory-credit-notes' },
+      { title: 'Reports', to: 'attendance-inventory-reports' },
     ],
   },
   {

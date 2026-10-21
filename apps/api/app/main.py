@@ -25,6 +25,7 @@ from app.routers import (
     inventory,
     inventory_invoicing,
     inventory_purchasing,
+    inventory_reports,
     inventory_sales,
     location_attachments,
     locations,
@@ -57,13 +58,29 @@ async def _attachment_purge_loop() -> None:
         await asyncio.sleep(24 * 60 * 60)
 
 
+async def _inventory_alerts_loop() -> None:
+    from app.services.inventory_alerts import notify_alerts
+
+    while True:
+        try:
+            async with async_session_factory() as db:
+                await notify_alerts(db)
+                await db.commit()
+        except Exception:
+            logger.exception("Inventory alerts notify failed")
+        await asyncio.sleep(settings.INVENTORY_ALERT_INTERVAL_HOURS * 3600)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    task = asyncio.create_task(_attachment_purge_loop())
+    tasks = [asyncio.create_task(_attachment_purge_loop())]
+    if settings.INVENTORY_ALERTS_ENABLED:
+        tasks.append(asyncio.create_task(_inventory_alerts_loop()))
     try:
         yield
     finally:
-        task.cancel()
+        for task in tasks:
+            task.cancel()
 
 
 app = FastAPI(
@@ -113,6 +130,7 @@ app.include_router(inventory.router, prefix="/api")
 app.include_router(inventory_purchasing.router, prefix="/api")
 app.include_router(inventory_sales.router, prefix="/api")
 app.include_router(inventory_invoicing.router, prefix="/api")
+app.include_router(inventory_reports.router, prefix="/api")
 app.include_router(tuition_invoices.router, prefix="/api")
 app.include_router(tuition_receipts.router, prefix="/api")  # receipts settle issued invoices
 app.include_router(shifts.templates_router, prefix="/api")

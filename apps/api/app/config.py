@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     ATTACHMENTS_PER_MONTH: int = 2
     MAX_DETAIL_PHOTOS: int = 10
 
+    # Inventory alerts / reporting
+    INVENTORY_ALERTS_ENABLED: bool = True
+    INVENTORY_INVOICE_OVERDUE_DAYS: int = 30
+    INVENTORY_ALERT_INTERVAL_HOURS: int = 24
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
