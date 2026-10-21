@@ -19,6 +19,14 @@ from app.models.tuition_receipt import TuitionReceipt
 from app.models.shift import Shift, ShiftTemplate
 from app.models.shift_request import ShiftRequest
 from app.models.location_attachment import LocationAttachment
+from app.models.inventory import (
+    InventoryCategory,
+    InventoryItem,
+    InventoryMovement,
+    InventoryStock,
+    InventoryStocktake,
+    InventoryStocktakeLine,
+)
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
@@ -26,4 +34,6 @@ __all__ = [
     "CourseSpu", "CourseSku", "CourseEnrollment", "EnrollmentPurchase", "TuitionInvoice", "InvoiceCounter",
     "CreditNoteCounter", "TuitionReceipt", "Shift", "ShiftTemplate", "ShiftRequest",
     "LocationAttachment",
+    "InventoryCategory", "InventoryItem", "InventoryStock", "InventoryMovement",
+    "InventoryStocktake", "InventoryStocktakeLine",
 ]

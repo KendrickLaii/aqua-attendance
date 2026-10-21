@@ -40,6 +40,16 @@ export default [
     to: 'attendance-courses',
   },
   {
+    title: 'Inventory',
+    icon: { icon: 'ri-archive-line' },
+    children: [
+      { title: 'Stock Overview', to: 'attendance-inventory' },
+      { title: 'Items', to: 'attendance-inventory-items' },
+      { title: 'Movements', to: 'attendance-inventory-movements' },
+      { title: 'Stocktakes', to: 'attendance-inventory-stocktakes' },
+    ],
+  },
+  {
     title: 'Invoices',
     icon: { icon: 'ri-bill-line' },
     to: 'attendance-invoices',
