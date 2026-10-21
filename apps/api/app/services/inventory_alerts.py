@@ -1,7 +1,7 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.models.inventory import InventoryItem, InventoryStock
@@ -169,11 +169,32 @@ def _describe(kind: str, item: dict) -> tuple[str, str]:
     return item["id"], f"{item['pf_no']} ({item['so_no']}) expired {item['pf_valid_until']}"
 
 
-async def notify_alerts(db, location_id: uuid.UUID | None = None) -> dict:
-    """Create one unread notification per alert item per active admin user.
+# Transaction-scoped advisory lock key for notify_alerts (Postgres only);
+# serializes the loop + manual /alerts/notify across app workers.
+_ADVISORY_LOCK_KEY = 727401
+# An alert for the same (user, kind, ref) is not re-sent within this window
+# even if the earlier notification was already read.
+DEDUPE_WINDOW_DAYS = 7
 
-    Deduped on extra_data {"inventory_alert": kind, "ref": id}. Returns counts.
+
+async def notify_alerts(db, location_id: uuid.UUID | None = None) -> dict:
+    """Create one notification per alert item per active admin user.
+
+    Deduped on extra_data {"inventory_alert": kind, "ref": ref}: skipped when
+    an unread notification exists or one was created within
+    DEDUPE_WINDOW_DAYS. On Postgres a transaction-scoped advisory lock
+    serializes concurrent runs across workers; a loser returns early with
+    ``locked=True``. Caller commits.
     """
+    if db.get_bind().dialect.name == "postgresql":
+        acquired = (
+            await db.execute(
+                text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": _ADVISORY_LOCK_KEY}
+            )
+        ).scalar()
+        if not acquired:
+            return {"created": 0, "skipped": 0, "locked": True}
+
     alerts = await compute_alerts(db, location_id=location_id)
     users = (
         await db.execute(
@@ -181,12 +202,14 @@ async def notify_alerts(db, location_id: uuid.UUID | None = None) -> dict:
         )
     ).scalars().all()
 
-    # load unread inventory-alert notifications once; match kind+ref in Python
-    # (extra_data is generic JSON — astext is not portable across dialects)
+    # Load unread inventory-alert notifications plus all alert notifications
+    # from the dedupe window; match kind+ref in Python (extra_data is generic
+    # JSON — astext is not portable across dialects).
+    window_start = datetime.now(timezone.utc) - timedelta(days=DEDUPE_WINDOW_DAYS)
     existing_rows = (
         await db.execute(
             select(Notification.user_id, Notification.extra_data).where(
-                Notification.is_read.is_(False),
+                (Notification.is_read.is_(False)) | (Notification.created_at >= window_start),
                 Notification.user_id.in_([u.id for u in users]) if users else Notification.user_id.is_(None),
             )
         )
@@ -224,4 +247,4 @@ async def notify_alerts(db, location_id: uuid.UUID | None = None) -> dict:
                 created += 1
     if created:
         await db.flush()
-    return {"created": created, "skipped": skipped}
+    return {"created": created, "skipped": skipped, "locked": False}

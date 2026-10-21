@@ -60,6 +60,27 @@ export type InventoryMovementTypeOut = 'in' | 'out' | 'adjust' | 'transfer_in' |
 export type InventoryInReasonCode = 'opening' | 'sales_return' | 'other'
 export type InventoryOutReasonCode = 'damage' | 'loss' | 'gift' | 'sample' | 'internal_use' | 'supplier_return' | 'sale' | 'other'
 
+// Friendly labels for raw reason_code values — use everywhere codes are shown.
+export const REASON_CODE_LABELS: Record<string, string> = {
+  opening: 'Opening stock 期初',
+  sales_return: 'Sales return 銷售退回',
+  damage: 'Damage 損壞',
+  loss: 'Loss 遺失',
+  gift: 'Gift 贈送',
+  sample: 'Sample 樣品',
+  internal_use: 'Internal use 內部使用',
+  supplier_return: 'Supplier return 退貨給供應商',
+  sale: 'Sale 銷售',
+  other: 'Other 其他',
+}
+
+export function reasonCodeLabel(code: string | null | undefined): string {
+  if (!code)
+    return '—'
+
+  return REASON_CODE_LABELS[code] ?? code
+}
+
 export interface InventoryMovement {
   id: string
   item_id: string

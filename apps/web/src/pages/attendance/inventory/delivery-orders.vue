@@ -12,10 +12,14 @@ import {
 } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { createInvoice } from '@/api/attendance/inventoryInvoicing'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
+import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useConfirmAction } from '@/composables/useConfirmAction'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -39,7 +43,14 @@ const deliveries = ref<DeliveryOrder[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
-const statusFilter = ref<DeliveryOrderStatus | null>(null)
+const route = useRoute()
+const listReq = useLatestRequest()
+const confirm = useConfirmAction()
+
+const statusFilter = ref<DeliveryOrderStatus | null>(
+  (route.query.status as DeliveryOrderStatus | undefined) ?? null,
+)
+
 const locationFilter = ref<string | null>(null)
 
 const selected = ref<DeliveryOrder | null>(null)
@@ -59,6 +70,31 @@ const locationOptions = computed(() =>
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const isDraft = computed(() => selected.value?.status === 'draft')
+
+const chainSteps = computed<DocChainStep[]>(() => {
+  const dor = selected.value
+  if (!dor)
+    return []
+
+  return [
+    { label: `SO ${dor.so_no_ref ?? ''}`.trim(), state: 'done', to: '/attendance/inventory/sales-orders' },
+    { label: `DO ${dor.do_no}`, state: dor.status === 'void' ? 'void' : 'current', hint: dor.status },
+    { label: 'Invoice', state: 'todo', to: '/attendance/inventory/invoices' },
+    { label: 'Receipt', state: 'todo', to: '/attendance/inventory/receipts' },
+  ]
+})
+
+const nextStep = computed(() => {
+  const dor = selected.value
+  if (!dor)
+    return null
+  if (dor.status === 'draft')
+    return { label: 'Confirm delivery', run: askConfirm }
+  if (dor.status === 'confirmed')
+    return { label: 'Create invoice', run: doCreateInvoice }
+
+  return null
+})
 
 onMounted(async () => {
   if (!(await ensureAccess()))
@@ -85,6 +121,8 @@ onMounted(async () => {
 
 async function loadDeliveries() {
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const result = await listDeliveryOrders({
       status: statusFilter.value ?? undefined,
@@ -93,6 +131,8 @@ async function loadDeliveries() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     deliveries.value = result.items
     total.value = result.total
   }
@@ -119,7 +159,18 @@ async function selectDelivery(do_: DeliveryOrder) {
   }
 }
 
-async function doConfirm() {
+function askConfirm() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Confirm ${selected.value.do_no}?`,
+    'Confirming ships the goods — stock will be reduced and the order lines marked as shipped.',
+    { label: 'Confirm', color: 'primary' },
+    performConfirm,
+  )
+}
+
+async function performConfirm() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -137,7 +188,21 @@ async function doConfirm() {
   }
 }
 
-async function doVoid() {
+function askVoid() {
+  const dor = selected.value
+  if (!dor)
+    return
+  const qty = dor.lines.reduce((s, l) => s + l.qty, 0)
+
+  confirm.ask(
+    `Void ${dor.do_no}?`,
+    `Voiding ${dor.do_no} will return ${qty} item${qty === 1 ? '' : 's'} to stock. This cannot be undone.`,
+    { label: 'Void' },
+    performVoid,
+  )
+}
+
+async function performVoid() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -173,7 +238,18 @@ async function doCreateInvoice() {
   }
 }
 
-async function doDelete() {
+function askDelete() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Delete draft ${selected.value.do_no}?`,
+    'The draft delivery order will be permanently deleted.',
+    { label: 'Delete' },
+    performDelete,
+  )
+}
+
+async function performDelete() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -305,7 +381,7 @@ async function doDelete() {
             </VListItem>
             <VListItem v-if="deliveries.length === 0 && !loading">
               <VListItemTitle class="text-medium-emphasis">
-                No delivery orders yet.
+                No delivery orders yet — confirm a sales order, then use "Create DO".
               </VListItemTitle>
             </VListItem>
           </VList>
@@ -337,12 +413,22 @@ async function doDelete() {
             <span>{{ selected.do_no }}</span>
             <InventoryStatusChip :status="selected.status" />
             <VSpacer />
+            <VBtn
+              v-if="nextStep"
+              color="primary"
+              size="small"
+              prepend-icon="ri-arrow-right-line"
+              :loading="saving"
+              @click="nextStep.run()"
+            >
+              Next: {{ nextStep.label }}
+            </VBtn>
             <template v-if="isDraft">
               <VBtn
                 color="primary"
                 size="small"
                 :loading="saving"
-                @click="doConfirm"
+                @click="askConfirm"
               >
                 Confirm
               </VBtn>
@@ -351,7 +437,7 @@ async function doDelete() {
                 color="error"
                 size="small"
                 :loading="saving"
-                @click="doDelete"
+                @click="askDelete"
               >
                 Delete
               </VBtn>
@@ -371,7 +457,7 @@ async function doDelete() {
                 color="error"
                 size="small"
                 :loading="saving"
-                @click="doVoid"
+                @click="askVoid"
               >
                 Void
               </VBtn>
@@ -384,27 +470,35 @@ async function doDelete() {
               · SO {{ selected.so_no_ref }}
             </template>
           </VCardSubtitle>
-          <VTable>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="text-end">
-                  Qty
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="line in selected.lines"
-                :key="line.id"
-              >
-                <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') || line.item_id }}</td>
-                <td class="text-end">
-                  {{ line.qty }}
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
+          <VCardText class="pa-0">
+            <InventoryDocChain
+              :steps="chainSteps"
+              class="px-4 pb-2"
+            />
+            <div class="overflow-x-auto">
+              <VTable>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th class="text-end">
+                      Qty
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="line in selected.lines"
+                    :key="line.id"
+                  >
+                    <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') || line.item_id }}</td>
+                    <td class="text-end tabular-nums">
+                      {{ line.qty }}
+                    </td>
+                  </tr>
+                </tbody>
+              </VTable>
+            </div>
+          </VCardText>
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
@@ -413,5 +507,16 @@ async function doDelete() {
         </VCard>
       </VCol>
     </VRow>
+
+    <AttendanceConfirmDialog
+      v-model="confirm.open.value"
+      :title="confirm.title.value"
+      :confirm-label="confirm.label.value"
+      :confirm-color="confirm.color.value"
+      :loading="confirm.loading.value"
+      @confirm="confirm.run"
+    >
+      {{ confirm.message.value }}
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>

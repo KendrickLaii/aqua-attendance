@@ -174,7 +174,7 @@ async def test_movement_reference_idempotent(
     first = await client.post("/api/inventory/movements", json=body, headers=_h(admin_token))
     assert first.status_code == 201, first.text
     second = await client.post("/api/inventory/movements", json=body, headers=_h(admin_token))
-    assert second.status_code == 201, second.text
+    assert second.status_code == 200, second.text  # idempotent repeat → 200
     assert second.json()["id"] == first.json()["id"]
 
     stocks = await client.get(f"/api/inventory/stocks?location_id={loc}", headers=_h(admin_token))

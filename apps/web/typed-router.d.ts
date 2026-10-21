@@ -70,6 +70,7 @@ declare module 'vue-router/auto-routes' {
     'attendance-inventory-sales-orders': RouteRecordInfo<'attendance-inventory-sales-orders', '/attendance/inventory/sales-orders', Record<never, never>, Record<never, never>>,
     'attendance-inventory-stocktakes': RouteRecordInfo<'attendance-inventory-stocktakes', '/attendance/inventory/stocktakes', Record<never, never>, Record<never, never>>,
     'attendance-inventory-suppliers': RouteRecordInfo<'attendance-inventory-suppliers', '/attendance/inventory/suppliers', Record<never, never>, Record<never, never>>,
+    'attendance-inventory-workflow': RouteRecordInfo<'attendance-inventory-workflow', '/attendance/inventory/workflow', Record<never, never>, Record<never, never>>,
     'attendance-invoices': RouteRecordInfo<'attendance-invoices', '/attendance/invoices', Record<never, never>, Record<never, never>>,
     'attendance-locations': RouteRecordInfo<'attendance-locations', '/attendance/locations', Record<never, never>, Record<never, never>>,
     'attendance-log': RouteRecordInfo<'attendance-log', '/attendance/log', Record<never, never>, Record<never, never>>,

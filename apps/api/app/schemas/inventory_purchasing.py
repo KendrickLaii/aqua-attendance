@@ -143,6 +143,12 @@ class GoodsReceiptCreate(BaseModel):
     lines: list[GoodsReceiptLineIn] = Field(default_factory=list)
 
 
+class GoodsReceiptConfirm(BaseModel):
+    # Re-validated against remaining PO qty at confirm time; set true to allow
+    # receiving beyond the ordered quantity.
+    allow_over_receipt: bool = False
+
+
 class GoodsReceiptUpdate(BaseModel):
     receipt_date: date | None = None
     notes: str | None = Field(default=None, max_length=500)

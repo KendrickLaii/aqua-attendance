@@ -12,3 +12,8 @@
   padding-bottom: 0;
   min-height: auto;
 }
+
+// Tabular figures for numeric table cells
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

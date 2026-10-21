@@ -221,8 +221,11 @@ export async function deleteGoodsReceipt(id: string): Promise<void> {
   return await $attendanceApi(`/inventory/goods-receipts/${id}`, { method: 'DELETE' })
 }
 
-export async function confirmGoodsReceipt(id: string): Promise<GoodsReceipt> {
-  return await $attendanceApi(`/inventory/goods-receipts/${id}/confirm`, { method: 'POST' })
+export async function confirmGoodsReceipt(id: string, allowOverReceipt = false): Promise<GoodsReceipt> {
+  return await $attendanceApi(`/inventory/goods-receipts/${id}/confirm`, {
+    method: 'POST',
+    body: { allow_over_receipt: allowOverReceipt },
+  })
 }
 
 export async function voidGoodsReceipt(id: string): Promise<GoodsReceipt> {

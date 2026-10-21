@@ -458,6 +458,7 @@ declare global {
   const useClipboardItems: typeof import('@vueuse/core')['useClipboardItems']
   const useCloned: typeof import('@vueuse/core')['useCloned']
   const useColorMode: typeof import('@vueuse/core')['useColorMode']
+  const useConfirmAction: typeof import('./src/composables/useConfirmAction')['useConfirmAction']
   const useConfirmDialog: typeof import('@vueuse/core')['useConfirmDialog']
   const useCookie: typeof import('./src/@core/composable/useCookie')['useCookie']
   const useCounter: typeof import('@vueuse/core')['useCounter']
@@ -475,6 +476,7 @@ declare global {
   const useDeviceOrientation: typeof import('@vueuse/core')['useDeviceOrientation']
   const useDevicePixelRatio: typeof import('@vueuse/core')['useDevicePixelRatio']
   const useDevicesList: typeof import('@vueuse/core')['useDevicesList']
+  const useDirtyGuard: typeof import('./src/composables/useDirtyGuard')['useDirtyGuard']
   const useDisplayMedia: typeof import('@vueuse/core')['useDisplayMedia']
   const useDocumentVisibility: typeof import('@vueuse/core')['useDocumentVisibility']
   const useDraggable: typeof import('@vueuse/core')['useDraggable']
@@ -510,6 +512,7 @@ declare global {
   const useIntervalFn: typeof import('@vueuse/core')['useIntervalFn']
   const useKeyModifier: typeof import('@vueuse/core')['useKeyModifier']
   const useLastChanged: typeof import('@vueuse/core')['useLastChanged']
+  const useLatestRequest: typeof import('./src/composables/useLatestRequest')['useLatestRequest']
   const useLocalStorage: typeof import('@vueuse/core')['useLocalStorage']
   const useMagicKeys: typeof import('@vueuse/core')['useMagicKeys']
   const useManualRefHistory: typeof import('@vueuse/core')['useManualRefHistory']
@@ -1097,6 +1100,7 @@ declare module 'vue' {
     readonly useClipboardItems: UnwrapRef<typeof import('@vueuse/core')['useClipboardItems']>
     readonly useCloned: UnwrapRef<typeof import('@vueuse/core')['useCloned']>
     readonly useColorMode: UnwrapRef<typeof import('@vueuse/core')['useColorMode']>
+    readonly useConfirmAction: UnwrapRef<typeof import('./src/composables/useConfirmAction')['useConfirmAction']>
     readonly useConfirmDialog: UnwrapRef<typeof import('@vueuse/core')['useConfirmDialog']>
     readonly useCookie: UnwrapRef<typeof import('./src/@core/composable/useCookie')['useCookie']>
     readonly useCounter: UnwrapRef<typeof import('@vueuse/core')['useCounter']>
@@ -1114,6 +1118,7 @@ declare module 'vue' {
     readonly useDeviceOrientation: UnwrapRef<typeof import('@vueuse/core')['useDeviceOrientation']>
     readonly useDevicePixelRatio: UnwrapRef<typeof import('@vueuse/core')['useDevicePixelRatio']>
     readonly useDevicesList: UnwrapRef<typeof import('@vueuse/core')['useDevicesList']>
+    readonly useDirtyGuard: UnwrapRef<typeof import('./src/composables/useDirtyGuard')['useDirtyGuard']>
     readonly useDisplayMedia: UnwrapRef<typeof import('@vueuse/core')['useDisplayMedia']>
     readonly useDocumentVisibility: UnwrapRef<typeof import('@vueuse/core')['useDocumentVisibility']>
     readonly useDraggable: UnwrapRef<typeof import('@vueuse/core')['useDraggable']>
@@ -1149,6 +1154,7 @@ declare module 'vue' {
     readonly useIntervalFn: UnwrapRef<typeof import('@vueuse/core')['useIntervalFn']>
     readonly useKeyModifier: UnwrapRef<typeof import('@vueuse/core')['useKeyModifier']>
     readonly useLastChanged: UnwrapRef<typeof import('@vueuse/core')['useLastChanged']>
+    readonly useLatestRequest: UnwrapRef<typeof import('./src/composables/useLatestRequest')['useLatestRequest']>
     readonly useLocalStorage: UnwrapRef<typeof import('@vueuse/core')['useLocalStorage']>
     readonly useMagicKeys: UnwrapRef<typeof import('@vueuse/core')['useMagicKeys']>
     readonly useManualRefHistory: UnwrapRef<typeof import('@vueuse/core')['useManualRefHistory']>

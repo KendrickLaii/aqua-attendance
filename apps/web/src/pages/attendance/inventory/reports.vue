@@ -19,6 +19,8 @@ import { type InventorySupplier, listSuppliers } from '@/api/attendance/inventor
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useLatestRequest } from '@/composables/useLatestRequest'
+import { reasonCodeLabel } from '@/api/attendance/inventory'
 
 definePage({ meta: {} })
 
@@ -60,6 +62,7 @@ const purchases = ref<PurchasesReport | null>(null)
 const sales = ref<SalesReport | null>(null)
 const receivables = ref<ReceivablesReport | null>(null)
 const writeoffs = ref<WriteOffsReport | null>(null)
+const reportReq = useLatestRequest()
 
 function params() {
   return {
@@ -75,26 +78,47 @@ function params() {
 async function load() {
   loading.value = true
   loadError.value = ''
+
+  const token = reportReq.next()
+  const tab = activeTab.value
   try {
     const p = params()
-    if (activeTab.value === 'valuation')
-      valuation.value = await getStockValuation(p)
-    else if (activeTab.value === 'movements')
-      movements.value = await getMovementsSummary(p)
-    else if (activeTab.value === 'purchases')
-      purchases.value = await getPurchasesReport(p)
-    else if (activeTab.value === 'sales')
-      sales.value = await getSalesReport(p)
-    else if (activeTab.value === 'receivables')
-      receivables.value = await getReceivablesReport(p)
-    else if (activeTab.value === 'writeoffs')
-      writeoffs.value = await getWriteOffsReport(p)
+
+    const result = tab === 'valuation'
+      ? await getStockValuation(p)
+      : tab === 'movements'
+        ? await getMovementsSummary(p)
+        : tab === 'purchases'
+          ? await getPurchasesReport(p)
+          : tab === 'sales'
+            ? await getSalesReport(p)
+            : tab === 'receivables'
+              ? await getReceivablesReport(p)
+              : await getWriteOffsReport(p)
+
+    if (!reportReq.isLatest(token))
+      return
+    if (tab === 'valuation')
+      valuation.value = result as StockValuationReport
+    else if (tab === 'movements')
+      movements.value = result as MovementSummaryReport
+    else if (tab === 'purchases')
+      purchases.value = result as PurchasesReport
+    else if (tab === 'sales')
+      sales.value = result as SalesReport
+    else if (tab === 'receivables')
+      receivables.value = result as ReceivablesReport
+    else
+      writeoffs.value = result as WriteOffsReport
   }
   catch (e) {
+    if (!reportReq.isLatest(token))
+      return
     loadError.value = formatApiError(e, 'Failed to load report.')
   }
   finally {
-    loading.value = false
+    if (reportReq.isLatest(token))
+      loading.value = false
   }
 }
 
@@ -129,14 +153,14 @@ function fmtMoney(value: number | null | undefined): string {
 }
 
 function reasonsText(reasons: Record<string, number>): string {
-  return Object.entries(reasons).map(([k, v]) => `${k}:${v}`).join('; ')
+  return Object.entries(reasons).map(([k, v]) => `${reasonCodeLabel(k)}:${v}`).join('; ')
 }
 
-watch(activeTab, () => {
-  load()
-})
-
-watch([locationFilter, customerFilter, supplierFilter, dateFrom, dateTo, asOf], load)
+// Single watcher: changing several refs in one tick triggers load() only once.
+watch(
+  [activeTab, locationFilter, customerFilter, supplierFilter, dateFrom, dateTo, asOf],
+  () => load(),
+)
 
 onMounted(async () => {
   if (!(await ensureAccess()))
@@ -549,6 +573,7 @@ onMounted(async () => {
           </VTable>
           <div class="mt-3 text-body-2">
             Invoiced: {{ fmtMoney(sales.totals.invoiced) }} ·
+            Header discounts: -{{ fmtMoney(sales.totals.header_discounts) }} ·
             Credited: {{ fmtMoney(sales.totals.credited) }} ·
             <span class="font-weight-bold">Net sales: {{ fmtMoney(sales.totals.net_sales) }}</span> ·
             Payments: {{ fmtMoney(sales.totals.payments) }}
@@ -652,7 +677,7 @@ onMounted(async () => {
                 v-for="(r, i) in writeoffs.rows"
                 :key="i"
               >
-                <td>{{ r.reason_code }}</td>
+                <td>{{ reasonCodeLabel(r.reason_code) }}</td>
                 <td>{{ r.sku_code }}</td>
                 <td>{{ r.name_zh }}</td>
                 <td class="text-end">
@@ -675,3 +700,13 @@ onMounted(async () => {
     </VCard>
   </div>
 </template>
+
+<style scoped>
+.v-table :deep(.v-table__wrapper) {
+  overflow-x: auto;
+}
+
+.v-table td.text-end {
+  font-variant-numeric: tabular-nums;
+}
+</style>

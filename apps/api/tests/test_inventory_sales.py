@@ -689,3 +689,39 @@ async def test_p4_audit_rows_written(
         assert "CREATE" in await actions("customers")
         assert {"CREATE", "UPDATE"} <= await actions("sales_orders")
         assert {"CREATE", "UPDATE"} <= await actions("delivery_orders")
+
+
+# ---- review-fix coverage ----
+
+
+async def test_do_confirm_after_so_cancel_fails(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    """A draft DO created before the SO was cancelled cannot ship after the
+    cancellation released the reservation."""
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 5)
+    so = await _confirmed_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 2)]
+    )
+    do = await _create_do(
+        client, admin_token, {"so_id": so["id"], "delivery_date": "2026-10-17"}
+    )
+
+    resp = await client.post(
+        f"/api/inventory/sales-orders/{so['id']}/cancel", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.post(
+        f"/api/inventory/delivery-orders/{do['id']}/confirm", headers=_h(admin_token)
+    )
+    assert resp.status_code == 422, resp.text
+    state = (
+        await client.get(f"/api/inventory/delivery-orders/{do['id']}", headers=_h(admin_token))
+    ).json()
+    assert state["status"] == "draft"
+    stock = await _stock(client, admin_token, item["id"], loc)
+    assert stock["quantity"] == 5

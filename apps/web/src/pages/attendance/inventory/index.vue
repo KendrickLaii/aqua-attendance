@@ -12,6 +12,7 @@ import InventoryMovementDialog from '@/components/attendance/inventory/Inventory
 import InventoryTransferDialog from '@/components/attendance/inventory/InventoryTransferDialog.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -32,6 +33,7 @@ const movementDialogOpen = ref(false)
 const transferDialogOpen = ref(false)
 const openingStockInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
+const stockReq = useLatestRequest()
 
 const itemById = computed(() => new Map(items.value.map(i => [i.id, i])))
 
@@ -101,9 +103,15 @@ async function loadAll() {
 }
 
 async function loadStocks() {
-  stocks.value = selectedLocationId.value
+  const token = stockReq.next()
+
+  const result = selectedLocationId.value
     ? await listInventoryStocks({ location_id: selectedLocationId.value })
     : await listInventoryStocks()
+
+  if (!stockReq.isLatest(token))
+    return
+  stocks.value = result
 }
 
 watch(selectedLocationId, async () => {
@@ -276,68 +284,70 @@ async function onOpeningStockFile(event: Event) {
             clearable
           />
         </VCardText>
-        <VTable>
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Item</th>
-              <th>Unit</th>
-              <th class="text-end">
-                On hand
-              </th>
-              <th class="text-end">
-                Reserved
-              </th>
-              <th class="text-end">
-                Available
-              </th>
-              <th class="text-end">
-                Reorder level
-              </th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in rows"
-              :key="row.stock.id"
-              :class="row.isLow ? 'text-error' : undefined"
-            >
-              <td>{{ row.item.sku_code }}</td>
-              <td>{{ [row.item.name_zh, row.item.name_en].filter(Boolean).join(' · ') }}</td>
-              <td>{{ row.item.unit_of_measure || '—' }}</td>
-              <td class="text-end font-weight-medium">
-                {{ row.stock.quantity }}
-              </td>
-              <td class="text-end">
-                {{ row.stock.reserved }}
-              </td>
-              <td class="text-end">
-                {{ row.stock.available }}
-              </td>
-              <td class="text-end">
-                {{ row.item.reorder_level }}
-              </td>
-              <td>
-                <VChip
-                  :color="row.isLow ? 'error' : 'success'"
-                  size="small"
-                  variant="tonal"
-                >
-                  {{ row.isLow ? 'Low stock' : 'OK' }}
-                </VChip>
-              </td>
-            </tr>
-            <tr v-if="rows.length === 0">
-              <td
-                colspan="8"
-                class="text-center text-medium-emphasis py-8"
+        <div class="overflow-x-auto">
+          <VTable>
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Item</th>
+                <th>Unit</th>
+                <th class="text-end">
+                  On hand
+                </th>
+                <th class="text-end">
+                  Reserved
+                </th>
+                <th class="text-end">
+                  Available
+                </th>
+                <th class="text-end">
+                  Reorder level
+                </th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in rows"
+                :key="row.stock.id"
+                :class="row.isLow ? 'text-error' : undefined"
               >
-                No stock records for this location yet. Use “Record Movement” to add stock.
-              </td>
-            </tr>
-          </tbody>
-        </VTable>
+                <td>{{ row.item.sku_code }}</td>
+                <td>{{ [row.item.name_zh, row.item.name_en].filter(Boolean).join(' · ') }}</td>
+                <td>{{ row.item.unit_of_measure || '—' }}</td>
+                <td class="text-end font-weight-medium tabular-nums">
+                  {{ row.stock.quantity }}
+                </td>
+                <td class="text-end tabular-nums">
+                  {{ row.stock.reserved }}
+                </td>
+                <td class="text-end tabular-nums">
+                  {{ row.stock.available }}
+                </td>
+                <td class="text-end tabular-nums">
+                  {{ row.item.reorder_level }}
+                </td>
+                <td>
+                  <VChip
+                    :color="row.isLow ? 'error' : 'success'"
+                    size="small"
+                    variant="tonal"
+                  >
+                    {{ row.isLow ? 'Low stock' : 'OK' }}
+                  </VChip>
+                </td>
+              </tr>
+              <tr v-if="rows.length === 0">
+                <td
+                  colspan="8"
+                  class="text-center text-medium-emphasis py-8"
+                >
+                  No stock records for this location yet. Use “Record Movement” to add stock.
+                </td>
+              </tr>
+            </tbody>
+          </VTable>
+        </div>
       </VCard>
     </template>
 

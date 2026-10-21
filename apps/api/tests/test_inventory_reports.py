@@ -528,3 +528,32 @@ async def test_reports_non_admin_403(client: AsyncClient, admin_token: str):
         assert resp.status_code == 403, path
     resp = await client.post("/api/inventory/alerts/notify", headers=staff)
     assert resp.status_code == 403
+
+
+async def test_notify_dedupe_window_after_read(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    """Within the 7-day dedupe window a read notification still suppresses a
+    re-send for the same alert."""
+    loc = sample_location["id"]
+    item = await _create_item(client, admin_token, reorder_level=50)
+    await _move(client, admin_token, item["id"], loc, "in", 1)
+
+    r1 = (await client.post("/api/inventory/alerts/notify", headers=_h(admin_token))).json()
+    assert r1["created"] >= 1
+
+    # Admin reads the notification, then re-notifies — still skipped
+    async with TestSessionLocal() as session:
+        rows = (
+            await session.execute(
+                select(Notification).where(Notification.is_read.is_(False))
+            )
+        ).scalars().all()
+        for n in rows:
+            if (n.extra_data or {}).get("inventory_alert"):
+                n.is_read = True
+        await session.commit()
+
+    r2 = (await client.post("/api/inventory/alerts/notify", headers=_h(admin_token))).json()
+    assert r2["created"] == 0
+    assert r2["skipped"] >= 1

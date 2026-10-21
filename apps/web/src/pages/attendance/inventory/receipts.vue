@@ -10,11 +10,14 @@ import {
 } from '@/api/attendance/inventoryInvoicing'
 import { type InventoryCustomer, listCustomers } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryReceiptPrintDialog from '@/components/attendance/inventory/InventoryReceiptPrintDialog.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useConfirmAction } from '@/composables/useConfirmAction'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -43,6 +46,9 @@ const customerFilter = ref<string | null>(null)
 const locationFilter = ref<string | null>(null)
 const search = ref('')
 
+const listReq = useLatestRequest()
+const confirm = useConfirmAction()
+
 const printOpen = ref(false)
 const printDoc = ref<InventoryReceiptPrintDoc | null>(null)
 
@@ -56,7 +62,7 @@ const headers = [
   { title: 'Invoice', key: 'invoice_no' },
   { title: 'Customer', key: 'customer_name' },
   { title: 'Date', key: 'receipt_date' },
-  { title: 'Amount', key: 'amount' },
+  { title: 'Amount', key: 'amount', align: 'end' as const },
   { title: 'Paid by', key: 'paid_by' },
   { title: 'Reference', key: 'reference_no' },
   { title: 'Status', key: 'status' },
@@ -70,6 +76,8 @@ function paidByLabel(value: string): string {
 async function load() {
   loading.value = true
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const res = await listReceipts({
       customer_id: customerFilter.value || undefined,
@@ -80,31 +88,43 @@ async function load() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     receipts.value = res.items
     total.value = res.total
   }
   catch (e) {
+    if (!listReq.isLatest(token))
+      return
     loadError.value = formatApiError(e, 'Operation failed.')
   }
   finally {
-    loading.value = false
+    if (listReq.isLatest(token))
+      loading.value = false
   }
 }
 
-async function onVoid(rc: InventoryReceipt) {
-  saving.value = true
-  actionError.value = ''
-  try {
-    await voidReceipt(rc.id)
-    actionSuccess.value = `Receipt ${rc.receipt_no} voided`
-    await load()
-  }
-  catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
-  }
-  finally {
-    saving.value = false
-  }
+function askVoid(rc: InventoryReceipt) {
+  confirm.ask(
+    `Void ${rc.receipt_no}?`,
+    `Voiding removes the ${fmtMoney(rc.amount)} payment from the invoice balance. This cannot be undone.`,
+    { label: 'Void' },
+    async () => {
+      saving.value = true
+      actionError.value = ''
+      try {
+        await voidReceipt(rc.id)
+        actionSuccess.value = `Receipt ${rc.receipt_no} voided`
+        await load()
+      }
+      catch (e) {
+        actionError.value = formatApiError(e, 'Operation failed.')
+      }
+      finally {
+        saving.value = false
+      }
+    },
+  )
 }
 
 async function onPrint(rc: InventoryReceipt) {
@@ -219,12 +239,13 @@ onMounted(async () => {
           :items="receipts"
           :loading="loading"
           density="compact"
+          no-data-text="No receipts yet — record a payment from an issued invoice."
         >
           <template #item.receipt_no="{ item }">
             <span class="font-weight-medium">{{ item.receipt_no }}</span>
           </template>
           <template #item.amount="{ item }">
-            {{ fmtMoney(item.amount) }}
+            <span class="tabular-nums">{{ fmtMoney(item.amount) }}</span>
           </template>
           <template #item.paid_by="{ item }">
             {{ paidByLabel(item.paid_by) }}
@@ -237,6 +258,7 @@ onMounted(async () => {
               variant="text"
               size="small"
               icon="ri-printer-line"
+              aria-label="Print receipt"
               @click="onPrint(item)"
             />
             <VBtn
@@ -245,7 +267,7 @@ onMounted(async () => {
               size="small"
               color="error"
               :loading="saving"
-              @click="onVoid(item)"
+              @click="askVoid(item)"
             >
               Void
             </VBtn>
@@ -265,5 +287,16 @@ onMounted(async () => {
       v-model="printOpen"
       :doc="printDoc"
     />
+
+    <AttendanceConfirmDialog
+      v-model="confirm.open.value"
+      :title="confirm.title.value"
+      :confirm-label="confirm.label.value"
+      :confirm-color="confirm.color.value"
+      :loading="confirm.loading.value"
+      @confirm="confirm.run"
+    >
+      {{ confirm.message.value }}
+    </AttendanceConfirmDialog>
   </div>
 </template>

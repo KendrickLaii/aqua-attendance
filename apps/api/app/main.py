@@ -61,14 +61,15 @@ async def _attachment_purge_loop() -> None:
 async def _inventory_alerts_loop() -> None:
     from app.services.inventory_alerts import notify_alerts
 
+    # Sleep before the first run so app startup does not spam notifications.
     while True:
+        await asyncio.sleep(settings.INVENTORY_ALERT_INTERVAL_HOURS * 3600)
         try:
             async with async_session_factory() as db:
                 await notify_alerts(db)
                 await db.commit()
         except Exception:
             logger.exception("Inventory alerts notify failed")
-        await asyncio.sleep(settings.INVENTORY_ALERT_INTERVAL_HOURS * 3600)
 
 
 @asynccontextmanager

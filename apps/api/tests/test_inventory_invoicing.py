@@ -876,3 +876,134 @@ async def test_invoicing_writes_are_audited(
     tables = {log.table_name for log in logs}
     assert "inventory_invoices" in tables
     assert "inventory_receipts" in tables
+
+
+# ---- review-fix coverage ----
+
+
+async def test_do_void_blocked_by_invoice(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 5)
+    _, do = await _shipped_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 2)]
+    )
+
+    # Even a DRAFT invoice blocks the void — delete it first
+    resp = await client.post(
+        "/api/inventory/invoices", json={"do_id": do["id"]}, headers=_h(admin_token)
+    )
+    assert resp.status_code == 201, resp.text
+    inv = resp.json()
+    resp = await client.post(
+        f"/api/inventory/delivery-orders/{do['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 409, resp.text
+
+    resp = await client.delete(
+        f"/api/inventory/invoices/{inv['id']}", headers=_h(admin_token)
+    )
+    assert resp.status_code == 204
+    resp = await client.post(
+        f"/api/inventory/delivery-orders/{do['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_do_void_blocked_by_issued_invoice(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 5)
+    _, do = await _shipped_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 2)]
+    )
+    inv = await _issue_invoice(client, admin_token, do["id"])
+
+    resp = await client.post(
+        f"/api/inventory/delivery-orders/{do['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 409, resp.text
+    # voiding the invoice first frees the DO
+    resp = await client.post(
+        f"/api/inventory/invoices/{inv['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    resp = await client.post(
+        f"/api/inventory/delivery-orders/{do['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_receipt_plus_credit_cannot_exceed_balance(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 5)
+    _, do = await _shipped_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 1, 100.0)]
+    )
+    inv = await _issue_invoice(client, admin_token, do["id"])
+    assert inv["total"] == 100.0
+
+    resp = await client.post(
+        "/api/inventory/receipts",
+        json={"invoice_id": inv["id"], "amount": 60.0, "paid_by": "cash"},
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+
+    # Crediting the whole line (100) would exceed the remaining balance (40)
+    resp = await client.post(
+        "/api/inventory/credit-notes",
+        json={
+            "invoice_id": inv["id"],
+            "reason": "return",
+            "lines": [
+                {"invoice_line_id": inv["lines"][0]["id"], "qty": 1, "restock": False}
+            ],
+        },
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    scn = resp.json()
+    resp = await client.post(
+        f"/api/inventory/credit-notes/{scn['id']}/confirm", headers=_h(admin_token)
+    )
+    assert resp.status_code == 422, resp.text
+    assert "balance" in resp.json()["detail"].lower()
+    state = (
+        await client.get(f"/api/inventory/credit-notes/{scn['id']}", headers=_h(admin_token))
+    ).json()
+    assert state["status"] == "draft"
+
+
+async def test_zero_total_issued_invoice_is_paid(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 5)
+    _, do = await _shipped_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 1, 0.0)]
+    )
+    inv = await _issue_invoice(client, admin_token, do["id"])
+    assert inv["total"] == 0
+    assert inv["payment_status"] == "paid"
+
+    resp = await client.get(
+        "/api/inventory/invoices?payment_status=paid", headers=_h(admin_token)
+    )
+    assert any(r["id"] == inv["id"] for r in resp.json())
+    resp = await client.get(
+        "/api/inventory/invoices?payment_status=unpaid", headers=_h(admin_token)
+    )
+    assert not any(r["id"] == inv["id"] for r in resp.json())

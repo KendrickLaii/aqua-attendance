@@ -43,6 +43,7 @@ export default [
     title: 'Inventory',
     icon: { icon: 'ri-archive-line' },
     children: [
+      { title: 'Workflow Guide', to: 'attendance-inventory-workflow', icon: { icon: 'ri-question-line' } },
       { title: 'Inventory Dashboard', to: 'attendance-inventory-dashboard' },
       { title: 'Stock Overview', to: 'attendance-inventory' },
       { title: 'Items', to: 'attendance-inventory-items' },

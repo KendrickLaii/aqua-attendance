@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminOnly, DB
 from app.models.inventory import InventoryItem
@@ -19,6 +20,7 @@ from app.models.inventory_purchasing import (
 from app.models.inventory import InventoryStock
 from app.models.location import Location
 from app.schemas.inventory_purchasing import (
+    GoodsReceiptConfirm,
     GoodsReceiptCreate,
     GoodsReceiptLineIn,
     GoodsReceiptOut,
@@ -42,15 +44,20 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
 async def _assert_location_exists(db: DB, location_id: uuid.UUID) -> None:
-    result = await db.execute(select(Location.id).where(Location.id == location_id))
-    if not result.scalar_one_or_none():
+    result = await db.execute(select(Location).where(Location.id == location_id))
+    location = result.scalar_one_or_none()
+    if not location:
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+    if not location.is_active:
+        raise HTTPException(status_code=422, detail=f"location {location.name_en or location_id} is inactive")
 
 
 async def _get_supplier_or_422(db: DB, supplier_id: uuid.UUID) -> Supplier:
     supplier = await db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(status_code=422, detail="supplier_id does not reference an existing supplier")
+    if not supplier.is_active:
+        raise HTTPException(status_code=422, detail=f"supplier {supplier.code} is inactive")
     return supplier
 
 
@@ -58,7 +65,22 @@ async def _get_item_or_422(db: DB, item_id: uuid.UUID) -> InventoryItem:
     item = await db.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=422, detail=f"unknown item_id: {item_id}")
+    if not item.is_active:
+        raise HTTPException(status_code=422, detail=f"item {item.sku_code} is inactive")
     return item
+
+
+async def _lock_or_404(db: DB, model, row_id: uuid.UUID, label: str):
+    """SELECT ... FOR UPDATE on a document row; 404 when missing.
+
+    Confirm/void/cancel handlers take this lock before re-checking status so
+    the status transition and its side effects are serialized per document.
+    """
+    result = await db.execute(select(model).where(model.id == row_id).with_for_update())
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    return row
 
 
 async def _get_po_or_404(db: DB, po_id: uuid.UUID) -> PurchaseOrder:
@@ -322,6 +344,11 @@ async def create_supplier(body: SupplierCreate, _admin: AdminOnly, db: DB) -> Su
         raise HTTPException(status_code=409, detail="Supplier code already exists")
     supplier = Supplier(**body.model_dump())
     db.add(supplier)
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="Supplier code already exists")
     await db.commit()
     await db.refresh(supplier)
     await audit_log_svc.log_audit(
@@ -533,7 +560,7 @@ async def delete_purchase_order(po_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
 
 @router.post("/purchase-orders/{po_id}/order", response_model=PurchaseOrderOut)
 async def order_purchase_order(po_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    po = await _get_po_or_404(db, po_id)
+    po = await _lock_or_404(db, PurchaseOrder, po_id, "Purchase order")
     if po.status == "ordered":
         return await _po_detail(db, po)
     if po.status != "draft":
@@ -558,7 +585,7 @@ async def order_purchase_order(po_id: uuid.UUID, _admin: AdminOnly, db: DB) -> d
 
 @router.post("/purchase-orders/{po_id}/cancel", response_model=PurchaseOrderOut)
 async def cancel_purchase_order(po_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    po = await _get_po_or_404(db, po_id)
+    po = await _lock_or_404(db, PurchaseOrder, po_id, "Purchase order")
     if po.status == "cancelled":
         return await _po_detail(db, po)
     if po.status not in ("draft", "ordered", "partial"):
@@ -801,6 +828,12 @@ async def delete_goods_receipt(grn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
 async def _update_avg_cost(
     db: DB, item: InventoryItem, qty: int, unit_cost: float
 ) -> None:
+    """Blend a receipt into ``item.avg_cost`` (weighted by current on-hand qty).
+
+    Deliberately receipts-history based: voiding a GRN or confirming/voiding a
+    purchase return does NOT reverse the weighting — avg_cost reflects the
+    cost of what was ever received, not what is currently on hand.
+    """
     total_qty = await db.scalar(
         select(func.coalesce(func.sum(InventoryStock.quantity), 0)).where(
             InventoryStock.item_id == item.id
@@ -819,14 +852,30 @@ async def _update_avg_cost(
 
 
 @router.post("/goods-receipts/{grn_id}/confirm", response_model=GoodsReceiptOut)
-async def confirm_goods_receipt(grn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    grn = await _get_grn_or_404(db, grn_id)
+async def confirm_goods_receipt(
+    grn_id: uuid.UUID,
+    _admin: AdminOnly,
+    db: DB,
+    body: GoodsReceiptConfirm | None = None,
+) -> dict:
+    grn = await _lock_or_404(db, GoodsReceipt, grn_id, "Goods receipt")
     if grn.status == "confirmed":
         return await _grn_detail(db, grn)
     if grn.status != "draft":
         raise HTTPException(status_code=409, detail=f"goods receipt is {grn.status}; cannot confirm")
 
-    po = await _get_po_or_404(db, grn.po_id) if grn.po_id else None
+    allow_over_receipt = body.allow_over_receipt if body else False
+    po = (
+        await _lock_or_404(db, PurchaseOrder, grn.po_id, "Purchase order")
+        if grn.po_id
+        else None
+    )
+    if po and po.status == "cancelled":
+        raise HTTPException(status_code=422, detail=f"PO {po.po_no} is cancelled; cannot receive")
+    if po:
+        # Re-validate remaining qty under the PO lock: several draft GRNs may
+        # have been valid at creation and only the first confirm may succeed.
+        await _validate_grn_lines_against_po(db, po, await _grn_lines(db, grn_id), allow_over_receipt)
     for line in await _grn_lines(db, grn_id):
         item = await _get_item_or_422(db, line.item_id)
         await _update_avg_cost(db, item, line.qty, float(line.unit_cost))
@@ -868,13 +917,32 @@ async def confirm_goods_receipt(grn_id: uuid.UUID, _admin: AdminOnly, db: DB) ->
 
 @router.post("/goods-receipts/{grn_id}/void", response_model=GoodsReceiptOut)
 async def void_goods_receipt(grn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    grn = await _get_grn_or_404(db, grn_id)
+    """Void a confirmed GRN: posts an 'out' movement per line and decrements
+    PO received_qty. avg_cost is intentionally NOT reversed — see
+    _update_avg_cost. Blocked while a confirmed purchase return references it.
+    """
+    grn = await _lock_or_404(db, GoodsReceipt, grn_id, "Goods receipt")
     if grn.status == "void":
         return await _grn_detail(db, grn)
     if grn.status != "confirmed":
         raise HTTPException(status_code=409, detail=f"goods receipt is {grn.status}; cannot void")
 
-    po = await _get_po_or_404(db, grn.po_id) if grn.po_id else None
+    confirmed_return = await db.execute(
+        select(PurchaseReturn.id).where(
+            PurchaseReturn.grn_id == grn_id, PurchaseReturn.status == "confirmed"
+        ).limit(1)
+    )
+    if confirmed_return.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="goods receipt has confirmed purchase returns; void the return first",
+        )
+
+    po = (
+        await _lock_or_404(db, PurchaseOrder, grn.po_id, "Purchase order")
+        if grn.po_id
+        else None
+    )
     for line in await _grn_lines(db, grn_id):
         await inventory_svc.apply_movement(
             db,
@@ -1111,7 +1179,7 @@ async def delete_purchase_return(prt_id: uuid.UUID, _admin: AdminOnly, db: DB) -
 
 @router.post("/purchase-returns/{prt_id}/confirm", response_model=PurchaseReturnOut)
 async def confirm_purchase_return(prt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    prt = await _get_prt_or_404(db, prt_id)
+    prt = await _lock_or_404(db, PurchaseReturn, prt_id, "Purchase return")
     if prt.status == "confirmed":
         return await _prt_detail(db, prt)
     if prt.status != "draft":
@@ -1119,12 +1187,13 @@ async def confirm_purchase_return(prt_id: uuid.UUID, _admin: AdminOnly, db: DB) 
 
     prt_lines = await _prt_lines(db, prt_id)
     if prt.grn_id:
-        grn = await _get_grn_or_404(db, prt.grn_id)
+        grn = await _lock_or_404(db, GoodsReceipt, prt.grn_id, "Goods receipt")
         if grn.status != "confirmed":
             raise HTTPException(status_code=422, detail=f"GRN {grn.grn_no} is {grn.status}; cannot return against it")
         await _validate_return_qty(db, grn, prt_lines)
 
     for line in prt_lines:
+        await _get_item_or_422(db, line.item_id)
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
@@ -1156,7 +1225,7 @@ async def confirm_purchase_return(prt_id: uuid.UUID, _admin: AdminOnly, db: DB) 
 
 @router.post("/purchase-returns/{prt_id}/void", response_model=PurchaseReturnOut)
 async def void_purchase_return(prt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    prt = await _get_prt_or_404(db, prt_id)
+    prt = await _lock_or_404(db, PurchaseReturn, prt_id, "Purchase return")
     if prt.status == "void":
         return await _prt_detail(db, prt)
     if prt.status != "confirmed":

@@ -16,11 +16,16 @@ import {
 } from '@/api/attendance/inventoryInvoicing'
 import { type InventoryCustomer, listCustomers } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryCreditNotePrintDialog from '@/components/attendance/inventory/InventoryCreditNotePrintDialog.vue'
+import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useConfirmAction } from '@/composables/useConfirmAction'
+import { useDirtyGuard } from '@/composables/useDirtyGuard'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -48,6 +53,10 @@ const statusFilter = ref<InventoryCreditNoteStatus | null>(null)
 const locationFilter = ref<string | null>(null)
 const search = ref('')
 
+const listReq = useLatestRequest()
+const confirm = useConfirmAction()
+const dirty = useDirtyGuard('Discard the credit note being edited?')
+
 const selected = ref<InventoryCreditNote | null>(null)
 
 const statusOptions = [
@@ -68,18 +77,61 @@ const createReason = ref('')
 const createDate = ref('')
 const createLines = ref<{ invoice_line_id: string; label: string; max_qty: number; qty: number; restock: boolean }[]>([])
 
+let suppressDirty = false
+watch([createReason, createDate, createLines], () => {
+  if (!suppressDirty && createOpen.value)
+    dirty.dirty.value = true
+}, { deep: true })
+
+function createLineError(line: { qty: number; max_qty: number }): string {
+  if (!Number.isInteger(line.qty) || line.qty < 0)
+    return 'Qty must be a whole number ≥ 0'
+  if (line.qty > line.max_qty)
+    return `Qty cannot exceed ${line.max_qty}`
+
+  return ''
+}
+
+const createLineErrors = computed(() => createLines.value.map(createLineError))
+
+const createInvalid = computed(() =>
+  !createInvoiceId.value
+  || !createReason.value
+  || !createLines.value.some(l => l.qty > 0)
+  || createLineErrors.value.some(Boolean),
+)
+
+function closeCreate() {
+  if (dirty.confirmDiscard())
+    createOpen.value = false
+}
+
+const chainSteps = computed<DocChainStep[]>(() => {
+  const scn = selected.value
+  if (!scn)
+    return []
+
+  return [
+    { label: `Invoice ${scn.invoice_no}`, state: 'done', to: '/attendance/inventory/invoices' },
+    { label: `CN ${scn.scn_no}`, state: scn.status === 'void' ? 'void' : 'current', hint: scn.status },
+    { label: 'Restock', state: scn.status === 'confirmed' ? 'done' : 'todo' },
+  ]
+})
+
 const headers = [
   { title: 'CN No', key: 'scn_no' },
   { title: 'Invoice', key: 'invoice_no' },
   { title: 'Customer', key: 'customer_name' },
   { title: 'Date', key: 'credit_date' },
-  { title: 'Total', key: 'total' },
+  { title: 'Total', key: 'total', align: 'end' as const },
   { title: 'Status', key: 'status' },
 ]
 
 async function load() {
   loading.value = true
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const res = await listCreditNotes({
       location_id: locationFilter.value || undefined,
@@ -89,14 +141,19 @@ async function load() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     notes.value = res.items
     total.value = res.total
   }
   catch (e) {
+    if (!listReq.isLatest(token))
+      return
     loadError.value = formatApiError(e, 'Operation failed.')
   }
   finally {
-    loading.value = false
+    if (listReq.isLatest(token))
+      loading.value = false
   }
 }
 
@@ -114,12 +171,17 @@ function onRowClick(_e: Event, row: { item: InventoryCreditNote }) {
 }
 
 async function openCreate() {
+  suppressDirty = true
   createInvoiceId.value = null
   createInvoice.value = null
   createReason.value = ''
   createDate.value = ''
   createLines.value = []
   createOpen.value = true
+  dirty.markClean()
+  nextTick(() => {
+    suppressDirty = false
+  })
   try {
     const res = await listInvoices({ status: 'issued', page_size: 200 })
 
@@ -155,29 +217,28 @@ async function onPickInvoice() {
 }
 
 async function submitCreate() {
-  if (!createInvoiceId.value || !createReason.value)
+  if (createInvalid.value) {
+    actionError.value = 'Please fix the highlighted fields before creating.'
+
     return
+  }
 
   const lines = createLines.value
     .filter(l => l.qty > 0)
     .map(l => ({ invoice_line_id: l.invoice_line_id, qty: l.qty, restock: l.restock }))
 
-  if (!lines.length) {
-    actionError.value = 'Enter a quantity for at least one line'
-
-    return
-  }
   saving.value = true
   actionError.value = ''
   try {
     const scn = await createCreditNote({
-      invoice_id: createInvoiceId.value,
+      invoice_id: createInvoiceId.value ?? '',
       credit_date: createDate.value || null,
       reason: createReason.value,
       lines,
     })
 
     createOpen.value = false
+    dirty.markClean()
     actionSuccess.value = `Credit note ${scn.scn_no} created`
     await load()
     selected.value = scn
@@ -190,7 +251,21 @@ async function submitCreate() {
   }
 }
 
-async function onConfirm() {
+function askConfirm() {
+  const scn = selected.value
+  if (!scn)
+    return
+  const restocking = scn.lines.filter(l => l.restock).reduce((s, l) => s + l.qty, 0)
+
+  confirm.ask(
+    `Confirm ${scn.scn_no}?`,
+    `Confirming credits ${fmtMoney(scn.total)} against invoice ${scn.invoice_no}${restocking ? ` and returns ${restocking} item${restocking === 1 ? '' : 's'} to stock` : ''}.`,
+    { label: 'Confirm', color: 'primary' },
+    performConfirm,
+  )
+}
+
+async function performConfirm() {
   if (!selected.value)
     return
   saving.value = true
@@ -208,7 +283,19 @@ async function onConfirm() {
   }
 }
 
-async function onVoid() {
+function askVoid() {
+  const scn = selected.value
+  if (!scn)
+    return
+  confirm.ask(
+    `Void ${scn.scn_no}?`,
+    `Voiding reverses the ${fmtMoney(scn.total)} credit (and any restock) on invoice ${scn.invoice_no}. This cannot be undone.`,
+    { label: 'Void' },
+    performVoid,
+  )
+}
+
+async function performVoid() {
   if (!selected.value)
     return
   saving.value = true
@@ -226,7 +313,18 @@ async function onVoid() {
   }
 }
 
-async function onDelete() {
+function askDelete() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Delete draft ${selected.value.scn_no}?`,
+    'The draft credit note will be permanently deleted.',
+    { label: 'Delete' },
+    performDelete,
+  )
+}
+
+async function performDelete() {
   if (!selected.value)
     return
   saving.value = true
@@ -357,13 +455,14 @@ onMounted(async () => {
           :items="notes"
           :loading="loading"
           density="compact"
+          no-data-text="No credit notes yet — create one from an issued invoice."
           @click:row="onRowClick"
         >
           <template #item.scn_no="{ item }">
             <span class="font-weight-medium">{{ item.scn_no }}</span>
           </template>
           <template #item.total="{ item }">
-            {{ fmtMoney(item.total) }}
+            <span class="tabular-nums">{{ fmtMoney(item.total) }}</span>
           </template>
           <template #item.status="{ item }">
             <InventoryStatusChip :status="item.status" />
@@ -391,6 +490,10 @@ onMounted(async () => {
           <InventoryStatusChip :status="selected.status" />
         </VCardTitle>
         <VCardText>
+          <InventoryDocChain
+            :steps="chainSteps"
+            class="mb-3"
+          />
           <div class="mb-2 text-body-2">
             <strong>Customer:</strong> {{ selected.customer_name }} ·
             <strong>Invoice:</strong> {{ selected.invoice_no }} ·
@@ -399,45 +502,47 @@ onMounted(async () => {
           <div class="mb-3 text-body-2">
             <strong>Reason:</strong> {{ selected.reason }}
           </div>
-          <VTable density="compact">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="text-end">
-                  Qty
-                </th>
-                <th class="text-end">
-                  Unit amount
-                </th>
-                <th class="text-end">
-                  Amount
-                </th>
-                <th class="text-center">
-                  Restock
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="line in selected.lines"
-                :key="line.id"
-              >
-                <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') }}</td>
-                <td class="text-end">
-                  {{ line.qty }}
-                </td>
-                <td class="text-end">
-                  {{ fmtMoney(line.unit_amount) }}
-                </td>
-                <td class="text-end">
-                  {{ fmtMoney(line.amount) }}
-                </td>
-                <td class="text-center">
-                  {{ line.restock ? 'Yes' : 'No' }}
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
+          <div class="overflow-x-auto">
+            <VTable density="compact">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th class="text-end">
+                    Qty
+                  </th>
+                  <th class="text-end">
+                    Unit amount
+                  </th>
+                  <th class="text-end">
+                    Amount
+                  </th>
+                  <th class="text-center">
+                    Restock
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="line in selected.lines"
+                  :key="line.id"
+                >
+                  <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') }}</td>
+                  <td class="text-end tabular-nums">
+                    {{ line.qty }}
+                  </td>
+                  <td class="text-end tabular-nums">
+                    {{ fmtMoney(line.unit_amount) }}
+                  </td>
+                  <td class="text-end tabular-nums">
+                    {{ fmtMoney(line.amount) }}
+                  </td>
+                  <td class="text-center">
+                    {{ line.restock ? 'Yes' : 'No' }}
+                  </td>
+                </tr>
+              </tbody>
+            </VTable>
+          </div>
           <div class="text-end mt-3 font-weight-bold">
             Total: {{ fmtMoney(selected.total) }}
           </div>
@@ -446,16 +551,17 @@ onMounted(async () => {
           <VBtn
             v-if="selected.status === 'draft'"
             color="primary"
+            prepend-icon="ri-arrow-right-line"
             :loading="saving"
-            @click="onConfirm"
+            @click="askConfirm"
           >
-            Confirm
+            Next: Confirm
           </VBtn>
           <VBtn
             v-if="selected.status === 'confirmed'"
             variant="tonal"
             :loading="saving"
-            @click="onVoid"
+            @click="askVoid"
           >
             Void
           </VBtn>
@@ -464,7 +570,7 @@ onMounted(async () => {
             color="error"
             variant="tonal"
             :loading="saving"
-            @click="onDelete"
+            @click="askDelete"
           >
             Delete
           </VBtn>
@@ -490,13 +596,15 @@ onMounted(async () => {
           <VSelect
             v-model="createInvoiceId"
             :items="issuedInvoices.map(i => ({ value: i.id, title: `${i.invoice_no} · ${i.buyer_name} · ${fmtMoney(i.total)}` }))"
-            label="Issued invoice"
+            label="Issued invoice *"
+            :error="!createInvoiceId"
             @update:model-value="onPickInvoice"
           />
           <VTextField
             v-model="createReason"
-            label="Reason"
+            label="Reason *"
             class="mt-3"
+            :error="!createReason"
           />
           <VTextField
             v-model="createDate"
@@ -504,66 +612,70 @@ onMounted(async () => {
             label="Credit date"
             class="mt-3"
           />
-          <VTable
+          <div
             v-if="createLines.length"
-            density="compact"
-            class="mt-3"
+            class="overflow-x-auto mt-3"
           >
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="text-end">
-                  Credited max
-                </th>
-                <th style="width: 120px">
-                  Qty
-                </th>
-                <th class="text-center">
-                  Restock
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="line in createLines"
-                :key="line.invoice_line_id"
-              >
-                <td>{{ line.label }}</td>
-                <td class="text-end">
-                  {{ line.max_qty }}
-                </td>
-                <td>
-                  <VTextField
-                    v-model.number="line.qty"
-                    type="number"
-                    density="compact"
-                    hide-details
-                    :min="0"
-                    :max="line.max_qty"
-                  />
-                </td>
-                <td class="text-center">
-                  <VCheckbox
-                    v-model="line.restock"
-                    hide-details
-                    density="compact"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
+            <VTable density="compact">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th class="text-end">
+                    Credited max
+                  </th>
+                  <th style="width: 120px">
+                    Qty
+                  </th>
+                  <th class="text-center">
+                    Restock
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(line, i) in createLines"
+                  :key="line.invoice_line_id"
+                >
+                  <td>{{ line.label }}</td>
+                  <td class="text-end tabular-nums">
+                    {{ line.max_qty }}
+                  </td>
+                  <td>
+                    <VTextField
+                      v-model.number="line.qty"
+                      type="number"
+                      density="compact"
+                      hide-details="auto"
+                      :min="0"
+                      :max="line.max_qty"
+                      step="1"
+                      :error="!!createLineErrors[i]"
+                      :error-messages="createLineErrors[i]"
+                    />
+                  </td>
+                  <td class="text-center">
+                    <VCheckbox
+                      v-model="line.restock"
+                      hide-details
+                      density="compact"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </VTable>
+          </div>
         </VCardText>
         <VCardActions>
           <VSpacer />
           <VBtn
             variant="text"
-            @click="createOpen = false"
+            @click="closeCreate"
           >
             Cancel
           </VBtn>
           <VBtn
             color="primary"
-            :disabled="!createInvoiceId || !createReason"
+            :disabled="createInvalid"
             :loading="saving"
             @click="submitCreate"
           >
@@ -577,5 +689,16 @@ onMounted(async () => {
       v-model="printOpen"
       :doc="printDoc"
     />
+
+    <AttendanceConfirmDialog
+      v-model="confirm.open.value"
+      :title="confirm.title.value"
+      :confirm-label="confirm.label.value"
+      :confirm-color="confirm.color.value"
+      :loading="confirm.loading.value"
+      @confirm="confirm.run"
+    >
+      {{ confirm.message.value }}
+    </AttendanceConfirmDialog>
   </div>
 </template>

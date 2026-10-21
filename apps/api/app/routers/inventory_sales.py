@@ -4,9 +4,11 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminOnly, DB
 from app.models.inventory import InventoryItem, InventoryStock
+from app.models.inventory_invoicing import InventoryInvoice
 from app.models.inventory_sales import (
     Customer,
     DeliveryOrder,
@@ -42,15 +44,20 @@ ALLOW_RESERVE_SHORTFALL = False
 
 
 async def _assert_location_exists(db: DB, location_id: uuid.UUID) -> None:
-    result = await db.execute(select(Location.id).where(Location.id == location_id))
-    if not result.scalar_one_or_none():
+    result = await db.execute(select(Location).where(Location.id == location_id))
+    location = result.scalar_one_or_none()
+    if not location:
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+    if not location.is_active:
+        raise HTTPException(status_code=422, detail=f"location {location.name_en or location_id} is inactive")
 
 
 async def _get_customer_or_422(db: DB, customer_id: uuid.UUID) -> Customer:
     customer = await db.get(Customer, customer_id)
     if not customer:
         raise HTTPException(status_code=422, detail="customer_id does not reference an existing customer")
+    if not customer.is_active:
+        raise HTTPException(status_code=422, detail=f"customer {customer.code} is inactive")
     return customer
 
 
@@ -58,6 +65,8 @@ async def _get_item_or_422(db: DB, item_id: uuid.UUID) -> InventoryItem:
     item = await db.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=422, detail=f"unknown item_id: {item_id}")
+    if not item.is_active:
+        raise HTTPException(status_code=422, detail=f"item {item.sku_code} is inactive")
     return item
 
 
@@ -73,6 +82,19 @@ async def _get_do_or_404(db: DB, do_id: uuid.UUID) -> DeliveryOrder:
     if not do:
         raise HTTPException(status_code=404, detail="Delivery order not found")
     return do
+
+
+async def _lock_or_404(db: DB, model, row_id: uuid.UUID, label: str):
+    """SELECT ... FOR UPDATE on a document row; 404 when missing.
+
+    Confirm/void/cancel handlers take this lock before re-checking status so
+    the status transition and its side effects are serialized per document.
+    """
+    result = await db.execute(select(model).where(model.id == row_id).with_for_update())
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    return row
 
 
 async def _so_lines(db: DB, so_id: uuid.UUID) -> list[SalesOrderLine]:
@@ -247,6 +269,11 @@ async def create_customer(body: CustomerCreate, _admin: AdminOnly, db: DB) -> Cu
             raise HTTPException(status_code=422, detail="student_unit_id does not reference a student")
     customer = Customer(**body.model_dump())
     db.add(customer)
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="Customer code already exists")
     await db.commit()
     await db.refresh(customer)
     await audit_log_svc.log_audit(
@@ -297,6 +324,18 @@ async def create_customer_from_student(unit_id: uuid.UUID, _admin: AdminOnly, db
         is_active=True,
     )
     db.add(customer)
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError:
+        # Lost a race on the unique student_unit_id/code — return the winner.
+        existing = await db.execute(
+            select(Customer).where(Customer.student_unit_id == unit_id)
+        )
+        customer = existing.scalar_one_or_none()
+        if customer:
+            return customer
+        raise HTTPException(status_code=409, detail="customer code already exists")
     await db.commit()
     await db.refresh(customer)
     await audit_log_svc.log_audit(
@@ -535,7 +574,7 @@ async def confirm_so_tx(db: DB, so: SalesOrder) -> None:
 
 @router.post("/sales-orders/{so_id}/confirm", response_model=SalesOrderOut)
 async def confirm_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    so = await _get_so_or_404(db, so_id)
+    so = await _lock_or_404(db, SalesOrder, so_id, "Sales order")
     if so.status in ("confirmed", "partial", "fulfilled"):
         return await _so_detail(db, so)
     if so.status != "draft":
@@ -560,7 +599,7 @@ async def confirm_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> di
 
 @router.post("/sales-orders/{so_id}/cancel", response_model=SalesOrderOut)
 async def cancel_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    so = await _get_so_or_404(db, so_id)
+    so = await _lock_or_404(db, SalesOrder, so_id, "Sales order")
     if so.status == "cancelled":
         return await _so_detail(db, so)
     if so.status == "fulfilled":
@@ -731,7 +770,12 @@ async def create_do_tx(
     line_inputs: list[DeliveryOrderLineIn],
     user,
 ) -> DeliveryOrder:
-    """Validate + create a draft DO (prefills remaining qty when no lines). Caller commits."""
+    """Validate + create a draft DO (prefills remaining qty when no lines). Caller commits.
+
+    The SO row is locked here so the status check and DO creation serialize
+    against a concurrent cancel/confirm of the same SO.
+    """
+    so = await _lock_or_404(db, SalesOrder, so.id, "Sales order")
     if so.status not in ("confirmed", "partial"):
         raise HTTPException(status_code=422, detail=f"SO {so.so_no} is {so.status}; cannot deliver")
 
@@ -876,8 +920,11 @@ async def delete_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
 
 
 async def confirm_do_tx(db: DB, do: DeliveryOrder, user) -> None:
-    """Validate + ship every DO line and mark the DO confirmed. Caller commits."""
-    so = await _get_so_or_404(db, do.so_id)
+    """Validate + ship every DO line and mark the DO confirmed. Caller commits.
+
+    Locks the parent SO row before checking per-line remaining quantities.
+    """
+    so = await _lock_or_404(db, SalesOrder, do.so_id, "Sales order")
     so_lines = {line.id: line for line in await _so_lines(db, so.id)}
     for line in await _do_lines(db, do.id):
         so_line = so_lines.get(line.so_line_id)
@@ -894,6 +941,7 @@ async def confirm_do_tx(db: DB, do: DeliveryOrder, user) -> None:
 
     for line in await _do_lines(db, do.id):
         so_line = so_lines[line.so_line_id]
+        await _get_item_or_422(db, line.item_id)
         await inventory_svc.release(
             db, item_id=line.item_id, location_id=do.location_id, quantity=line.qty
         )
@@ -916,7 +964,7 @@ async def confirm_do_tx(db: DB, do: DeliveryOrder, user) -> None:
 
 @router.post("/delivery-orders/{do_id}/confirm", response_model=DeliveryOrderOut)
 async def confirm_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    do = await _get_do_or_404(db, do_id)
+    do = await _lock_or_404(db, DeliveryOrder, do_id, "Delivery order")
     if do.status == "confirmed":
         return await _do_detail(db, do)
     if do.status != "draft":
@@ -941,13 +989,24 @@ async def confirm_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) ->
 
 @router.post("/delivery-orders/{do_id}/void", response_model=DeliveryOrderOut)
 async def void_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    do = await _get_do_or_404(db, do_id)
+    do = await _lock_or_404(db, DeliveryOrder, do_id, "Delivery order")
     if do.status == "void":
         return await _do_detail(db, do)
     if do.status != "confirmed":
         raise HTTPException(status_code=409, detail=f"delivery order is {do.status}; cannot void")
 
-    so = await _get_so_or_404(db, do.so_id)
+    invoiced = await db.execute(
+        select(InventoryInvoice.id).where(
+            InventoryInvoice.do_id == do_id, InventoryInvoice.status != "void"
+        ).limit(1)
+    )
+    if invoiced.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="delivery order has a non-void invoice; void or delete the invoice first",
+        )
+
+    so = await _lock_or_404(db, SalesOrder, do.so_id, "Sales order")
     so_lines = {line.id: line for line in await _so_lines(db, so.id)}
     for line in await _do_lines(db, do_id):
         so_line = so_lines.get(line.so_line_id)

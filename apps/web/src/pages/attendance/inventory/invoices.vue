@@ -20,11 +20,16 @@ import {
   listCustomers,
 } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
+import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import InventoryInvoicePrintDialog from '@/components/attendance/inventory/InventoryInvoicePrintDialog.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useConfirmAction } from '@/composables/useConfirmAction'
+import { useDirtyGuard } from '@/composables/useDirtyGuard'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -48,8 +53,17 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+const route = useRoute()
+const listReq = useLatestRequest()
+const confirm = useConfirmAction()
+const dirty = useDirtyGuard('Discard the new invoice form?')
+
 const statusFilter = ref<InventoryInvoiceStatus | null>(null)
-const paymentFilter = ref<InventoryPaymentStatus | null>(null)
+
+const paymentFilter = ref<InventoryPaymentStatus | null>(
+  (route.query.payment_status as InventoryPaymentStatus | undefined) ?? null,
+)
+
 const customerFilter = ref<string | null>(null)
 const locationFilter = ref<string | null>(null)
 const search = ref('')
@@ -84,20 +98,52 @@ const createOpen = ref(false)
 const createDoId = ref('')
 const createNotes = ref('')
 
+watch([createDoId, createNotes], () => {
+  if (createOpen.value && (createDoId.value || createNotes.value))
+    dirty.dirty.value = true
+})
+
 const headers = [
   { title: 'Invoice No', key: 'invoice_no' },
   { title: 'Customer', key: 'customer_name' },
   { title: 'DO', key: 'do_no' },
   { title: 'Date', key: 'issue_date' },
-  { title: 'Total', key: 'total' },
-  { title: 'Balance', key: 'balance' },
+  { title: 'Total', key: 'total', align: 'end' as const },
+  { title: 'Balance', key: 'balance', align: 'end' as const },
   { title: 'Status', key: 'status' },
   { title: 'Payment', key: 'payment_status' },
 ]
 
+const chainSteps = computed<DocChainStep[]>(() => {
+  const inv = selected.value
+  if (!inv)
+    return []
+
+  return [
+    { label: `SO ${inv.so_no}`, state: 'done', to: '/attendance/inventory/sales-orders' },
+    { label: `DO ${inv.do_no}`, state: 'done', to: '/attendance/inventory/delivery-orders' },
+    { label: inv.invoice_no || 'Invoice (draft)', state: inv.status === 'void' ? 'void' : 'current', hint: inv.status },
+    { label: 'Receipt', state: inv.payment_status === 'paid' ? 'done' : 'todo', to: '/attendance/inventory/receipts' },
+  ]
+})
+
+const nextStep = computed(() => {
+  const inv = selected.value
+  if (!inv)
+    return null
+  if (inv.status === 'draft')
+    return { label: 'Issue invoice', run: askIssue }
+  if (inv.status === 'issued' && inv.balance > 0)
+    return { label: 'Record payment', run: openPay }
+
+  return null
+})
+
 async function load() {
   loading.value = true
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const res = await listInvoices({
       customer_id: customerFilter.value || undefined,
@@ -109,14 +155,19 @@ async function load() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     invoices.value = res.items
     total.value = res.total
   }
   catch (e) {
+    if (!listReq.isLatest(token))
+      return
     loadError.value = formatApiError(e, 'Operation failed.')
   }
   finally {
-    loading.value = false
+    if (listReq.isLatest(token))
+      loading.value = false
   }
 }
 
@@ -127,7 +178,13 @@ function onRowClick(_e: Event, row: { item: InventoryInvoice }) {
 function openCreate() {
   createDoId.value = ''
   createNotes.value = ''
+  dirty.markClean()
   createOpen.value = true
+}
+
+function closeCreate() {
+  if (dirty.confirmDiscard())
+    createOpen.value = false
 }
 
 async function submitCreate() {
@@ -138,6 +195,7 @@ async function submitCreate() {
   try {
     const inv = await createInvoice({ do_id: createDoId.value, notes: createNotes.value || null })
 
+    dirty.markClean()
     createOpen.value = false
     actionSuccess.value = `Invoice draft created for DO ${inv.do_no}`
     await load()
@@ -151,7 +209,18 @@ async function submitCreate() {
   }
 }
 
-async function onIssue() {
+function askIssue() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Issue ${selected.value.invoice_no || 'draft invoice'}?`,
+    `Issuing assigns an invoice number and bills ${fmtMoney(selected.value.total)} to the customer. It can only be undone by voiding.`,
+    { label: 'Issue', color: 'primary' },
+    performIssue,
+  )
+}
+
+async function performIssue() {
   if (!selected.value)
     return
   saving.value = true
@@ -169,7 +238,18 @@ async function onIssue() {
   }
 }
 
-async function onVoid() {
+function askVoid() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Void ${selected.value.invoice_no}?`,
+    'Voiding cancels the invoice. Its receipts must be voided first; this cannot be undone.',
+    { label: 'Void' },
+    performVoid,
+  )
+}
+
+async function performVoid() {
   if (!selected.value)
     return
   saving.value = true
@@ -187,7 +267,18 @@ async function onVoid() {
   }
 }
 
-async function onDelete() {
+function askDelete() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    'Delete draft invoice?',
+    'The draft invoice will be permanently deleted.',
+    { label: 'Delete' },
+    performDelete,
+  )
+}
+
+async function performDelete() {
   if (!selected.value)
     return
   saving.value = true
@@ -206,6 +297,12 @@ async function onDelete() {
   }
 }
 
+const payInvalid = computed(() =>
+  !payAmount.value
+  || payAmount.value <= 0
+  || (selected.value != null && payAmount.value > selected.value.balance),
+)
+
 function openPay() {
   if (!selected.value)
     return
@@ -217,14 +314,14 @@ function openPay() {
 }
 
 async function submitPay() {
-  if (!selected.value || !payAmount.value)
+  if (!selected.value || payInvalid.value)
     return
   saving.value = true
   actionError.value = ''
   try {
     await createReceipt({
       invoice_id: selected.value.id,
-      amount: payAmount.value,
+      amount: payAmount.value ?? 0,
       paid_by: payMethod.value,
       reference_no: payReference.value || null,
       receipt_date: payDate.value || null,
@@ -372,16 +469,17 @@ onMounted(async () => {
           :items="invoices"
           :loading="loading"
           density="compact"
+          no-data-text="No invoices yet — create one from a confirmed delivery order."
           @click:row="onRowClick"
         >
           <template #item.invoice_no="{ item }">
             <span class="font-weight-medium">{{ item.invoice_no || '(draft)' }}</span>
           </template>
           <template #item.total="{ item }">
-            {{ fmtMoney(item.total) }}
+            <span class="tabular-nums">{{ fmtMoney(item.total) }}</span>
           </template>
           <template #item.balance="{ item }">
-            {{ fmtMoney(item.balance) }}
+            <span class="tabular-nums">{{ fmtMoney(item.balance) }}</span>
           </template>
           <template #item.status="{ item }">
             <InventoryStatusChip :status="item.status" />
@@ -416,56 +514,62 @@ onMounted(async () => {
           />
         </VCardTitle>
         <VCardText>
+          <InventoryDocChain
+            :steps="chainSteps"
+            class="mb-3"
+          />
           <div class="mb-2 text-body-2">
             <strong>Customer:</strong> {{ selected.buyer_name }} ·
             <strong>SO:</strong> {{ selected.so_no }} ·
             <strong>DO:</strong> {{ selected.do_no }}
           </div>
-          <VTable density="compact">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="text-end">
-                  Qty
-                </th>
-                <th class="text-end">
-                  Price
-                </th>
-                <th class="text-end">
-                  Discount
-                </th>
-                <th class="text-end">
-                  Amount
-                </th>
-                <th class="text-end">
-                  Credited
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="line in selected.lines"
-                :key="line.id"
-              >
-                <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') }}</td>
-                <td class="text-end">
-                  {{ line.qty }}
-                </td>
-                <td class="text-end">
-                  {{ fmtMoney(line.unit_price) }}
-                </td>
-                <td class="text-end">
-                  {{ fmtMoney(line.discount_amount) }}
-                </td>
-                <td class="text-end">
-                  {{ fmtMoney(line.amount) }}
-                </td>
-                <td class="text-end">
-                  {{ line.credited_qty }}
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
+          <div class="overflow-x-auto">
+            <VTable density="compact">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th class="text-end">
+                    Qty
+                  </th>
+                  <th class="text-end">
+                    Price
+                  </th>
+                  <th class="text-end">
+                    Discount
+                  </th>
+                  <th class="text-end">
+                    Amount
+                  </th>
+                  <th class="text-end">
+                    Credited
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="line in selected.lines"
+                  :key="line.id"
+                >
+                  <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') }}</td>
+                  <td class="text-end tabular-nums">
+                    {{ line.qty }}
+                  </td>
+                  <td class="text-end tabular-nums">
+                    {{ fmtMoney(line.unit_price) }}
+                  </td>
+                  <td class="text-end tabular-nums">
+                    {{ fmtMoney(line.discount_amount) }}
+                  </td>
+                  <td class="text-end tabular-nums">
+                    {{ fmtMoney(line.amount) }}
+                  </td>
+                  <td class="text-end tabular-nums">
+                    {{ line.credited_qty }}
+                  </td>
+                </tr>
+              </tbody>
+            </VTable>
+          </div>
           <div class="d-flex justify-end mt-3 text-body-2">
             <div>
               <div>Subtotal: {{ fmtMoney(selected.subtotal) }}</div>
@@ -516,10 +620,20 @@ onMounted(async () => {
         </VCardText>
         <VCardActions>
           <VBtn
+            v-if="nextStep"
+            color="primary"
+            prepend-icon="ri-arrow-right-line"
+            :loading="saving"
+            @click="nextStep.run()"
+          >
+            Next: {{ nextStep.label }}
+          </VBtn>
+          <VBtn
             v-if="selected.status === 'draft'"
             color="primary"
+            variant="tonal"
             :loading="saving"
-            @click="onIssue"
+            @click="askIssue"
           >
             Issue
           </VBtn>
@@ -535,7 +649,7 @@ onMounted(async () => {
             v-if="selected.status === 'issued'"
             variant="tonal"
             :loading="saving"
-            @click="onVoid"
+            @click="askVoid"
           >
             Void
           </VBtn>
@@ -544,7 +658,7 @@ onMounted(async () => {
             color="error"
             variant="tonal"
             :loading="saving"
-            @click="onDelete"
+            @click="askDelete"
           >
             Delete
           </VBtn>
@@ -564,6 +678,7 @@ onMounted(async () => {
     <VDialog
       v-model="createOpen"
       max-width="440"
+      :persistent="dirty.dirty.value"
     >
       <VCard>
         <VCardTitle>New Invoice from Delivery Order</VCardTitle>
@@ -584,7 +699,7 @@ onMounted(async () => {
           <VSpacer />
           <VBtn
             variant="text"
-            @click="createOpen = false"
+            @click="closeCreate"
           >
             Cancel
           </VBtn>
@@ -610,9 +725,13 @@ onMounted(async () => {
           <VTextField
             v-model.number="payAmount"
             type="number"
-            label="Amount"
+            min="0"
+            step="0.01"
+            label="Amount *"
             :hint="`Balance ${fmtMoney(selected?.balance)}`"
             persistent-hint
+            :error="payInvalid"
+            :error-messages="payInvalid ? 'Amount must be > 0 and not exceed the balance' : ''"
           />
           <VSelect
             v-model="payMethod"
@@ -642,7 +761,7 @@ onMounted(async () => {
           </VBtn>
           <VBtn
             color="primary"
-            :disabled="!payAmount"
+            :disabled="payInvalid"
             :loading="saving"
             @click="submitPay"
           >
@@ -656,5 +775,16 @@ onMounted(async () => {
       v-model="printOpen"
       :doc="printDoc"
     />
+
+    <AttendanceConfirmDialog
+      v-model="confirm.open.value"
+      :title="confirm.title.value"
+      :confirm-label="confirm.label.value"
+      :confirm-color="confirm.color.value"
+      :loading="confirm.loading.value"
+      @confirm="confirm.run"
+    >
+      {{ confirm.message.value }}
+    </AttendanceConfirmDialog>
   </div>
 </template>

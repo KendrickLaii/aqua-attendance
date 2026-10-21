@@ -9,6 +9,7 @@ import {
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -30,6 +31,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const search = ref('')
 const showInactive = ref(false)
+const listReq = useLatestRequest()
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
@@ -62,6 +64,8 @@ onMounted(async () => {
 
 async function loadSuppliers() {
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const result = await listSuppliers({
       search: search.value || undefined,
@@ -70,10 +74,14 @@ async function loadSuppliers() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     suppliers.value = result.items
     total.value = result.total
   }
   catch (e) {
+    if (!listReq.isLatest(token))
+      return
     loadError.value = formatApiError(e, 'Failed to load suppliers.')
   }
 }
@@ -212,66 +220,68 @@ async function submit() {
           @update:model-value="onFiltersChange"
         />
       </VCardText>
-      <VTable>
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Name</th>
-            <th>Contact</th>
-            <th>Phone</th>
-            <th>Payment terms</th>
-            <th>Status</th>
-            <th class="text-end">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="supplier in suppliers"
-            :key="supplier.id"
-          >
-            <td class="font-weight-medium">
-              {{ supplier.code }}
-            </td>
-            <td>
-              {{ supplier.name_zh }}<template v-if="supplier.name_en">
-                · {{ supplier.name_en }}
-              </template>
-            </td>
-            <td>{{ supplier.contact_name || '—' }}</td>
-            <td>{{ supplier.phone || '—' }}</td>
-            <td>{{ supplier.payment_terms || '—' }}</td>
-            <td>
-              <VChip
-                :color="supplier.is_active ? 'success' : 'secondary'"
-                size="small"
-                variant="tonal"
-              >
-                {{ supplier.is_active ? 'Active' : 'Inactive' }}
-              </VChip>
-            </td>
-            <td class="text-end">
-              <VBtn
-                variant="text"
-                size="small"
-                color="primary"
-                @click="openEdit(supplier)"
-              >
-                Edit
-              </VBtn>
-            </td>
-          </tr>
-          <tr v-if="suppliers.length === 0 && !loading">
-            <td
-              colspan="7"
-              class="text-center text-medium-emphasis py-8"
+      <div class="overflow-x-auto">
+        <VTable>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Name</th>
+              <th>Contact</th>
+              <th>Phone</th>
+              <th>Payment terms</th>
+              <th>Status</th>
+              <th class="text-end">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="supplier in suppliers"
+              :key="supplier.id"
             >
-              No suppliers yet.
-            </td>
-          </tr>
-        </tbody>
-      </VTable>
+              <td class="font-weight-medium">
+                {{ supplier.code }}
+              </td>
+              <td>
+                {{ supplier.name_zh }}<template v-if="supplier.name_en">
+                  · {{ supplier.name_en }}
+                </template>
+              </td>
+              <td>{{ supplier.contact_name || '—' }}</td>
+              <td>{{ supplier.phone || '—' }}</td>
+              <td>{{ supplier.payment_terms || '—' }}</td>
+              <td>
+                <VChip
+                  :color="supplier.is_active ? 'success' : 'secondary'"
+                  size="small"
+                  variant="tonal"
+                >
+                  {{ supplier.is_active ? 'Active' : 'Inactive' }}
+                </VChip>
+              </td>
+              <td class="text-end">
+                <VBtn
+                  variant="text"
+                  size="small"
+                  color="primary"
+                  @click="openEdit(supplier)"
+                >
+                  Edit
+                </VBtn>
+              </td>
+            </tr>
+            <tr v-if="suppliers.length === 0 && !loading">
+              <td
+                colspan="7"
+                class="text-center text-medium-emphasis py-8"
+              >
+                No suppliers yet — click "New supplier" to add one.
+              </td>
+            </tr>
+          </tbody>
+        </VTable>
+      </div>
       <AttendancePaginationBar
         v-model:page="page"
         v-model:page-size="pageSize"

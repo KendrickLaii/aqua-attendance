@@ -5,11 +5,13 @@ import {
   type InventoryMovementTypeOut,
   listInventoryItems,
   listInventoryMovements,
+  reasonCodeLabel,
 } from '@/api/attendance/inventory'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -26,6 +28,8 @@ const movements = ref<InventoryMovement[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+
+const listReq = useLatestRequest()
 
 const itemFilter = ref<string | null>(null)
 const locationFilter = ref<string | null>(null)
@@ -99,6 +103,8 @@ onMounted(async () => {
 
 async function loadMovements() {
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const result = await listInventoryMovements({
       item_id: itemFilter.value ?? undefined,
@@ -111,10 +117,14 @@ async function loadMovements() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     movements.value = result.items
     total.value = result.total
   }
   catch (e) {
+    if (!listReq.isLatest(token))
+      return
     loadError.value = formatApiError(e, 'Failed to load movements.')
   }
 }
@@ -241,60 +251,62 @@ function formatDateTime(value: string): string {
           @update:model-value="onFiltersChange"
         />
       </VCardText>
-      <VTable>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Item</th>
-            <th>Location</th>
-            <th>Type</th>
-            <th class="text-end">
-              Delta
-            </th>
-            <th class="text-end">
-              Balance after
-            </th>
-            <th>Reason</th>
-            <th>Reference</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="movement in movements"
-            :key="movement.id"
-          >
-            <td>{{ formatDateTime(movement.created_at) }}</td>
-            <td>{{ itemLabel(movement.item_id) }}</td>
-            <td>{{ locationLabel(movement.location_id) }}</td>
-            <td>
-              <VChip
-                :color="movement.type === 'in' ? 'success' : movement.type === 'out' ? 'error' : 'info'"
-                size="small"
-                variant="tonal"
-              >
-                {{ typeLabel(movement.type) }}
-              </VChip>
-            </td>
-            <td class="text-end">
-              {{ movement.quantity_delta > 0 ? `+${movement.quantity_delta}` : movement.quantity_delta }}
-            </td>
-            <td class="text-end font-weight-medium">
-              {{ movement.balance_after }}
-            </td>
-            <td>{{ movement.reason_code || '—' }}</td>
-            <td>{{ movement.reason || '—' }}</td>
-            <td>{{ movement.reference || '—' }}</td>
-          </tr>
-          <tr v-if="movements.length === 0 && !loading">
-            <td
-              colspan="9"
-              class="text-center text-medium-emphasis py-8"
+      <div class="overflow-x-auto">
+        <VTable>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Item</th>
+              <th>Location</th>
+              <th>Type</th>
+              <th class="text-end">
+                Delta
+              </th>
+              <th class="text-end">
+                Balance after
+              </th>
+              <th>Reason</th>
+              <th>Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="movement in movements"
+              :key="movement.id"
             >
-              No movements recorded yet.
-            </td>
-          </tr>
-        </tbody>
-      </VTable>
+              <td>{{ formatDateTime(movement.created_at) }}</td>
+              <td>{{ itemLabel(movement.item_id) }}</td>
+              <td>{{ locationLabel(movement.location_id) }}</td>
+              <td>
+                <VChip
+                  :color="movement.type === 'in' ? 'success' : movement.type === 'out' ? 'error' : 'info'"
+                  size="small"
+                  variant="tonal"
+                >
+                  {{ typeLabel(movement.type) }}
+                </VChip>
+              </td>
+              <td class="text-end tabular-nums">
+                {{ movement.quantity_delta > 0 ? `+${movement.quantity_delta}` : movement.quantity_delta }}
+              </td>
+              <td class="text-end font-weight-medium tabular-nums">
+                {{ movement.balance_after }}
+              </td>
+              <td>{{ reasonCodeLabel(movement.reason_code) }}</td>
+              <td>{{ movement.reason || '—' }}</td>
+              <td>{{ movement.reference || '—' }}</td>
+            </tr>
+            <tr v-if="movements.length === 0 && !loading">
+              <td
+                colspan="9"
+                class="text-center text-medium-emphasis py-8"
+              >
+                No movements match these filters — record stock on the Stock Overview page.
+              </td>
+            </tr>
+          </tbody>
+        </VTable>
+      </div>
       <AttendancePaginationBar
         v-model:page="page"
         v-model:page-size="pageSize"

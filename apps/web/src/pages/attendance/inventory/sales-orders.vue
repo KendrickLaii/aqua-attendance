@@ -29,11 +29,16 @@ import {
   RECEIPT_PAID_BY_OPTIONS,
   quickFulfill,
 } from '@/api/attendance/inventoryInvoicing'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
+import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import ProformaPrintDialog from '@/components/attendance/inventory/ProformaPrintDialog.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useConfirmAction } from '@/composables/useConfirmAction'
+import { useDirtyGuard } from '@/composables/useDirtyGuard'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -60,9 +65,17 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 
+const route = useRoute()
+const listReq = useLatestRequest()
+const confirm = useConfirmAction()
+const dirty = useDirtyGuard('You have unsaved edits on this sales order. Discard them?')
+
 const customerFilter = ref<string | null>(null)
 const locationFilter = ref<string | null>(null)
-const statusFilter = ref<SalesOrderStatus | null>(null)
+
+const statusFilter = ref<SalesOrderStatus | null>(
+  (route.query.status as SalesOrderStatus | undefined) ?? null,
+)
 
 const selected = ref<SalesOrder | null>(null)
 
@@ -145,6 +158,71 @@ const linesSubtotal = computed(() =>
 
 const editTotal = computed(() => Math.max(0, linesSubtotal.value - (editForm.discount_amount || 0)))
 
+let suppressDirty = false
+watch([editForm, editLines], () => {
+  if (!suppressDirty)
+    dirty.dirty.value = true
+}, { deep: true })
+
+const isEditorDirty = computed(() => dirty.dirty.value)
+
+function lineError(line: EditLine): string {
+  if (!line.item_id)
+    return 'Item required'
+  if (!Number.isInteger(line.qty) || line.qty <= 0)
+    return 'Qty must be a whole number > 0'
+  if (line.unit_price == null || line.unit_price < 0)
+    return 'Price must be ≥ 0'
+  if (line.discount_amount < 0 || line.discount_amount > line.qty * line.unit_price)
+    return 'Discount must be ≥ 0 and ≤ line total'
+
+  return ''
+}
+
+const lineErrors = computed(() => editLines.value.map(lineError))
+
+const formInvalid = computed(() =>
+  isDraft.value
+  && (!editForm.customer_id
+    || !editForm.location_id
+    || !editForm.order_date
+    || editLines.value.length === 0
+    || lineErrors.value.some(Boolean)
+    || (editForm.discount_amount ?? 0) < 0
+    || (editForm.discount_amount ?? 0) > linesSubtotal.value),
+)
+
+const chainSteps = computed<DocChainStep[]>(() => {
+  const so = selected.value
+  if (!so)
+    return []
+
+  const steps: DocChainStep[] = [
+    { label: `SO ${so.so_no}`, state: so.status === 'cancelled' ? 'void' : 'current', hint: so.status },
+    {
+      label: 'Delivery',
+      state: so.status === 'fulfilled' ? 'done' : 'todo',
+      to: '/attendance/inventory/delivery-orders',
+    },
+    { label: 'Invoice', state: 'todo', to: '/attendance/inventory/invoices' },
+    { label: 'Receipt', state: 'todo', to: '/attendance/inventory/receipts' },
+  ]
+
+  return steps
+})
+
+const nextStep = computed(() => {
+  const so = selected.value
+  if (!so)
+    return null
+  if (so.status === 'draft')
+    return { label: 'Confirm order', run: () => askConfirm() }
+  if (so.status === 'confirmed' || so.status === 'partial')
+    return { label: 'Create delivery order', run: createDelivery }
+
+  return null
+})
+
 const proformaOpen = ref(false)
 const proformaDoc = ref<ProformaDoc | null>(null)
 
@@ -174,6 +252,8 @@ onMounted(async () => {
 
 async function loadOrders() {
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const result = await listSalesOrders({
       customer_id: customerFilter.value ?? undefined,
@@ -183,6 +263,8 @@ async function loadOrders() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     orders.value = result.items
     total.value = result.total
   }
@@ -206,6 +288,8 @@ async function refreshStocks() {
 }
 
 async function selectOrder(so: SalesOrder) {
+  if (selected.value?.id !== so.id && isEditorDirty.value && !dirty.confirmDiscard())
+    return
   detailLoading.value = true
   try {
     const detail = await getSalesOrder(so.id)
@@ -225,6 +309,7 @@ async function selectOrder(so: SalesOrder) {
 function resetEditor(so: SalesOrder | null) {
   if (!so)
     return
+  suppressDirty = true
   editForm.customer_id = so.customer_id
   editForm.location_id = so.location_id
   editForm.order_date = so.order_date
@@ -238,9 +323,16 @@ function resetEditor(so: SalesOrder | null) {
   }))
   if (editLines.value.length === 0)
     addLine()
+  dirty.markClean()
+  nextTick(() => {
+    suppressDirty = false
+  })
 }
 
 function newOrder() {
+  if (!dirty.confirmDiscard())
+    return
+  suppressDirty = true
   selected.value = null
   editForm.customer_id = null
   editForm.location_id = null
@@ -249,6 +341,10 @@ function newOrder() {
   editForm.notes = ''
   editLines.value = []
   addLine()
+  dirty.markClean()
+  nextTick(() => {
+    suppressDirty = false
+  })
 }
 
 function addLine() {
@@ -269,8 +365,8 @@ function onItemPicked(line: EditLine) {
 async function saveOrder() {
   actionError.value = ''
   actionSuccess.value = ''
-  if (!editForm.customer_id || !editForm.location_id) {
-    actionError.value = 'Customer and location are required.'
+  if (formInvalid.value) {
+    actionError.value = 'Please fix the highlighted fields before saving.'
 
     return
   }
@@ -287,8 +383,8 @@ async function saveOrder() {
   saving.value = true
   try {
     const payload = {
-      customer_id: editForm.customer_id,
-      location_id: editForm.location_id,
+      customer_id: editForm.customer_id ?? '',
+      location_id: editForm.location_id ?? '',
       order_date: editForm.order_date,
       discount_amount: editForm.discount_amount || 0,
       notes: editForm.notes || null,
@@ -312,7 +408,18 @@ async function saveOrder() {
   }
 }
 
-async function doConfirm() {
+function askConfirm() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Confirm ${selected.value.so_no}?`,
+    'Confirming reserves stock for every line. Confirm only when the order is agreed.',
+    { label: 'Confirm', color: 'primary' },
+    performConfirm,
+  )
+}
+
+async function performConfirm() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -331,7 +438,18 @@ async function doConfirm() {
   }
 }
 
-async function doCancel() {
+function askCancel() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Cancel ${selected.value.so_no}?`,
+    'Cancelling releases all reserved stock. This cannot be undone.',
+    { label: 'Cancel order' },
+    performCancel,
+  )
+}
+
+async function performCancel() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -350,7 +468,18 @@ async function doCancel() {
   }
 }
 
-async function doDelete() {
+function askDelete() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Delete draft ${selected.value.so_no}?`,
+    'The draft order and all its lines will be permanently deleted.',
+    { label: 'Delete' },
+    performDelete,
+  )
+}
+
+async function performDelete() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -576,7 +705,7 @@ async function doQuickFulfill() {
             </VListItem>
             <VListItem v-if="orders.length === 0 && !loading">
               <VListItemTitle class="text-medium-emphasis">
-                No sales orders yet.
+                No sales orders yet — click "New order" to start a sale.
               </VListItemTitle>
             </VListItem>
           </VList>
@@ -611,11 +740,22 @@ async function doQuickFulfill() {
               :status="selected.status"
             />
             <VSpacer />
+            <VBtn
+              v-if="nextStep"
+              color="primary"
+              size="small"
+              prepend-icon="ri-arrow-right-line"
+              :loading="saving"
+              @click="nextStep.run()"
+            >
+              Next: {{ nextStep.label }}
+            </VBtn>
             <template v-if="isDraft">
               <VBtn
                 color="primary"
                 size="small"
                 :loading="saving"
+                :disabled="formInvalid"
                 @click="saveOrder"
               >
                 Save
@@ -626,7 +766,7 @@ async function doQuickFulfill() {
                 color="success"
                 size="small"
                 :loading="saving"
-                @click="doConfirm"
+                @click="askConfirm"
               >
                 Confirm
               </VBtn>
@@ -645,7 +785,7 @@ async function doQuickFulfill() {
                 color="error"
                 size="small"
                 :loading="saving"
-                @click="doDelete"
+                @click="askDelete"
               >
                 Delete
               </VBtn>
@@ -684,13 +824,18 @@ async function doQuickFulfill() {
                 color="error"
                 size="small"
                 :loading="saving"
-                @click="doCancel"
+                @click="askCancel"
               >
                 Cancel
               </VBtn>
             </template>
           </VCardTitle>
           <VCardText>
+            <InventoryDocChain
+              v-if="selected"
+              :steps="chainSteps"
+              class="mb-4"
+            />
             <VRow dense>
               <VCol
                 cols="12"
@@ -699,9 +844,10 @@ async function doQuickFulfill() {
                 <VSelect
                   v-model="editForm.customer_id"
                   :items="customerOptions"
-                  label="Customer"
+                  label="Customer *"
                   density="comfortable"
                   :readonly="!isDraft && !!selected"
+                  :error="isDraft && !editForm.customer_id"
                 />
               </VCol>
               <VCol
@@ -711,9 +857,10 @@ async function doQuickFulfill() {
                 <VSelect
                   v-model="editForm.location_id"
                   :items="locationOptions"
-                  label="Location"
+                  label="Location *"
                   density="comfortable"
                   :readonly="!isDraft && !!selected"
+                  :error="isDraft && !editForm.location_id"
                   @update:model-value="refreshStocks"
                 />
               </VCol>
@@ -723,10 +870,11 @@ async function doQuickFulfill() {
               >
                 <VTextField
                   v-model="editForm.order_date"
-                  label="Order date"
+                  label="Order date *"
                   type="date"
                   density="comfortable"
                   :readonly="!isDraft && !!selected"
+                  :error="isDraft && !editForm.order_date"
                 />
               </VCol>
               <VCol
@@ -742,116 +890,125 @@ async function doQuickFulfill() {
               </VCol>
             </VRow>
 
-            <VTable density="compact">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th
-                    class="text-end"
-                    style="width: 90px"
+            <div class="overflow-x-auto">
+              <VTable density="compact">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th
+                      class="text-end"
+                      style="width: 90px"
+                    >
+                      Qty
+                    </th>
+                    <th
+                      class="text-end"
+                      style="width: 110px"
+                    >
+                      Unit price
+                    </th>
+                    <th
+                      class="text-end"
+                      style="width: 110px"
+                    >
+                      Discount
+                    </th>
+                    <th class="text-end">
+                      Amount
+                    </th>
+                    <th
+                      v-if="isDraft"
+                      style="width: 48px"
+                    />
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(line, index) in editLines"
+                    :key="index"
                   >
-                    Qty
-                  </th>
-                  <th
-                    class="text-end"
-                    style="width: 110px"
-                  >
-                    Unit price
-                  </th>
-                  <th
-                    class="text-end"
-                    style="width: 110px"
-                  >
-                    Discount
-                  </th>
-                  <th class="text-end">
-                    Amount
-                  </th>
-                  <th
-                    v-if="isDraft"
-                    style="width: 48px"
-                  />
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(line, index) in editLines"
-                  :key="index"
-                >
-                  <td>
-                    <VAutocomplete
-                      v-if="isDraft"
-                      v-model="line.item_id"
-                      :items="itemOptions"
-                      density="compact"
-                      hide-details
-                      variant="outlined"
-                      @update:model-value="onItemPicked(line)"
-                    />
-                    <template v-else>
-                      {{ itemById.get(line.item_id || '')?.sku_code }} ·
-                      {{ itemById.get(line.item_id || '')?.name_zh }}
-                    </template>
-                  </td>
-                  <td class="text-end">
-                    <VTextField
-                      v-if="isDraft"
-                      v-model.number="line.qty"
-                      type="number"
-                      min="1"
-                      density="compact"
-                      hide-details
-                      variant="outlined"
-                    />
-                    <template v-else>
-                      {{ line.qty }}
-                    </template>
-                  </td>
-                  <td class="text-end">
-                    <VTextField
-                      v-if="isDraft"
-                      v-model.number="line.unit_price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      density="compact"
-                      hide-details
-                      variant="outlined"
-                    />
-                    <template v-else>
-                      {{ fmtMoney(line.unit_price) }}
-                    </template>
-                  </td>
-                  <td class="text-end">
-                    <VTextField
-                      v-if="isDraft"
-                      v-model.number="line.discount_amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      density="compact"
-                      hide-details
-                      variant="outlined"
-                    />
-                    <template v-else>
-                      {{ fmtMoney(line.discount_amount) }}
-                    </template>
-                  </td>
-                  <td class="text-end font-weight-medium">
-                    {{ fmtMoney(Math.max(0, (line.qty || 0) * (line.unit_price || 0) - (line.discount_amount || 0))) }}
-                  </td>
-                  <td v-if="isDraft">
-                    <VBtn
-                      icon="ri-close-line"
-                      variant="text"
-                      size="x-small"
-                      color="error"
-                      @click="removeLine(index)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </VTable>
+                    <td>
+                      <VAutocomplete
+                        v-if="isDraft"
+                        v-model="line.item_id"
+                        :items="itemOptions"
+                        density="compact"
+                        hide-details="auto"
+                        variant="outlined"
+                        :error="!!lineErrors[index]"
+                        :error-messages="lineErrors[index]"
+                        @update:model-value="onItemPicked(line)"
+                      />
+                      <template v-else>
+                        {{ itemById.get(line.item_id || '')?.sku_code }} ·
+                        {{ itemById.get(line.item_id || '')?.name_zh }}
+                      </template>
+                    </td>
+                    <td class="text-end">
+                      <VTextField
+                        v-if="isDraft"
+                        v-model.number="line.qty"
+                        type="number"
+                        min="1"
+                        step="1"
+                        density="compact"
+                        hide-details="auto"
+                        variant="outlined"
+                        :error="!!lineErrors[index]"
+                      />
+                      <template v-else>
+                        {{ line.qty }}
+                      </template>
+                    </td>
+                    <td class="text-end">
+                      <VTextField
+                        v-if="isDraft"
+                        v-model.number="line.unit_price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        density="compact"
+                        hide-details="auto"
+                        variant="outlined"
+                        :error="!!lineErrors[index]"
+                      />
+                      <template v-else>
+                        {{ fmtMoney(line.unit_price) }}
+                      </template>
+                    </td>
+                    <td class="text-end">
+                      <VTextField
+                        v-if="isDraft"
+                        v-model.number="line.discount_amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        density="compact"
+                        hide-details="auto"
+                        variant="outlined"
+                        :error="!!lineErrors[index]"
+                      />
+                      <template v-else>
+                        {{ fmtMoney(line.discount_amount) }}
+                      </template>
+                    </td>
+                    <td class="text-end font-weight-medium tabular-nums">
+                      {{ fmtMoney(Math.max(0, (line.qty || 0) * (line.unit_price || 0) - (line.discount_amount || 0))) }}
+                    </td>
+                    <td v-if="isDraft">
+                      <VBtn
+                        icon="ri-close-line"
+                        variant="text"
+                        size="x-small"
+                        color="error"
+                        aria-label="Remove line"
+                        @click="removeLine(index)"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </VTable>
+            </div>
 
             <div
               v-if="isDraft"
@@ -969,5 +1126,16 @@ async function doQuickFulfill() {
       v-model="proformaOpen"
       :doc="proformaDoc"
     />
+
+    <AttendanceConfirmDialog
+      v-model="confirm.open.value"
+      :title="confirm.title.value"
+      :confirm-label="confirm.label.value"
+      :confirm-color="confirm.color.value"
+      :loading="confirm.loading.value"
+      @confirm="confirm.run"
+    >
+      {{ confirm.message.value }}
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>

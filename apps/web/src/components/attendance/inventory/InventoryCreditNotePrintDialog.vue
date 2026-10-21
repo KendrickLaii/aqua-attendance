@@ -38,6 +38,7 @@ function print() {
           variant="text"
           size="small"
           icon="ri-close-line"
+          aria-label="Close"
           @click="open = false"
         />
       </VCardTitle>

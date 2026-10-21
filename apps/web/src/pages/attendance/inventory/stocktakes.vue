@@ -13,8 +13,11 @@ import {
   updateInventoryStocktakeLines,
 } from '@/api/attendance/inventory'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useConfirmAction } from '@/composables/useConfirmAction'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -30,6 +33,9 @@ useAutoClearAlerts(actionError)
 const locations = ref<LocationItem[]>([])
 const items = ref<InventoryItem[]>([])
 const stocktakes = ref<InventoryStocktake[]>([])
+
+const listReq = useLatestRequest()
+const confirm = useConfirmAction()
 
 const locationFilter = ref<string | null>(null)
 const statusFilter = ref<InventoryStocktakeStatus | null>(null)
@@ -91,12 +97,32 @@ onMounted(async () => {
   }
 })
 
+const countErrors = computed(() => {
+  if (!selected.value || !isDraft.value)
+    return {} as Record<string, string>
+  const out: Record<string, string> = {}
+
+  for (const l of selected.value.lines) {
+    const v = counts.value[l.item_id]
+    if (v != null && (!Number.isInteger(v) || v < 0))
+      out[l.item_id] = 'Must be a whole number ≥ 0'
+  }
+
+  return out
+})
+
+const hasCountErrors = computed(() => Object.keys(countErrors.value).length > 0)
+
 async function loadList() {
+  const token = listReq.next()
+
   const result = await listInventoryStocktakes({
     location_id: locationFilter.value ?? undefined,
     status: statusFilter.value ?? undefined,
   })
 
+  if (!listReq.isLatest(token))
+    return
   stocktakes.value = result.items
 }
 
@@ -144,6 +170,11 @@ async function selectStocktake(take: InventoryStocktake) {
 async function saveCounts(): Promise<boolean> {
   if (!selected.value)
     return false
+  if (hasCountErrors.value) {
+    actionError.value = 'Counts must be whole numbers ≥ 0.'
+
+    return false
+  }
   try {
     const lines = selected.value.lines.map(l => ({
       item_id: l.item_id,
@@ -164,7 +195,18 @@ async function saveCounts(): Promise<boolean> {
   }
 }
 
-async function applyTake() {
+function askApply() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    'Apply this stocktake?',
+    'Applying posts stock adjustments for every line where the counted qty differs from the system qty. This cannot be undone.',
+    { label: 'Apply', color: 'primary' },
+    performApply,
+  )
+}
+
+async function performApply() {
   if (!selected.value)
     return
   saving.value = true
@@ -183,7 +225,18 @@ async function applyTake() {
   }
 }
 
-async function cancelTake() {
+function askCancel() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    'Cancel this stocktake?',
+    'The draft stocktake will be cancelled; unsaved counts are discarded.',
+    { label: 'Cancel take' },
+    performCancel,
+  )
+}
+
+async function performCancel() {
   if (!selected.value)
     return
   saving.value = true
@@ -351,7 +404,7 @@ async function submitCreate() {
             </VListItem>
             <VListItem v-if="stocktakes.length === 0">
               <VListItemTitle class="text-medium-emphasis">
-                No stocktakes yet.
+                No stocktakes yet — click "New Stocktake" to count a location.
               </VListItemTitle>
             </VListItem>
           </VList>
@@ -397,7 +450,8 @@ async function submitCreate() {
                 color="primary"
                 size="small"
                 :loading="saving"
-                @click="applyTake"
+                :disabled="hasCountErrors"
+                @click="askApply"
               >
                 Apply
               </VBtn>
@@ -406,7 +460,7 @@ async function submitCreate() {
                 color="error"
                 size="small"
                 :loading="saving"
-                @click="cancelTake"
+                @click="askCancel"
               >
                 Cancel take
               </VBtn>
@@ -421,58 +475,63 @@ async function submitCreate() {
               · {{ selected.note }}
             </template>
           </VCardSubtitle>
-          <VTable>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="text-end">
-                  System qty
-                </th>
-                <th
-                  class="text-end"
-                  style="width: 160px"
+          <div class="overflow-x-auto">
+            <VTable>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th class="text-end">
+                    System qty
+                  </th>
+                  <th
+                    class="text-end"
+                    style="width: 160px"
+                  >
+                    Counted qty
+                  </th>
+                  <th class="text-end">
+                    Diff
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="line in selected.lines"
+                  :key="line.id"
                 >
-                  Counted qty
-                </th>
-                <th class="text-end">
-                  Diff
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="line in selected.lines"
-                :key="line.id"
-              >
-                <td>{{ itemLabel(line.item_id) }}</td>
-                <td class="text-end">
-                  {{ line.system_qty }}
-                </td>
-                <td class="text-end">
-                  <VTextField
-                    v-if="isDraft"
-                    v-model.number="counts[line.item_id]"
-                    type="number"
-                    min="0"
-                    density="compact"
-                    hide-details
-                    variant="outlined"
-                  />
-                  <template v-else>
-                    {{ line.counted_qty ?? '—' }}
-                  </template>
-                </td>
-                <td class="text-end">
-                  <template v-if="(isDraft ? counts[line.item_id] : line.counted_qty) !== null">
-                    {{ (isDraft ? counts[line.item_id] : line.counted_qty)! - line.system_qty }}
-                  </template>
-                  <template v-else>
-                    —
-                  </template>
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
+                  <td>{{ itemLabel(line.item_id) }}</td>
+                  <td class="text-end tabular-nums">
+                    {{ line.system_qty }}
+                  </td>
+                  <td class="text-end">
+                    <VTextField
+                      v-if="isDraft"
+                      v-model.number="counts[line.item_id]"
+                      type="number"
+                      min="0"
+                      step="1"
+                      density="compact"
+                      hide-details="auto"
+                      variant="outlined"
+                      :error="!!countErrors[line.item_id]"
+                      :error-messages="countErrors[line.item_id]"
+                    />
+                    <template v-else>
+                      {{ line.counted_qty ?? '—' }}
+                    </template>
+                  </td>
+                  <td class="text-end tabular-nums">
+                    <template v-if="(isDraft ? counts[line.item_id] : line.counted_qty) !== null">
+                      {{ (isDraft ? counts[line.item_id] : line.counted_qty)! - line.system_qty }}
+                    </template>
+                    <template v-else>
+                      —
+                    </template>
+                  </td>
+                </tr>
+              </tbody>
+            </VTable>
+          </div>
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
@@ -499,9 +558,10 @@ async function submitCreate() {
           <VSelect
             v-model="createForm.location_id"
             :items="locationOptions"
-            label="Location"
+            label="Location *"
             density="comfortable"
             class="mb-3"
+            :error="!createForm.location_id"
           />
           <VTextField
             v-model="createForm.note"
@@ -530,5 +590,16 @@ async function submitCreate() {
         </VCardActions>
       </VCard>
     </VDialog>
+
+    <AttendanceConfirmDialog
+      v-model="confirm.open.value"
+      :title="confirm.title.value"
+      :confirm-label="confirm.label.value"
+      :confirm-color="confirm.color.value"
+      :loading="confirm.loading.value"
+      @confirm="confirm.run"
+    >
+      {{ confirm.message.value }}
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>

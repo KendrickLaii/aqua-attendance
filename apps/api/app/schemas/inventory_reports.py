@@ -153,3 +153,4 @@ class AlertsOut(BaseModel):
 class NotifyResult(BaseModel):
     created: int
     skipped: int
+    locked: bool = False

@@ -636,3 +636,153 @@ async def test_p2_non_admin_forbidden(client: AsyncClient, admin_token: str, sam
     ):
         resp = await client.request(method, url, headers=staff_headers, **kwargs)
         assert resp.status_code == 403, (method, url, resp.status_code)
+
+
+# ---- review-fix coverage ----
+
+
+async def _create_customer_and_confirm_so(
+    client: AsyncClient, token: str, item_id: str, location_id: str, qty: int
+) -> dict:
+    resp = await client.post(
+        "/api/inventory/customers",
+        json={"code": f"CUS-{uuid.uuid4().hex[:6]}", "name_zh": "客戶"},
+        headers=_h(token),
+    )
+    assert resp.status_code == 201, resp.text
+    customer = resp.json()
+    resp = await client.post(
+        "/api/inventory/sales-orders",
+        json={
+            "customer_id": customer["id"],
+            "location_id": location_id,
+            "order_date": "2026-10-16",
+            "lines": [{"item_id": item_id, "qty": qty, "unit_price": 10.0}],
+        },
+        headers=_h(token),
+    )
+    assert resp.status_code == 201, resp.text
+    so = resp.json()
+    resp = await client.post(
+        f"/api/inventory/sales-orders/{so['id']}/confirm", headers=_h(token)
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+async def test_adjust_below_reserved_rejected(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 10)
+    await _create_customer_and_confirm_so(client, admin_token, item["id"], loc, 6)
+    stock = await _stock_qty(client, admin_token, item["id"], loc)
+    assert stock["reserved"] == 6
+
+    # Manual adjust to below the reserved qty must fail
+    resp = await client.post(
+        "/api/inventory/movements",
+        json={"item_id": item["id"], "location_id": loc, "type": "adjust", "quantity": 4},
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 422, resp.text
+    assert "reserved" in resp.json()["detail"]
+    stock = await _stock_qty(client, admin_token, item["id"], loc)
+    assert stock["quantity"] == 10
+
+
+async def test_stocktake_apply_below_reserved_is_atomic(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    item = await _create_item(client, admin_token)
+    other = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 10)
+    await _move(client, admin_token, other["id"], loc, "in", 5)
+    await _create_customer_and_confirm_so(client, admin_token, item["id"], loc, 6)
+
+    take = await _create_stocktake(client, admin_token, loc, note="count")
+    resp = await client.patch(
+        f"/api/inventory/stocktakes/{take['id']}/lines",
+        json={
+            "lines": [
+                {"item_id": item["id"], "counted_qty": 4},   # below reserved 6
+                {"item_id": other["id"], "counted_qty": 3},
+            ]
+        },
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    applied = await client.post(
+        f"/api/inventory/stocktakes/{take['id']}/apply", headers=_h(admin_token)
+    )
+    assert applied.status_code == 422, applied.text
+
+    # Nothing applied — the other item's count was not adjusted either
+    state = (
+        await client.get(f"/api/inventory/stocktakes/{take['id']}", headers=_h(admin_token))
+    ).json()
+    assert state["status"] == "draft"
+    assert (await _stock_qty(client, admin_token, item["id"], loc))["quantity"] == 10
+    assert (await _stock_qty(client, admin_token, other["id"], loc))["quantity"] == 5
+    moves = await client.get(
+        f"/api/inventory/movements?type=adjust&location_id={loc}", headers=_h(admin_token)
+    )
+    assert not [m for m in moves.json() if (m["reference"] or "").startswith("STK:")]
+
+
+async def test_exports_utf8_bom_and_formula_escaping(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    item = await _create_item(client, admin_token, name_zh="=SUM(1)+1")
+    await _move(client, admin_token, item["id"], sample_location["id"], "in", 2)
+
+    for path in (
+        "/api/inventory/export/items.csv",
+        "/api/inventory/export/stocks.csv",
+        "/api/inventory/reports/stock-valuation?format=csv",
+    ):
+        resp = await client.get(path, headers=_h(admin_token))
+        assert resp.status_code == 200, path
+        assert resp.content[:3] == b"\xef\xbb\xbf", path  # UTF-8 BOM
+        text = resp.content.decode("utf-8-sig")
+        assert ",=" not in text, path
+        assert "'=SUM(1)+1" in text, path
+
+
+async def test_opening_stock_import_skips_zero_qty(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    item = await _create_item(client, admin_token)
+    csv_content = (
+        "sku_code,location,quantity\n"
+        f"{item['sku_code']},{sample_location['id']},0\n"
+        f"{item['sku_code']},{sample_location['id']},3\n"
+    )
+    resp = await client.post(
+        "/api/inventory/import/opening-stock",
+        files=_csv_file(csv_content),
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["created"] == 1
+    assert resp.json()["skipped"] == 1
+
+
+async def test_items_csv_import_rejects_negatives(
+    client: AsyncClient, admin_token: str
+):
+    csv_content = (
+        "sku_code,name_zh,cost_price,sale_price,reorder_level\n"
+        "BK-NEG-1,負數,-5,10,2\n"
+        "BK-NEG-2,負數二,5,10,-1\n"
+    )
+    resp = await client.post(
+        "/api/inventory/import/items",
+        files=_csv_file(csv_content),
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 422
+    assert len(resp.json()["detail"]["errors"]) == 2

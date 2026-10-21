@@ -1,5 +1,3 @@
-import csv
-import io
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -43,6 +41,7 @@ from app.schemas.inventory_reports import (
 )
 from app.services import audit_log as audit_log_svc
 from app.services import inventory_alerts as alerts_svc
+from app.utils import csv_export
 
 router = APIRouter(prefix="/inventory", tags=["inventory-reports"])
 
@@ -63,16 +62,7 @@ def _dt_range(field, date_from: date | None, date_to: date | None):
 
 
 def _csv_response(filename: str, header: list[str], rows: list[list]) -> Response:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(header)
-    writer.writerows(rows)
-    content = "﻿" + buf.getvalue()  # UTF-8 BOM for Excel
-    return Response(
-        content=content,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return csv_export.csv_response(filename, header, rows)
 
 
 def _bucket(days: int) -> str:
@@ -95,6 +85,8 @@ async def stock_valuation(
     location_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
+    # NOTE: value uses the item's global avg_cost — costs are not tracked
+    # per-location, so every location is valued at the same unit cost.
     q = (
         select(InventoryStock, InventoryItem, Location)
         .join(InventoryItem, InventoryItem.id == InventoryStock.item_id)
@@ -308,7 +300,7 @@ async def purchases_report(
         rec["qty_returned"] += int(qty or 0)
         rec["value_returned"] += _to_float(val)
 
-    supplier_ids = {k[0] for k in agg} | {k[0] for k in agg}
+    supplier_ids = {k[0] for k in agg}
     item_ids = {k[1] for k in agg}
     suppliers = (
         await db.execute(select(Supplier).where(Supplier.id.in_(supplier_ids)))
@@ -452,6 +444,18 @@ async def sales_report(
             )
         ).scalar_one()
     )
+    # Row amounts are line-based (before invoice-level discount); the header
+    # discount is reported separately so rows reconcile: invoiced = sum(rows)
+    # - header_discounts.
+    header_discounts = _to_float(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(InventoryInvoice.discount_amount), 0)).where(
+                    *inv_clauses
+                )
+            )
+        ).scalar_one()
+    )
 
     cn_clauses = [InventoryCreditNote.status == "confirmed"]
     if date_from:
@@ -509,6 +513,7 @@ async def sales_report(
     ]
     totals = {
         "invoiced": invoiced_total,
+        "header_discounts": header_discounts,
         "credited": credited_total,
         "net_sales": round(invoiced_total - credited_total, 2),
         "payments": payments_total,
@@ -521,6 +526,8 @@ async def sales_report(
             [r["date"].isoformat() if r["date"] else "", r["customer_name"] or "", r["sku_code"], r["name_zh"], r["invoice_count"], r["qty"], f"{r['amount']:.2f}"]
             for r in rows
         ]
+        if header_discounts:
+            csv_rows.append(["Header discounts", "", "", "", "", "", f"{-header_discounts:.2f}"])
         csv_rows.append(["TOTAL", "", "", "", totals["invoice_count"], totals["qty"], f"{totals['invoiced']:.2f}"])
         return _csv_response(
             "sales.csv",

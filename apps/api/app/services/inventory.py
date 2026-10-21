@@ -76,8 +76,10 @@ async def apply_movement(
     For 'adjust', ``quantity`` is the new absolute on-hand count; the delta is
     computed against the locked balance. ``reference`` is unique — a repeat of
     the same reference returns the already-recorded movement (idempotent).
-    'out' and 'transfer_out' may not push quantity below the reserved amount.
-    For 'out', ``unit_cost`` snapshots the item's avg_cost. Caller commits.
+    'out' and 'transfer_out' may not push quantity below the reserved amount;
+    'adjust' may not set the count below it either (cancel or ship the orders
+    holding the reservations first). For 'out', ``unit_cost`` snapshots the
+    item's avg_cost. Caller commits.
     """
     if type not in VALID_TYPES:
         raise HTTPException(status_code=422, detail=f"unsupported movement type: {type}")
@@ -116,6 +118,14 @@ async def apply_movement(
             status_code=422,
             detail=f"cannot go below reserved: {stock.reserved} reserved, {stock.quantity} on hand",
         )
+    if type == "adjust" and balance_after < stock.reserved:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"count {balance_after} is below reserved {stock.reserved}; "
+                "cancel or ship the sales orders holding reservations first"
+            ),
+        )
 
     unit_cost = None
     if type == "out":
@@ -123,6 +133,7 @@ async def apply_movement(
             item = await db.get(InventoryItem, item_id)
         unit_cost = float(item.avg_cost) if item else None
 
+    prev_quantity = stock.quantity
     stock.quantity = balance_after
     movement = InventoryMovement(
         item_id=item_id,
@@ -137,7 +148,22 @@ async def apply_movement(
         created_by=user.id if user else None,
     )
     db.add(movement)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError:
+        # Concurrent duplicate of the same unique reference: roll back our
+        # stock mutation (the savepoint undid the flush, not the ORM state)
+        # and return the winner.
+        stock.quantity = prev_quantity
+        if reference:
+            existing = await db.execute(
+                select(InventoryMovement).where(InventoryMovement.reference == reference)
+            )
+            movement = existing.scalar_one_or_none()
+            if movement is not None:
+                return movement
+        raise
     return movement
 
 

@@ -16,10 +16,15 @@ import {
 } from '@/api/attendance/inventoryPurchasing'
 import { type InventoryItem, listInventoryItems } from '@/api/attendance/inventory'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
+import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useConfirmAction } from '@/composables/useConfirmAction'
+import { useDirtyGuard } from '@/composables/useDirtyGuard'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -45,6 +50,10 @@ const receipts = ref<GoodsReceipt[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
+const listReq = useLatestRequest()
+const confirm = useConfirmAction()
+const dirty = useDirtyGuard('Discard the goods receipt being drafted?')
+
 const statusFilter = ref<InventoryDocStatus | null>(null)
 const locationFilter = ref<string | null>(null)
 
@@ -68,7 +77,20 @@ const poById = computed(() => new Map(openOrders.value.map(p => [p.id, p])))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const isDraft = computed(() => selected.value?.status === 'draft')
 
+const chainSteps = computed<DocChainStep[]>(() => {
+  const grn = selected.value
+  if (!grn)
+    return []
+
+  return [
+    { label: grn.po_no ? `PO ${grn.po_no}` : 'PO', state: 'done', to: '/attendance/inventory/purchase-orders' },
+    { label: `GRN ${grn.grn_no}`, state: grn.status === 'void' ? 'void' : 'current', hint: grn.status },
+    { label: 'Stock', state: grn.status === 'confirmed' ? 'done' : 'todo', to: '/attendance/inventory' },
+  ]
+})
+
 const createDialogOpen = ref(false)
+const confirmAllowOverReceipt = ref(false)
 
 const createForm = reactive({
   po_id: null as string | null,
@@ -80,6 +102,41 @@ const createForm = reactive({
 })
 
 const manualLines = ref<GoodsReceiptLinePayload[]>([])
+
+let suppressDirty = false
+watch([createForm, manualLines], () => {
+  if (!suppressDirty && createDialogOpen.value)
+    dirty.dirty.value = true
+}, { deep: true })
+
+function manualLineError(line: GoodsReceiptLinePayload): string {
+  if (!line.item_id)
+    return 'Item required'
+  if (!Number.isInteger(line.qty) || line.qty <= 0)
+    return 'Qty must be a whole number > 0'
+  if (line.unit_cost == null || line.unit_cost < 0)
+    return 'Cost must be ≥ 0'
+
+  return ''
+}
+
+const manualLineErrors = computed(() => manualLines.value.map(manualLineError))
+const createFromPo = computed(() => !!createForm.po_id)
+
+const createInvalid = computed(() =>
+  createFromPo.value
+    ? !createForm.receipt_date
+    : (!createForm.supplier_id
+      || !createForm.location_id
+      || !createForm.receipt_date
+      || manualLines.value.length === 0
+      || manualLineErrors.value.some(Boolean)),
+)
+
+function closeCreate() {
+  if (dirty.confirmDiscard())
+    createDialogOpen.value = false
+}
 
 onMounted(async () => {
   if (!(await ensureAccess()))
@@ -116,6 +173,8 @@ async function fetchAllOpenOrders(): Promise<PurchaseOrder[]> {
 
 async function loadReceipts() {
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const result = await listGoodsReceipts({
       status: statusFilter.value ?? undefined,
@@ -124,6 +183,8 @@ async function loadReceipts() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     receipts.value = result.items
     total.value = result.total
   }
@@ -151,6 +212,7 @@ async function selectReceipt(grn: GoodsReceipt) {
 }
 
 function openCreate() {
+  suppressDirty = true
   createForm.po_id = null
   createForm.supplier_id = null
   createForm.location_id = null
@@ -159,9 +221,11 @@ function openCreate() {
   createForm.allow_over_receipt = false
   manualLines.value = []
   createDialogOpen.value = true
+  dirty.markClean()
+  nextTick(() => {
+    suppressDirty = false
+  })
 }
-
-const createFromPo = computed(() => !!createForm.po_id)
 
 function addManualLine() {
   manualLines.value.push({ item_id: '', qty: 1, unit_cost: 0 })
@@ -173,6 +237,11 @@ function removeManualLine(index: number) {
 
 async function submitCreate() {
   actionError.value = ''
+  if (createInvalid.value) {
+    actionError.value = 'Please fix the highlighted fields before creating.'
+
+    return
+  }
   saving.value = true
   try {
     const po = createForm.po_id ? poById.value.get(createForm.po_id) : null
@@ -201,6 +270,7 @@ async function submitCreate() {
 
     actionSuccess.value = `Created goods receipt ${grn.grn_no}.`
     createDialogOpen.value = false
+    dirty.markClean()
     await loadReceipts()
     await selectReceipt(grn)
   }
@@ -212,13 +282,28 @@ async function submitCreate() {
   }
 }
 
-async function doConfirm() {
+function askConfirm() {
+  const grn = selected.value
+  if (!grn)
+    return
+  const qty = grn.lines.reduce((s, l) => s + l.qty, 0)
+
+  confirmAllowOverReceipt.value = false
+  confirm.ask(
+    `Confirm ${grn.grn_no}?`,
+    `Confirming adds ${qty} item${qty === 1 ? '' : 's'} to stock and updates average cost. Enable "Allow over-receipt" only if receiving more than ordered is intended.`,
+    { label: 'Confirm', color: 'primary' },
+    performConfirm,
+  )
+}
+
+async function performConfirm() {
   if (!selected.value)
     return
   actionError.value = ''
   saving.value = true
   try {
-    selected.value = await confirmGoodsReceipt(selected.value.id)
+    selected.value = await confirmGoodsReceipt(selected.value.id, confirmAllowOverReceipt.value)
     actionSuccess.value = `Confirmed ${selected.value.grn_no}.`
     await loadReceipts()
     openOrders.value = await fetchAllOpenOrders()
@@ -231,7 +316,21 @@ async function doConfirm() {
   }
 }
 
-async function doVoid() {
+function askVoid() {
+  const grn = selected.value
+  if (!grn)
+    return
+  const qty = grn.lines.reduce((s, l) => s + l.qty, 0)
+
+  confirm.ask(
+    `Void ${grn.grn_no}?`,
+    `Voiding removes ${qty} item${qty === 1 ? '' : 's'} from stock. Confirmed returns against it must be voided first.`,
+    { label: 'Void' },
+    performVoid,
+  )
+}
+
+async function performVoid() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -250,7 +349,18 @@ async function doVoid() {
   }
 }
 
-async function doDelete() {
+function askDelete() {
+  if (!selected.value)
+    return
+  confirm.ask(
+    `Delete draft ${selected.value.grn_no}?`,
+    'The draft goods receipt will be permanently deleted.',
+    { label: 'Delete' },
+    performDelete,
+  )
+}
+
+async function performDelete() {
   if (!selected.value)
     return
   actionError.value = ''
@@ -385,7 +495,7 @@ function fmtMoney(value: number | null | undefined): string {
             </VListItem>
             <VListItem v-if="receipts.length === 0 && !loading">
               <VListItemTitle class="text-medium-emphasis">
-                No goods receipts yet.
+                No goods receipts yet — order a purchase order, then use "New receipt".
               </VListItemTitle>
             </VListItem>
           </VList>
@@ -417,21 +527,23 @@ function fmtMoney(value: number | null | undefined): string {
             <span>{{ selected.grn_no }}</span>
             <InventoryStatusChip :status="selected.status" />
             <VSpacer />
+            <VBtn
+              v-if="isDraft"
+              color="primary"
+              size="small"
+              prepend-icon="ri-arrow-right-line"
+              :loading="saving"
+              @click="askConfirm"
+            >
+              Next: Confirm receipt
+            </VBtn>
             <template v-if="isDraft">
-              <VBtn
-                color="primary"
-                size="small"
-                :loading="saving"
-                @click="doConfirm"
-              >
-                Confirm
-              </VBtn>
               <VBtn
                 variant="text"
                 color="error"
                 size="small"
                 :loading="saving"
-                @click="doDelete"
+                @click="askDelete"
               >
                 Delete
               </VBtn>
@@ -442,7 +554,7 @@ function fmtMoney(value: number | null | undefined): string {
               color="error"
               size="small"
               :loading="saving"
-              @click="doVoid"
+              @click="askVoid"
             >
               Void
             </VBtn>
@@ -454,39 +566,47 @@ function fmtMoney(value: number | null | undefined): string {
               · PO {{ selected.po_no }}
             </template>
           </VCardSubtitle>
-          <VTable>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="text-end">
-                  Qty
-                </th>
-                <th class="text-end">
-                  Unit cost
-                </th>
-                <th class="text-end">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="line in selected.lines"
-                :key="line.id"
-              >
-                <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') || line.item_id }}</td>
-                <td class="text-end">
-                  {{ line.qty }}
-                </td>
-                <td class="text-end">
-                  {{ fmtMoney(line.unit_cost) }}
-                </td>
-                <td class="text-end font-weight-medium">
-                  {{ fmtMoney(line.qty * line.unit_cost) }}
-                </td>
-              </tr>
-            </tbody>
-          </VTable>
+          <VCardText class="pa-0">
+            <InventoryDocChain
+              :steps="chainSteps"
+              class="px-4 pb-2"
+            />
+            <div class="overflow-x-auto">
+              <VTable>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th class="text-end">
+                      Qty
+                    </th>
+                    <th class="text-end">
+                      Unit cost
+                    </th>
+                    <th class="text-end">
+                      Amount
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="line in selected.lines"
+                    :key="line.id"
+                  >
+                    <td>{{ [line.sku_code, line.name_zh].filter(Boolean).join(' · ') || line.item_id }}</td>
+                    <td class="text-end tabular-nums">
+                      {{ line.qty }}
+                    </td>
+                    <td class="text-end tabular-nums">
+                      {{ fmtMoney(line.unit_cost) }}
+                    </td>
+                    <td class="text-end font-weight-medium tabular-nums">
+                      {{ fmtMoney(line.qty * line.unit_cost) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </VTable>
+            </div>
+          </VCardText>
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
@@ -522,24 +642,27 @@ function fmtMoney(value: number | null | undefined): string {
             <VSelect
               v-model="createForm.supplier_id"
               :items="suppliers.map(s => ({ value: s.id, title: `${s.code} · ${s.name_zh}` }))"
-              label="Supplier"
+              label="Supplier *"
               density="comfortable"
               class="mb-3"
+              :error="!createForm.supplier_id"
             />
             <VSelect
               v-model="createForm.location_id"
               :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.id }))"
-              label="Location"
+              label="Location *"
               density="comfortable"
               class="mb-3"
+              :error="!createForm.location_id"
             />
           </template>
           <VTextField
             v-model="createForm.receipt_date"
-            label="Receipt date"
+            label="Receipt date *"
             type="date"
             density="comfortable"
             class="mb-3"
+            :error="!createForm.receipt_date"
           />
           <VTextField
             v-model="createForm.notes"
@@ -565,38 +688,44 @@ function fmtMoney(value: number | null | undefined): string {
               <VAutocomplete
                 v-model="line.item_id"
                 :items="items.map(i => ({ value: i.id, title: [i.sku_code, i.name_zh].filter(Boolean).join(' · ') }))"
-                label="Item"
+                label="Item *"
                 density="compact"
-                hide-details
+                hide-details="auto"
                 variant="outlined"
                 style="flex: 3"
+                :error="!!manualLineErrors[index]"
+                :error-messages="manualLineErrors[index]"
               />
               <VTextField
                 v-model.number="line.qty"
-                label="Qty"
+                label="Qty *"
                 type="number"
                 min="1"
+                step="1"
                 density="compact"
-                hide-details
+                hide-details="auto"
                 variant="outlined"
                 style="flex: 1"
+                :error="!!manualLineErrors[index]"
               />
               <VTextField
                 v-model.number="line.unit_cost"
-                label="Unit cost"
+                label="Unit cost *"
                 type="number"
                 min="0"
                 step="0.01"
                 density="compact"
-                hide-details
+                hide-details="auto"
                 variant="outlined"
                 style="flex: 1"
+                :error="!!manualLineErrors[index]"
               />
               <VBtn
                 icon="ri-close-line"
                 variant="text"
                 size="x-small"
                 color="error"
+                aria-label="Remove line"
                 @click="removeManualLine(index)"
               />
             </div>
@@ -615,14 +744,14 @@ function fmtMoney(value: number | null | undefined): string {
           <VSpacer />
           <VBtn
             variant="text"
-            @click="createDialogOpen = false"
+            @click="closeCreate"
           >
             Cancel
           </VBtn>
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="!createFromPo && manualLines.every(l => !l.item_id)"
+            :disabled="createInvalid"
             @click="submitCreate"
           >
             Create
@@ -630,5 +759,24 @@ function fmtMoney(value: number | null | undefined): string {
         </VCardActions>
       </VCard>
     </VDialog>
+
+    <AttendanceConfirmDialog
+      v-model="confirm.open.value"
+      :title="confirm.title.value"
+      :confirm-label="confirm.label.value"
+      :confirm-color="confirm.color.value"
+      :loading="confirm.loading.value"
+      @confirm="confirm.run"
+    >
+      <div>{{ confirm.message.value }}</div>
+      <VCheckbox
+        v-if="confirm.title.value.startsWith('Confirm')"
+        v-model="confirmAllowOverReceipt"
+        label="Allow over-receipt (receive more than ordered)"
+        density="compact"
+        hide-details
+        class="mt-2"
+      />
+    </AttendanceConfirmDialog>
   </VContainer>
 </template>

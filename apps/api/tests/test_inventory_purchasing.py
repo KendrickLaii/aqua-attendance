@@ -390,7 +390,17 @@ async def test_grn_over_receipt_blocked_unless_allowed(
             lines=[{"item_id": item["id"], "qty": 6, "unit_cost": 10.0}],
         ),
     )
-    await client.post(f"/api/inventory/goods-receipts/{grn['id']}/confirm", headers=_h(admin_token))
+    # Confirm re-validates: over-receipt needs the flag again at confirm time
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/confirm", headers=_h(admin_token)
+    )
+    assert resp.status_code == 422
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/confirm",
+        json={"allow_over_receipt": True},
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 200
     po = await _get_po(client, admin_token, po["id"])
     assert po["status"] == "received"
     assert po["lines"][0]["received_qty"] == 6
@@ -793,3 +803,147 @@ async def test_p3_audit_rows_written(
         assert {"CREATE", "UPDATE"} <= set(await logs("purchase_orders"))
         assert {"CREATE", "UPDATE"} <= set(await logs("goods_receipts"))
         assert {"CREATE", "UPDATE"} <= set(await logs("purchase_returns"))
+
+
+# ---- review-fix coverage ----
+
+
+async def test_grn_second_draft_over_receipt_blocked_at_confirm(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    supplier = await _create_supplier(client, admin_token)
+    po, item = await _ordered_po_with_item(
+        client, admin_token, supplier["id"], sample_location["id"], qty=5
+    )
+    # Two drafts, each valid at creation time (received_qty was 0)
+    grn1 = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(
+            supplier["id"],
+            sample_location["id"],
+            po_id=po["id"],
+            lines=[{"item_id": item["id"], "qty": 5, "unit_cost": 10.0}],
+        ),
+    )
+    grn2 = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(
+            supplier["id"],
+            sample_location["id"],
+            po_id=po["id"],
+            lines=[{"item_id": item["id"], "qty": 5, "unit_cost": 10.0}],
+        ),
+    )
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn1['id']}/confirm", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+
+    # The second confirm must now be rejected: remaining qty is 0
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn2['id']}/confirm", headers=_h(admin_token)
+    )
+    assert resp.status_code == 422, resp.text
+    grn2_state = (
+        await client.get(f"/api/inventory/goods-receipts/{grn2['id']}", headers=_h(admin_token))
+    ).json()
+    assert grn2_state["status"] == "draft"
+    stock = await _stock(client, admin_token, item["id"], sample_location["id"])
+    assert stock["quantity"] == 5
+
+    # ...unless explicitly allowed at confirm time
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn2['id']}/confirm",
+        json={"allow_over_receipt": True},
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 200
+
+
+async def test_grn_void_blocked_by_confirmed_return(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    supplier = await _create_supplier(client, admin_token)
+    item = await _create_item(client, admin_token)
+    grn = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(
+            supplier["id"],
+            sample_location["id"],
+            lines=[{"item_id": item["id"], "qty": 5, "unit_cost": 10.0}],
+        ),
+    )
+    await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/confirm", headers=_h(admin_token)
+    )
+    prt = await client.post(
+        "/api/inventory/purchase-returns",
+        json={
+            "supplier_id": supplier["id"],
+            "location_id": sample_location["id"],
+            "grn_id": grn["id"],
+            "return_date": "2026-10-17",
+            "lines": [{"item_id": item["id"], "qty": 1, "unit_cost": 10.0}],
+        },
+        headers=_h(admin_token),
+    )
+    assert prt.status_code == 201, prt.text
+    prt = prt.json()
+    await client.post(
+        f"/api/inventory/purchase-returns/{prt['id']}/confirm", headers=_h(admin_token)
+    )
+
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 409, resp.text
+    assert "return" in resp.json()["detail"].lower()
+
+    # Void the return first, then the GRN voids fine
+    resp = await client.post(
+        f"/api/inventory/purchase-returns/{prt['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_avg_cost_not_reversed_on_grn_void(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    """avg_cost is receipts-history based by design: a GRN void removes the
+    stock but does not unwind the cost weighting (documented decision)."""
+    supplier = await _create_supplier(client, admin_token)
+    item = await _create_item(client, admin_token)
+    grn = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(
+            supplier["id"],
+            sample_location["id"],
+            lines=[{"item_id": item["id"], "qty": 4, "unit_cost": 25.0}],
+        ),
+    )
+    await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/confirm", headers=_h(admin_token)
+    )
+    item_now = (
+        await client.get(f"/api/inventory/items/{item['id']}", headers=_h(admin_token))
+    ).json()
+    assert item_now["avg_cost"] == pytest.approx(25.0)
+
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/void", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    stock = await _stock(client, admin_token, item["id"], sample_location["id"])
+    assert stock["quantity"] == 0
+    item_now = (
+        await client.get(f"/api/inventory/items/{item['id']}", headers=_h(admin_token))
+    ).json()
+    assert item_now["avg_cost"] == pytest.approx(25.0)  # deliberately unchanged

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 
 from app.deps import AdminOnly, DB
+from app.models.inventory import InventoryItem
 from app.models.inventory_invoicing import (
     InventoryCreditNote,
     InventoryCreditNoteLine,
@@ -22,6 +23,7 @@ from app.models.inventory_sales import (
 from app.models.location import Location
 from app.routers.inventory_sales import (
     _do_detail,
+    _lock_or_404,
     _so_detail,
     confirm_do_tx,
     confirm_so_tx,
@@ -139,7 +141,7 @@ def _payment_status(inv: InventoryInvoice, paid: float, credited: float) -> str:
     if inv.status == "void":
         return "void"
     total = _to_float(inv.total)
-    if total > 0 and paid + credited >= total:
+    if paid + credited >= total:  # zero-total issued invoices count as paid
         return "paid"
     if paid + credited > 0:
         return "partial"
@@ -296,10 +298,288 @@ async def _scn_out(db: DB, scn: InventoryCreditNote) -> dict:
     }
 
 
+async def _assert_item_active_for_restock(db: DB, item_id: uuid.UUID) -> None:
+    item = await db.get(InventoryItem, item_id)
+    if item is None or not item.is_active:
+        raise HTTPException(status_code=422, detail="item is inactive or unknown")
+
+
 async def _invoice_balance(db: DB, inv: InventoryInvoice) -> float:
     paid = await _paid_total(db, inv.id)
     credited = await _credited_total(db, inv.id)
     return max(_to_float(inv.total) - paid - credited, 0.0)
+
+
+# Batched builders for list endpoints — same payload as the per-row helpers
+# but with IN-queries per relation instead of a query per row.
+
+
+async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]:
+    if not rows:
+        return []
+    inv_ids = [inv.id for inv in rows]
+    lines_all = (
+        await db.execute(
+            select(InventoryInvoiceLine)
+            .where(InventoryInvoiceLine.invoice_id.in_(inv_ids))
+            .order_by(InventoryInvoiceLine.id)
+        )
+    ).scalars().all()
+    lines_by_inv: dict[uuid.UUID, list[InventoryInvoiceLine]] = {}
+    for line in lines_all:
+        lines_by_inv.setdefault(line.invoice_id, []).append(line)
+
+    dos = {
+        d.id: d
+        for d in (
+            await db.execute(
+                select(DeliveryOrder).where(DeliveryOrder.id.in_({inv.do_id for inv in rows}))
+            )
+        ).scalars().all()
+    }
+    sos = {
+        s.id: s
+        for s in (
+            await db.execute(
+                select(SalesOrder).where(SalesOrder.id.in_({inv.so_id for inv in rows}))
+            )
+        ).scalars().all()
+    }
+    custs = {
+        c.id: c
+        for c in (
+            await db.execute(
+                select(Customer).where(Customer.id.in_({inv.customer_id for inv in rows}))
+            )
+        ).scalars().all()
+    }
+    paid_map = {
+        inv_id: _to_float(amount)
+        for inv_id, amount in (
+            await db.execute(
+                select(InventoryReceipt.invoice_id, func.sum(InventoryReceipt.amount))
+                .where(
+                    InventoryReceipt.invoice_id.in_(inv_ids),
+                    InventoryReceipt.status == "posted",
+                )
+                .group_by(InventoryReceipt.invoice_id)
+            )
+        ).all()
+    }
+    cred_map = {
+        inv_id: _to_float(amount)
+        for inv_id, amount in (
+            await db.execute(
+                select(InventoryCreditNote.invoice_id, func.sum(InventoryCreditNote.total))
+                .where(
+                    InventoryCreditNote.invoice_id.in_(inv_ids),
+                    InventoryCreditNote.status == "confirmed",
+                )
+                .group_by(InventoryCreditNote.invoice_id)
+            )
+        ).all()
+    }
+    receipts_by_inv: dict[uuid.UUID, list[InventoryReceipt]] = {}
+    for rc in (
+        await db.execute(
+            select(InventoryReceipt)
+            .where(InventoryReceipt.invoice_id.in_(inv_ids))
+            .order_by(InventoryReceipt.receipt_date, InventoryReceipt.receipt_no)
+        )
+    ).scalars().all():
+        receipts_by_inv.setdefault(rc.invoice_id, []).append(rc)
+    scns_by_inv: dict[uuid.UUID, list[InventoryCreditNote]] = {}
+    for s in (
+        await db.execute(
+            select(InventoryCreditNote)
+            .where(InventoryCreditNote.invoice_id.in_(inv_ids))
+            .order_by(InventoryCreditNote.credit_date, InventoryCreditNote.scn_no)
+        )
+    ).scalars().all():
+        scns_by_inv.setdefault(s.invoice_id, []).append(s)
+
+    out = []
+    for inv in rows:
+        lines = lines_by_inv.get(inv.id, [])
+        do = dos.get(inv.do_id)
+        so = sos.get(inv.so_id)
+        customer = custs.get(inv.customer_id)
+        paid = paid_map.get(inv.id, 0.0)
+        credited = cred_map.get(inv.id, 0.0)
+        total = _to_float(inv.total)
+        out.append(
+            {
+                "id": inv.id,
+                "invoice_no": inv.invoice_no,
+                "do_id": inv.do_id,
+                "do_no": do.do_no if do else None,
+                "so_id": inv.so_id,
+                "so_no": so.so_no if so else None,
+                "customer_id": inv.customer_id,
+                "customer_name": (customer.name_zh or customer.name_en) if customer else None,
+                "buyer_name": inv.buyer_name,
+                "location_id": inv.location_id,
+                "issue_date": inv.issue_date,
+                "status": inv.status,
+                "discount_amount": _to_float(inv.discount_amount),
+                "subtotal": _to_float(sum(_to_float(line.amount) for line in lines)),
+                "total": total,
+                "paid_total": paid,
+                "credited_total": credited,
+                "balance": max(total - paid - credited, 0.0),
+                "payment_status": _payment_status(inv, paid, credited),
+                "notes": inv.notes,
+                "issued_at": inv.issued_at,
+                "created_by": inv.created_by,
+                "created_at": inv.created_at,
+                "updated_at": inv.updated_at,
+                "lines": [
+                    InventoryInvoiceLineOut.model_validate(line).model_dump() for line in lines
+                ],
+                "receipts": [
+                    {
+                        "id": r.id,
+                        "receipt_no": r.receipt_no,
+                        "amount": _to_float(r.amount),
+                        "paid_by": r.paid_by,
+                        "receipt_date": r.receipt_date,
+                        "status": r.status,
+                    }
+                    for r in receipts_by_inv.get(inv.id, [])
+                ],
+                "credit_notes": [
+                    {
+                        "id": s.id,
+                        "scn_no": s.scn_no,
+                        "total": _to_float(s.total),
+                        "credit_date": s.credit_date,
+                        "status": s.status,
+                    }
+                    for s in scns_by_inv.get(inv.id, [])
+                ],
+            }
+        )
+    return out
+
+
+async def _rc_outs_batch(db: DB, rows: list[InventoryReceipt]) -> list[dict]:
+    if not rows:
+        return []
+    invs = {
+        inv.id: inv
+        for inv in (
+            await db.execute(
+                select(InventoryInvoice).where(InventoryInvoice.id.in_({rc.invoice_id for rc in rows}))
+            )
+        ).scalars().all()
+    }
+    custs = {
+        c.id: c
+        for c in (
+            await db.execute(
+                select(Customer).where(Customer.id.in_({rc.customer_id for rc in rows}))
+            )
+        ).scalars().all()
+    }
+    return [
+        {
+            "id": rc.id,
+            "receipt_no": rc.receipt_no,
+            "invoice_id": rc.invoice_id,
+            "invoice_no": invs[rc.invoice_id].invoice_no if rc.invoice_id in invs else None,
+            "customer_id": rc.customer_id,
+            "customer_name": (
+                (custs[rc.customer_id].name_zh or custs[rc.customer_id].name_en)
+                if rc.customer_id in custs
+                else None
+            ),
+            "location_id": rc.location_id,
+            "amount": _to_float(rc.amount),
+            "paid_by": rc.paid_by,
+            "reference_no": rc.reference_no,
+            "receipt_date": rc.receipt_date,
+            "status": rc.status,
+            "notes": rc.notes,
+            "created_by": rc.created_by,
+            "created_at": rc.created_at,
+            "updated_at": rc.updated_at,
+        }
+        for rc in rows
+    ]
+
+
+async def _scn_outs_batch(db: DB, rows: list[InventoryCreditNote]) -> list[dict]:
+    if not rows:
+        return []
+    scn_ids = [scn.id for scn in rows]
+    lines_all = (
+        await db.execute(
+            select(InventoryCreditNoteLine)
+            .where(InventoryCreditNoteLine.scn_id.in_(scn_ids))
+            .order_by(InventoryCreditNoteLine.id)
+        )
+    ).scalars().all()
+    lines_by_scn: dict[uuid.UUID, list[InventoryCreditNoteLine]] = {}
+    for line in lines_all:
+        lines_by_scn.setdefault(line.scn_id, []).append(line)
+    inv_line_ids = {line.invoice_line_id for line in lines_all}
+    inv_lines = {
+        l.id: l
+        for l in (
+            await db.execute(
+                select(InventoryInvoiceLine).where(InventoryInvoiceLine.id.in_(inv_line_ids))
+            )
+        ).scalars().all()
+    } if inv_line_ids else {}
+    invs = {
+        inv.id: inv
+        for inv in (
+            await db.execute(
+                select(InventoryInvoice).where(
+                    InventoryInvoice.id.in_({scn.invoice_id for scn in rows})
+                )
+            )
+        ).scalars().all()
+    }
+    custs = {
+        c.id: c
+        for c in (
+            await db.execute(
+                select(Customer).where(Customer.id.in_({scn.customer_id for scn in rows}))
+            )
+        ).scalars().all()
+    }
+    out = []
+    for scn in rows:
+        inv = invs.get(scn.invoice_id)
+        customer = custs.get(scn.customer_id)
+        line_outs = []
+        for line in lines_by_scn.get(scn.id, []):
+            inv_line = inv_lines.get(line.invoice_line_id)
+            line_out = InventoryCreditNoteLineOut.model_validate(line).model_dump()
+            line_out["sku_code"] = inv_line.sku_code if inv_line else None
+            line_out["name_zh"] = inv_line.name_zh if inv_line else None
+            line_outs.append(line_out)
+        out.append(
+            {
+                "id": scn.id,
+                "scn_no": scn.scn_no,
+                "invoice_id": scn.invoice_id,
+                "invoice_no": inv.invoice_no if inv else None,
+                "customer_id": scn.customer_id,
+                "customer_name": (customer.name_zh or customer.name_en) if customer else None,
+                "location_id": scn.location_id,
+                "credit_date": scn.credit_date,
+                "reason": scn.reason,
+                "status": scn.status,
+                "total": _to_float(scn.total),
+                "created_by": scn.created_by,
+                "created_at": scn.created_at,
+                "updated_at": scn.updated_at,
+                "lines": line_outs,
+            }
+        )
+    return out
 
 
 # ---------- invoices ----------
@@ -379,11 +659,11 @@ async def list_invoices(
         if payment_status == "void":
             cond = InventoryInvoice.status == "void"
         elif payment_status == "paid":
-            cond = issued & (InventoryInvoice.total > 0) & (paid_col + cred_col >= InventoryInvoice.total)
+            cond = issued & (paid_col + cred_col >= InventoryInvoice.total)
         elif payment_status == "partial":
             cond = issued & (paid_col + cred_col > 0) & (paid_col + cred_col < InventoryInvoice.total)
-        else:  # unpaid
-            cond = issued & (paid_col + cred_col == 0)
+        else:  # unpaid — zero-total issued invoices count as paid, not unpaid
+            cond = issued & (paid_col + cred_col < InventoryInvoice.total)
         q = q.where(cond)
         count_q = count_q.where(cond)
 
@@ -391,7 +671,7 @@ async def list_invoices(
     response.headers["X-Total-Count"] = str(total)
     q = q.order_by(InventoryInvoice.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = (await db.execute(q)).scalars().all()
-    return [await _inv_detail(db, inv) for inv in rows]
+    return await _inv_details_batch(db, rows)
 
 
 async def _build_invoice_lines(
@@ -650,7 +930,7 @@ async def delete_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> No
 
 @router.post("/invoices/{invoice_id}/issue", response_model=InventoryInvoiceOut)
 async def issue_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    inv = await _get_invoice_or_404(db, invoice_id)
+    inv = await _lock_or_404(db, InventoryInvoice, invoice_id, "Invoice")
     if inv.status == "issued":
         return await _inv_detail(db, inv)
     if inv.status != "draft":
@@ -675,7 +955,7 @@ async def issue_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
 
 @router.post("/invoices/{invoice_id}/void", response_model=InventoryInvoiceOut)
 async def void_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    inv = await _get_invoice_or_404(db, invoice_id)
+    inv = await _lock_or_404(db, InventoryInvoice, invoice_id, "Invoice")
     if inv.status == "void":
         return await _inv_detail(db, inv)
     if inv.status != "issued":
@@ -806,7 +1086,7 @@ async def list_receipts(
     response.headers["X-Total-Count"] = str(total)
     q = q.order_by(InventoryReceipt.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = (await db.execute(q)).scalars().all()
-    return [await _rc_out(db, rc) for rc in rows]
+    return await _rc_outs_batch(db, rows)
 
 
 async def _create_receipt_tx(
@@ -888,7 +1168,7 @@ async def get_receipt(receipt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
 
 @router.post("/receipts/{receipt_id}/void", response_model=InventoryReceiptOut)
 async def void_receipt(receipt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    rc = await _get_receipt_or_404(db, receipt_id)
+    rc = await _lock_or_404(db, InventoryReceipt, receipt_id, "Receipt")
     if rc.status == "void":
         return await _rc_out(db, rc)
     rc.status = "void"
@@ -986,7 +1266,7 @@ async def list_credit_notes(
     response.headers["X-Total-Count"] = str(total)
     q = q.order_by(InventoryCreditNote.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = (await db.execute(q)).scalars().all()
-    return [await _scn_out(db, scn) for scn in rows]
+    return await _scn_outs_batch(db, rows)
 
 
 async def _build_scn_lines(
@@ -1121,13 +1401,13 @@ async def delete_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> No
 
 @router.post("/credit-notes/{scn_id}/confirm", response_model=InventoryCreditNoteOut)
 async def confirm_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    scn = await _get_scn_or_404(db, scn_id)
+    scn = await _lock_or_404(db, InventoryCreditNote, scn_id, "Credit note")
     if scn.status == "confirmed":
         return await _scn_out(db, scn)
     if scn.status != "draft":
         raise HTTPException(status_code=409, detail=f"credit note is {scn.status}; cannot confirm")
 
-    inv = await _get_invoice_or_404(db, scn.invoice_id)
+    inv = await _lock_or_404(db, InventoryInvoice, scn.invoice_id, "Invoice")
     if inv.status != "issued":
         raise HTTPException(status_code=422, detail=f"invoice is {inv.status}; cannot credit")
 
@@ -1155,6 +1435,7 @@ async def confirm_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> d
     for line in lines:
         inv_line = inv_lines[line.invoice_line_id]
         if line.restock:
+            await _assert_item_active_for_restock(db, line.item_id)
             await inventory_svc.apply_movement(
                 db,
                 item_id=line.item_id,
@@ -1187,12 +1468,13 @@ async def confirm_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> d
 
 @router.post("/credit-notes/{scn_id}/void", response_model=InventoryCreditNoteOut)
 async def void_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    scn = await _get_scn_or_404(db, scn_id)
+    scn = await _lock_or_404(db, InventoryCreditNote, scn_id, "Credit note")
     if scn.status == "void":
         return await _scn_out(db, scn)
     if scn.status != "confirmed":
         raise HTTPException(status_code=409, detail=f"credit note is {scn.status}; cannot void")
 
+    await _lock_or_404(db, InventoryInvoice, scn.invoice_id, "Invoice")
     lines = await _scn_lines(db, scn.id)
     inv_lines = {
         line.id: line

@@ -5,8 +5,8 @@ from decimal import Decimal, InvalidOperation
 from io import StringIO
 
 from fastapi import APIRouter, HTTPException, Query, Response, UploadFile, status
-from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminOnly, DB
 from app.models.inventory import (
@@ -38,15 +38,26 @@ from app.schemas.inventory import (
 )
 from app.services import audit_log as audit_log_svc
 from app.services import inventory as inventory_svc
+from app.utils import csv_export
 from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
 async def _assert_location_exists(db: DB, location_id: uuid.UUID) -> None:
-    result = await db.execute(select(Location.id).where(Location.id == location_id))
-    if not result.scalar_one_or_none():
+    result = await db.execute(select(Location).where(Location.id == location_id))
+    location = result.scalar_one_or_none()
+    if not location:
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+    if not location.is_active:
+        raise HTTPException(status_code=422, detail=f"location {location.name_en or location_id} is inactive")
+
+
+async def _assert_item_active(db: DB, item_id: uuid.UUID) -> InventoryItem:
+    item = await _get_item_or_404(db, item_id)
+    if not item.is_active:
+        raise HTTPException(status_code=422, detail=f"item {item.sku_code} is inactive")
+    return item
 
 
 async def _assert_category_exists(db: DB, category_id: uuid.UUID | None) -> None:
@@ -193,6 +204,11 @@ async def create_inventory_item(body: InventoryItemCreate, _admin: AdminOnly, db
 
     item = InventoryItem(**body.model_dump())
     db.add(item)
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="SKU code already exists")
     await db.commit()
     await db.refresh(item)
     await audit_log_svc.log_audit(
@@ -289,10 +305,29 @@ async def list_low_stock(
 
 @router.post("/movements", response_model=InventoryMovementOut, status_code=status.HTTP_201_CREATED)
 async def create_inventory_movement(
-    body: InventoryMovementCreate, _admin: AdminOnly, db: DB
+    body: InventoryMovementCreate, _admin: AdminOnly, db: DB, response: Response
 ) -> InventoryMovement:
-    await _get_item_or_404(db, body.item_id)
+    await _assert_item_active(db, body.item_id)
     await _assert_location_exists(db, body.location_id)
+
+    if body.reference:
+        existing = (
+            await db.execute(
+                select(InventoryMovement).where(InventoryMovement.reference == body.reference)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            # Idempotent repeat — return the recorded movement as 200, no audit.
+            if (
+                existing.item_id != body.item_id
+                or existing.location_id != body.location_id
+                or existing.type != body.type
+            ):
+                raise HTTPException(
+                    status_code=409, detail="reference already used by a different movement"
+                )
+            response.status_code = status.HTTP_200_OK
+            return existing
 
     movement = await inventory_svc.apply_movement(
         db,
@@ -380,7 +415,7 @@ async def list_inventory_movements(
 async def create_inventory_transfer(
     body: InventoryTransferCreate, _admin: AdminOnly, db: DB
 ) -> dict:
-    await _get_item_or_404(db, body.item_id)
+    await _assert_item_active(db, body.item_id)
     await _assert_location_exists(db, body.from_location_id)
     await _assert_location_exists(db, body.to_location_id)
 
@@ -595,7 +630,15 @@ async def update_stocktake_lines(
 async def apply_inventory_stocktake(
     stocktake_id: uuid.UUID, _admin: AdminOnly, db: DB
 ) -> dict:
-    stocktake = await _get_stocktake_or_404(db, stocktake_id)
+    stocktake = (
+        await db.execute(
+            select(InventoryStocktake)
+            .where(InventoryStocktake.id == stocktake_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if stocktake is None:
+        raise HTTPException(status_code=404, detail="Stocktake not found")
     if stocktake.status == "applied":
         lines = (
             await db.execute(
@@ -623,6 +666,7 @@ async def apply_inventory_stocktake(
         )
         if existing.scalar_one_or_none():
             continue
+        await _assert_item_active(db, line.item_id)
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
@@ -661,7 +705,15 @@ async def apply_inventory_stocktake(
 async def cancel_inventory_stocktake(
     stocktake_id: uuid.UUID, _admin: AdminOnly, db: DB
 ) -> InventoryStocktake:
-    stocktake = await _get_stocktake_or_404(db, stocktake_id)
+    stocktake = (
+        await db.execute(
+            select(InventoryStocktake)
+            .where(InventoryStocktake.id == stocktake_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if stocktake is None:
+        raise HTTPException(status_code=404, detail="Stocktake not found")
     if stocktake.status != "draft":
         raise HTTPException(status_code=409, detail=f"stocktake is {stocktake.status}; cannot cancel")
     stocktake.status = "cancelled"
@@ -684,7 +736,7 @@ async def cancel_inventory_stocktake(
 
 
 @router.get("/export/items.csv")
-async def export_inventory_items(_admin: AdminOnly, db: DB) -> StreamingResponse:
+async def export_inventory_items(_admin: AdminOnly, db: DB) -> Response:
     items = (
         await db.execute(select(InventoryItem).order_by(InventoryItem.sku_code))
     ).scalars().all()
@@ -693,21 +745,8 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> StreamingResponse
     ).scalars().all()
     cat_name = {c.id: c.name_zh for c in categories}
 
-    buf = StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "sku_code",
-        "name_zh",
-        "name_en",
-        "category",
-        "unit_of_measure",
-        "cost_price",
-        "sale_price",
-        "reorder_level",
-        "is_active",
-    ])
-    for item in items:
-        writer.writerow([
+    rows = [
+        [
             item.sku_code,
             item.name_zh,
             item.name_en or "",
@@ -717,12 +756,23 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> StreamingResponse
             item.sale_price if item.sale_price is not None else "",
             item.reorder_level,
             item.is_active,
-        ])
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=inventory_items.csv"},
+        ]
+        for item in items
+    ]
+    return csv_export.csv_response(
+        "inventory_items.csv",
+        [
+            "sku_code",
+            "name_zh",
+            "name_en",
+            "category",
+            "unit_of_measure",
+            "cost_price",
+            "sale_price",
+            "reorder_level",
+            "is_active",
+        ],
+        rows,
     )
 
 
@@ -731,7 +781,7 @@ async def export_inventory_stocks(
     _admin: AdminOnly,
     db: DB,
     location_id: uuid.UUID | None = None,
-) -> StreamingResponse:
+) -> Response:
     q = (
         select(InventoryStock, InventoryItem, Location)
         .join(InventoryItem, InventoryItem.id == InventoryStock.item_id)
@@ -740,22 +790,10 @@ async def export_inventory_stocks(
     if location_id is not None:
         q = q.where(InventoryStock.location_id == location_id)
     q = q.order_by(Location.name_en, InventoryItem.sku_code)
-    rows = (await db.execute(q)).all()
+    rows_raw = (await db.execute(q)).all()
 
-    buf = StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "sku_code",
-        "name_zh",
-        "name_en",
-        "location_code",
-        "location",
-        "quantity",
-        "reserved",
-        "available",
-    ])
-    for stock, item, location in rows:
-        writer.writerow([
+    rows = [
+        [
             item.sku_code,
             item.name_zh,
             item.name_en or "",
@@ -764,20 +802,36 @@ async def export_inventory_stocks(
             stock.quantity,
             stock.reserved,
             stock.quantity - stock.reserved,
-        ])
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=inventory_stocks.csv"},
+        ]
+        for stock, item, location in rows_raw
+    ]
+    return csv_export.csv_response(
+        "inventory_stocks.csv",
+        [
+            "sku_code",
+            "name_zh",
+            "name_en",
+            "location_code",
+            "location",
+            "quantity",
+            "reserved",
+            "available",
+        ],
+        rows,
     )
 
 
 # ---- CSV import ----
 
 
+CSV_MAX_BYTES = 5 * 1024 * 1024
+
+
 async def _read_csv_rows(file: UploadFile) -> list[dict]:
-    raw = (await file.read()).decode("utf-8-sig")
+    raw_bytes = await file.read()
+    if len(raw_bytes) > CSV_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="CSV file exceeds the 5 MB limit")
+    raw = raw_bytes.decode("utf-8-sig")
     reader = csv.DictReader(StringIO(raw))
     if not reader.fieldnames:
         raise HTTPException(status_code=422, detail="empty or invalid CSV file")
@@ -829,6 +883,15 @@ async def import_inventory_items(
             errors.append({"row": idx, "error": "sku_code and name_zh are required"})
             continue
         try:
+            cost_price = _parse_decimal(row.get("cost_price"))
+            sale_price = _parse_decimal(row.get("sale_price"))
+            reorder_level = _parse_int(row.get("reorder_level"))
+            if cost_price is not None and cost_price < 0:
+                raise ValueError("cost_price must be >= 0")
+            if sale_price is not None and sale_price < 0:
+                raise ValueError("sale_price must be >= 0")
+            if reorder_level is not None and reorder_level < 0:
+                raise ValueError("reorder_level must be >= 0")
             parsed.append(
                 {
                     "row": idx,
@@ -837,9 +900,9 @@ async def import_inventory_items(
                     "name_en": (row.get("name_en") or "").strip() or None,
                     "category": (row.get("category") or "").strip() or None,
                     "unit_of_measure": (row.get("unit_of_measure") or "").strip() or None,
-                    "cost_price": _parse_decimal(row.get("cost_price")),
-                    "sale_price": _parse_decimal(row.get("sale_price")),
-                    "reorder_level": _parse_int(row.get("reorder_level")) or 0,
+                    "cost_price": cost_price,
+                    "sale_price": sale_price,
+                    "reorder_level": reorder_level if reorder_level is not None else 0,
                 }
             )
         except ValueError as exc:
@@ -950,6 +1013,9 @@ async def import_opening_stock(
     for row in parsed:
         item = row["item"]
         location = row["location"]
+        if row["quantity"] == 0:
+            skipped += 1
+            continue
         reference = f"OPEN:{location.id}:{item.sku_code}"
         existing = await db.execute(
             select(InventoryMovement.id).where(InventoryMovement.reference == reference)

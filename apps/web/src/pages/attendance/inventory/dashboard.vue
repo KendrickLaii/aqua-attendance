@@ -6,6 +6,8 @@ import {
   getInventoryDashboard,
   sendInventoryAlerts,
 } from '@/api/attendance/inventoryReports'
+import { listInvoices } from '@/api/attendance/inventoryInvoicing'
+import { listDeliveryOrders, listSalesOrders } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import StatCards from '@/components/attendance/StatCards.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -29,6 +31,42 @@ const locations = ref<LocationItem[]>([])
 const locationFilter = ref<string | null>(null)
 const dashboard = ref<InventoryDashboard | null>(null)
 const alerts = ref<InventoryAlerts | null>(null)
+
+const draftSoCount = ref(0)
+const awaitingDeliveryCount = ref(0)
+const uninvoicedDoCount = ref(0)
+
+const locParam = () => locationFilter.value ? { location_id: locationFilter.value } : {}
+
+interface NextStep {
+  title: string
+  count: number
+  detail: string
+  to: string
+  color: string
+}
+
+const nextSteps = computed<NextStep[]>(() => {
+  const d = dashboard.value
+  if (!d)
+    return []
+  const steps: NextStep[] = []
+
+  if (draftSoCount.value > 0)
+    steps.push({ title: 'Confirm sales orders', count: draftSoCount.value, detail: 'draft orders waiting to reserve stock', to: '/attendance/inventory/sales-orders?status=draft', color: 'primary' })
+  if (awaitingDeliveryCount.value > 0)
+    steps.push({ title: 'Ship confirmed orders', count: awaitingDeliveryCount.value, detail: 'confirmed orders awaiting a delivery order', to: '/attendance/inventory/sales-orders?status=confirmed', color: 'primary' })
+  if (uninvoicedDoCount.value > 0)
+    steps.push({ title: 'Invoice delivered orders', count: uninvoicedDoCount.value, detail: 'delivered goods with no invoice yet', to: '/attendance/inventory/delivery-orders?status=confirmed', color: 'warning' })
+  if (d.unpaid_invoice_count > 0)
+    steps.push({ title: 'Collect unpaid invoices', count: d.unpaid_invoice_count, detail: `balance ${fmtMoney(d.receivable_balance)}`, to: '/attendance/inventory/invoices?payment_status=unpaid', color: 'error' })
+  if (d.overdue_purchase_orders > 0)
+    steps.push({ title: 'Chase overdue POs', count: d.overdue_purchase_orders, detail: 'expected delivery date has passed', to: '/attendance/inventory/purchase-orders', color: 'warning' })
+  if (d.low_stock_count > 0)
+    steps.push({ title: 'Reorder low-stock items', count: d.low_stock_count, detail: 'at or below reorder level', to: '/attendance/inventory', color: 'error' })
+
+  return steps
+})
 
 function fmtMoney(value: number | null | undefined): string {
   return (value ?? 0).toFixed(2)
@@ -56,10 +94,27 @@ async function load() {
   loadError.value = ''
   try {
     const params = locationFilter.value ? { location_id: locationFilter.value } : undefined
-    const [d, a] = await Promise.all([getInventoryDashboard(params), getInventoryAlerts(params)])
+
+    const [d, a, draftSos, confirmedSos, partialSos, confirmedDos, invList] = await Promise.all([
+      getInventoryDashboard(params),
+      getInventoryAlerts(params),
+      listSalesOrders({ status: 'draft', page_size: 1, ...locParam() }),
+      listSalesOrders({ status: 'confirmed', page_size: 1, ...locParam() }),
+      listSalesOrders({ status: 'partial', page_size: 1, ...locParam() }),
+      listDeliveryOrders({ status: 'confirmed', page_size: 200, ...locParam() }),
+      listInvoices({ page_size: 200, ...locParam() }),
+    ])
 
     dashboard.value = d
     alerts.value = a
+    draftSoCount.value = draftSos.total
+    awaitingDeliveryCount.value = confirmedSos.total + partialSos.total
+
+    const invoicedDoIds = new Set(
+      invList.items.filter(i => i.status !== 'void').map(i => i.do_id),
+    )
+
+    uninvoicedDoCount.value = confirmedDos.items.filter(dor => !invoicedDoIds.has(dor.id)).length
   }
   catch (e) {
     loadError.value = formatApiError(e, 'Failed to load dashboard.')
@@ -164,6 +219,50 @@ onMounted(async () => {
 
     <template v-else>
       <StatCards :cards="statCards" />
+
+      <VCard
+        v-if="nextSteps.length"
+        class="mt-4"
+      >
+        <VCardTitle class="d-flex align-center">
+          <span>What to do next 下一步</span>
+        </VCardTitle>
+        <VCardText>
+          <VRow dense>
+            <VCol
+              v-for="step in nextSteps"
+              :key="step.title"
+              cols="12"
+              sm="6"
+              md="4"
+            >
+              <VCard
+                :to="step.to"
+                variant="tonal"
+                :color="step.color"
+                link
+              >
+                <VCardText class="d-flex align-center gap-3">
+                  <VAvatar
+                    :color="step.color"
+                    size="40"
+                  >
+                    {{ step.count }}
+                  </VAvatar>
+                  <div>
+                    <div class="font-weight-medium">
+                      {{ step.title }}
+                    </div>
+                    <div class="text-caption">
+                      {{ step.detail }}
+                    </div>
+                  </div>
+                </VCardText>
+              </VCard>
+            </VCol>
+          </VRow>
+        </VCardText>
+      </VCard>
 
       <VCard class="mt-4">
         <VCardTitle class="d-flex align-center">

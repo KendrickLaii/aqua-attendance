@@ -281,7 +281,7 @@ function money(value: number | null): string {
             v-if="categories.length === 0"
             class="text-medium-emphasis"
           >
-            No categories yet.
+            No categories yet — click "Add Category" first.
           </div>
         </VCardText>
       </VCard>
@@ -314,74 +314,77 @@ function money(value: number | null): string {
             hide-details
           />
         </VCardText>
-        <VTable>
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Item</th>
-              <th>Category</th>
-              <th>Unit</th>
-              <th class="text-end">
-                Cost
-              </th>
-              <th class="text-end">
-                Sale
-              </th>
-              <th class="text-end">
-                Reorder level
-              </th>
-              <th>Status</th>
-              <th class="text-end">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="item in filteredItems"
-              :key="item.id"
-            >
-              <td>{{ item.sku_code }}</td>
-              <td>{{ [item.name_zh, item.name_en].filter(Boolean).join(' · ') }}</td>
-              <td>{{ categoryLabel(item.category_id) }}</td>
-              <td>{{ item.unit_of_measure || '—' }}</td>
-              <td class="text-end">
-                {{ money(item.cost_price) }}
-              </td>
-              <td class="text-end">
-                {{ money(item.sale_price) }}
-              </td>
-              <td class="text-end">
-                {{ item.reorder_level }}
-              </td>
-              <td>
-                <VChip
-                  :color="item.is_active ? 'success' : 'default'"
-                  size="small"
-                  variant="tonal"
-                >
-                  {{ item.is_active ? 'Active' : 'Inactive' }}
-                </VChip>
-              </td>
-              <td class="text-end">
-                <VBtn
-                  icon="ri-pencil-line"
-                  variant="text"
-                  size="small"
-                  @click="openEditItem(item)"
-                />
-              </td>
-            </tr>
-            <tr v-if="filteredItems.length === 0">
-              <td
-                colspan="9"
-                class="text-center text-medium-emphasis py-8"
+        <div class="overflow-x-auto">
+          <VTable>
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Item</th>
+                <th>Category</th>
+                <th>Unit</th>
+                <th class="text-end">
+                  Cost
+                </th>
+                <th class="text-end">
+                  Sale
+                </th>
+                <th class="text-end">
+                  Reorder level
+                </th>
+                <th>Status</th>
+                <th class="text-end">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in filteredItems"
+                :key="item.id"
               >
-                No items match. Use “Add Item” to create one.
-              </td>
-            </tr>
-          </tbody>
-        </VTable>
+                <td>{{ item.sku_code }}</td>
+                <td>{{ [item.name_zh, item.name_en].filter(Boolean).join(' · ') }}</td>
+                <td>{{ categoryLabel(item.category_id) }}</td>
+                <td>{{ item.unit_of_measure || '—' }}</td>
+                <td class="text-end tabular-nums">
+                  {{ money(item.cost_price) }}
+                </td>
+                <td class="text-end tabular-nums">
+                  {{ money(item.sale_price) }}
+                </td>
+                <td class="text-end tabular-nums">
+                  {{ item.reorder_level }}
+                </td>
+                <td>
+                  <VChip
+                    :color="item.is_active ? 'success' : 'default'"
+                    size="small"
+                    variant="tonal"
+                  >
+                    {{ item.is_active ? 'Active' : 'Inactive' }}
+                  </VChip>
+                </td>
+                <td class="text-end">
+                  <VBtn
+                    icon="ri-pencil-line"
+                    variant="text"
+                    size="small"
+                    aria-label="Edit item"
+                    @click="openEditItem(item)"
+                  />
+                </td>
+              </tr>
+              <tr v-if="filteredItems.length === 0">
+                <td
+                  colspan="9"
+                  class="text-center text-medium-emphasis py-8"
+                >
+                  No items match. Use “Add Item” to create one.
+                </td>
+              </tr>
+            </tbody>
+          </VTable>
+        </div>
       </VCard>
     </template>
 

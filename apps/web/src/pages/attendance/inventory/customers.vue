@@ -12,6 +12,7 @@ import { type Unit, listUnits } from '@/api/attendance/units'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
@@ -34,6 +35,7 @@ const pageSize = ref(20)
 const search = ref('')
 const typeFilter = ref<InventoryCustomerType | null>(null)
 const showInactive = ref(false)
+const listReq = useLatestRequest()
 
 const typeOptions = [
   { value: 'individual' as const, title: 'Individual 個人' },
@@ -84,6 +86,8 @@ onMounted(async () => {
 
 async function loadCustomers() {
   loadError.value = ''
+
+  const token = listReq.next()
   try {
     const result = await listCustomers({
       search: search.value || undefined,
@@ -93,10 +97,14 @@ async function loadCustomers() {
       page_size: pageSize.value,
     })
 
+    if (!listReq.isLatest(token))
+      return
     customers.value = result.items
     total.value = result.total
   }
   catch (e) {
+    if (!listReq.isLatest(token))
+      return
     loadError.value = formatApiError(e, 'Failed to load customers.')
   }
 }
@@ -299,68 +307,70 @@ async function submitFromStudent() {
           @update:model-value="onFiltersChange"
         />
       </VCardText>
-      <VTable>
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Contact</th>
-            <th>Phone</th>
-            <th>Status</th>
-            <th class="text-end">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="customer in customers"
-            :key="customer.id"
-          >
-            <td class="font-weight-medium">
-              {{ customer.code }}
-            </td>
-            <td>
-              {{ customer.name_zh }}<template v-if="customer.name_en">
-                · {{ customer.name_en }}
-              </template>
-            </td>
-            <td class="text-capitalize">
-              {{ customer.type }}
-            </td>
-            <td>{{ customer.contact_name || '—' }}</td>
-            <td>{{ customer.phone || '—' }}</td>
-            <td>
-              <VChip
-                :color="customer.is_active ? 'success' : 'secondary'"
-                size="small"
-                variant="tonal"
-              >
-                {{ customer.is_active ? 'Active' : 'Inactive' }}
-              </VChip>
-            </td>
-            <td class="text-end">
-              <VBtn
-                variant="text"
-                size="small"
-                color="primary"
-                @click="openEdit(customer)"
-              >
-                Edit
-              </VBtn>
-            </td>
-          </tr>
-          <tr v-if="customers.length === 0 && !loading">
-            <td
-              colspan="7"
-              class="text-center text-medium-emphasis py-8"
+      <div class="overflow-x-auto">
+        <VTable>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Contact</th>
+              <th>Phone</th>
+              <th>Status</th>
+              <th class="text-end">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="customer in customers"
+              :key="customer.id"
             >
-              No customers yet.
-            </td>
-          </tr>
-        </tbody>
-      </VTable>
+              <td class="font-weight-medium">
+                {{ customer.code }}
+              </td>
+              <td>
+                {{ customer.name_zh }}<template v-if="customer.name_en">
+                  · {{ customer.name_en }}
+                </template>
+              </td>
+              <td class="text-capitalize">
+                {{ customer.type }}
+              </td>
+              <td>{{ customer.contact_name || '—' }}</td>
+              <td>{{ customer.phone || '—' }}</td>
+              <td>
+                <VChip
+                  :color="customer.is_active ? 'success' : 'secondary'"
+                  size="small"
+                  variant="tonal"
+                >
+                  {{ customer.is_active ? 'Active' : 'Inactive' }}
+                </VChip>
+              </td>
+              <td class="text-end">
+                <VBtn
+                  variant="text"
+                  size="small"
+                  color="primary"
+                  @click="openEdit(customer)"
+                >
+                  Edit
+                </VBtn>
+              </td>
+            </tr>
+            <tr v-if="customers.length === 0 && !loading">
+              <td
+                colspan="7"
+                class="text-center text-medium-emphasis py-8"
+              >
+                No customers yet — click "New customer" or "From student" to add one.
+              </td>
+            </tr>
+          </tbody>
+        </VTable>
+      </div>
       <AttendancePaginationBar
         v-model:page="page"
         v-model:page-size="pageSize"
