@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 MovementType = Literal["in", "out", "adjust"]
 MovementTypeOut = Literal["in", "out", "adjust", "transfer_in", "transfer_out"]
 
-InReasonCode = Literal["opening", "other"]
+InReasonCode = Literal["opening", "sales_return", "other"]
 OutReasonCode = Literal[
     "damage", "loss", "gift", "sample", "internal_use", "supplier_return", "sale", "other"
 ]

@@ -11,7 +11,7 @@ from app.models.user import User
 OUT_REASON_CODES = {
     "damage", "loss", "gift", "sample", "internal_use", "supplier_return", "sale", "other",
 }
-IN_REASON_CODES = {"opening", "other"}
+IN_REASON_CODES = {"opening", "sales_return", "other"}
 REASON_CODES_REQUIRING_NOTE = {"damage", "loss", "gift"}
 
 VALID_TYPES = {"in", "out", "adjust", "transfer_in", "transfer_out"}

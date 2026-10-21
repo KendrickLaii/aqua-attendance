@@ -506,15 +506,9 @@ async def delete_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> Non
     )
 
 
-@router.post("/sales-orders/{so_id}/confirm", response_model=SalesOrderOut)
-async def confirm_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    so = await _get_so_or_404(db, so_id)
-    if so.status in ("confirmed", "partial", "fulfilled"):
-        return await _so_detail(db, so)
-    if so.status != "draft":
-        raise HTTPException(status_code=409, detail=f"sales order is {so.status}; cannot confirm")
-
-    lines = await _so_lines(db, so_id)
+async def confirm_so_tx(db: DB, so: SalesOrder) -> None:
+    """Reserve every line and mark the SO confirmed. Caller commits."""
+    lines = await _so_lines(db, so.id)
     if not lines:
         raise HTTPException(status_code=422, detail="sales order has no lines")
     for line in lines:
@@ -535,8 +529,19 @@ async def confirm_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> di
             await inventory_svc.reserve(
                 db, item_id=line.item_id, location_id=so.location_id, quantity=line.qty
             )
-
     so.status = "confirmed"
+    await db.flush()
+
+
+@router.post("/sales-orders/{so_id}/confirm", response_model=SalesOrderOut)
+async def confirm_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
+    so = await _get_so_or_404(db, so_id)
+    if so.status in ("confirmed", "partial", "fulfilled"):
+        return await _so_detail(db, so)
+    if so.status != "draft":
+        raise HTTPException(status_code=409, detail=f"sales order is {so.status}; cannot confirm")
+
+    await confirm_so_tx(db, so)
     await db.commit()
     result = await db.execute(select(SalesOrder).where(SalesOrder.id == so_id))
     so = result.scalar_one()
@@ -717,13 +722,19 @@ async def _validate_do_lines_against_so(
     return resolved
 
 
-@router.post("/delivery-orders", response_model=DeliveryOrderOut, status_code=status.HTTP_201_CREATED)
-async def create_delivery_order(body: DeliveryOrderCreate, _admin: AdminOnly, db: DB) -> dict:
-    so = await _get_so_or_404(db, body.so_id)
+async def create_do_tx(
+    db: DB,
+    so: SalesOrder,
+    *,
+    delivery_date: date,
+    notes: str | None,
+    line_inputs: list[DeliveryOrderLineIn],
+    user,
+) -> DeliveryOrder:
+    """Validate + create a draft DO (prefills remaining qty when no lines). Caller commits."""
     if so.status not in ("confirmed", "partial"):
         raise HTTPException(status_code=422, detail=f"SO {so.so_no} is {so.status}; cannot deliver")
 
-    line_inputs: list[DeliveryOrderLineIn] = list(body.lines)
     if not line_inputs:
         remaining = [l for l in await _so_lines(db, so.id) if l.qty - l.shipped_qty > 0]
         line_inputs = [
@@ -743,9 +754,9 @@ async def create_delivery_order(body: DeliveryOrderCreate, _admin: AdminOnly, db
         so_id=so.id,
         customer_id=so.customer_id,
         location_id=so.location_id,
-        delivery_date=body.delivery_date,
-        notes=body.notes,
-        created_by=_admin.id,
+        delivery_date=delivery_date,
+        notes=notes,
+        created_by=user.id,
     )
     db.add(do)
     for line in line_inputs:
@@ -755,6 +766,21 @@ async def create_delivery_order(body: DeliveryOrderCreate, _admin: AdminOnly, db
             )
         )
     await db.flush()
+    return do
+
+
+@router.post("/delivery-orders", response_model=DeliveryOrderOut, status_code=status.HTTP_201_CREATED)
+async def create_delivery_order(body: DeliveryOrderCreate, _admin: AdminOnly, db: DB) -> dict:
+    so = await _get_so_or_404(db, body.so_id)
+    do = await create_do_tx(
+        db,
+        so,
+        delivery_date=body.delivery_date,
+        notes=body.notes,
+        line_inputs=list(body.lines),
+        user=_admin,
+    )
+    do_no = do.do_no
     do_id = do.id
     await db.commit()
 
@@ -849,17 +875,11 @@ async def delete_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
     )
 
 
-@router.post("/delivery-orders/{do_id}/confirm", response_model=DeliveryOrderOut)
-async def confirm_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
-    do = await _get_do_or_404(db, do_id)
-    if do.status == "confirmed":
-        return await _do_detail(db, do)
-    if do.status != "draft":
-        raise HTTPException(status_code=409, detail=f"delivery order is {do.status}; cannot confirm")
-
+async def confirm_do_tx(db: DB, do: DeliveryOrder, user) -> None:
+    """Validate + ship every DO line and mark the DO confirmed. Caller commits."""
     so = await _get_so_or_404(db, do.so_id)
     so_lines = {line.id: line for line in await _so_lines(db, so.id)}
-    for line in await _do_lines(db, do_id):
+    for line in await _do_lines(db, do.id):
         so_line = so_lines.get(line.so_line_id)
         if so_line is None:
             raise HTTPException(status_code=422, detail="delivery line references a removed SO line")
@@ -872,7 +892,7 @@ async def confirm_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) ->
                 ),
             )
 
-    for line in await _do_lines(db, do_id):
+    for line in await _do_lines(db, do.id):
         so_line = so_lines[line.so_line_id]
         await inventory_svc.release(
             db, item_id=line.item_id, location_id=do.location_id, quantity=line.qty
@@ -886,12 +906,23 @@ async def confirm_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) ->
             reason=f"DO {do.do_no}",
             reason_code="sale",
             reference=f"DO:{do.id}:{line.id}",
-            user=_admin,
+            user=user,
         )
         so_line.shipped_qty += line.qty
     await _recompute_so_status(db, so)
-
     do.status = "confirmed"
+    await db.flush()
+
+
+@router.post("/delivery-orders/{do_id}/confirm", response_model=DeliveryOrderOut)
+async def confirm_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
+    do = await _get_do_or_404(db, do_id)
+    if do.status == "confirmed":
+        return await _do_detail(db, do)
+    if do.status != "draft":
+        raise HTTPException(status_code=409, detail=f"delivery order is {do.status}; cannot confirm")
+
+    await confirm_do_tx(db, do, _admin)
     await db.commit()
     result = await db.execute(select(DeliveryOrder).where(DeliveryOrder.id == do_id))
     do = result.scalar_one()

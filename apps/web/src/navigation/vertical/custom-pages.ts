@@ -54,6 +54,9 @@ export default [
       { title: 'Customers', to: 'attendance-inventory-customers' },
       { title: 'Sales Orders', to: 'attendance-inventory-sales-orders' },
       { title: 'Delivery Orders', to: 'attendance-inventory-delivery-orders' },
+      { title: 'Invoices', to: 'attendance-inventory-invoices' },
+      { title: 'Receipts', to: 'attendance-inventory-receipts' },
+      { title: 'Credit Notes', to: 'attendance-inventory-credit-notes' },
     ],
   },
   {

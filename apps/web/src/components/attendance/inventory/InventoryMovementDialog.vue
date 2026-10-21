@@ -38,6 +38,7 @@ const typeOptions = [
 
 const inReasonOptions = [
   { value: 'opening', title: 'Opening stock 期初庫存' },
+  { value: 'sales_return', title: 'Sales return 銷售退回' },
   { value: 'other', title: 'Other 其他' },
 ]
 

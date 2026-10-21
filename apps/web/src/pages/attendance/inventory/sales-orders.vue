@@ -24,6 +24,11 @@ import {
   listInventoryStocks,
 } from '@/api/attendance/inventory'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import {
+  type InventoryReceiptPaidBy,
+  RECEIPT_PAID_BY_OPTIONS,
+  quickFulfill,
+} from '@/api/attendance/inventoryInvoicing'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import ProformaPrintDialog from '@/components/attendance/inventory/ProformaPrintDialog.vue'
@@ -108,6 +113,10 @@ const isDraft = computed(() => selected.value?.status === 'draft')
 
 const canShip = computed(() =>
   !!selected.value && ['confirmed', 'partial'].includes(selected.value.status),
+)
+
+const canQuickFulfill = computed(() =>
+  !!selected.value && ['draft', 'confirmed', 'partial'].includes(selected.value.status),
 )
 
 interface EditLine {
@@ -406,6 +415,47 @@ async function createDelivery() {
 function fmtMoney(value: number | null | undefined): string {
   return (value ?? 0).toFixed(2)
 }
+
+const quickFulfillOpen = ref(false)
+const qfWithPay = ref(false)
+const qfAmount = ref<number | null>(null)
+const qfMethod = ref<InventoryReceiptPaidBy>('cash')
+const qfReference = ref('')
+
+function openQuickFulfill() {
+  if (!selected.value)
+    return
+  qfWithPay.value = false
+  qfAmount.value = selected.value.total
+  qfMethod.value = 'cash'
+  qfReference.value = ''
+  quickFulfillOpen.value = true
+}
+
+async function doQuickFulfill() {
+  if (!selected.value)
+    return
+  actionError.value = ''
+  saving.value = true
+  try {
+    const result = await quickFulfill(selected.value.id, {
+      pay: qfWithPay.value && qfAmount.value
+        ? { amount: qfAmount.value, paid_by: qfMethod.value, reference_no: qfReference.value || null }
+        : undefined,
+    })
+
+    quickFulfillOpen.value = false
+    selected.value = result.so
+    actionSuccess.value = `Fulfilled ${result.so.so_no}: DO ${result.delivery_order.do_no}, invoice ${result.invoice.invoice_no}${result.receipt ? `, receipt ${result.receipt.receipt_no}` : ''}.`
+    await loadOrders()
+  }
+  catch (e) {
+    actionError.value = formatApiError(e, 'Failed to quick-fulfill.')
+  }
+  finally {
+    saving.value = false
+  }
+}
 </script>
 
 <template>
@@ -582,6 +632,15 @@ function fmtMoney(value: number | null | undefined): string {
               </VBtn>
               <VBtn
                 v-if="selected"
+                variant="tonal"
+                color="success"
+                size="small"
+                @click="openQuickFulfill"
+              >
+                Quick Fulfill & Invoice
+              </VBtn>
+              <VBtn
+                v-if="selected"
                 variant="text"
                 color="error"
                 size="small"
@@ -609,6 +668,15 @@ function fmtMoney(value: number | null | undefined): string {
                 @click="createDelivery"
               >
                 Create DO
+              </VBtn>
+              <VBtn
+                v-if="canQuickFulfill"
+                variant="tonal"
+                color="success"
+                size="small"
+                @click="openQuickFulfill"
+              >
+                Quick Fulfill & Invoice
               </VBtn>
               <VBtn
                 v-if="selected.status !== 'fulfilled'"
@@ -841,6 +909,61 @@ function fmtMoney(value: number | null | undefined): string {
         </VCard>
       </VCol>
     </VRow>
+
+    <VDialog
+      v-model="quickFulfillOpen"
+      max-width="440"
+    >
+      <VCard>
+        <VCardTitle>Quick Fulfill & Invoice</VCardTitle>
+        <VCardText>
+          <div class="text-body-2 mb-3">
+            Confirms the order (if draft), ships all remaining quantities, and issues an invoice.
+          </div>
+          <VCheckbox
+            v-model="qfWithPay"
+            label="Record a payment receipt"
+            density="compact"
+            hide-details
+          />
+          <template v-if="qfWithPay">
+            <VTextField
+              v-model.number="qfAmount"
+              type="number"
+              label="Amount"
+              class="mt-3"
+            />
+            <VSelect
+              v-model="qfMethod"
+              :items="RECEIPT_PAID_BY_OPTIONS"
+              label="Paid by"
+              class="mt-3"
+            />
+            <VTextField
+              v-model="qfReference"
+              label="Reference no."
+              class="mt-3"
+            />
+          </template>
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn
+            variant="text"
+            @click="quickFulfillOpen = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            :loading="saving"
+            @click="doQuickFulfill"
+          >
+            Fulfill
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <ProformaPrintDialog
       v-model="proformaOpen"

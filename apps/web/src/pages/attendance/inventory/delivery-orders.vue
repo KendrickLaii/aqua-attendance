@@ -11,6 +11,7 @@ import {
   voidDeliveryOrder,
 } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import { createInvoice } from '@/api/attendance/inventoryInvoicing'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -148,6 +149,24 @@ async function doVoid() {
   }
   catch (e) {
     actionError.value = formatApiError(e, 'Failed to void.')
+  }
+  finally {
+    saving.value = false
+  }
+}
+
+async function doCreateInvoice() {
+  if (!selected.value)
+    return
+  actionError.value = ''
+  saving.value = true
+  try {
+    const inv = await createInvoice({ do_id: selected.value.id })
+
+    actionSuccess.value = `Created draft invoice for ${selected.value.do_no} (total ${inv.total.toFixed(2)}).`
+  }
+  catch (e) {
+    actionError.value = formatApiError(e, 'Failed to create invoice.')
   }
   finally {
     saving.value = false
@@ -337,16 +356,26 @@ async function doDelete() {
                 Delete
               </VBtn>
             </template>
-            <VBtn
-              v-else-if="selected.status === 'confirmed'"
-              variant="tonal"
-              color="error"
-              size="small"
-              :loading="saving"
-              @click="doVoid"
-            >
-              Void
-            </VBtn>
+            <template v-else-if="selected.status === 'confirmed'">
+              <VBtn
+                variant="tonal"
+                color="primary"
+                size="small"
+                :loading="saving"
+                @click="doCreateInvoice"
+              >
+                Create Invoice
+              </VBtn>
+              <VBtn
+                variant="tonal"
+                color="error"
+                size="small"
+                :loading="saving"
+                @click="doVoid"
+              >
+                Void
+              </VBtn>
+            </template>
           </VCardTitle>
           <VCardSubtitle>
             {{ selected.customer_name || '—' }} · {{ selected.location_name || '—' }} ·

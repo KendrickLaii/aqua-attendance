@@ -68,6 +68,7 @@ const reasonCodeOptions = [
   { value: 'internal_use', title: 'Internal use 內部使用' },
   { value: 'supplier_return', title: 'Supplier return 退貨' },
   { value: 'sale', title: 'Sale 銷售' },
+  { value: 'sales_return', title: 'Sales return 銷售退回' },
   { value: 'other', title: 'Other 其他' },
 ]
 

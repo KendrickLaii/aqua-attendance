@@ -44,6 +44,13 @@ from app.models.inventory_sales import (
     SalesOrder,
     SalesOrderLine,
 )
+from app.models.inventory_invoicing import (
+    InventoryCreditNote,
+    InventoryCreditNoteLine,
+    InventoryInvoice,
+    InventoryInvoiceLine,
+    InventoryReceipt,
+)
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
@@ -56,4 +63,6 @@ __all__ = [
     "InventoryCounter", "Supplier", "PurchaseOrder", "PurchaseOrderLine",
     "GoodsReceipt", "GoodsReceiptLine", "PurchaseReturn", "PurchaseReturnLine",
     "Customer", "SalesOrder", "SalesOrderLine", "DeliveryOrder", "DeliveryOrderLine",
+    "InventoryInvoice", "InventoryInvoiceLine", "InventoryReceipt",
+    "InventoryCreditNote", "InventoryCreditNoteLine",
 ]
