@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.inventory import InventoryItem, InventoryMovement, InventoryStock
 from app.models.user import User
 
-OUT_REASON_CODES = {"damage", "loss", "gift", "sample", "internal_use", "other"}
+OUT_REASON_CODES = {"damage", "loss", "gift", "sample", "internal_use", "supplier_return", "other"}
 IN_REASON_CODES = {"opening", "other"}
 REASON_CODES_REQUIRING_NOTE = {"damage", "loss", "gift"}
 

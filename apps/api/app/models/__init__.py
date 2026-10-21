@@ -27,6 +27,16 @@ from app.models.inventory import (
     InventoryStocktake,
     InventoryStocktakeLine,
 )
+from app.models.inventory_purchasing import (
+    GoodsReceipt,
+    GoodsReceiptLine,
+    InventoryCounter,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseReturn,
+    PurchaseReturnLine,
+    Supplier,
+)
 
 __all__ = [
     "User", "Unit", "AttendanceEvent", "Location", "RefreshToken", "StudentProfile", "StaffProfile",
@@ -36,4 +46,6 @@ __all__ = [
     "LocationAttachment",
     "InventoryCategory", "InventoryItem", "InventoryStock", "InventoryMovement",
     "InventoryStocktake", "InventoryStocktakeLine",
+    "InventoryCounter", "Supplier", "PurchaseOrder", "PurchaseOrderLine",
+    "GoodsReceipt", "GoodsReceiptLine", "PurchaseReturn", "PurchaseReturnLine",
 ]

@@ -47,6 +47,10 @@ export default [
       { title: 'Items', to: 'attendance-inventory-items' },
       { title: 'Movements', to: 'attendance-inventory-movements' },
       { title: 'Stocktakes', to: 'attendance-inventory-stocktakes' },
+      { title: 'Suppliers', to: 'attendance-inventory-suppliers' },
+      { title: 'Purchase Orders', to: 'attendance-inventory-purchase-orders' },
+      { title: 'Goods Receipts', to: 'attendance-inventory-goods-receipts' },
+      { title: 'Purchase Returns', to: 'attendance-inventory-purchase-returns' },
     ],
   },
   {

@@ -47,6 +47,7 @@ const outReasonOptions = [
   { value: 'gift', title: 'Gift 贈送' },
   { value: 'sample', title: 'Sample 樣品' },
   { value: 'internal_use', title: 'Internal use 內部使用' },
+  { value: 'supplier_return', title: 'Supplier return 退貨' },
   { value: 'other', title: 'Other 其他' },
 ]
 
