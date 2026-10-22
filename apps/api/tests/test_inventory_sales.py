@@ -725,3 +725,41 @@ async def test_do_confirm_after_so_cancel_fails(
     assert state["status"] == "draft"
     stock = await _stock(client, admin_token, item["id"], loc)
     assert stock["quantity"] == 5
+
+
+async def test_do_list_search(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token, name_zh="獨特客戶甲")
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 5)
+    so = await _confirmed_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 2)]
+    )
+    do = await _create_do(
+        client, admin_token, {"so_id": so["id"], "delivery_date": "2026-10-17"}
+    )
+
+    # search by do_no fragment
+    frag = do["do_no"][-6:]
+    resp = await client.get(
+        f"/api/inventory/delivery-orders?search={frag}", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200
+    assert any(d["id"] == do["id"] for d in resp.json())
+
+    # search by customer name
+    resp = await client.get(
+        "/api/inventory/delivery-orders?search=%E7%8D%A8%E7%89%B9",
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 200
+    assert any(d["id"] == do["id"] for d in resp.json())
+
+    # non-matching search returns nothing
+    resp = await client.get(
+        "/api/inventory/delivery-orders?search=ZZZ-NO-MATCH", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []

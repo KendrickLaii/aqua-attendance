@@ -467,6 +467,12 @@ async def test_dashboard_numbers(
     assert d["unpaid_invoice_count"] >= 1
     assert d["receivable_balance"] >= 100.0
     assert d["month_sales"] >= 100.0
+    assert d["month_invoiced"] >= 100.0
+    assert d["month_credited"] >= 0.0
+    assert d["month_purchases_gross"] >= 0.0
+    assert d["month_purchase_returns"] >= 0.0
+    assert d["month_sales"] == round(d["month_invoiced"] - d["month_credited"], 2)
+    assert d["month_purchases"] == round(d["month_purchases_gross"] - d["month_purchase_returns"], 2)
 
 
 # ---- alerts ----

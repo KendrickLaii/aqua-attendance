@@ -850,8 +850,12 @@ async def inventory_dashboard(
         mc_q = mc_q.where(InventoryCreditNote.location_id == location_id)
         mp_q = mp_q.where(GoodsReceipt.location_id == location_id)
         mr_q = mr_q.where(PurchaseReturn.location_id == location_id)
-    month_sales = _to_float((await db.execute(ms_q)).scalar_one()) - _to_float((await db.execute(mc_q)).scalar_one())
-    month_purchases = _to_float((await db.execute(mp_q)).scalar_one()) - _to_float((await db.execute(mr_q)).scalar_one())
+    month_invoiced = _to_float((await db.execute(ms_q)).scalar_one())
+    month_credited = _to_float((await db.execute(mc_q)).scalar_one())
+    month_purchases_gross = _to_float((await db.execute(mp_q)).scalar_one())
+    month_purchase_returns = _to_float((await db.execute(mr_q)).scalar_one())
+    month_sales = month_invoiced - month_credited
+    month_purchases = month_purchases_gross - month_purchase_returns
 
     return {
         "tracked_items": int(tracked),
@@ -866,6 +870,10 @@ async def inventory_dashboard(
         "overdue_receivable_balance": overdue_receivable,
         "month_sales": round(month_sales, 2),
         "month_purchases": round(month_purchases, 2),
+        "month_invoiced": round(month_invoiced, 2),
+        "month_credited": round(month_credited, 2),
+        "month_purchases_gross": round(month_purchases_gross, 2),
+        "month_purchase_returns": round(month_purchase_returns, 2),
     }
 
 

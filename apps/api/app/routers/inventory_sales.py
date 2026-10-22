@@ -718,6 +718,7 @@ async def list_delivery_orders(
     location_id: uuid.UUID | None = None,
     so_id: uuid.UUID | None = None,
     status: str | None = None,
+    search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[dict]:
@@ -730,15 +731,25 @@ async def list_delivery_orders(
         clauses.append(DeliveryOrder.so_id == so_id)
     if status is not None:
         clauses.append(DeliveryOrder.status == status)
+    if search:
+        clauses.append(
+            or_(
+                ilike_contains(DeliveryOrder.do_no, search),
+                ilike_contains(Customer.code, search),
+                ilike_contains(Customer.name_zh, search),
+                ilike_contains(Customer.name_en, search),
+            )
+        )
 
     count_q = select(func.count()).select_from(DeliveryOrder)
+    q = select(DeliveryOrder)
+    if search:
+        count_q = count_q.join(Customer, DeliveryOrder.customer_id == Customer.id)
+        q = q.join(Customer, DeliveryOrder.customer_id == Customer.id)
     if clauses:
         count_q = count_q.where(*clauses)
-    total = await db.scalar(count_q) or 0
-
-    q = select(DeliveryOrder)
-    if clauses:
         q = q.where(*clauses)
+    total = await db.scalar(count_q) or 0
     q = q.order_by(DeliveryOrder.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)

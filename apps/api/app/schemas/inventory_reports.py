@@ -141,6 +141,10 @@ class InventoryDashboard(BaseModel):
     overdue_receivable_balance: float
     month_sales: float
     month_purchases: float
+    month_invoiced: float
+    month_credited: float
+    month_purchases_gross: float
+    month_purchase_returns: float
 
 
 class AlertsOut(BaseModel):
