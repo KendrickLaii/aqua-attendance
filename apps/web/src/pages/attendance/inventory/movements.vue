@@ -165,6 +165,9 @@ function formatDateTime(value: string): string {
         <div class="text-h5 font-weight-medium">
           Stock Movements 異動流水
         </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁列出所有入庫、出庫、調整和分校調撥的紀錄。
+        </div>
       </VCol>
       <VCol cols="auto">
         <VBtn

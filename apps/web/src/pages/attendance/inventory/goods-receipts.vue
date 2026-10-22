@@ -19,6 +19,7 @@ import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
+import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -77,6 +78,23 @@ const poById = computed(() => new Map(openOrders.value.map(p => [p.id, p])))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const isDraft = computed(() => selected.value?.status === 'draft')
 
+const docPrimary = computed<InventoryDocAction | null>(() =>
+  isDraft.value
+    ? { label: 'Confirm Receipt', tooltip: '確認收貨,庫存會正式增加', onClick: askConfirm }
+    : null,
+)
+
+const docMore = computed<InventoryDocMoreItem[]>(() => {
+  const menu: InventoryDocMoreItem[] = []
+
+  if (isDraft.value)
+    menu.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
+  if (selected.value?.status === 'confirmed')
+    menu.push({ label: 'Void receipt', sub: '作廢收貨單,庫存會扣回去', icon: 'ri-close-circle-line', danger: true, onClick: askVoid })
+
+  return menu
+})
+
 const chainSteps = computed<DocChainStep[]>(() => {
   const grn = selected.value
   if (!grn)
@@ -109,15 +127,19 @@ watch([createForm, manualLines], () => {
     dirty.dirty.value = true
 }, { deep: true })
 
-function manualLineError(line: GoodsReceiptLinePayload): string {
-  if (!line.item_id)
-    return 'Item required'
-  if (!Number.isInteger(line.qty) || line.qty <= 0)
-    return 'Qty must be a whole number > 0'
-  if (line.unit_cost == null || line.unit_cost < 0)
-    return 'Cost must be ≥ 0'
+const showErrors = ref(false)
 
-  return ''
+interface LineErr { field: 'item' | 'qty' | 'cost'; msg: string }
+
+function manualLineError(line: GoodsReceiptLinePayload): LineErr | null {
+  if (!line.item_id)
+    return { field: 'item', msg: '請選擇品項' }
+  if (!Number.isInteger(line.qty) || line.qty <= 0)
+    return { field: 'qty', msg: '數量要是大於 0 的整數' }
+  if (line.unit_cost == null || line.unit_cost < 0)
+    return { field: 'cost', msg: '單價不能是負數' }
+
+  return null
 }
 
 const manualLineErrors = computed(() => manualLines.value.map(manualLineError))
@@ -133,8 +155,8 @@ const createInvalid = computed(() =>
       || manualLineErrors.value.some(Boolean)),
 )
 
-function closeCreate() {
-  if (dirty.confirmDiscard())
+async function closeCreate() {
+  if (await dirty.confirmDiscard())
     createDialogOpen.value = false
 }
 
@@ -198,10 +220,22 @@ function onFiltersChange() {
   loadReceipts()
 }
 
+const detailAnchor = ref<{ $el: HTMLElement } | null>(null)
+const reducedMotion = usePreferredReducedMotion()
+
+async function scrollToDetail() {
+  await nextTick()
+  detailAnchor.value?.$el.scrollIntoView({
+    behavior: reducedMotion.value === 'reduce' ? 'auto' : 'smooth',
+    block: 'start',
+  })
+}
+
 async function selectReceipt(grn: GoodsReceipt) {
   detailLoading.value = true
   try {
     selected.value = await getGoodsReceipt(grn.id)
+    await scrollToDetail()
   }
   catch (e) {
     actionError.value = formatApiError(e, 'Failed to load goods receipt.')
@@ -213,6 +247,7 @@ async function selectReceipt(grn: GoodsReceipt) {
 
 function openCreate() {
   suppressDirty = true
+  showErrors.value = false
   createForm.po_id = null
   createForm.supplier_id = null
   createForm.location_id = null
@@ -238,7 +273,10 @@ function removeManualLine(index: number) {
 async function submitCreate() {
   actionError.value = ''
   if (createInvalid.value) {
-    actionError.value = 'Please fix the highlighted fields before creating.'
+    showErrors.value = true
+    actionError.value = '請檢查紅色標示的欄位，修正後再建立。'
+    await nextTick()
+    document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
     return
   }
@@ -291,8 +329,8 @@ function askConfirm() {
   confirmAllowOverReceipt.value = false
   confirm.ask(
     `Confirm ${grn.grn_no}?`,
-    `Confirming adds ${qty} item${qty === 1 ? '' : 's'} to stock and updates average cost. Enable "Allow over-receipt" only if receiving more than ordered is intended.`,
-    { label: 'Confirm', color: 'primary' },
+    `確認後 ${qty} 件貨會加入庫存並更新平均成本。`,
+    { label: 'Confirm', tone: 'info', details: ['庫存數量增加', '品項平均成本更新', '要收超過訂購量才勾「允許超收」'] },
     performConfirm,
   )
 }
@@ -324,8 +362,8 @@ function askVoid() {
 
   confirm.ask(
     `Void ${grn.grn_no}?`,
-    `Voiding removes ${qty} item${qty === 1 ? '' : 's'} from stock. Confirmed returns against it must be voided first.`,
-    { label: 'Void' },
+    `作廢後 ${qty} 件會從庫存扣回。`,
+    { label: 'Void', details: ['庫存數量扣回', '如有已確認退貨需先作廢該退貨', '不能復原'] },
     performVoid,
   )
 }
@@ -354,8 +392,8 @@ function askDelete() {
     return
   confirm.ask(
     `Delete draft ${selected.value.grn_no}?`,
-    'The draft goods receipt will be permanently deleted.',
-    { label: 'Delete' },
+    '草稿收貨單會永久刪除。',
+    { label: 'Delete', details: ['不能復原'] },
     performDelete,
   )
 }
@@ -396,24 +434,34 @@ function fmtMoney(value: number | null | undefined): string {
         <div class="text-h5 font-weight-medium">
           Goods Receipts 收貨單
         </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁管理收貨單：貨到了在這裡確認，庫存才會增加。
+        </div>
       </VCol>
       <VCol cols="auto">
-        <VBtn
-          variant="tonal"
-          color="primary"
-          prepend-icon="ri-refresh-line"
-          :loading="loading"
-          @click="loadReceipts"
+        <VTooltip
+          text="重新整理"
+          location="bottom"
         >
-          Refresh
-        </VBtn>
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              icon="ri-refresh-line"
+              variant="tonal"
+              color="primary"
+              :loading="loading"
+              aria-label="重新整理"
+              @click="loadReceipts"
+            />
+          </template>
+        </VTooltip>
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
           class="ms-2"
           @click="openCreate"
         >
-          New receipt
+          New Goods Receipt
         </VBtn>
       </VCol>
     </VRow>
@@ -450,10 +498,7 @@ function fmtMoney(value: number | null | undefined): string {
     </VAlert>
 
     <VRow>
-      <VCol
-        cols="12"
-        md="5"
-      >
+      <VCol cols="12">
         <VCard>
           <VCardText class="d-flex flex-wrap gap-3">
             <VSelect
@@ -475,7 +520,10 @@ function fmtMoney(value: number | null | undefined): string {
               @update:model-value="onFiltersChange"
             />
           </VCardText>
-          <VList density="compact">
+          <VList
+            density="compact"
+            style="max-height: 360px; overflow-y: auto"
+          >
             <VListItem
               v-for="grn in receipts"
               :key="grn.id"
@@ -510,8 +558,8 @@ function fmtMoney(value: number | null | undefined): string {
       </VCol>
 
       <VCol
+        ref="detailAnchor"
         cols="12"
-        md="7"
       >
         <VCard v-if="detailLoading">
           <VCardText class="text-center py-12">
@@ -527,37 +575,11 @@ function fmtMoney(value: number | null | undefined): string {
             <span>{{ selected.grn_no }}</span>
             <InventoryStatusChip :status="selected.status" />
             <VSpacer />
-            <VBtn
-              v-if="isDraft"
-              color="primary"
-              size="small"
-              prepend-icon="ri-arrow-right-line"
+            <InventoryDocActions
+              :primary="docPrimary"
+              :more="docMore"
               :loading="saving"
-              @click="askConfirm"
-            >
-              Next: Confirm receipt
-            </VBtn>
-            <template v-if="isDraft">
-              <VBtn
-                variant="text"
-                color="error"
-                size="small"
-                :loading="saving"
-                @click="askDelete"
-              >
-                Delete
-              </VBtn>
-            </template>
-            <VBtn
-              v-else-if="selected.status === 'confirmed'"
-              variant="tonal"
-              color="error"
-              size="small"
-              :loading="saving"
-              @click="askVoid"
-            >
-              Void
-            </VBtn>
+            />
           </VCardTitle>
           <VCardSubtitle>
             {{ selected.supplier_name || '—' }} · {{ selected.location_name || '—' }} ·
@@ -610,7 +632,16 @@ function fmtMoney(value: number | null | undefined): string {
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
-            Select a goods receipt or create a new one.
+            從上面的列表選一張收貨單，或按下面的按鈕建立新的。
+            <div class="mt-3">
+              <VBtn
+                color="primary"
+                prepend-icon="ri-add-line"
+                @click="openCreate"
+              >
+                New Goods Receipt
+              </VBtn>
+            </div>
           </VCardText>
         </VCard>
       </VCol>
@@ -645,7 +676,8 @@ function fmtMoney(value: number | null | undefined): string {
               label="Supplier *"
               density="comfortable"
               class="mb-3"
-              :error="!createForm.supplier_id"
+              :error="showErrors && !createForm.supplier_id"
+              @blur="showErrors = true"
             />
             <VSelect
               v-model="createForm.location_id"
@@ -653,7 +685,8 @@ function fmtMoney(value: number | null | undefined): string {
               label="Location *"
               density="comfortable"
               class="mb-3"
-              :error="!createForm.location_id"
+              :error="showErrors && !createForm.location_id"
+              @blur="showErrors = true"
             />
           </template>
           <VTextField
@@ -662,7 +695,8 @@ function fmtMoney(value: number | null | undefined): string {
             type="date"
             density="comfortable"
             class="mb-3"
-            :error="!createForm.receipt_date"
+            :error="showErrors && !createForm.receipt_date"
+            @blur="showErrors = true"
           />
           <VTextField
             v-model="createForm.notes"
@@ -680,55 +714,95 @@ function fmtMoney(value: number | null | undefined): string {
 
           <template v-if="!createFromPo">
             <VDivider class="my-3" />
-            <div
-              v-for="(line, index) in manualLines"
-              :key="index"
-              class="d-flex gap-3 mb-2 align-center"
+            <VTable
+              density="compact"
+              class="inv-line-table"
             >
-              <VAutocomplete
-                v-model="line.item_id"
-                :items="items.map(i => ({ value: i.id, title: [i.sku_code, i.name_zh].filter(Boolean).join(' · ') }))"
-                label="Item *"
-                density="compact"
-                hide-details="auto"
-                variant="outlined"
-                style="flex: 3"
-                :error="!!manualLineErrors[index]"
-                :error-messages="manualLineErrors[index]"
-              />
-              <VTextField
-                v-model.number="line.qty"
-                label="Qty *"
-                type="number"
-                min="1"
-                step="1"
-                density="compact"
-                hide-details="auto"
-                variant="outlined"
-                style="flex: 1"
-                :error="!!manualLineErrors[index]"
-              />
-              <VTextField
-                v-model.number="line.unit_cost"
-                label="Unit cost *"
-                type="number"
-                min="0"
-                step="0.01"
-                density="compact"
-                hide-details="auto"
-                variant="outlined"
-                style="flex: 1"
-                :error="!!manualLineErrors[index]"
-              />
-              <VBtn
-                icon="ri-close-line"
-                variant="text"
-                size="x-small"
-                color="error"
-                aria-label="Remove line"
-                @click="removeManualLine(index)"
-              />
-            </div>
+              <thead>
+                <tr>
+                  <th class="inv-col-item">
+                    Item
+                  </th>
+                  <th class="inv-col-qty text-end">
+                    Qty
+                  </th>
+                  <th class="inv-col-price text-end">
+                    Unit cost
+                  </th>
+                  <th class="inv-col-remove" />
+                </tr>
+              </thead>
+              <tbody>
+                <template
+                  v-for="(line, index) in manualLines"
+                  :key="index"
+                >
+                  <tr>
+                    <td>
+                      <VAutocomplete
+                        v-model="line.item_id"
+                        :items="items.map(i => ({ value: i.id, title: [i.sku_code, i.name_zh].filter(Boolean).join(' · ') }))"
+                        density="compact"
+                        hide-details
+                        variant="outlined"
+                        placeholder="Search item…"
+                        :error="showErrors && manualLineErrors[index]?.field === 'item'"
+                        @blur="showErrors = true"
+                      />
+                    </td>
+                    <td>
+                      <VTextField
+                        v-model.number="line.qty"
+                        type="number"
+                        min="1"
+                        step="1"
+                        density="compact"
+                        hide-details
+                        variant="outlined"
+                        class="inv-num-input"
+                        :error="showErrors && manualLineErrors[index]?.field === 'qty'"
+                        @blur="showErrors = true"
+                      />
+                    </td>
+                    <td>
+                      <VTextField
+                        v-model.number="line.unit_cost"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        density="compact"
+                        hide-details
+                        variant="outlined"
+                        class="inv-num-input"
+                        :error="showErrors && manualLineErrors[index]?.field === 'cost'"
+                        @blur="showErrors = true"
+                      />
+                    </td>
+                    <td class="inv-col-remove">
+                      <VBtn
+                        icon="ri-close-line"
+                        variant="text"
+                        size="x-small"
+                        color="error"
+                        aria-label="Remove line"
+                        @click="removeManualLine(index)"
+                      />
+                    </td>
+                  </tr>
+                  <tr
+                    v-if="showErrors && manualLineErrors[index]"
+                    class="inv-line-error"
+                  >
+                    <td
+                      colspan="4"
+                      class="text-caption text-error"
+                    >
+                      {{ manualLineErrors[index]!.msg }}
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </VTable>
             <VBtn
               variant="text"
               size="small"
@@ -751,7 +825,6 @@ function fmtMoney(value: number | null | undefined): string {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="createInvalid"
             @click="submitCreate"
           >
             Create
@@ -765,6 +838,8 @@ function fmtMoney(value: number | null | undefined): string {
       :title="confirm.title.value"
       :confirm-label="confirm.label.value"
       :confirm-color="confirm.color.value"
+      :tone="confirm.tone.value"
+      :details="confirm.details.value"
       :loading="confirm.loading.value"
       @confirm="confirm.run"
     >

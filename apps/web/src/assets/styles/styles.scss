@@ -17,3 +17,74 @@
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+// Inventory document line-editor tables
+// Selectors mirror Vuetify's `.v-table > .v-table__wrapper > table > … > td`
+// so these rules win; table-level props must target the inner <table>.
+.v-table.inv-line-table > .v-table__wrapper > table {
+  width: 100%;
+  min-width: 620px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+
+  > thead > tr > th,
+  > tbody > tr > td {
+    block-size: auto;
+    vertical-align: middle;
+    padding-block: 4px;
+    padding-inline: 6px;
+  }
+
+  > tbody > tr > td {
+    border-block-end: none !important;
+  }
+}
+
+.inv-line-table {
+
+  .inv-col-qty {
+    width: 90px;
+  }
+
+  .inv-col-price {
+    width: 110px;
+  }
+
+  .inv-col-discount {
+    width: 100px;
+  }
+
+  .inv-col-amount {
+    width: 100px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .inv-col-remove {
+    width: 40px;
+    text-align: center;
+  }
+
+  .inv-num-input {
+    .v-field__input {
+      padding-inline: 8px;
+      text-align: right;
+    }
+
+    input {
+      text-align: right;
+      -moz-appearance: textfield;
+    }
+
+    input::-webkit-inner-spin-button,
+    input::-webkit-outer-spin-button {
+      margin: 0;
+      -webkit-appearance: none;
+    }
+  }
+
+  > .v-table__wrapper > table > tbody > tr.inv-line-error > td {
+    padding-block: 0 4px;
+  }
+}

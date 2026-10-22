@@ -61,10 +61,22 @@ const filteredItems = computed(() => {
   })
 })
 
+const route = useRoute()
+const router = useRouter()
+
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
   await loadAll()
+
+  if (route.query.action === 'new') {
+    openCreateItem()
+
+    const rest = { ...route.query }
+
+    delete rest.action
+    router.replace({ query: rest })
+  }
 })
 
 async function loadAll() {
@@ -175,6 +187,9 @@ function money(value: number | null): string {
       <VCol>
         <div class="text-h5 font-weight-medium">
           Inventory Items 品項
+        </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁管理品項資料：名稱、售價和安全庫存量。
         </div>
       </VCol>
       <VCol

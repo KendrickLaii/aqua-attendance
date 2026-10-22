@@ -138,6 +138,10 @@ export interface InventoryDashboard {
   overdue_receivable_balance: number
   month_sales: number
   month_purchases: number
+  month_invoiced: number
+  month_credited: number
+  month_purchases_gross: number
+  month_purchase_returns: number
 }
 
 export interface LowStockAlert {

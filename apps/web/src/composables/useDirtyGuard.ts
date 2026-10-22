@@ -1,19 +1,28 @@
-// Tracks unsaved edits on draft document editors. confirmDiscard() returns
+// Tracks unsaved edits on draft document editors. confirmDiscard() resolves
 // true when it is safe to switch selection / close / leave the route.
 import { onBeforeRouteLeave } from 'vue-router'
+import { useGlobalConfirm } from '@/composables/useGlobalConfirm'
 
-export function useDirtyGuard(message = 'You have unsaved changes. Discard them?') {
+export function useDirtyGuard(message = '未儲存的修改會消失。') {
   const dirty = ref(false)
+  const { confirmDialog } = useGlobalConfirm()
 
-  onBeforeRouteLeave(() => {
-    // eslint-disable-next-line no-alert
-    if (dirty.value && !window.confirm(message))
+  onBeforeRouteLeave(async () => {
+    if (dirty.value && !(await confirmDiscard()))
       return false
   })
 
-  function confirmDiscard(): boolean {
-    // eslint-disable-next-line no-alert
-    return !dirty.value || window.confirm(message)
+  async function confirmDiscard(): Promise<boolean> {
+    if (!dirty.value)
+      return true
+
+    return confirmDialog({
+      title: '放棄未儲存的修改？',
+      message,
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      tone: 'warning',
+    })
   }
 
   function markClean() {

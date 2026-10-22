@@ -236,6 +236,7 @@ export async function listDeliveryOrders(params?: {
   location_id?: string
   so_id?: string
   status?: DeliveryOrderStatus
+  search?: string
   page?: number
   page_size?: number
 }) {

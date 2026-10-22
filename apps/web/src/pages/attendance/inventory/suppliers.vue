@@ -158,6 +158,9 @@ async function submit() {
         <div class="text-h5 font-weight-medium">
           Suppliers 供應商
         </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁管理向誰進貨（供應商資料）。
+        </div>
       </VCol>
       <VCol cols="auto">
         <VBtn

@@ -4,6 +4,7 @@ import {
   type DeliveryOrderStatus,
   type SalesOrder,
   confirmDeliveryOrder,
+  createDeliveryOrder,
   deleteDeliveryOrder,
   getDeliveryOrder,
   listDeliveryOrders,
@@ -15,6 +16,7 @@ import { createInvoice } from '@/api/attendance/inventoryInvoicing'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
+import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -84,17 +86,65 @@ const chainSteps = computed<DocChainStep[]>(() => {
   ]
 })
 
-const nextStep = computed(() => {
+const docPrimary = computed<InventoryDocAction | null>(() => {
   const dor = selected.value
   if (!dor)
     return null
   if (dor.status === 'draft')
-    return { label: 'Confirm delivery', run: askConfirm }
+    return { label: 'Confirm Delivery', tooltip: '確認出貨,庫存會正式扣減', onClick: askConfirm }
   if (dor.status === 'confirmed')
-    return { label: 'Create invoice', run: doCreateInvoice }
+    return { label: 'Create Invoice', tooltip: '用這張出貨單建立發票', onClick: doCreateInvoice }
 
   return null
 })
+
+const docMore = computed<InventoryDocMoreItem[]>(() => {
+  const items: InventoryDocMoreItem[] = []
+
+  if (isDraft.value)
+    items.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
+  if (selected.value?.status === 'confirmed')
+    items.push({ label: 'Void delivery order', sub: '作廢出貨單,庫存會加回去', icon: 'ri-close-circle-line', danger: true, onClick: askVoid })
+
+  return items
+})
+
+const createOpen = ref(false)
+const createSoId = ref<string | null>(null)
+const creating = ref(false)
+const createError = ref('')
+
+const soOptions = computed(() =>
+  openOrders.value.map(so => ({
+    value: so.id,
+    title: `${so.so_no} · ${so.buyer_name || '—'} · ${so.order_date}`,
+  })),
+)
+
+async function doCreateDelivery() {
+  if (!createSoId.value)
+    return
+  createError.value = ''
+  creating.value = true
+  try {
+    const dor = await createDeliveryOrder({
+      so_id: createSoId.value,
+      delivery_date: new Date().toISOString().slice(0, 10),
+    })
+
+    createOpen.value = false
+    createSoId.value = null
+    actionSuccess.value = `Created delivery order ${dor.do_no}.`
+    await loadDeliveries()
+    await selectDelivery(dor)
+  }
+  catch (e) {
+    createError.value = formatApiError(e, 'Failed to create delivery order.')
+  }
+  finally {
+    creating.value = false
+  }
+}
 
 onMounted(async () => {
   if (!(await ensureAccess()))
@@ -146,10 +196,22 @@ function onFiltersChange() {
   loadDeliveries()
 }
 
+const detailAnchor = ref<{ $el: HTMLElement } | null>(null)
+const reducedMotion = usePreferredReducedMotion()
+
+async function scrollToDetail() {
+  await nextTick()
+  detailAnchor.value?.$el.scrollIntoView({
+    behavior: reducedMotion.value === 'reduce' ? 'auto' : 'smooth',
+    block: 'start',
+  })
+}
+
 async function selectDelivery(do_: DeliveryOrder) {
   detailLoading.value = true
   try {
     selected.value = await getDeliveryOrder(do_.id)
+    await scrollToDetail()
   }
   catch (e) {
     actionError.value = formatApiError(e, 'Failed to load delivery order.')
@@ -164,8 +226,8 @@ function askConfirm() {
     return
   confirm.ask(
     `Confirm ${selected.value.do_no}?`,
-    'Confirming ships the goods — stock will be reduced and the order lines marked as shipped.',
-    { label: 'Confirm', color: 'primary' },
+    '確認出貨後庫存會正式扣減，訂單品項標記為已出貨。',
+    { label: 'Confirm', tone: 'info', details: ['庫存數量減少', '銷售單出貨進度更新', '之後可開立發票'] },
     performConfirm,
   )
 }
@@ -196,8 +258,8 @@ function askVoid() {
 
   confirm.ask(
     `Void ${dor.do_no}?`,
-    `Voiding ${dor.do_no} will return ${qty} item${qty === 1 ? '' : 's'} to stock. This cannot be undone.`,
-    { label: 'Void' },
+    `作廢 ${dor.do_no} 會把 ${qty} 件貨加回庫存。`,
+    { label: 'Void', details: ['庫存會加回去', '已釋放的保留數量會重新保留', '如有發票需先作廢發票', '不能復原'] },
     performVoid,
   )
 }
@@ -243,8 +305,8 @@ function askDelete() {
     return
   confirm.ask(
     `Delete draft ${selected.value.do_no}?`,
-    'The draft delivery order will be permanently deleted.',
-    { label: 'Delete' },
+    '草稿出貨單會永久刪除。',
+    { label: 'Delete', details: ['不能復原'] },
     performDelete,
   )
 }
@@ -281,16 +343,34 @@ async function performDelete() {
         <div class="text-h5 font-weight-medium">
           Delivery Orders 送貨單
         </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁管理出貨單：確認出貨後庫存才會扣減。
+        </div>
       </VCol>
       <VCol cols="auto">
-        <VBtn
-          variant="tonal"
-          color="primary"
-          prepend-icon="ri-refresh-line"
-          :loading="loading"
-          @click="loadDeliveries"
+        <VTooltip
+          text="重新整理"
+          location="bottom"
         >
-          Refresh
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              icon="ri-refresh-line"
+              variant="tonal"
+              color="primary"
+              :loading="loading"
+              aria-label="重新整理"
+              @click="loadDeliveries"
+            />
+          </template>
+        </VTooltip>
+        <VBtn
+          color="primary"
+          prepend-icon="ri-add-line"
+          class="ms-2"
+          @click="createOpen = true"
+        >
+          New Delivery Order
         </VBtn>
       </VCol>
     </VRow>
@@ -332,14 +412,11 @@ async function performDelete() {
       density="compact"
       class="mb-4"
     >
-      Delivery orders are created from a confirmed sales order — use the "Create DO" action on the sales order page.
+      出貨單由已確認的銷售單產生 — 按右上「New Delivery Order」選一張銷售單，或在銷售單頁按 Create Delivery Order。
     </VAlert>
 
     <VRow>
-      <VCol
-        cols="12"
-        md="5"
-      >
+      <VCol cols="12">
         <VCard>
           <VCardText class="d-flex flex-wrap gap-3">
             <VSelect
@@ -361,7 +438,10 @@ async function performDelete() {
               @update:model-value="onFiltersChange"
             />
           </VCardText>
-          <VList density="compact">
+          <VList
+            density="compact"
+            style="max-height: 360px; overflow-y: auto"
+          >
             <VListItem
               v-for="dor in deliveries"
               :key="dor.id"
@@ -396,8 +476,8 @@ async function performDelete() {
       </VCol>
 
       <VCol
+        ref="detailAnchor"
         cols="12"
-        md="7"
       >
         <VCard v-if="detailLoading">
           <VCardText class="text-center py-12">
@@ -413,55 +493,11 @@ async function performDelete() {
             <span>{{ selected.do_no }}</span>
             <InventoryStatusChip :status="selected.status" />
             <VSpacer />
-            <VBtn
-              v-if="nextStep"
-              color="primary"
-              size="small"
-              prepend-icon="ri-arrow-right-line"
+            <InventoryDocActions
+              :primary="docPrimary"
+              :more="docMore"
               :loading="saving"
-              @click="nextStep.run()"
-            >
-              Next: {{ nextStep.label }}
-            </VBtn>
-            <template v-if="isDraft">
-              <VBtn
-                color="primary"
-                size="small"
-                :loading="saving"
-                @click="askConfirm"
-              >
-                Confirm
-              </VBtn>
-              <VBtn
-                variant="text"
-                color="error"
-                size="small"
-                :loading="saving"
-                @click="askDelete"
-              >
-                Delete
-              </VBtn>
-            </template>
-            <template v-else-if="selected.status === 'confirmed'">
-              <VBtn
-                variant="tonal"
-                color="primary"
-                size="small"
-                :loading="saving"
-                @click="doCreateInvoice"
-              >
-                Create Invoice
-              </VBtn>
-              <VBtn
-                variant="tonal"
-                color="error"
-                size="small"
-                :loading="saving"
-                @click="askVoid"
-              >
-                Void
-              </VBtn>
-            </template>
+            />
           </VCardTitle>
           <VCardSubtitle>
             {{ selected.customer_name || '—' }} · {{ selected.location_name || '—' }} ·
@@ -502,17 +538,76 @@ async function performDelete() {
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
-            Select a delivery order.
+            從上面的列表選一張出貨單，或按下面的按鈕建立新的。
+            <div class="mt-3">
+              <VBtn
+                color="primary"
+                prepend-icon="ri-add-line"
+                @click="createOpen = true"
+              >
+                New Delivery Order
+              </VBtn>
+            </div>
           </VCardText>
         </VCard>
       </VCol>
     </VRow>
+
+    <VDialog
+      v-model="createOpen"
+      max-width="520"
+    >
+      <VCard>
+        <VCardTitle>New Delivery Order</VCardTitle>
+        <VCardText>
+          <div class="text-body-2 text-medium-emphasis mb-3">
+            選一張已確認的銷售單，系統會帶出還沒出貨的品項。
+          </div>
+          <VAutocomplete
+            v-model="createSoId"
+            :items="soOptions"
+            label="Sales order"
+            density="comfortable"
+            hide-details
+            clearable
+          />
+          <VAlert
+            v-if="createError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-3"
+          >
+            {{ createError }}
+          </VAlert>
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn
+            variant="text"
+            @click="createOpen = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            :disabled="!createSoId"
+            :loading="creating"
+            @click="doCreateDelivery"
+          >
+            Create
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
 
     <AttendanceConfirmDialog
       v-model="confirm.open.value"
       :title="confirm.title.value"
       :confirm-label="confirm.label.value"
       :confirm-color="confirm.color.value"
+      :tone="confirm.tone.value"
+      :details="confirm.details.value"
       :loading="confirm.loading.value"
       @confirm="confirm.run"
     >

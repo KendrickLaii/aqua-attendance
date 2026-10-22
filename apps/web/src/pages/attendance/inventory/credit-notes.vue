@@ -20,6 +20,7 @@ import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDi
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryCreditNotePrintDialog from '@/components/attendance/inventory/InventoryCreditNotePrintDialog.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
+import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -83,13 +84,17 @@ watch([createReason, createDate, createLines], () => {
     dirty.dirty.value = true
 }, { deep: true })
 
-function createLineError(line: { qty: number; max_qty: number }): string {
-  if (!Number.isInteger(line.qty) || line.qty < 0)
-    return 'Qty must be a whole number ≥ 0'
-  if (line.qty > line.max_qty)
-    return `Qty cannot exceed ${line.max_qty}`
+const showErrors = ref(false)
 
-  return ''
+interface LineErr { field: 'qty'; msg: string }
+
+function createLineError(line: { qty: number; max_qty: number }): LineErr | null {
+  if (!Number.isInteger(line.qty) || line.qty < 0)
+    return { field: 'qty', msg: '數量要是 0 或以上的整數' }
+  if (line.qty > line.max_qty)
+    return { field: 'qty', msg: `數量不能超過 ${line.max_qty}` }
+
+  return null
 }
 
 const createLineErrors = computed(() => createLines.value.map(createLineError))
@@ -101,8 +106,8 @@ const createInvalid = computed(() =>
   || createLineErrors.value.some(Boolean),
 )
 
-function closeCreate() {
-  if (dirty.confirmDiscard())
+async function closeCreate() {
+  if (await dirty.confirmDiscard())
     createOpen.value = false
 }
 
@@ -172,6 +177,7 @@ function onRowClick(_e: Event, row: { item: InventoryCreditNote }) {
 
 async function openCreate() {
   suppressDirty = true
+  showErrors.value = false
   createInvoiceId.value = null
   createInvoice.value = null
   createReason.value = ''
@@ -218,7 +224,10 @@ async function onPickInvoice() {
 
 async function submitCreate() {
   if (createInvalid.value) {
-    actionError.value = 'Please fix the highlighted fields before creating.'
+    showErrors.value = true
+    actionError.value = '請檢查紅色標示的欄位，修正後再建立。'
+    await nextTick()
+    document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
     return
   }
@@ -251,6 +260,27 @@ async function submitCreate() {
   }
 }
 
+const docPrimary = computed<InventoryDocAction | null>(() =>
+  selected.value?.status === 'draft'
+    ? { label: 'Confirm', tooltip: '確認折讓單,金額會從發票扣除', onClick: askConfirm }
+    : null,
+)
+
+const docMore = computed<InventoryDocMoreItem[]>(() => {
+  const items: InventoryDocMoreItem[] = []
+  const cn = selected.value
+
+  if (!cn)
+    return items
+  items.push({ label: 'Print', sub: '列印折讓單', icon: 'ri-printer-line', onClick: onPrint })
+  if (cn.status === 'draft')
+    items.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
+  if (cn.status === 'confirmed')
+    items.push({ label: 'Void credit note', sub: '作廢折讓單', icon: 'ri-close-circle-line', danger: true, onClick: askVoid })
+
+  return items
+})
+
 function askConfirm() {
   const scn = selected.value
   if (!scn)
@@ -259,8 +289,8 @@ function askConfirm() {
 
   confirm.ask(
     `Confirm ${scn.scn_no}?`,
-    `Confirming credits ${fmtMoney(scn.total)} against invoice ${scn.invoice_no}${restocking ? ` and returns ${restocking} item${restocking === 1 ? '' : 's'} to stock` : ''}.`,
-    { label: 'Confirm', color: 'primary' },
+    `確認後會對發票 ${scn.invoice_no} 折讓 ${fmtMoney(scn.total)}${restocking ? `，並把 ${restocking} 件加回庫存` : ''}。`,
+    { label: 'Confirm', tone: 'info', details: ['發票應收減少', '勾選退回庫存的品項會加回庫存'] },
     performConfirm,
   )
 }
@@ -289,8 +319,8 @@ function askVoid() {
     return
   confirm.ask(
     `Void ${scn.scn_no}?`,
-    `Voiding reverses the ${fmtMoney(scn.total)} credit (and any restock) on invoice ${scn.invoice_no}. This cannot be undone.`,
-    { label: 'Void' },
+    `作廢會把 ${fmtMoney(scn.total)} 折讓還原到發票 ${scn.invoice_no}。`,
+    { label: 'Void', details: ['發票應收回復', '已回補的庫存會再扣減', '不能復原'] },
     performVoid,
   )
 }
@@ -318,8 +348,8 @@ function askDelete() {
     return
   confirm.ask(
     `Delete draft ${selected.value.scn_no}?`,
-    'The draft credit note will be permanently deleted.',
-    { label: 'Delete' },
+    '草稿折讓單會永久刪除。',
+    { label: 'Delete', details: ['不能復原'] },
     performDelete,
   )
 }
@@ -387,7 +417,7 @@ onMounted(async () => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center flex-wrap gap-2">
-        <span>Credit Notes 貸項單</span>
+        <span>Sales Credit Notes 銷售折讓單</span>
         <VSpacer />
         <VTextField
           v-model="search"
@@ -416,6 +446,21 @@ onMounted(async () => {
           hide-details
           style="max-width: 160px"
         />
+        <VTooltip
+          text="重新整理"
+          location="bottom"
+        >
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              icon="ri-refresh-line"
+              variant="tonal"
+              :loading="loading"
+              aria-label="重新整理"
+              @click="load"
+            />
+          </template>
+        </VTooltip>
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
@@ -424,6 +469,9 @@ onMounted(async () => {
           New Credit Note
         </VBtn>
       </VCardTitle>
+      <VCardSubtitle>
+        這一頁管理銷售折讓單：客戶退貨或折讓時使用，從發票按 Create Credit Note 產生。
+      </VCardSubtitle>
       <VCardText>
         <VAlert
           v-if="loadError"
@@ -548,40 +596,12 @@ onMounted(async () => {
           </div>
         </VCardText>
         <VCardActions>
-          <VBtn
-            v-if="selected.status === 'draft'"
-            color="primary"
-            prepend-icon="ri-arrow-right-line"
-            :loading="saving"
-            @click="askConfirm"
-          >
-            Next: Confirm
-          </VBtn>
-          <VBtn
-            v-if="selected.status === 'confirmed'"
-            variant="tonal"
-            :loading="saving"
-            @click="askVoid"
-          >
-            Void
-          </VBtn>
-          <VBtn
-            v-if="selected.status === 'draft'"
-            color="error"
-            variant="tonal"
-            :loading="saving"
-            @click="askDelete"
-          >
-            Delete
-          </VBtn>
           <VSpacer />
-          <VBtn
-            variant="text"
-            prepend-icon="ri-printer-line"
-            @click="onPrint"
-          >
-            Print
-          </VBtn>
+          <InventoryDocActions
+            :primary="docPrimary"
+            :more="docMore"
+            :loading="saving"
+          />
         </VCardActions>
       </VCard>
     </VDialog>
@@ -597,14 +617,16 @@ onMounted(async () => {
             v-model="createInvoiceId"
             :items="issuedInvoices.map(i => ({ value: i.id, title: `${i.invoice_no} · ${i.buyer_name} · ${fmtMoney(i.total)}` }))"
             label="Issued invoice *"
-            :error="!createInvoiceId"
+            :error="showErrors && !createInvoiceId"
             @update:model-value="onPickInvoice"
+            @blur="showErrors = true"
           />
           <VTextField
             v-model="createReason"
             label="Reason *"
             class="mt-3"
-            :error="!createReason"
+            :error="showErrors && !createReason"
+            @blur="showErrors = true"
           />
           <VTextField
             v-model="createDate"
@@ -614,53 +636,72 @@ onMounted(async () => {
           />
           <div
             v-if="createLines.length"
-            class="overflow-x-auto mt-3"
+            class="mt-3"
           >
-            <VTable density="compact">
+            <VTable
+              density="compact"
+              class="inv-line-table"
+            >
               <thead>
                 <tr>
-                  <th>Item</th>
-                  <th class="text-end">
+                  <th class="inv-col-item">
+                    Item
+                  </th>
+                  <th class="inv-col-amount">
                     Credited max
                   </th>
-                  <th style="width: 120px">
+                  <th class="inv-col-qty text-end">
                     Qty
                   </th>
-                  <th class="text-center">
+                  <th class="inv-col-remove">
                     Restock
                   </th>
                 </tr>
               </thead>
               <tbody>
-                <tr
+                <template
                   v-for="(line, i) in createLines"
                   :key="line.invoice_line_id"
                 >
-                  <td>{{ line.label }}</td>
-                  <td class="text-end tabular-nums">
-                    {{ line.max_qty }}
-                  </td>
-                  <td>
-                    <VTextField
-                      v-model.number="line.qty"
-                      type="number"
-                      density="compact"
-                      hide-details="auto"
-                      :min="0"
-                      :max="line.max_qty"
-                      step="1"
-                      :error="!!createLineErrors[i]"
-                      :error-messages="createLineErrors[i]"
-                    />
-                  </td>
-                  <td class="text-center">
-                    <VCheckbox
-                      v-model="line.restock"
-                      hide-details
-                      density="compact"
-                    />
-                  </td>
-                </tr>
+                  <tr>
+                    <td>{{ line.label }}</td>
+                    <td class="text-end tabular-nums">
+                      {{ line.max_qty }}
+                    </td>
+                    <td>
+                      <VTextField
+                        v-model.number="line.qty"
+                        type="number"
+                        density="compact"
+                        hide-details
+                        :min="0"
+                        :max="line.max_qty"
+                        step="1"
+                        class="inv-num-input"
+                        :error="showErrors && !!createLineErrors[i]"
+                        @blur="showErrors = true"
+                      />
+                    </td>
+                    <td class="text-center">
+                      <VCheckbox
+                        v-model="line.restock"
+                        hide-details
+                        density="compact"
+                      />
+                    </td>
+                  </tr>
+                  <tr
+                    v-if="showErrors && createLineErrors[i]"
+                    class="inv-line-error"
+                  >
+                    <td
+                      colspan="4"
+                      class="text-caption text-error"
+                    >
+                      {{ createLineErrors[i]!.msg }}
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </VTable>
           </div>
@@ -675,7 +716,6 @@ onMounted(async () => {
           </VBtn>
           <VBtn
             color="primary"
-            :disabled="createInvalid"
             :loading="saving"
             @click="submitCreate"
           >
@@ -695,6 +735,8 @@ onMounted(async () => {
       :title="confirm.title.value"
       :confirm-label="confirm.label.value"
       :confirm-color="confirm.color.value"
+      :tone="confirm.tone.value"
+      :details="confirm.details.value"
       :loading="confirm.loading.value"
       @confirm="confirm.run"
     >

@@ -22,6 +22,7 @@ import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
+import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -54,6 +55,7 @@ const page = ref(1)
 const pageSize = ref(20)
 
 const route = useRoute()
+const router = useRouter()
 const listReq = useLatestRequest()
 const confirm = useConfirmAction()
 const dirty = useDirtyGuard('You have unsaved edits on this purchase order. Discard them?')
@@ -98,6 +100,7 @@ const itemById = computed(() => new Map(items.value.map(i => [i.id, i])))
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const isDraft = computed(() => selected.value?.status === 'draft')
+const isEditable = computed(() => !selected.value || selected.value.status === 'draft')
 
 interface EditLine {
   item_id: string | null
@@ -132,23 +135,27 @@ watch([editForm, editLines], () => {
     dirty.dirty.value = true
 }, { deep: true })
 
-function lineError(line: EditLine): string {
-  if (!line.item_id)
-    return 'Item required'
-  if (!Number.isInteger(line.ordered_qty) || line.ordered_qty <= 0)
-    return 'Qty must be a whole number > 0'
-  if (line.unit_cost == null || line.unit_cost < 0)
-    return 'Cost must be ≥ 0'
-  if (line.discount_amount < 0 || line.discount_amount > line.ordered_qty * line.unit_cost)
-    return 'Discount must be ≥ 0 and ≤ line total'
+const showErrors = ref(false)
 
-  return ''
+interface LineErr { field: 'item' | 'qty' | 'cost' | 'discount'; msg: string }
+
+function lineError(line: EditLine): LineErr | null {
+  if (!line.item_id)
+    return { field: 'item', msg: '請選擇品項' }
+  if (!Number.isInteger(line.ordered_qty) || line.ordered_qty <= 0)
+    return { field: 'qty', msg: '數量要是大於 0 的整數' }
+  if (line.unit_cost == null || line.unit_cost < 0)
+    return { field: 'cost', msg: '單價不能是負數' }
+  if (line.discount_amount < 0 || line.discount_amount > line.ordered_qty * line.unit_cost)
+    return { field: 'discount', msg: '折扣要在 0 到該行小計之間' }
+
+  return null
 }
 
 const lineErrors = computed(() => editLines.value.map(lineError))
 
 const formInvalid = computed(() =>
-  isDraft.value
+  isEditable.value
   && (!editForm.supplier_id
     || !editForm.location_id
     || !editForm.order_date
@@ -174,16 +181,26 @@ const chainSteps = computed<DocChainStep[]>(() => {
   ]
 })
 
-const nextStep = computed(() => {
-  const po = selected.value
-  if (!po)
-    return null
-  if (po.status === 'draft')
-    return { label: 'Send order', run: askOrder }
-  if (po.status === 'ordered' || po.status === 'partial')
-    return { label: 'Receive goods', run: receiveGoods }
+const docPrimary = computed<InventoryDocAction | null>(() => {
+  if (isEditable.value && (!selected.value || dirty.dirty.value))
+    return { label: 'Save', tooltip: '儲存這張採購單的內容', onClick: saveOrder }
+  if (selected.value?.status === 'draft')
+    return { label: 'Order', tooltip: '正式下單給供應商,等貨到再收貨', onClick: askOrder }
+  if (selected.value && ['ordered', 'partial'].includes(selected.value.status))
+    return { label: 'Receive Goods', tooltip: '建立收貨單,確認後庫存才會增加', onClick: receiveGoods }
 
   return null
+})
+
+const docMore = computed<InventoryDocMoreItem[]>(() => {
+  const menu: InventoryDocMoreItem[] = []
+
+  if (isDraft.value && selected.value)
+    menu.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
+  if (selected.value && ['ordered', 'partial'].includes(selected.value.status))
+    menu.push({ label: 'Cancel order', sub: '取消採購單,不再收貨', icon: 'ri-close-circle-line', danger: true, onClick: askCancel })
+
+  return menu
 })
 
 onMounted(async () => {
@@ -201,6 +218,15 @@ onMounted(async () => {
     locations.value = locationList
     items.value = itemList
     await loadOrders()
+
+    if (route.query.action === 'new') {
+      newOrder()
+
+      const rest = { ...route.query }
+
+      delete rest.action
+      router.replace({ query: rest })
+    }
   }
   catch (e) {
     loadError.value = formatApiError(e, 'Failed to load purchase orders.')
@@ -238,8 +264,19 @@ function onFiltersChange() {
   loadOrders()
 }
 
+const detailAnchor = ref<{ $el: HTMLElement } | null>(null)
+const reducedMotion = usePreferredReducedMotion()
+
+async function scrollToDetail() {
+  await nextTick()
+  detailAnchor.value?.$el.scrollIntoView({
+    behavior: reducedMotion.value === 'reduce' ? 'auto' : 'smooth',
+    block: 'start',
+  })
+}
+
 async function selectOrder(po: PurchaseOrder) {
-  if (selected.value?.id !== po.id && dirty.dirty.value && !dirty.confirmDiscard())
+  if (selected.value?.id !== po.id && dirty.dirty.value && !(await dirty.confirmDiscard()))
     return
   detailLoading.value = true
   try {
@@ -247,6 +284,7 @@ async function selectOrder(po: PurchaseOrder) {
 
     selected.value = detail
     resetEditor(detail)
+    await scrollToDetail()
   }
   catch (e) {
     actionError.value = formatApiError(e, 'Failed to load purchase order.')
@@ -257,6 +295,7 @@ async function selectOrder(po: PurchaseOrder) {
 }
 
 function resetEditor(po: PurchaseOrder | null) {
+  showErrors.value = false
   if (!po) {
     editLines.value = []
 
@@ -283,10 +322,11 @@ function resetEditor(po: PurchaseOrder | null) {
   })
 }
 
-function newOrder() {
-  if (!dirty.confirmDiscard())
+async function newOrder() {
+  if (!(await dirty.confirmDiscard()))
     return
   suppressDirty = true
+  showErrors.value = false
   selected.value = null
   editForm.supplier_id = null
   editForm.location_id = null
@@ -300,6 +340,7 @@ function newOrder() {
   nextTick(() => {
     suppressDirty = false
   })
+  await scrollToDetail()
 }
 
 function addLine() {
@@ -322,7 +363,10 @@ async function saveOrder() {
   actionSuccess.value = ''
 
   if (formInvalid.value) {
-    actionError.value = 'Please fix the highlighted fields before saving.'
+    showErrors.value = true
+    actionError.value = '請檢查紅色標示的欄位，修正後再儲存。'
+    await nextTick()
+    document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
     return
   }
@@ -370,8 +414,8 @@ function askOrder() {
     return
   confirm.ask(
     `Order ${selected.value.po_no}?`,
-    'Marks the purchase order as sent to the supplier. It can still be cancelled afterwards.',
-    { label: 'Order', color: 'primary' },
+    '標記採購單已下單給供應商。',
+    { label: 'Order', tone: 'info', details: ['之後可以建立收貨單收貨', '下單後仍可取消'] },
     performOrder,
   )
 }
@@ -399,8 +443,8 @@ function askCancel() {
     return
   confirm.ask(
     `Cancel ${selected.value.po_no}?`,
-    'Cancelling stops further goods receipts against this order. This cannot be undone.',
-    { label: 'Cancel order' },
+    '取消後不能再對此採購單收貨，此操作不能復原。',
+    { label: 'Cancel order', details: ['不能再建立收貨單', '不能復原'] },
     performCancel,
   )
 }
@@ -428,8 +472,8 @@ function askDelete() {
     return
   confirm.ask(
     `Delete draft ${selected.value.po_no}?`,
-    'The draft purchase order and all its lines will be permanently deleted.',
-    { label: 'Delete' },
+    '草稿採購單和所有品項會永久刪除。',
+    { label: 'Delete', details: ['不能復原'] },
     performDelete,
   )
 }
@@ -495,24 +539,34 @@ function fmtMoney(value: number | null | undefined): string {
         <div class="text-h5 font-weight-medium">
           Purchase Orders 採購單
         </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁管理採購單：向供應商下單進貨。
+        </div>
       </VCol>
       <VCol cols="auto">
-        <VBtn
-          variant="tonal"
-          color="primary"
-          prepend-icon="ri-refresh-line"
-          :loading="loading"
-          @click="loadOrders"
+        <VTooltip
+          text="重新整理"
+          location="bottom"
         >
-          Refresh
-        </VBtn>
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              icon="ri-refresh-line"
+              variant="tonal"
+              color="primary"
+              :loading="loading"
+              aria-label="重新整理"
+              @click="loadOrders"
+            />
+          </template>
+        </VTooltip>
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
           class="ms-2"
           @click="newOrder"
         >
-          New order
+          New Purchase Order
         </VBtn>
       </VCol>
     </VRow>
@@ -549,10 +603,7 @@ function fmtMoney(value: number | null | undefined): string {
     </VAlert>
 
     <VRow>
-      <VCol
-        cols="12"
-        md="5"
-      >
+      <VCol cols="12">
         <VCard>
           <VCardText class="d-flex flex-wrap gap-3">
             <VSelect
@@ -583,7 +634,10 @@ function fmtMoney(value: number | null | undefined): string {
               @update:model-value="onFiltersChange"
             />
           </VCardText>
-          <VList density="compact">
+          <VList
+            density="compact"
+            style="max-height: 360px; overflow-y: auto"
+          >
             <VListItem
               v-for="po in orders"
               :key="po.id"
@@ -615,8 +669,8 @@ function fmtMoney(value: number | null | undefined): string {
       </VCol>
 
       <VCol
+        ref="detailAnchor"
         cols="12"
-        md="7"
       >
         <VCard v-if="detailLoading">
           <VCardText class="text-center py-12">
@@ -635,66 +689,11 @@ function fmtMoney(value: number | null | undefined): string {
               :status="selected.status"
             />
             <VSpacer />
-            <VBtn
-              v-if="nextStep"
-              color="primary"
-              size="small"
-              prepend-icon="ri-arrow-right-line"
+            <InventoryDocActions
+              :primary="docPrimary"
+              :more="docMore"
               :loading="saving"
-              @click="nextStep.run()"
-            >
-              Next: {{ nextStep.label }}
-            </VBtn>
-            <template v-if="isDraft">
-              <VBtn
-                color="primary"
-                size="small"
-                :loading="saving"
-                :disabled="formInvalid"
-                @click="saveOrder"
-              >
-                Save
-              </VBtn>
-              <VBtn
-                v-if="selected"
-                variant="tonal"
-                color="info"
-                size="small"
-                :loading="saving"
-                @click="askOrder"
-              >
-                Order
-              </VBtn>
-              <VBtn
-                v-if="selected"
-                variant="text"
-                color="error"
-                size="small"
-                :loading="saving"
-                @click="askDelete"
-              >
-                Delete
-              </VBtn>
-            </template>
-            <template v-if="selected && ['ordered', 'partial'].includes(selected.status)">
-              <VBtn
-                color="primary"
-                size="small"
-                :loading="saving"
-                @click="receiveGoods"
-              >
-                Receive goods
-              </VBtn>
-              <VBtn
-                variant="text"
-                color="error"
-                size="small"
-                :loading="saving"
-                @click="askCancel"
-              >
-                Cancel
-              </VBtn>
-            </template>
+            />
           </VCardTitle>
           <VCardText>
             <InventoryDocChain
@@ -712,8 +711,9 @@ function fmtMoney(value: number | null | undefined): string {
                   :items="supplierOptions"
                   label="Supplier *"
                   density="comfortable"
-                  :readonly="!isDraft && !!selected"
-                  :error="isDraft && !editForm.supplier_id"
+                  :readonly="!isEditable"
+                  :error="showErrors && !editForm.supplier_id"
+                  @blur="showErrors = true"
                 />
               </VCol>
               <VCol
@@ -725,8 +725,9 @@ function fmtMoney(value: number | null | undefined): string {
                   :items="locationOptions"
                   label="Location *"
                   density="comfortable"
-                  :readonly="!isDraft && !!selected"
-                  :error="isDraft && !editForm.location_id"
+                  :readonly="!isEditable"
+                  :error="showErrors && !editForm.location_id"
+                  @blur="showErrors = true"
                 />
               </VCol>
               <VCol
@@ -738,8 +739,9 @@ function fmtMoney(value: number | null | undefined): string {
                   label="Order date *"
                   type="date"
                   density="comfortable"
-                  :readonly="!isDraft && !!selected"
-                  :error="isDraft && !editForm.order_date"
+                  :readonly="!isEditable"
+                  :error="showErrors && !editForm.order_date"
+                  @blur="showErrors = true"
                 />
               </VCol>
               <VCol
@@ -751,7 +753,7 @@ function fmtMoney(value: number | null | undefined): string {
                   label="Expected date"
                   type="date"
                   density="comfortable"
-                  :readonly="!isDraft && !!selected"
+                  :readonly="!isEditable"
                 />
               </VCol>
               <VCol cols="12">
@@ -759,59 +761,56 @@ function fmtMoney(value: number | null | undefined): string {
                   v-model="editForm.notes"
                   label="Notes"
                   density="comfortable"
-                  :readonly="!isDraft && !!selected"
+                  :readonly="!isEditable"
                 />
               </VCol>
             </VRow>
 
-            <div class="overflow-x-auto">
-              <VTable density="compact">
-                <thead>
+            <VTable
+              density="compact"
+              class="inv-line-table"
+            >
+              <thead>
+                <tr>
+                  <th class="inv-col-item">
+                    Item
+                  </th>
+                  <th class="inv-col-qty text-end">
+                    Qty
+                  </th>
+                  <th class="inv-col-price text-end">
+                    Unit cost
+                  </th>
+                  <th class="inv-col-discount text-end">
+                    Discount
+                  </th>
+                  <th class="inv-col-amount">
+                    Amount
+                  </th>
+                  <th
+                    v-if="isEditable"
+                    class="inv-col-remove"
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                <template
+                  v-for="(line, index) in editLines"
+                  :key="index"
+                >
                   <tr>
-                    <th>Item</th>
-                    <th
-                      class="text-end"
-                      style="width: 90px"
-                    >
-                      Qty
-                    </th>
-                    <th
-                      class="text-end"
-                      style="width: 110px"
-                    >
-                      Unit cost
-                    </th>
-                    <th
-                      class="text-end"
-                      style="width: 110px"
-                    >
-                      Discount
-                    </th>
-                    <th class="text-end">
-                      Amount
-                    </th>
-                    <th
-                      v-if="isDraft"
-                      style="width: 48px"
-                    />
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="(line, index) in editLines"
-                    :key="index"
-                  >
                     <td>
                       <VAutocomplete
-                        v-if="isDraft"
+                        v-if="isEditable"
                         v-model="line.item_id"
                         :items="itemOptions"
                         density="compact"
-                        hide-details="auto"
+                        hide-details
                         variant="outlined"
-                        :error="!!lineErrors[index]"
-                        :error-messages="lineErrors[index]"
+                        placeholder="Search item…"
+                        :error="showErrors && lineErrors[index]?.field === 'item'"
                         @update:model-value="onItemPicked(line)"
+                        @blur="showErrors = true"
                       />
                       <template v-else>
                         {{ itemById.get(line.item_id || '')?.sku_code }} ·
@@ -820,15 +819,17 @@ function fmtMoney(value: number | null | undefined): string {
                     </td>
                     <td class="text-end">
                       <VTextField
-                        v-if="isDraft"
+                        v-if="isEditable"
                         v-model.number="line.ordered_qty"
                         type="number"
                         min="1"
                         step="1"
                         density="compact"
-                        hide-details="auto"
+                        hide-details
                         variant="outlined"
-                        :error="!!lineErrors[index]"
+                        class="inv-num-input"
+                        :error="showErrors && lineErrors[index]?.field === 'qty'"
+                        @blur="showErrors = true"
                       />
                       <template v-else>
                         {{ line.ordered_qty }}
@@ -836,15 +837,17 @@ function fmtMoney(value: number | null | undefined): string {
                     </td>
                     <td class="text-end">
                       <VTextField
-                        v-if="isDraft"
+                        v-if="isEditable"
                         v-model.number="line.unit_cost"
                         type="number"
                         min="0"
                         step="0.01"
                         density="compact"
-                        hide-details="auto"
+                        hide-details
                         variant="outlined"
-                        :error="!!lineErrors[index]"
+                        class="inv-num-input"
+                        :error="showErrors && lineErrors[index]?.field === 'cost'"
+                        @blur="showErrors = true"
                       />
                       <template v-else>
                         {{ fmtMoney(line.unit_cost) }}
@@ -852,24 +855,29 @@ function fmtMoney(value: number | null | undefined): string {
                     </td>
                     <td class="text-end">
                       <VTextField
-                        v-if="isDraft"
+                        v-if="isEditable"
                         v-model.number="line.discount_amount"
                         type="number"
                         min="0"
                         step="0.01"
                         density="compact"
-                        hide-details="auto"
+                        hide-details
                         variant="outlined"
-                        :error="!!lineErrors[index]"
+                        class="inv-num-input"
+                        :error="showErrors && lineErrors[index]?.field === 'discount'"
+                        @blur="showErrors = true"
                       />
                       <template v-else>
                         {{ fmtMoney(line.discount_amount) }}
                       </template>
                     </td>
-                    <td class="text-end font-weight-medium tabular-nums">
+                    <td class="inv-col-amount font-weight-medium">
                       {{ fmtMoney(Math.max(0, (line.ordered_qty || 0) * (line.unit_cost || 0) - (line.discount_amount || 0))) }}
                     </td>
-                    <td v-if="isDraft">
+                    <td
+                      v-if="isEditable"
+                      class="inv-col-remove"
+                    >
                       <VBtn
                         icon="ri-close-line"
                         variant="text"
@@ -880,12 +888,23 @@ function fmtMoney(value: number | null | undefined): string {
                       />
                     </td>
                   </tr>
-                </tbody>
-              </VTable>
-            </div>
+                  <tr
+                    v-if="showErrors && lineErrors[index]"
+                    class="inv-line-error"
+                  >
+                    <td
+                      :colspan="isEditable ? 6 : 5"
+                      class="text-caption text-error"
+                    >
+                      {{ lineErrors[index]!.msg }}
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </VTable>
 
             <div
-              v-if="isDraft"
+              v-if="isEditable"
               class="mt-2"
             >
               <VBtn
@@ -919,7 +938,7 @@ function fmtMoney(value: number | null | undefined): string {
                   density="compact"
                   hide-details
                   variant="outlined"
-                  :readonly="!isDraft && !!selected"
+                  :readonly="!isEditable"
                 />
               </div>
               <div>
@@ -935,7 +954,16 @@ function fmtMoney(value: number | null | undefined): string {
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
-            Select a purchase order or create a new one.
+            從上面的列表選一張採購單，或按下面的按鈕建立新的。
+            <div class="mt-3">
+              <VBtn
+                color="primary"
+                prepend-icon="ri-add-line"
+                @click="newOrder"
+              >
+                New Purchase Order
+              </VBtn>
+            </div>
           </VCardText>
         </VCard>
       </VCol>
@@ -946,6 +974,8 @@ function fmtMoney(value: number | null | undefined): string {
       :title="confirm.title.value"
       :confirm-label="confirm.label.value"
       :confirm-color="confirm.color.value"
+      :tone="confirm.tone.value"
+      :details="confirm.details.value"
       :loading="confirm.loading.value"
       @confirm="confirm.run"
     >

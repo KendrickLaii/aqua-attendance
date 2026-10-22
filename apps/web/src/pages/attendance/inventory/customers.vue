@@ -226,6 +226,9 @@ async function submitFromStudent() {
         <div class="text-h5 font-weight-medium">
           Customers 客戶
         </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁管理把東西賣給誰（客戶資料）。
+        </div>
       </VCol>
       <VCol cols="auto">
         <VBtn

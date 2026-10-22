@@ -4,10 +4,7 @@ import {
   type InventoryInvoicePrintDoc,
   type InventoryInvoiceStatus,
   type InventoryPaymentStatus,
-  type InventoryReceiptPaidBy,
-  RECEIPT_PAID_BY_OPTIONS,
   createInvoice,
-  createReceipt,
   deleteInvoice,
   getInvoice,
   getInvoicePrint,
@@ -16,14 +13,18 @@ import {
   voidInvoice,
 } from '@/api/attendance/inventoryInvoicing'
 import {
+  type DeliveryOrder,
   type InventoryCustomer,
   listCustomers,
+  listDeliveryOrders,
 } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import InventoryInvoicePrintDialog from '@/components/attendance/inventory/InventoryInvoicePrintDialog.vue'
+import InventoryRecordPaymentDialog from '@/components/attendance/inventory/InventoryRecordPaymentDialog.vue'
+import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -88,15 +89,14 @@ const printDoc = ref<InventoryInvoicePrintDoc | null>(null)
 
 // record payment dialog
 const payOpen = ref(false)
-const payAmount = ref<number | null>(null)
-const payMethod = ref<InventoryReceiptPaidBy>('cash')
-const payReference = ref('')
-const payDate = ref('')
 
-// create invoice dialog (from a DO id — usually reached via delivery-orders page)
+// create invoice dialog (from a DO — usually reached via delivery-orders page)
 const createOpen = ref(false)
-const createDoId = ref('')
+const createDoId = ref<string | null>(null)
 const createNotes = ref('')
+const doOptions = ref<DeliveryOrder[]>([])
+const doLoading = ref(false)
+let doSearchTimer: ReturnType<typeof setTimeout> | undefined
 
 watch([createDoId, createNotes], () => {
   if (createOpen.value && (createDoId.value || createNotes.value))
@@ -127,16 +127,32 @@ const chainSteps = computed<DocChainStep[]>(() => {
   ]
 })
 
-const nextStep = computed(() => {
+const docPrimary = computed<InventoryDocAction | null>(() => {
   const inv = selected.value
   if (!inv)
     return null
   if (inv.status === 'draft')
-    return { label: 'Issue invoice', run: askIssue }
+    return { label: 'Issue', tooltip: '開立發票並編配號碼，開始向客戶請款', onClick: askIssue }
   if (inv.status === 'issued' && inv.balance > 0)
-    return { label: 'Record payment', run: openPay }
+    return { label: 'Record Payment', tooltip: '記錄客戶付款，產生一張收據', onClick: openPay }
 
   return null
+})
+
+const docMore = computed<InventoryDocMoreItem[]>(() => {
+  const inv = selected.value
+  const items: InventoryDocMoreItem[] = []
+
+  if (!inv)
+    return items
+  if (inv.invoice_no)
+    items.push({ label: 'Print', sub: '列印發票', icon: 'ri-printer-line', onClick: onPrint })
+  if (inv.status === 'draft')
+    items.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
+  if (inv.status === 'issued')
+    items.push({ label: 'Void invoice', sub: '作廢發票,需先作廢相關收據', icon: 'ri-close-circle-line', danger: true, onClick: askVoid })
+
+  return items
 })
 
 async function load() {
@@ -176,14 +192,35 @@ function onRowClick(_e: Event, row: { item: InventoryInvoice }) {
 }
 
 function openCreate() {
-  createDoId.value = ''
+  createDoId.value = null
   createNotes.value = ''
   dirty.markClean()
   createOpen.value = true
+  loadDos('')
 }
 
-function closeCreate() {
-  if (dirty.confirmDiscard())
+async function loadDos(term: string) {
+  doLoading.value = true
+  try {
+    const res = await listDeliveryOrders({ status: 'confirmed', search: term || undefined, page_size: 50 })
+
+    doOptions.value = res.items
+  }
+  catch (e) {
+    actionError.value = formatApiError(e, 'Operation failed.')
+  }
+  finally {
+    doLoading.value = false
+  }
+}
+
+function onDoSearch(term: string) {
+  clearTimeout(doSearchTimer)
+  doSearchTimer = setTimeout(() => loadDos(term), 300)
+}
+
+async function closeCreate() {
+  if (await dirty.confirmDiscard())
     createOpen.value = false
 }
 
@@ -214,8 +251,8 @@ function askIssue() {
     return
   confirm.ask(
     `Issue ${selected.value.invoice_no || 'draft invoice'}?`,
-    `Issuing assigns an invoice number and bills ${fmtMoney(selected.value.total)} to the customer. It can only be undone by voiding.`,
-    { label: 'Issue', color: 'primary' },
+    `開立後會編配發票號碼，向客戶收取 ${fmtMoney(selected.value.total)}。`,
+    { label: 'Issue', tone: 'info', details: ['開始計算應收款項', '只能透過作廢取消'] },
     performIssue,
   )
 }
@@ -243,8 +280,8 @@ function askVoid() {
     return
   confirm.ask(
     `Void ${selected.value.invoice_no}?`,
-    'Voiding cancels the invoice. Its receipts must be voided first; this cannot be undone.',
-    { label: 'Void' },
+    '作廢會取消這張發票。',
+    { label: 'Void', details: ['必須先作廢相關收據和折讓單', '不能復原'] },
     performVoid,
   )
 }
@@ -272,8 +309,8 @@ function askDelete() {
     return
   confirm.ask(
     'Delete draft invoice?',
-    'The draft invoice will be permanently deleted.',
-    { label: 'Delete' },
+    '草稿發票會永久刪除。',
+    { label: 'Delete', details: ['不能復原'] },
     performDelete,
   )
 }
@@ -297,46 +334,17 @@ async function performDelete() {
   }
 }
 
-const payInvalid = computed(() =>
-  !payAmount.value
-  || payAmount.value <= 0
-  || (selected.value != null && payAmount.value > selected.value.balance),
-)
-
 function openPay() {
   if (!selected.value)
     return
-  payAmount.value = selected.value.balance
-  payMethod.value = 'cash'
-  payReference.value = ''
-  payDate.value = ''
   payOpen.value = true
 }
 
-async function submitPay() {
-  if (!selected.value || payInvalid.value)
-    return
-  saving.value = true
-  actionError.value = ''
-  try {
-    await createReceipt({
-      invoice_id: selected.value.id,
-      amount: payAmount.value ?? 0,
-      paid_by: payMethod.value,
-      reference_no: payReference.value || null,
-      receipt_date: payDate.value || null,
-    })
-    payOpen.value = false
-    actionSuccess.value = 'Receipt posted'
+async function onPaymentSaved() {
+  actionSuccess.value = 'Receipt posted'
+  if (selected.value)
     selected.value = await getInvoice(selected.value.id)
-    await load()
-  }
-  catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
-  }
-  finally {
-    saving.value = false
-  }
+  await load()
 }
 
 async function onPrint() {
@@ -383,7 +391,7 @@ onMounted(async () => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center flex-wrap gap-2">
-        <span>Invoices 庫存發票</span>
+        <span>Sales Invoices 銷售發票</span>
         <VSpacer />
         <VTextField
           v-model="search"
@@ -430,6 +438,21 @@ onMounted(async () => {
           hide-details
           style="max-width: 160px"
         />
+        <VTooltip
+          text="重新整理"
+          location="bottom"
+        >
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              icon="ri-refresh-line"
+              variant="tonal"
+              :loading="loading"
+              aria-label="重新整理"
+              @click="load"
+            />
+          </template>
+        </VTooltip>
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
@@ -438,6 +461,9 @@ onMounted(async () => {
           New Invoice
         </VBtn>
       </VCardTitle>
+      <VCardSubtitle>
+        這一頁管理銷售發票：向客戶請款用的單據。由已確認的出貨單建立。
+      </VCardSubtitle>
       <VCardText>
         <VAlert
           v-if="loadError"
@@ -619,58 +645,12 @@ onMounted(async () => {
           </div>
         </VCardText>
         <VCardActions>
-          <VBtn
-            v-if="nextStep"
-            color="primary"
-            prepend-icon="ri-arrow-right-line"
-            :loading="saving"
-            @click="nextStep.run()"
-          >
-            Next: {{ nextStep.label }}
-          </VBtn>
-          <VBtn
-            v-if="selected.status === 'draft'"
-            color="primary"
-            variant="tonal"
-            :loading="saving"
-            @click="askIssue"
-          >
-            Issue
-          </VBtn>
-          <VBtn
-            v-if="selected.status === 'issued' && selected.balance > 0"
-            color="success"
-            variant="tonal"
-            @click="openPay"
-          >
-            Record Payment
-          </VBtn>
-          <VBtn
-            v-if="selected.status === 'issued'"
-            variant="tonal"
-            :loading="saving"
-            @click="askVoid"
-          >
-            Void
-          </VBtn>
-          <VBtn
-            v-if="selected.status === 'draft'"
-            color="error"
-            variant="tonal"
-            :loading="saving"
-            @click="askDelete"
-          >
-            Delete
-          </VBtn>
           <VSpacer />
-          <VBtn
-            v-if="selected.invoice_no"
-            variant="text"
-            prepend-icon="ri-printer-line"
-            @click="onPrint"
-          >
-            Print
-          </VBtn>
+          <InventoryDocActions
+            :primary="docPrimary"
+            :more="docMore"
+            :loading="saving"
+          />
         </VCardActions>
       </VCard>
     </VDialog>
@@ -683,11 +663,17 @@ onMounted(async () => {
       <VCard>
         <VCardTitle>New Invoice from Delivery Order</VCardTitle>
         <VCardText>
-          <VTextField
+          <VAutocomplete
             v-model="createDoId"
-            label="Delivery Order ID"
-            hint="Paste a confirmed DO id (or use Create Invoice on the Delivery Orders page)"
+            :items="doOptions"
+            item-value="id"
+            :item-props="d => ({ title: `${d.do_no} · ${d.customer_name ?? ''} · ${d.delivery_date}`, subtitle: d.so_no_ref ? `SO ${d.so_no_ref}` : undefined })"
+            :loading="doLoading"
+            no-filter
+            label="出貨單 Delivery Order *"
+            hint="選一張已確認的出貨單，系統會自動帶出品項和金額"
             persistent-hint
+            @update:search="onDoSearch"
           />
           <VTextField
             v-model="createNotes"
@@ -715,61 +701,13 @@ onMounted(async () => {
       </VCard>
     </VDialog>
 
-    <VDialog
+    <InventoryRecordPaymentDialog
       v-model="payOpen"
-      max-width="440"
-    >
-      <VCard>
-        <VCardTitle>Record Payment</VCardTitle>
-        <VCardText>
-          <VTextField
-            v-model.number="payAmount"
-            type="number"
-            min="0"
-            step="0.01"
-            label="Amount *"
-            :hint="`Balance ${fmtMoney(selected?.balance)}`"
-            persistent-hint
-            :error="payInvalid"
-            :error-messages="payInvalid ? 'Amount must be > 0 and not exceed the balance' : ''"
-          />
-          <VSelect
-            v-model="payMethod"
-            :items="RECEIPT_PAID_BY_OPTIONS"
-            label="Paid by"
-            class="mt-3"
-          />
-          <VTextField
-            v-model="payReference"
-            label="Reference no."
-            class="mt-3"
-          />
-          <VTextField
-            v-model="payDate"
-            type="date"
-            label="Receipt date"
-            class="mt-3"
-          />
-        </VCardText>
-        <VCardActions>
-          <VSpacer />
-          <VBtn
-            variant="text"
-            @click="payOpen = false"
-          >
-            Cancel
-          </VBtn>
-          <VBtn
-            color="primary"
-            :disabled="payInvalid"
-            :loading="saving"
-            @click="submitPay"
-          >
-            Post Receipt
-          </VBtn>
-        </VCardActions>
-      </VCard>
-    </VDialog>
+      :invoice="selected
+        ? { id: selected.id, invoice_no: selected.invoice_no ?? '', buyer_name: selected.buyer_name, balance: selected.balance }
+        : null"
+      @saved="onPaymentSaved"
+    />
 
     <InventoryInvoicePrintDialog
       v-model="printOpen"
@@ -781,6 +719,8 @@ onMounted(async () => {
       :title="confirm.title.value"
       :confirm-label="confirm.label.value"
       :confirm-color="confirm.color.value"
+      :tone="confirm.tone.value"
+      :details="confirm.details.value"
       :loading="confirm.loading.value"
       @confirm="confirm.run"
     >

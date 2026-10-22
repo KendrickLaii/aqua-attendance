@@ -19,6 +19,7 @@ import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
+import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -93,6 +94,23 @@ const grnOptions = computed(() =>
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const isDraft = computed(() => selected.value?.status === 'draft')
 
+const docPrimary = computed<InventoryDocAction | null>(() =>
+  isDraft.value
+    ? { label: 'Confirm Return', tooltip: '確認退貨,庫存會正式扣減', onClick: askConfirm }
+    : null,
+)
+
+const docMore = computed<InventoryDocMoreItem[]>(() => {
+  const menu: InventoryDocMoreItem[] = []
+
+  if (isDraft.value)
+    menu.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
+  if (selected.value?.status === 'confirmed')
+    menu.push({ label: 'Void return', sub: '作廢退貨單,庫存會加回去', icon: 'ri-close-circle-line', danger: true, onClick: askVoid })
+
+  return menu
+})
+
 const createDialogOpen = ref(false)
 
 const createForm = reactive({
@@ -111,15 +129,19 @@ watch([createForm, createLines], () => {
     dirty.dirty.value = true
 }, { deep: true })
 
-function createLineError(line: PurchaseReturnLinePayload): string {
-  if (!line.item_id)
-    return 'Item required'
-  if (!Number.isInteger(line.qty) || line.qty <= 0)
-    return 'Qty must be a whole number > 0'
-  if (line.unit_cost == null || line.unit_cost < 0)
-    return 'Cost must be >= 0'
+const showErrors = ref(false)
 
-  return ''
+interface LineErr { field: 'item' | 'qty' | 'cost'; msg: string }
+
+function createLineError(line: PurchaseReturnLinePayload): LineErr | null {
+  if (!line.item_id)
+    return { field: 'item', msg: '請選擇品項' }
+  if (!Number.isInteger(line.qty) || line.qty <= 0)
+    return { field: 'qty', msg: '數量要是大於 0 的整數' }
+  if (line.unit_cost == null || line.unit_cost < 0)
+    return { field: 'cost', msg: '單價不能是負數' }
+
+  return null
 }
 
 const createLineErrors = computed(() => createLines.value.map(createLineError))
@@ -132,8 +154,8 @@ const createInvalid = computed(() =>
   || createLineErrors.value.some(Boolean),
 )
 
-function closeCreate() {
-  if (dirty.confirmDiscard())
+async function closeCreate() {
+  if (await dirty.confirmDiscard())
     createDialogOpen.value = false
 }
 
@@ -202,10 +224,22 @@ function onFiltersChange() {
   loadReturns()
 }
 
+const detailAnchor = ref<{ $el: HTMLElement } | null>(null)
+const reducedMotion = usePreferredReducedMotion()
+
+async function scrollToDetail() {
+  await nextTick()
+  detailAnchor.value?.$el.scrollIntoView({
+    behavior: reducedMotion.value === 'reduce' ? 'auto' : 'smooth',
+    block: 'start',
+  })
+}
+
 async function selectReturn(prt: PurchaseReturn) {
   detailLoading.value = true
   try {
     selected.value = await getPurchaseReturn(prt.id)
+    await scrollToDetail()
   }
   catch (e) {
     actionError.value = formatApiError(e, 'Failed to load purchase return.')
@@ -217,6 +251,7 @@ async function selectReturn(prt: PurchaseReturn) {
 
 function openCreate() {
   suppressDirty = true
+  showErrors.value = false
   createForm.supplier_id = null
   createForm.location_id = null
   createForm.grn_id = null
@@ -242,7 +277,10 @@ function removeCreateLine(index: number) {
 async function submitCreate() {
   actionError.value = ''
   if (createInvalid.value) {
-    actionError.value = 'Please fix the highlighted fields before creating.'
+    showErrors.value = true
+    actionError.value = '請檢查紅色標示的欄位，修正後再建立。'
+    await nextTick()
+    document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
     return
   }
@@ -281,8 +319,8 @@ function askConfirm() {
 
   confirm.ask(
     `Confirm ${prt.prt_no}?`,
-    `Confirming removes ${qty} item${qty === 1 ? '' : 's'} from stock as a return to the supplier.`,
-    { label: 'Confirm', color: 'primary' },
+    `確認後 ${qty} 件會從庫存扣減（退給供應商）。`,
+    { label: 'Confirm', tone: 'info', details: ['庫存數量減少', '不能復原，只能作廢'] },
     performConfirm,
   )
 }
@@ -313,8 +351,8 @@ function askVoid() {
 
   confirm.ask(
     `Void ${prt.prt_no}?`,
-    `Voiding restores ${qty} item${qty === 1 ? '' : 's'} to stock. This cannot be undone.`,
-    { label: 'Void' },
+    `作廢後 ${qty} 件會加回庫存。`,
+    { label: 'Void', details: ['庫存數量加回', '不能復原'] },
     performVoid,
   )
 }
@@ -342,8 +380,8 @@ function askDelete() {
     return
   confirm.ask(
     `Delete draft ${selected.value.prt_no}?`,
-    'The draft purchase return will be permanently deleted.',
-    { label: 'Delete' },
+    '草稿退貨單會永久刪除。',
+    { label: 'Delete', details: ['不能復原'] },
     performDelete,
   )
 }
@@ -384,24 +422,34 @@ function fmtMoney(value: number | null | undefined): string {
         <div class="text-h5 font-weight-medium">
           Purchase Returns 採購退貨
         </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁管理退貨單：把有問題的貨退回給供應商。
+        </div>
       </VCol>
       <VCol cols="auto">
-        <VBtn
-          variant="tonal"
-          color="primary"
-          prepend-icon="ri-refresh-line"
-          :loading="loading"
-          @click="loadReturns"
+        <VTooltip
+          text="重新整理"
+          location="bottom"
         >
-          Refresh
-        </VBtn>
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              icon="ri-refresh-line"
+              variant="tonal"
+              color="primary"
+              :loading="loading"
+              aria-label="重新整理"
+              @click="loadReturns"
+            />
+          </template>
+        </VTooltip>
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
           class="ms-2"
           @click="openCreate"
         >
-          New return
+          New Purchase Return
         </VBtn>
       </VCol>
     </VRow>
@@ -438,10 +486,7 @@ function fmtMoney(value: number | null | undefined): string {
     </VAlert>
 
     <VRow>
-      <VCol
-        cols="12"
-        md="5"
-      >
+      <VCol cols="12">
         <VCard>
           <VCardText class="d-flex flex-wrap gap-3">
             <VSelect
@@ -463,7 +508,10 @@ function fmtMoney(value: number | null | undefined): string {
               @update:model-value="onFiltersChange"
             />
           </VCardText>
-          <VList density="compact">
+          <VList
+            density="compact"
+            style="max-height: 360px; overflow-y: auto"
+          >
             <VListItem
               v-for="prt in returns"
               :key="prt.id"
@@ -498,8 +546,8 @@ function fmtMoney(value: number | null | undefined): string {
       </VCol>
 
       <VCol
+        ref="detailAnchor"
         cols="12"
-        md="7"
       >
         <VCard v-if="detailLoading">
           <VCardText class="text-center py-12">
@@ -515,37 +563,11 @@ function fmtMoney(value: number | null | undefined): string {
             <span>{{ selected.prt_no }}</span>
             <InventoryStatusChip :status="selected.status" />
             <VSpacer />
-            <VBtn
-              v-if="isDraft"
-              color="primary"
-              size="small"
-              prepend-icon="ri-arrow-right-line"
+            <InventoryDocActions
+              :primary="docPrimary"
+              :more="docMore"
               :loading="saving"
-              @click="askConfirm"
-            >
-              Next: Confirm return
-            </VBtn>
-            <template v-if="isDraft">
-              <VBtn
-                variant="text"
-                color="error"
-                size="small"
-                :loading="saving"
-                @click="askDelete"
-              >
-                Delete
-              </VBtn>
-            </template>
-            <VBtn
-              v-else-if="selected.status === 'confirmed'"
-              variant="tonal"
-              color="error"
-              size="small"
-              :loading="saving"
-              @click="askVoid"
-            >
-              Void
-            </VBtn>
+            />
           </VCardTitle>
           <VCardSubtitle>
             {{ selected.supplier_name || '—' }} · {{ selected.location_name || '—' }} ·
@@ -598,7 +620,16 @@ function fmtMoney(value: number | null | undefined): string {
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
-            Select a purchase return or create a new one.
+            從上面的列表選一張退貨單，或按下面的按鈕建立新的。
+            <div class="mt-3">
+              <VBtn
+                color="primary"
+                prepend-icon="ri-add-line"
+                @click="openCreate"
+              >
+                New Purchase Return
+              </VBtn>
+            </div>
           </VCardText>
         </VCard>
       </VCol>
@@ -616,7 +647,8 @@ function fmtMoney(value: number | null | undefined): string {
             label="Supplier *"
             density="comfortable"
             class="mb-3"
-            :error="!createForm.supplier_id"
+            :error="showErrors && !createForm.supplier_id"
+            @blur="showErrors = true"
           />
           <VSelect
             v-model="createForm.location_id"
@@ -624,7 +656,8 @@ function fmtMoney(value: number | null | undefined): string {
             label="Location *"
             density="comfortable"
             class="mb-3"
-            :error="!createForm.location_id"
+            :error="showErrors && !createForm.location_id"
+            @blur="showErrors = true"
           />
           <VSelect
             v-model="createForm.grn_id"
@@ -642,7 +675,8 @@ function fmtMoney(value: number | null | undefined): string {
             type="date"
             density="comfortable"
             class="mb-3"
-            :error="!createForm.return_date"
+            :error="showErrors && !createForm.return_date"
+            @blur="showErrors = true"
           />
           <VTextField
             v-model="createForm.notes"
@@ -652,55 +686,95 @@ function fmtMoney(value: number | null | undefined): string {
           />
 
           <VDivider class="my-3" />
-          <div
-            v-for="(line, index) in createLines"
-            :key="index"
-            class="d-flex gap-3 mb-2 align-center"
+          <VTable
+            density="compact"
+            class="inv-line-table"
           >
-            <VAutocomplete
-              v-model="line.item_id"
-              :items="itemOptions"
-              label="Item *"
-              density="compact"
-              hide-details="auto"
-              variant="outlined"
-              style="flex: 3"
-              :error="!!createLineErrors[index]"
-              :error-messages="createLineErrors[index]"
-            />
-            <VTextField
-              v-model.number="line.qty"
-              label="Qty *"
-              type="number"
-              min="1"
-              step="1"
-              density="compact"
-              hide-details="auto"
-              variant="outlined"
-              style="flex: 1"
-              :error="!!createLineErrors[index]"
-            />
-            <VTextField
-              v-model.number="line.unit_cost"
-              label="Unit cost *"
-              type="number"
-              min="0"
-              step="0.01"
-              density="compact"
-              hide-details="auto"
-              variant="outlined"
-              style="flex: 1"
-              :error="!!createLineErrors[index]"
-            />
-            <VBtn
-              icon="ri-close-line"
-              variant="text"
-              size="x-small"
-              color="error"
-              aria-label="Remove line"
-              @click="removeCreateLine(index)"
-            />
-          </div>
+            <thead>
+              <tr>
+                <th class="inv-col-item">
+                  Item
+                </th>
+                <th class="inv-col-qty text-end">
+                  Qty
+                </th>
+                <th class="inv-col-price text-end">
+                  Unit cost
+                </th>
+                <th class="inv-col-remove" />
+              </tr>
+            </thead>
+            <tbody>
+              <template
+                v-for="(line, index) in createLines"
+                :key="index"
+              >
+                <tr>
+                  <td>
+                    <VAutocomplete
+                      v-model="line.item_id"
+                      :items="itemOptions"
+                      density="compact"
+                      hide-details
+                      variant="outlined"
+                      placeholder="Search item…"
+                      :error="showErrors && createLineErrors[index]?.field === 'item'"
+                      @blur="showErrors = true"
+                    />
+                  </td>
+                  <td>
+                    <VTextField
+                      v-model.number="line.qty"
+                      type="number"
+                      min="1"
+                      step="1"
+                      density="compact"
+                      hide-details
+                      variant="outlined"
+                      class="inv-num-input"
+                      :error="showErrors && createLineErrors[index]?.field === 'qty'"
+                      @blur="showErrors = true"
+                    />
+                  </td>
+                  <td>
+                    <VTextField
+                      v-model.number="line.unit_cost"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      density="compact"
+                      hide-details
+                      variant="outlined"
+                      class="inv-num-input"
+                      :error="showErrors && createLineErrors[index]?.field === 'cost'"
+                      @blur="showErrors = true"
+                    />
+                  </td>
+                  <td class="inv-col-remove">
+                    <VBtn
+                      icon="ri-close-line"
+                      variant="text"
+                      size="x-small"
+                      color="error"
+                      aria-label="Remove line"
+                      @click="removeCreateLine(index)"
+                    />
+                  </td>
+                </tr>
+                <tr
+                  v-if="showErrors && createLineErrors[index]"
+                  class="inv-line-error"
+                >
+                  <td
+                    colspan="4"
+                    class="text-caption text-error"
+                  >
+                    {{ createLineErrors[index]!.msg }}
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </VTable>
           <VBtn
             variant="text"
             size="small"
@@ -722,7 +796,6 @@ function fmtMoney(value: number | null | undefined): string {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="createInvalid"
             @click="submitCreate"
           >
             Create
@@ -736,6 +809,8 @@ function fmtMoney(value: number | null | undefined): string {
       :title="confirm.title.value"
       :confirm-label="confirm.label.value"
       :confirm-color="confirm.color.value"
+      :tone="confirm.tone.value"
+      :details="confirm.details.value"
       :loading="confirm.loading.value"
       @confirm="confirm.run"
     >

@@ -5,6 +5,7 @@ import {
   type InventoryReceiptStatus,
   RECEIPT_PAID_BY_OPTIONS,
   getReceiptPrint,
+  listInvoices,
   listReceipts,
   voidReceipt,
 } from '@/api/attendance/inventoryInvoicing'
@@ -13,6 +14,7 @@ import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryReceiptPrintDialog from '@/components/attendance/inventory/InventoryReceiptPrintDialog.vue'
+import InventoryRecordPaymentDialog, { type PaymentInvoiceOption } from '@/components/attendance/inventory/InventoryRecordPaymentDialog.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -51,6 +53,40 @@ const confirm = useConfirmAction()
 
 const printOpen = ref(false)
 const printDoc = ref<InventoryReceiptPrintDoc | null>(null)
+
+// record payment dialog
+const payOpen = ref(false)
+const payInvoiceOptions = ref<PaymentInvoiceOption[]>([])
+const payInvoicesLoading = ref(false)
+
+const moneyFmt = new Intl.NumberFormat('en-HK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+async function openPay() {
+  payOpen.value = true
+  payInvoicesLoading.value = true
+  try {
+    const res = await listInvoices({ status: 'issued', page_size: 200 })
+
+    payInvoiceOptions.value = res.items
+      .filter(inv => inv.balance > 0)
+      .map(inv => ({
+        value: inv.id,
+        title: `${inv.invoice_no} · ${inv.buyer_name || '—'} · 餘額 ${moneyFmt.format(inv.balance)}`,
+        invoice: { id: inv.id, invoice_no: inv.invoice_no ?? '', buyer_name: inv.buyer_name, balance: inv.balance },
+      }))
+  }
+  catch (e) {
+    actionError.value = formatApiError(e, 'Operation failed.')
+  }
+  finally {
+    payInvoicesLoading.value = false
+  }
+}
+
+async function onPaymentSaved() {
+  actionSuccess.value = 'Receipt posted'
+  await load()
+}
 
 const statusOptions = [
   { value: 'posted' as const, title: 'Posted' },
@@ -107,8 +143,8 @@ async function load() {
 function askVoid(rc: InventoryReceipt) {
   confirm.ask(
     `Void ${rc.receipt_no}?`,
-    `Voiding removes the ${fmtMoney(rc.amount)} payment from the invoice balance. This cannot be undone.`,
-    { label: 'Void' },
+    `作廢會把 ${fmtMoney(rc.amount)} 收款從發票餘額中移除。`,
+    { label: 'Void', details: ['發票變回未收齊狀態', '不能復原'] },
     async () => {
       saving.value = true
       actionError.value = ''
@@ -169,7 +205,7 @@ onMounted(async () => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center flex-wrap gap-2">
-        <span>Receipts 庫存收據</span>
+        <span>Sales Receipts 銷售收據</span>
         <VSpacer />
         <VTextField
           v-model="search"
@@ -207,7 +243,32 @@ onMounted(async () => {
           hide-details
           style="max-width: 160px"
         />
+        <VTooltip
+          text="重新整理"
+          location="bottom"
+        >
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              icon="ri-refresh-line"
+              variant="tonal"
+              :loading="loading"
+              aria-label="重新整理"
+              @click="load"
+            />
+          </template>
+        </VTooltip>
+        <VBtn
+          color="primary"
+          prepend-icon="ri-add-line"
+          @click="openPay"
+        >
+          Record Payment
+        </VBtn>
       </VCardTitle>
+      <VCardSubtitle>
+        這一頁管理銷售收據：記錄已收到的款項，按 Record Payment 選一張未收齊的發票。
+      </VCardSubtitle>
       <VCardText>
         <VAlert
           v-if="loadError"
@@ -239,7 +300,7 @@ onMounted(async () => {
           :items="receipts"
           :loading="loading"
           density="compact"
-          no-data-text="No receipts yet — record a payment from an issued invoice."
+          no-data-text="還沒有收據 — 按右上 Record Payment 為一張未收齊的發票記錄收款。"
         >
           <template #item.receipt_no="{ item }">
             <span class="font-weight-medium">{{ item.receipt_no }}</span>
@@ -283,6 +344,13 @@ onMounted(async () => {
       </VCardText>
     </VCard>
 
+    <InventoryRecordPaymentDialog
+      v-model="payOpen"
+      :invoice-options="payInvoiceOptions"
+      :loading="payInvoicesLoading"
+      @saved="onPaymentSaved"
+    />
+
     <InventoryReceiptPrintDialog
       v-model="printOpen"
       :doc="printDoc"
@@ -293,6 +361,8 @@ onMounted(async () => {
       :title="confirm.title.value"
       :confirm-label="confirm.label.value"
       :confirm-color="confirm.color.value"
+      :tone="confirm.tone.value"
+      :details="confirm.details.value"
       :loading="confirm.loading.value"
       @confirm="confirm.run"
     >

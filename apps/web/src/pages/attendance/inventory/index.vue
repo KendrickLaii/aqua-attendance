@@ -30,7 +30,14 @@ const stocks = ref<InventoryStock[]>([])
 const selectedLocationId = ref<string | null>(null)
 const search = ref('')
 const movementDialogOpen = ref(false)
+const movementInitialType = ref<'in' | 'out' | 'adjust'>('in')
 const transferDialogOpen = ref(false)
+
+watch(movementDialogOpen, open => {
+  if (!open)
+    movementInitialType.value = 'in'
+})
+
 const openingStockInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
 const stockReq = useLatestRequest()
@@ -72,10 +79,29 @@ const statCards = computed(() => {
   ]
 })
 
+const route = useRoute()
+const router = useRouter()
+
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
   await loadAll()
+
+  const action = route.query.action
+  if (action === 'movement' || action === 'transfer') {
+    if (action === 'movement') {
+      movementInitialType.value = route.query.type === 'out' ? 'out' : 'in'
+      movementDialogOpen.value = true
+    }
+    else {
+      transferDialogOpen.value = true
+    }
+    const rest = { ...route.query }
+
+    delete rest.action
+    delete rest.type
+    router.replace({ query: rest })
+  }
 })
 
 async function loadAll() {
@@ -178,6 +204,9 @@ async function onOpeningStockFile(event: Event) {
       <VCol>
         <div class="text-h5 font-weight-medium">
           Inventory 庫存管理
+        </div>
+        <div class="text-body-2 text-medium-emphasis">
+          這一頁顯示各分校每個品項的現有數量；紅色代表低於安全庫存。
         </div>
       </VCol>
       <VCol
@@ -355,6 +384,7 @@ async function onOpeningStockFile(event: Event) {
       v-model="movementDialogOpen"
       :location-id="selectedLocationId"
       :items="items"
+      :initial-type="movementInitialType"
       @saved="loadStocks"
     />
     <InventoryTransferDialog
