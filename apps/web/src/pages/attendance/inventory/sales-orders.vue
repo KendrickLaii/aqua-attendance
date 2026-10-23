@@ -7,7 +7,6 @@ import {
   type SalesOrderStatus,
   cancelSalesOrder,
   confirmSalesOrder,
-  createDeliveryOrder,
   createSalesOrder,
   deleteSalesOrder,
   getProforma,
@@ -127,7 +126,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.v
 const isDraft = computed(() => selected.value?.status === 'draft')
 const isEditable = computed(() => !selected.value || selected.value.status === 'draft')
 
-const canShip = computed(() =>
+const canInvoice = computed(() =>
   !!selected.value && ['confirmed', 'partial'].includes(selected.value.status),
 )
 
@@ -207,11 +206,11 @@ const chainSteps = computed<DocChainStep[]>(() => {
   const steps: DocChainStep[] = [
     { label: `SO ${so.so_no}`, state: so.status === 'cancelled' ? 'void' : 'current', hint: so.status },
     {
-      label: 'Delivery',
+      label: 'Invoice',
       state: so.status === 'fulfilled' ? 'done' : 'todo',
-      to: '/attendance/inventory/delivery-orders',
+      to: '/attendance/inventory/invoices',
     },
-    { label: 'Invoice', state: 'todo', to: '/attendance/inventory/invoices' },
+    { label: 'Delivery', state: 'todo', to: '/attendance/inventory/delivery-orders' },
     { label: 'Receipt', state: 'todo', to: '/attendance/inventory/receipts' },
   ]
 
@@ -223,8 +222,8 @@ const docPrimary = computed<InventoryDocAction | null>(() => {
     return { label: 'Save', tooltip: '儲存這張銷售單的內容', onClick: saveOrder }
   if (selected.value?.status === 'draft')
     return { label: 'Confirm', tooltip: '確認訂單並保留庫存', onClick: askConfirm }
-  if (selected.value && canShip.value)
-    return { label: 'Create Delivery Order', tooltip: '建立出貨單,出貨確認後才扣庫存', onClick: createDelivery }
+  if (selected.value && canInvoice.value)
+    return { label: 'Create Invoice', tooltip: '開立發票,發票開立時才扣庫存', onClick: goCreateInvoice }
 
   return null
 })
@@ -469,7 +468,7 @@ function askConfirm() {
   confirm.ask(
     `Confirm ${selected.value.so_no}?`,
     '確認後會為每個品項保留庫存，請確定訂單內容正確。',
-    { label: 'Confirm', tone: 'info', details: ['每個品項的可用庫存會被保留', '之後可建立出貨單出貨'] },
+    { label: 'Confirm', tone: 'info', details: ['每個品項的可用庫存會被保留', '之後可開立發票（開立時扣庫存）'] },
     performConfirm,
   )
 }
@@ -574,26 +573,10 @@ async function openProforma() {
   }
 }
 
-async function createDelivery() {
+function goCreateInvoice() {
   if (!selected.value)
     return
-  actionError.value = ''
-  saving.value = true
-  try {
-    const dor = await createDeliveryOrder({
-      so_id: selected.value.id,
-      delivery_date: new Date().toISOString().slice(0, 10),
-    })
-
-    actionSuccess.value = `Created delivery order ${dor.do_no} from ${selected.value.so_no}.`
-    await loadOrders()
-  }
-  catch (e) {
-    actionError.value = formatApiError(e, 'Failed to create delivery order.')
-  }
-  finally {
-    saving.value = false
-  }
+  router.push({ path: '/attendance/inventory/invoices', query: { so_id: selected.value.id } })
 }
 
 function fmtMoney(value: number | null | undefined): string {
@@ -601,6 +584,7 @@ function fmtMoney(value: number | null | undefined): string {
 }
 
 const quickFulfillOpen = ref(false)
+const qfDeliver = ref(true)
 const qfWithPay = ref(false)
 const qfAmount = ref<number | null>(null)
 const qfMethod = ref<InventoryReceiptPaidBy>('cash')
@@ -609,6 +593,7 @@ const qfReference = ref('')
 function openQuickFulfill() {
   if (!selected.value)
     return
+  qfDeliver.value = true
   qfWithPay.value = false
   qfAmount.value = selected.value.total
   qfMethod.value = 'cash'
@@ -623,6 +608,7 @@ async function doQuickFulfill() {
   saving.value = true
   try {
     const result = await quickFulfill(selected.value.id, {
+      deliver_now: qfDeliver.value,
       pay: qfWithPay.value && qfAmount.value
         ? { amount: qfAmount.value, paid_by: qfMethod.value, reference_no: qfReference.value || null }
         : undefined,
@@ -630,7 +616,10 @@ async function doQuickFulfill() {
 
     quickFulfillOpen.value = false
     selected.value = result.so
-    actionSuccess.value = `Fulfilled ${result.so.so_no}: DO ${result.delivery_order.do_no}, invoice ${result.invoice.invoice_no}${result.receipt ? `, receipt ${result.receipt.receipt_no}` : ''}.`
+
+    const doPart = result.delivery_order ? `, DO ${result.delivery_order.do_no}` : ''
+
+    actionSuccess.value = `Fulfilled ${result.so.so_no}: invoice ${result.invoice.invoice_no}${doPart}${result.receipt ? `, receipt ${result.receipt.receipt_no}` : ''}.`
     await loadOrders()
   }
   catch (e) {
@@ -653,7 +642,7 @@ async function doQuickFulfill() {
           Sales Orders 銷售單
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          這一頁管理銷售單：記錄客戶要買什麼，之後出貨和開票。
+          這一頁管理銷售單：記錄客戶要買什麼，之後開票扣庫存、再建出貨單記錄送貨。
         </div>
       </VCol>
       <VCol cols="auto">
@@ -1086,8 +1075,14 @@ async function doQuickFulfill() {
         <VCardTitle>Quick Fulfill & Invoice</VCardTitle>
         <VCardText>
           <div class="text-body-2 mb-3">
-            Confirms the order (if draft), ships all remaining quantities, and issues an invoice.
+            一次完成：確認訂單（如還是草稿）→ 開立發票並扣庫存 → 可選擇同時建出貨單和收據。
           </div>
+          <VCheckbox
+            v-model="qfDeliver"
+            label="同時建立並確認出貨單"
+            density="compact"
+            hide-details
+          />
           <VCheckbox
             v-model="qfWithPay"
             label="Record a payment receipt"

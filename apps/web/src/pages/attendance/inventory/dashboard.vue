@@ -7,8 +7,7 @@ import {
   getInventoryDashboard,
   sendInventoryAlerts,
 } from '@/api/attendance/inventoryReports'
-import { listInvoices } from '@/api/attendance/inventoryInvoicing'
-import { listDeliveryOrders, listSalesOrders } from '@/api/attendance/inventorySales'
+import { listSalesOrders } from '@/api/attendance/inventorySales'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -33,8 +32,7 @@ const dashboard = ref<InventoryDashboard | null>(null)
 const alerts = ref<InventoryAlerts | null>(null)
 
 const draftSoCount = ref(0)
-const awaitingDeliveryCount = ref(0)
-const uninvoicedDoCount = ref(0)
+const awaitingInvoiceCount = ref(0)
 
 const locParam = () => locationFilter.value ? { location_id: locationFilter.value } : {}
 
@@ -108,11 +106,19 @@ const kpiGroups = computed<{ title: string; cards: KpiCard[] }[]>(() => {
       title: '銷售 Selling',
       cards: [
         {
-          zh: '待出貨銷售單',
-          en: 'To ship',
+          zh: '待開票銷售單',
+          en: 'To invoice',
           value: String(d.open_sales_orders),
-          caption: `還有 ${d.unshipped_qty} 件未出貨`,
+          caption: `還有 ${d.uninvoiced_qty} 件未開票`,
           to: { path: '/attendance/inventory/sales-orders', query: { status: 'confirmed' } },
+          icon: 'ri-file-list-3-line',
+        },
+        {
+          zh: '已開票未送貨',
+          en: 'To deliver',
+          value: String(d.undelivered_invoice_count),
+          caption: `還有 ${d.undelivered_qty} 件未送`,
+          to: { path: '/attendance/inventory/invoices', query: { status: 'issued' } },
           icon: 'ri-truck-line',
         },
         {
@@ -157,10 +163,10 @@ const nextSteps = computed<NextStep[]>(() => {
     steps.push({ title: '追問逾期採購單', count: d.overdue_purchase_orders, detail: '預計到貨日已過，聯絡供應商', to: { path: '/attendance/inventory/purchase-orders', query: { status: 'ordered' } }, color: 'warning' })
   if (d.low_stock_count > 0)
     steps.push({ title: '補低庫存的貨', count: d.low_stock_count, detail: '有品項低於安全庫存，去建採購單', to: { path: '/attendance/inventory/purchase-orders', query: { action: 'new' } }, color: 'error' })
-  if (awaitingDeliveryCount.value > 0)
-    steps.push({ title: '出貨給已確認的訂單', count: awaitingDeliveryCount.value, detail: '客戶已下單，貨還沒出', to: { path: '/attendance/inventory/sales-orders', query: { status: 'confirmed' } }, color: 'primary' })
-  if (uninvoicedDoCount.value > 0)
-    steps.push({ title: '幫已送貨的訂單開發票', count: uninvoicedDoCount.value, detail: '貨已送但還沒開票收款', to: '/attendance/inventory/invoices', color: 'warning' })
+  if (awaitingInvoiceCount.value > 0)
+    steps.push({ title: '開發票給已確認的訂單', count: awaitingInvoiceCount.value, detail: `還有 ${d.uninvoiced_qty} 件已確認未開票`, to: { path: '/attendance/inventory/sales-orders', query: { status: 'confirmed' } }, color: 'primary' })
+  if (d.undelivered_invoice_count > 0)
+    steps.push({ title: '已開票但還沒送貨', count: d.undelivered_invoice_count, detail: `還有 ${d.undelivered_qty} 件貨未送，去建出貨單`, to: { path: '/attendance/inventory/invoices', query: { status: 'issued' } }, color: 'warning' })
   if (draftSoCount.value > 0)
     steps.push({ title: '確認銷售單草稿', count: draftSoCount.value, detail: '草稿確認後才會保留庫存', to: { path: '/attendance/inventory/sales-orders', query: { status: 'draft' } }, color: 'primary' })
 
@@ -173,26 +179,18 @@ async function load() {
   try {
     const params = locationFilter.value ? { location_id: locationFilter.value } : undefined
 
-    const [d, a, draftSos, confirmedSos, partialSos, confirmedDos, invList] = await Promise.all([
+    const [d, a, draftSos, confirmedSos, partialSos] = await Promise.all([
       getInventoryDashboard(params),
       getInventoryAlerts(params),
       listSalesOrders({ status: 'draft', page_size: 1, ...locParam() }),
       listSalesOrders({ status: 'confirmed', page_size: 1, ...locParam() }),
       listSalesOrders({ status: 'partial', page_size: 1, ...locParam() }),
-      listDeliveryOrders({ status: 'confirmed', page_size: 200, ...locParam() }),
-      listInvoices({ page_size: 200, ...locParam() }),
     ])
 
     dashboard.value = d
     alerts.value = a
     draftSoCount.value = draftSos.total
-    awaitingDeliveryCount.value = confirmedSos.total + partialSos.total
-
-    const invoicedDoIds = new Set(
-      invList.items.filter(i => i.status !== 'void').map(i => i.do_id),
-    )
-
-    uninvoicedDoCount.value = confirmedDos.items.filter(dor => !invoicedDoIds.has(dor.id)).length
+    awaitingInvoiceCount.value = confirmedSos.total + partialSos.total
   }
   catch (e) {
     loadError.value = formatApiError(e, 'Failed to load dashboard.')
@@ -322,7 +320,7 @@ onMounted(async () => {
               庫存儀表板 Dashboard
             </div>
             <div class="text-body-2 text-medium-emphasis">
-              這一頁顯示需要注意的事：低庫存、待出貨和未收款的發票。
+              這一頁顯示需要注意的事：低庫存、待開票/待送貨和未收款的發票。
             </div>
           </div>
           <VSpacer />

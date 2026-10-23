@@ -9,7 +9,6 @@ export type InventoryPaymentStatus = 'unpaid' | 'partial' | 'paid' | 'void'
 
 export interface InventoryInvoiceLine {
   id: string
-  do_line_id: string
   so_line_id: string
   item_id: string
   sku_code: string
@@ -19,6 +18,7 @@ export interface InventoryInvoiceLine {
   discount_amount: number
   amount: number
   credited_qty: number
+  delivered_qty: number
 }
 
 export interface InvoiceReceiptSummary {
@@ -38,11 +38,16 @@ export interface InvoiceCreditNoteSummary {
   status: string
 }
 
+export interface InvoiceDeliveryOrderSummary {
+  id: string
+  do_no: string
+  delivery_date: string
+  status: string
+}
+
 export interface InventoryInvoice {
   id: string
   invoice_no: string | null
-  do_id: string
-  do_no: string
   so_id: string
   so_no: string
   customer_id: string
@@ -64,19 +69,18 @@ export interface InventoryInvoice {
   created_at: string
   updated_at: string
   lines: InventoryInvoiceLine[]
+  delivery_orders: InvoiceDeliveryOrderSummary[]
   receipts: InvoiceReceiptSummary[]
   credit_notes: InvoiceCreditNoteSummary[]
 }
 
 export interface InventoryInvoiceLinePayload {
-  do_line_id: string
+  so_line_id: string
   qty: number
-  unit_price?: number | null
-  discount_amount?: number
 }
 
 export interface InventoryInvoicePayload {
-  do_id: string
+  so_id: string
   issue_date?: string | null
   discount_amount?: number | null
   notes?: string | null
@@ -100,7 +104,6 @@ export interface InventoryInvoicePrintDoc {
   location_address: string | null
   location_phone: string | null
   so_no: string
-  do_no: string
   lines: InventoryInvoiceLine[]
   discount_amount: number
   subtotal: number
@@ -364,14 +367,14 @@ export async function getCreditNotePrint(id: string): Promise<InventoryCreditNot
 
 export interface QuickFulfillResult {
   so: SalesOrder
-  delivery_order: DeliveryOrder
+  delivery_order: DeliveryOrder | null
   invoice: InventoryInvoice
   receipt: InventoryReceipt | null
 }
 
 export async function quickFulfill(
   soId: string,
-  payload: { pay?: { amount: number; paid_by: InventoryReceiptPaidBy; reference_no?: string | null }; issue_date?: string },
+  payload: { deliver_now?: boolean; pay?: { amount: number; paid_by: InventoryReceiptPaidBy; reference_no?: string | null }; issue_date?: string },
 ): Promise<QuickFulfillResult> {
   return await $attendanceApi(`/inventory/sales-orders/${soId}/quick-fulfill`, {
     method: 'POST',

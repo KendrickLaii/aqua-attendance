@@ -132,7 +132,9 @@ export interface InventoryDashboard {
   open_purchase_orders: number
   overdue_purchase_orders: number
   open_sales_orders: number
-  unshipped_qty: number
+  uninvoiced_qty: number
+  undelivered_invoice_count: number
+  undelivered_qty: number
   unpaid_invoice_count: number
   receivable_balance: number
   overdue_receivable_balance: number

@@ -199,7 +199,7 @@ async function save() {
         <VTextField
           v-model="form.reason"
           label="Reason"
-          :hint="noteRequired ? 'Required for damage / loss / gift.' : 'Optional, e.g. 入貨 / 學生購買 / 盤點差異.'"
+          :hint="noteRequired ? 'Required for damage / loss / gift.' : 'Optional, e.g. 入貨 / 客戶購買 / 盤點差異.'"
           persistent-hint
           density="comfortable"
           class="mb-3"

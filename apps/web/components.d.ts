@@ -383,6 +383,7 @@ declare module 'vue' {
     History: typeof import('./src/components/dialogs/tax/client-dialog-tabs/History.vue')['default']
     I18n: typeof import('./src/@core/components/I18n.vue')['default']
     InventoryCategoryDialog: typeof import('./src/components/attendance/inventory/InventoryCategoryDialog.vue')['default']
+    InventoryCreateDeliveryDialog: typeof import('./src/components/attendance/inventory/InventoryCreateDeliveryDialog.vue')['default']
     InventoryCreditNotePrintDialog: typeof import('./src/components/attendance/inventory/InventoryCreditNotePrintDialog.vue')['default']
     InventoryDocActions: typeof import('./src/components/attendance/inventory/InventoryDocActions.vue')['default']
     InventoryDocChain: typeof import('./src/components/attendance/inventory/InventoryDocChain.vue')['default']

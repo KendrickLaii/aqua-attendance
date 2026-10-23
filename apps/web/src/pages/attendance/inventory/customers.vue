@@ -187,7 +187,7 @@ async function loadStudents() {
     })
   }
   catch (e) {
-    saveError.value = formatApiError(e, 'Failed to load students.')
+    saveError.value = formatApiError(e, 'Failed to load units.')
   }
   finally {
     studentLoading.value = false
@@ -203,12 +203,12 @@ async function submitFromStudent() {
   try {
     const customer = await createCustomerFromStudent(selectedStudentId.value)
 
-    saveSuccess.value = `Customer ${customer.code} created from student.`
+    saveSuccess.value = `Customer ${customer.code} created from unit.`
     studentDialogOpen.value = false
     await loadCustomers()
   }
   catch (e) {
-    saveError.value = formatApiError(e, 'Failed to create customer from student.')
+    saveError.value = formatApiError(e, 'Failed to create customer from unit.')
   }
   finally {
     saving.value = false
@@ -240,15 +240,23 @@ async function submitFromStudent() {
         >
           Refresh
         </VBtn>
-        <VBtn
-          variant="tonal"
-          color="primary"
-          prepend-icon="ri-user-received-line"
-          class="ms-2"
-          @click="openStudentPicker"
+        <VTooltip
+          text="從單位名單建立"
+          location="bottom"
         >
-          From student
-        </VBtn>
+          <template #activator="{ props }">
+            <VBtn
+              v-bind="props"
+              variant="tonal"
+              color="primary"
+              prepend-icon="ri-user-received-line"
+              class="ms-2"
+              @click="openStudentPicker"
+            >
+              From Unit
+            </VBtn>
+          </template>
+        </VTooltip>
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
@@ -368,7 +376,7 @@ async function submitFromStudent() {
                 colspan="7"
                 class="text-center text-medium-emphasis py-8"
               >
-                No customers yet — click "New customer" or "From student" to add one.
+                還沒有客戶 — 按「New customer」或「From Unit」（從單位名單建立）新增。
               </td>
             </tr>
           </tbody>
@@ -479,7 +487,7 @@ async function submitFromStudent() {
       v-model="studentDialogOpen"
       max-width="520"
     >
-      <VCard title="Create customer from student">
+      <VCard title="Create Customer from Unit">
         <VCardText>
           <VAlert
             v-if="saveError"
@@ -492,7 +500,7 @@ async function submitFromStudent() {
           </VAlert>
           <VTextField
             v-model="studentSearch"
-            label="Search students"
+            label="搜尋單位 Search units"
             density="comfortable"
             class="mb-3"
             clearable
@@ -502,7 +510,7 @@ async function submitFromStudent() {
             v-model="selectedStudentId"
             :items="studentOptions"
             :loading="studentLoading"
-            label="Student"
+            label="單位 Unit"
             density="comfortable"
           />
         </VCardText>

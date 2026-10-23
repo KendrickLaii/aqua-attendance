@@ -68,7 +68,7 @@ export interface SalesOrderLine {
   sku_code: string
   name_zh: string
   qty: number
-  shipped_qty: number
+  invoiced_qty: number
   unit_price: number
   discount_amount: number
   amount: number
@@ -193,7 +193,7 @@ export type DeliveryOrderStatus = 'draft' | 'confirmed' | 'void'
 
 export interface DeliveryOrderLine {
   id: string
-  so_line_id: string
+  invoice_line_id: string
   item_id: string
   qty: number
   sku_code: string | null
@@ -203,6 +203,8 @@ export interface DeliveryOrderLine {
 export interface DeliveryOrder {
   id: string
   do_no: string
+  invoice_id: string
+  invoice_no: string | null
   so_id: string
   customer_id: string
   location_id: string
@@ -219,13 +221,13 @@ export interface DeliveryOrder {
 }
 
 export interface DeliveryOrderLinePayload {
-  so_line_id: string
+  invoice_line_id: string
   item_id: string
   qty: number
 }
 
 export interface DeliveryOrderPayload {
-  so_id: string
+  invoice_id: string
   delivery_date: string
   notes?: string | null
   lines?: DeliveryOrderLinePayload[]
@@ -235,6 +237,7 @@ export async function listDeliveryOrders(params?: {
   customer_id?: string
   location_id?: string
   so_id?: string
+  invoice_id?: string
   status?: DeliveryOrderStatus
   search?: string
   page?: number

@@ -44,12 +44,12 @@ const tasks: TaskCard[] = [
   },
   {
     icon: 'ri-store-2-line',
-    titleZh: '賣東西給學生/客戶',
+    titleZh: '賣東西給客戶',
     titleEn: 'Sell items',
     steps: [
       '建銷售單，選客戶和品項',
-      '按 Quick Fulfill & Invoice，一次完成出貨和開票',
-      '收到錢時在發票按 Record Payment',
+      '按 Quick Fulfill & Invoice，一次完成開票（扣庫存）、出貨單和收據',
+      '之後在發票頁可再建出貨單記錄送貨、按 Record Payment 收款',
     ],
     primary: { label: '建立銷售單', to: { name: 'attendance-inventory-sales-orders', query: { action: 'new' } } },
   },
@@ -124,8 +124,9 @@ const steps: FlowStep[] = [
   { en: 'Receive goods — create a Goods Receipt from the PO and confirm it; stock increases and avg cost updates (Goods Receipts).', zh: '收貨 — 由 PO 建立收貨單（GRN）並確認，庫存增加並更新平均成本（Goods Receipts）。' },
   { en: 'Create a sales order — pick a customer, items and prices (Sales Orders).', zh: '建立銷售單 — 選擇客戶、品項與價格（Sales Orders）。' },
   { en: 'Confirm the SO — available stock is reserved for the order.', zh: '確認銷售單 — 系統會為訂單保留可用庫存。' },
-  { en: 'Deliver — create a Delivery Order from the SO and confirm it; stock actually leaves (Delivery Orders).', zh: '出貨 — 由 SO 建立出貨單並確認，庫存正式扣減（Delivery Orders）。' },
-  { en: 'Invoice — issue an Inventory Invoice from the DO; optionally record a Receipt when paid (Invoices, Receipts).', zh: '開發票 — 由出貨單開立庫存發票；收款時登記收據（Invoices、Receipts）。' },
+  { en: 'Invoice — create an Inventory Invoice from the SO and issue it; stock is deducted at issue (Invoices).', zh: '開發票 — 由銷售單建立庫存發票，開立（Issue）時庫存正式扣減（Invoices）。' },
+  { en: 'Deliver — create Delivery Orders under the issued invoice; they record what was physically delivered, no stock effect (Delivery Orders).', zh: '送貨 — 在已開立的發票下建立出貨單，只記錄實際送貨，不影響庫存（Delivery Orders）。' },
+  { en: 'Collect — record a Receipt when the customer pays (Receipts).', zh: '收款 — 客戶付款時登記收據（Receipts）。' },
   { en: 'Handle returns — issue a Credit Note against the invoice; choose whether goods are restocked (Credit Notes).', zh: '處理退貨 — 對發票開立折讓單，可選擇是否回補庫存（Credit Notes）。' },
   { en: 'Reconcile — run stocktakes per location, check Movements for the audit trail, and watch the Dashboard alerts.', zh: '對帳 — 定期盤點、在 Movements 查閱異動流水，並留意 Dashboard 警示。' },
 ]
@@ -201,7 +202,7 @@ const steps: FlowStep[] = [
       class="mt-4"
     >
       <strong>記住一件事 Key rule：</strong>
-      庫存在「出貨」或「收貨」確認時才會變動；發票和收據只是記帳。
+      庫存在「收貨確認」或「發票開立」時才會變動；出貨單只記錄送貨。
     </VAlert>
 
     <VExpansionPanels class="mt-4">
@@ -210,7 +211,7 @@ const steps: FlowStep[] = [
           <div class="overflow-x-auto">
             <img
               src="/inventory-workflow.svg"
-              alt="Inventory workflow diagram: purchase order → goods receipt → stock → sales order → delivery order → invoice → receipt, with credit notes and stocktakes branching off."
+              alt="Inventory workflow diagram: purchase order → goods receipt → stock → sales order → invoice → receipt, with delivery orders, credit notes and stocktakes branching off."
               style="max-width: 100%; height: auto; min-width: 640px"
             >
           </div>

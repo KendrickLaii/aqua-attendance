@@ -104,7 +104,6 @@ function print() {
             <div class="text-end">
               <div><span class="text-medium-emphasis">Invoice No:</span> {{ doc.invoice_no }}</div>
               <div><span class="text-medium-emphasis">SO:</span> {{ doc.so_no }}</div>
-              <div><span class="text-medium-emphasis">DO:</span> {{ doc.do_no }}</div>
               <div v-if="doc.issue_date">
                 <span class="text-medium-emphasis">Date:</span> {{ doc.issue_date }}
               </div>
