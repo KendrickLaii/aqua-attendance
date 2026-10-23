@@ -14,17 +14,14 @@ CreditNoteStatus = Literal["draft", "confirmed", "void"]
 
 
 class InventoryInvoiceLineIn(BaseModel):
-    do_line_id: uuid.UUID
+    so_line_id: uuid.UUID
     qty: int = Field(gt=0)
-    unit_price: float | None = Field(default=None, ge=0)
-    discount_amount: float = Field(default=0, ge=0)
 
 
 class InventoryInvoiceLineOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    do_line_id: uuid.UUID
     so_line_id: uuid.UUID
     item_id: uuid.UUID
     sku_code: str
@@ -34,10 +31,11 @@ class InventoryInvoiceLineOut(BaseModel):
     discount_amount: float
     amount: float
     credited_qty: int
+    delivered_qty: int
 
 
 class InventoryInvoiceCreate(BaseModel):
-    do_id: uuid.UUID
+    so_id: uuid.UUID
     issue_date: date | None = None
     discount_amount: float | None = Field(default=None, ge=0)
     notes: str | None = None
@@ -68,11 +66,16 @@ class InvoiceCreditNoteSummary(BaseModel):
     status: str
 
 
+class InvoiceDeliveryOrderSummary(BaseModel):
+    id: uuid.UUID
+    do_no: str
+    delivery_date: date
+    status: str
+
+
 class InventoryInvoiceOut(BaseModel):
     id: uuid.UUID
     invoice_no: str | None
-    do_id: uuid.UUID
-    do_no: str
     so_id: uuid.UUID
     so_no: str
     customer_id: uuid.UUID
@@ -96,6 +99,7 @@ class InventoryInvoiceOut(BaseModel):
     lines: list[InventoryInvoiceLineOut]
     receipts: list[InvoiceReceiptSummary]
     credit_notes: list[InvoiceCreditNoteSummary]
+    delivery_orders: list[InvoiceDeliveryOrderSummary]
 
 
 class InventoryInvoicePrint(BaseModel):
@@ -115,7 +119,6 @@ class InventoryInvoicePrint(BaseModel):
     location_address: str | None
     location_phone: str | None
     so_no: str
-    do_no: str
     lines: list[InventoryInvoiceLineOut]
     discount_amount: float
     subtotal: float
@@ -255,10 +258,11 @@ class QuickFulfillPay(BaseModel):
 class QuickFulfillRequest(BaseModel):
     pay: QuickFulfillPay | None = None
     issue_date: date | None = None
+    deliver_now: bool = True
 
 
 class QuickFulfillResult(BaseModel):
     so: SalesOrderOut
-    delivery_order: DeliveryOrderOut
+    delivery_order: DeliveryOrderOut | None
     invoice: InventoryInvoiceOut
     receipt: InventoryReceiptOut | None

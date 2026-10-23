@@ -23,9 +23,6 @@ class InventoryInvoice(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     invoice_no: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True, index=True)
-    do_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("delivery_orders.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
     so_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sales_orders.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -54,7 +51,6 @@ class InventoryInvoice(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    do = relationship("DeliveryOrder")
     so = relationship("SalesOrder")
     customer = relationship("Customer")
     location = relationship("Location")
@@ -67,9 +63,6 @@ class InventoryInvoiceLine(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     invoice_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("inventory_invoices.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    do_line_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("delivery_order_lines.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     so_line_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sales_order_lines.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -84,9 +77,9 @@ class InventoryInvoiceLine(Base):
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0, server_default="0")
     credited_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    delivered_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     invoice = relationship("InventoryInvoice", back_populates="lines")
-    do_line = relationship("DeliveryOrderLine")
     so_line = relationship("SalesOrderLine")
     item = relationship("InventoryItem")
 

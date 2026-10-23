@@ -135,7 +135,9 @@ class InventoryDashboard(BaseModel):
     open_purchase_orders: int
     overdue_purchase_orders: int
     open_sales_orders: int
-    unshipped_qty: int
+    uninvoiced_qty: int
+    undelivered_invoice_count: int
+    undelivered_qty: int
     unpaid_invoice_count: int
     receivable_balance: float
     overdue_receivable_balance: float

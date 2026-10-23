@@ -781,15 +781,30 @@ async def inventory_dashboard(
         so_q = so_q.where(SalesOrder.location_id == location_id)
     open_sos = (await db.execute(so_q)).scalar_one()
 
-    unshipped_q = (
-        select(func.coalesce(func.sum(SalesOrderLine.qty - SalesOrderLine.shipped_qty), 0))
+    uninvoiced_q = (
+        select(func.coalesce(func.sum(SalesOrderLine.qty - SalesOrderLine.invoiced_qty), 0))
         .select_from(SalesOrderLine)
         .join(SalesOrder, SalesOrder.id == SalesOrderLine.so_id)
         .where(SalesOrder.status.in_(["confirmed", "partial"]))
     )
     if location_id:
-        unshipped_q = unshipped_q.where(SalesOrder.location_id == location_id)
-    unshipped = int((await db.execute(unshipped_q)).scalar_one() or 0)
+        uninvoiced_q = uninvoiced_q.where(SalesOrder.location_id == location_id)
+    uninvoiced = int((await db.execute(uninvoiced_q)).scalar_one() or 0)
+
+    # Issued invoices with something still undelivered (credits count as
+    # settling undelivered goods first).
+    undelivered_expr = InventoryInvoiceLine.qty - InventoryInvoiceLine.credited_qty - InventoryInvoiceLine.delivered_qty
+    undel_q = (
+        select(func.count(func.distinct(InventoryInvoice.id)), func.coalesce(func.sum(undelivered_expr), 0))
+        .select_from(InventoryInvoiceLine)
+        .join(InventoryInvoice, InventoryInvoice.id == InventoryInvoiceLine.invoice_id)
+        .where(InventoryInvoice.status == "issued", undelivered_expr > 0)
+    )
+    if location_id:
+        undel_q = undel_q.where(InventoryInvoice.location_id == location_id)
+    undel_count, undel_qty_raw = (await db.execute(undel_q)).one()
+    undelivered_invoice_count = int(undel_count or 0)
+    undelivered_qty = int(undel_qty_raw or 0)
 
     paid_sq = (
         select(InventoryReceipt.invoice_id.label("iid"), func.coalesce(func.sum(InventoryReceipt.amount), 0).label("paid"))
@@ -864,7 +879,9 @@ async def inventory_dashboard(
         "open_purchase_orders": int(open_pos),
         "overdue_purchase_orders": int(overdue_pos),
         "open_sales_orders": int(open_sos),
-        "unshipped_qty": unshipped,
+        "uninvoiced_qty": uninvoiced,
+        "undelivered_invoice_count": undelivered_invoice_count,
+        "undelivered_qty": undelivered_qty,
         "unpaid_invoice_count": int(unpaid_count or 0),
         "receivable_balance": _to_float(receivable),
         "overdue_receivable_balance": overdue_receivable,

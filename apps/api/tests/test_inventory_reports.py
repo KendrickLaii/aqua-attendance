@@ -67,7 +67,7 @@ async def _create_location(client: AsyncClient, token: str) -> dict:
 async def _quick_invoice(
     client, token, customer_id, location_id, item_id, qty, price, issue_date, **so_extra
 ) -> dict:
-    """SO confirm → DO confirm → invoice → issue, in the given issue_date."""
+    """SO confirm → invoice → issue, in the given issue_date."""
     resp = await client.post(
         "/api/inventory/sales-orders",
         json={
@@ -83,17 +83,8 @@ async def _quick_invoice(
     resp = await client.post(f"/api/inventory/sales-orders/{so['id']}/confirm", headers=_h(token))
     assert resp.status_code == 200, resp.text
     resp = await client.post(
-        "/api/inventory/delivery-orders",
-        json={"so_id": so["id"], "delivery_date": issue_date},
-        headers=_h(token),
-    )
-    assert resp.status_code == 201, resp.text
-    do = resp.json()
-    resp = await client.post(f"/api/inventory/delivery-orders/{do['id']}/confirm", headers=_h(token))
-    assert resp.status_code == 200, resp.text
-    resp = await client.post(
         "/api/inventory/invoices",
-        json={"do_id": do["id"], "issue_date": issue_date},
+        json={"so_id": so["id"], "issue_date": issue_date},
         headers=_h(token),
     )
     assert resp.status_code == 201, resp.text
@@ -473,6 +464,59 @@ async def test_dashboard_numbers(
     assert d["month_purchase_returns"] >= 0.0
     assert d["month_sales"] == round(d["month_invoiced"] - d["month_credited"], 2)
     assert d["month_purchases"] == round(d["month_purchases_gross"] - d["month_purchase_returns"], 2)
+    # issued invoice with nothing delivered yet → counted as undelivered
+    assert d["undelivered_invoice_count"] >= 1
+    assert d["undelivered_qty"] >= 2
+    # the invoiced SO was fully invoiced → contributes 0 to uninvoiced_qty
+    assert d["uninvoiced_qty"] >= 0
+
+
+async def test_dashboard_uninvoiced_and_undelivered(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 20)
+    today = TODAY.isoformat()
+
+    # confirmed SO qty 5, never invoiced → uninvoiced_qty += 5
+    resp = await client.post(
+        "/api/inventory/sales-orders",
+        json={
+            "customer_id": customer["id"], "location_id": loc, "order_date": today,
+            "lines": [{"item_id": item["id"], "qty": 5, "unit_price": 10.0}],
+        },
+        headers=_h(admin_token),
+    )
+    so = resp.json()
+    await client.post(f"/api/inventory/sales-orders/{so['id']}/confirm", headers=_h(admin_token))
+
+    resp = await client.get(f"/api/inventory/dashboard?location_id={loc}", headers=_h(admin_token))
+    assert resp.json()["uninvoiced_qty"] >= 5
+
+    # invoice+issue all 5 → uninvoiced back down, undelivered_qty += 5
+    inv = await _quick_invoice(client, admin_token, customer["id"], loc, item["id"], 5, 10.0, today)
+    resp = await client.get(f"/api/inventory/dashboard?location_id={loc}", headers=_h(admin_token))
+    d = resp.json()
+    assert d["undelivered_invoice_count"] >= 1
+    assert d["undelivered_qty"] >= 5
+
+    # deliver 2 of 5 → undelivered drops to 3
+    resp = await client.post(
+        "/api/inventory/delivery-orders",
+        json={
+            "invoice_id": inv["id"], "delivery_date": today,
+            "lines": [{"invoice_line_id": inv["lines"][0]["id"], "qty": 2}],
+        },
+        headers=_h(admin_token),
+    )
+    do = resp.json()
+    await client.post(f"/api/inventory/delivery-orders/{do['id']}/confirm", headers=_h(admin_token))
+    resp = await client.get(f"/api/inventory/dashboard?location_id={loc}", headers=_h(admin_token))
+    d2 = resp.json()
+    assert d2["undelivered_qty"] == d["undelivered_qty"] - 2
+    assert d2["undelivered_invoice_count"] >= 1  # still 3 left on this invoice
 
 
 # ---- alerts ----

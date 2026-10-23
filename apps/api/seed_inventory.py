@@ -357,15 +357,19 @@ async def seed() -> None:
         await api.post(f"{inv}/purchase-returns/{prt['id']}/confirm")
 
         # --- sales orders ---
+        # New flow: SO confirm reserves -> invoice issued from SO (issue deducts
+        # stock) -> DO sub-documents record physical delivery only -> receipts.
         so_draft = await api.post(f"{inv}/sales-orders", json={
             "customer_id": cust3["id"], "location_id": str(wf.id), "order_date": d(20),
             "notes": f"{DEMO} 草稿銷售單",
             "lines": [{"item_id": item_id["DEMO-ST-003"], "qty": 10, "unit_price": 12}],
         })
         await api.post(f"{inv}/sales-orders/{so_draft['id']}/proforma", json={"pf_valid_until": d(2)})
+
+        # cust1 SO invoiced in two invoices (partial invoicing)
         so_conf = await api.post(f"{inv}/sales-orders", json={
             "customer_id": cust1["id"], "location_id": str(wf.id), "order_date": d(20),
-            "discount_amount": 20, "notes": f"{DEMO} 已確認待出貨",
+            "discount_amount": 20, "notes": f"{DEMO} 分批開票銷售單",
             "lines": [
                 {"item_id": item_id["DEMO-BK-001"], "qty": 5, "unit_price": 55, "discount_amount": 10},
                 {"item_id": item_id["DEMO-PR-001"], "qty": 3, "unit_price": 30},
@@ -374,106 +378,111 @@ async def seed() -> None:
         await api.post(f"{inv}/sales-orders/{so_conf['id']}/confirm")
         await api.post(f"{inv}/sales-orders/{so_conf['id']}/proforma", json={"pf_valid_until": d(1)})
 
-        so_partial = await api.post(f"{inv}/sales-orders", json={
-            "customer_id": cust2["id"], "location_id": str(wf.id), "order_date": d(30),
-            "notes": f"{DEMO} 部分出貨",
+        conf_line = next(
+            ln for ln in so_conf["lines"] if ln["item_id"] == item_id["DEMO-BK-001"]
+        )
+        # first invoice covers only the BK-001 line → paid in full + DO delivered
+        inv_paid = await api.post(f"{inv}/invoices", json={
+            "so_id": so_conf["id"], "issue_date": d(19), "notes": f"{DEMO} 已付清發票",
+            "lines": [{"so_line_id": conf_line["id"], "qty": 5}],
+        })
+        await api.post(f"{inv}/invoices/{inv_paid['id']}/issue")
+        do_full = await api.post(f"{inv}/delivery-orders", json={
+            "invoice_id": inv_paid["id"], "delivery_date": d(18), "notes": f"{DEMO} 全數送貨",
+        })
+        await api.post(f"{inv}/delivery-orders/{do_full['id']}/confirm")
+        await api.post(f"{inv}/receipts", json={
+            "invoice_id": inv_paid["id"], "amount": inv_paid["total"], "paid_by": "cash",
+            "receipt_date": d(15), "notes": f"{DEMO} 全數付款",
+        })
+
+        # second invoice covers the remaining PR-001 line → partial DO + partial payment
+        inv_partial = await api.post(f"{inv}/invoices", json={
+            "so_id": so_conf["id"], "issue_date": d(14), "notes": f"{DEMO} 部分付款發票",
+        })
+        await api.post(f"{inv}/invoices/{inv_partial['id']}/issue")
+        do_partial = await api.post(f"{inv}/delivery-orders", json={
+            "invoice_id": inv_partial["id"], "delivery_date": d(12),
+            "notes": f"{DEMO} 先送兩份",
+            "lines": [{"invoice_line_id": inv_partial["lines"][0]["id"], "qty": 2}],
+        })
+        await api.post(f"{inv}/delivery-orders/{do_partial['id']}/confirm")
+        scn = await api.post(f"{inv}/credit-notes", json={
+            "invoice_id": inv_partial["id"], "credit_date": d(11), "reason": f"{DEMO} 印刷瑕疵折讓",
+            "lines": [{"invoice_line_id": inv_partial["lines"][0]["id"], "qty": 1, "restock": True}],
+        })
+        await api.post(f"{inv}/credit-notes/{scn['id']}/confirm")
+        # derive payment amounts from the actual balance (never exceed it)
+        inv_partial = await api.get(f"{inv}/invoices/{inv_partial['id']}")
+        deposit = round(inv_partial["balance"] * 0.8, 2)
+        await api.post(f"{inv}/receipts", json={
+            "invoice_id": inv_partial["id"], "amount": deposit, "paid_by": "bank_transfer",
+            "receipt_date": d(10), "reference_no": "TXN-8821", "notes": f"{DEMO} 訂金",
+        })
+        inv_partial = await api.get(f"{inv}/invoices/{inv_partial['id']}")
+        receipt2v = await api.post(f"{inv}/receipts", json={
+            "invoice_id": inv_partial["id"], "amount": round(inv_partial["balance"] * 0.5, 2),
+            "paid_by": "cash", "receipt_date": d(9), "notes": f"{DEMO} 錯誤入帳後作廢",
+        })
+        await api.post(f"{inv}/receipts/{receipt2v['id']}/void")
+
+        # issued invoice with nothing delivered yet
+        so_nodel = await api.post(f"{inv}/sales-orders", json={
+            "customer_id": cust2["id"], "location_id": str(wf.id), "order_date": d(8),
+            "notes": f"{DEMO} 已開票未送貨",
             "lines": [
                 {"item_id": item_id["DEMO-BK-002"], "qty": 10, "unit_price": 48},
                 {"item_id": item_id["DEMO-ST-004"], "qty": 5, "unit_price": 20},
             ],
         })
-        await api.post(f"{inv}/sales-orders/{so_partial['id']}/confirm")
-        await api.post(f"{inv}/sales-orders/{so_partial['id']}/proforma", json={"pf_valid_until": d(-30)})
-        partial_line = next(
-            ln for ln in so_partial["lines"] if ln["item_id"] == item_id["DEMO-BK-002"]
-        )
-        do_partial = await api.post(f"{inv}/delivery-orders", json={
-            "so_id": so_partial["id"], "delivery_date": d(25), "notes": f"{DEMO} 先出英文簿",
-            "lines": [{"so_line_id": partial_line["id"], "item_id": partial_line["item_id"], "qty": 6}],
+        await api.post(f"{inv}/sales-orders/{so_nodel['id']}/confirm")
+        inv_nodel = await api.post(f"{inv}/invoices", json={
+            "so_id": so_nodel["id"], "issue_date": d(6), "notes": f"{DEMO} 已開票未送貨發票",
         })
-        await api.post(f"{inv}/delivery-orders/{do_partial['id']}/confirm")
+        await api.post(f"{inv}/invoices/{inv_nodel['id']}/issue")
 
-        so_full = await api.post(f"{inv}/sales-orders", json={
-            "customer_id": cust1["id"], "location_id": str(wf.id), "order_date": d(28),
-            "notes": f"{DEMO} 已全數出貨",
-            "lines": [{"item_id": item_id["DEMO-ST-001"], "qty": 30, "unit_price": 8}],
-        })
-        await api.post(f"{inv}/sales-orders/{so_full['id']}/confirm")
-        do_full = await api.post(f"{inv}/delivery-orders", json={
-            "so_id": so_full["id"], "delivery_date": d(24), "notes": f"{DEMO} 全數出貨",
-        })
-        await api.post(f"{inv}/delivery-orders/{do_full['id']}/confirm")
-
-        # invoicing: DO for SO-C second half -> draft invoice
-        conf_line = next(
-            ln for ln in so_conf["lines"] if ln["item_id"] == item_id["DEMO-BK-001"]
-        )
-        do_conf = await api.post(f"{inv}/delivery-orders", json={
-            "so_id": so_conf["id"], "delivery_date": d(15), "notes": f"{DEMO} 部分出貨待開票",
-            "lines": [{"so_line_id": conf_line["id"], "item_id": conf_line["item_id"], "qty": 5}],
-        })
-        await api.post(f"{inv}/delivery-orders/{do_conf['id']}/confirm")
-
-        # --- invoices / receipts / credit note ---
-        inv_paid = await api.post(f"{inv}/invoices", json={
-            "do_id": do_full["id"], "issue_date": d(22), "notes": f"{DEMO} 已付清發票",
-        })
-        await api.post(f"{inv}/invoices/{inv_paid['id']}/issue")
-        await api.post(f"{inv}/receipts", json={
-            "invoice_id": inv_paid["id"], "amount": inv_paid["total"], "paid_by": "cash",
-            "receipt_date": d(20), "notes": f"{DEMO} 全數付款",
-        })
-
-        inv_partial = await api.post(f"{inv}/invoices", json={
-            "do_id": do_partial["id"], "issue_date": d(24), "notes": f"{DEMO} 部分付款發票",
-        })
-        await api.post(f"{inv}/invoices/{inv_partial['id']}/issue")
-        scn = await api.post(f"{inv}/credit-notes", json={
-            "invoice_id": inv_partial["id"], "credit_date": d(18), "reason": f"{DEMO} 書脊破損退貨",
-            "lines": [{"invoice_line_id": inv_partial["lines"][0]["id"], "qty": 1, "restock": True}],
-        })
-        await api.post(f"{inv}/credit-notes/{scn['id']}/confirm")
-        receipt2 = await api.post(f"{inv}/receipts", json={
-            "invoice_id": inv_partial["id"], "amount": 50, "paid_by": "bank_transfer",
-            "receipt_date": d(12), "reference_no": "TXN-8821", "notes": f"{DEMO} 訂金",
-        })
-        receipt2v = await api.post(f"{inv}/receipts", json={
-            "invoice_id": inv_partial["id"], "amount": 20, "paid_by": "cash",
-            "receipt_date": d(10), "notes": f"{DEMO} 錯誤入帳後作廢",
-        })
-        await api.post(f"{inv}/receipts/{receipt2v['id']}/void")
-
-        # unpaid overdue invoice: separate SO -> DO -> invoice backdated -45d
+        # unpaid overdue invoice (delivered, never paid)
         so_late = await api.post(f"{inv}/sales-orders", json={
             "customer_id": cust3["id"], "location_id": str(wf.id), "order_date": d(50),
             "notes": f"{DEMO} 逾期未收款",
             "lines": [{"item_id": item_id["DEMO-BK-003"], "qty": 8, "unit_price": 50}],
         })
         await api.post(f"{inv}/sales-orders/{so_late['id']}/confirm")
-        do_late = await api.post(f"{inv}/delivery-orders", json={
-            "so_id": so_late["id"], "delivery_date": d(46), "notes": f"{DEMO} 已出貨未收款",
-        })
-        await api.post(f"{inv}/delivery-orders/{do_late['id']}/confirm")
         inv_late = await api.post(f"{inv}/invoices", json={
-            "do_id": do_late["id"], "issue_date": d(45), "notes": f"{DEMO} 逾期未收款發票",
+            "so_id": so_late["id"], "issue_date": d(45), "notes": f"{DEMO} 逾期未收款發票",
         })
         await api.post(f"{inv}/invoices/{inv_late['id']}/issue")
+        do_late = await api.post(f"{inv}/delivery-orders", json={
+            "invoice_id": inv_late["id"], "delivery_date": d(44), "notes": f"{DEMO} 已送貨未收款",
+        })
+        await api.post(f"{inv}/delivery-orders/{do_late['id']}/confirm")
 
+        # draft invoice on the not-yet-delivered SO? so_nodel is fulfilled; use a
+        # partially-invoiced SO instead
+        so_draft_inv = await api.post(f"{inv}/sales-orders", json={
+            "customer_id": cust2["id"], "location_id": str(wf.id), "order_date": d(5),
+            "notes": f"{DEMO} 部分開票中",
+            "lines": [{"item_id": item_id["DEMO-ST-001"], "qty": 30, "unit_price": 8}],
+        })
+        await api.post(f"{inv}/sales-orders/{so_draft_inv['id']}/confirm")
+        await api.post(f"{inv}/sales-orders/{so_draft_inv['id']}/proforma", json={"pf_valid_until": d(-30)})
         inv_draft = await api.post(f"{inv}/invoices", json={
-            "do_id": do_conf["id"], "issue_date": d(5), "notes": f"{DEMO} 草稿發票",
+            "so_id": so_draft_inv["id"], "notes": f"{DEMO} 草稿發票",
+            "lines": [{"so_line_id": so_draft_inv["lines"][0]["id"], "qty": 10}],
         })
 
         inv_paid = await api.get(f"{inv}/invoices/{inv_paid['id']}")
         inv_partial = await api.get(f"{inv}/invoices/{inv_partial['id']}")
+        inv_nodel = await api.get(f"{inv}/invoices/{inv_nodel['id']}")
         inv_late = await api.get(f"{inv}/invoices/{inv_late['id']}")
 
         # --- backdate movement created_at for demo rows ---
         doc_refs: dict[str, int] = {  # reference prefix -> days_ago
             f"GRN:{grn1['id']}": 50, f"GRN:{grn2['id']}": 45, f"GRN:{grn3['id']}": 30,
             f"PRT:{prt['id']}": 40,
-            f"DO:{do_partial['id']}": 25, f"DO:{do_full['id']}": 24,
-            f"DO:{do_conf['id']}": 15, f"DO:{do_late['id']}": 20,
-            f"SCN:{scn['id']}": 18,
+            f"SI:{inv_paid['id']}": 19, f"SI:{inv_partial['id']}": 14,
+            f"SI:{inv_nodel['id']}": 6, f"SI:{inv_late['id']}": 45,
+            f"SCN:{scn['id']}": 11,
         }
         async with async_session_factory() as db:
             for mid, ago in movement_ids:
@@ -497,9 +506,13 @@ async def seed() -> None:
         print(f"suppliers: {sup1['code']}, {sup2['code']} | customers: {cust1['name_zh']}, {cust2['name_zh']}, {cust3['name_zh']}")
         print(f"POs: {po1['po_no']}(received) {po2['po_no']}(partial, overdue) {po3['po_no']}(draft)")
         print(f"GRNs: {grn1['grn_no']} {grn2['grn_no']} {grn3['grn_no']} | PRT: {prt['prt_no']}(confirmed)")
-        print(f"SOs: {so_draft['so_no']}(draft) {so_conf['so_no']}(confirmed) {so_partial['so_no']}(partial) {so_full['so_no']}(fulfilled) {so_late['so_no']}(fulfilled, unpaid)")
-        print(f"DOs: {do_partial['do_no']} {do_full['do_no']} {do_conf['do_no']} {do_late['do_no']} (all confirmed)")
-        print(f"invoices: {inv_paid['invoice_no']}(paid) {inv_partial['invoice_no']}(partial) {inv_late['invoice_no']}(unpaid, 45d) + draft {inv_draft['id']}")
+        print(f"SOs: {so_draft['so_no']}(draft) {so_conf['so_no']}(fulfilled, 2 invoices) "
+              f"{so_nodel['so_no']}(fulfilled, undelivered) {so_late['so_no']}(fulfilled, unpaid) "
+              f"{so_draft_inv['so_no']}(partial, draft invoice)")
+        print(f"DOs: {do_full['do_no']} {do_partial['do_no']}(partial) {do_late['do_no']} (all confirmed)")
+        print(f"invoices: {inv_paid['invoice_no']}(paid) {inv_partial['invoice_no']}(partial) "
+              f"{inv_nodel['invoice_no']}(unpaid, undelivered) {inv_late['invoice_no']}(unpaid, 45d) "
+              f"+ draft {inv_draft['id']}")
         print(f"credit note: {scn['scn_no']}(confirmed, restock) | receipts: 3 posted incl. 1 voided")
         print(f"stocktake: {st['id']} draft at {ab.code}")
         print(f"notifications: {notify}")
@@ -562,14 +575,15 @@ async def reset_demo() -> None:
             InventoryCreditNote.id.in_(ids[InventoryCreditNote] or {None})))
         await db.execute(delete(InventoryReceipt).where(
             InventoryReceipt.id.in_(ids[InventoryReceipt] or {None})))
-        await db.execute(delete(InventoryInvoiceLine).where(
-            InventoryInvoiceLine.invoice_id.in_(ids[InventoryInvoice] or {None})))
-        await db.execute(delete(InventoryInvoice).where(
-            InventoryInvoice.id.in_(ids[InventoryInvoice] or {None})))
+        # DOs are sub-documents of invoices (RESTRICT) — remove them first
         await db.execute(delete(DeliveryOrderLine).where(
             DeliveryOrderLine.do_id.in_(ids[DeliveryOrder] or {None})))
         await db.execute(delete(DeliveryOrder).where(
             DeliveryOrder.id.in_(ids[DeliveryOrder] or {None})))
+        await db.execute(delete(InventoryInvoiceLine).where(
+            InventoryInvoiceLine.invoice_id.in_(ids[InventoryInvoice] or {None})))
+        await db.execute(delete(InventoryInvoice).where(
+            InventoryInvoice.id.in_(ids[InventoryInvoice] or {None})))
         await db.execute(delete(SalesOrderLine).where(
             SalesOrderLine.so_id.in_(ids[SalesOrder] or {None})))
         await db.execute(delete(SalesOrder).where(

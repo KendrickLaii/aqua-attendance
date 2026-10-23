@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
@@ -16,15 +17,17 @@ from app.models.inventory_invoicing import (
 from app.models.inventory_sales import (
     Customer,
     DeliveryOrder,
-    DeliveryOrderLine,
     SalesOrder,
     SalesOrderLine,
 )
 from app.models.location import Location
 from app.routers.inventory_sales import (
     _do_detail,
+    _invoice_lines_map,
     _lock_or_404,
+    _recompute_so_status,
     _so_detail,
+    _so_lines,
     confirm_do_tx,
     confirm_so_tx,
     create_do_tx,
@@ -63,6 +66,17 @@ def _to_float(value) -> float:
     return float(value) if value is not None else 0.0
 
 
+_CENT = Decimal("0.01")
+_ZERO = Decimal("0.00")
+
+
+def _money(value) -> Decimal:
+    """Exact 2-decimal money value — all balance/total arithmetic uses this."""
+    if value is None:
+        return _ZERO
+    return Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
 async def _get_invoice_or_404(db: DB, invoice_id: uuid.UUID) -> InventoryInvoice:
     result = await db.execute(
         select(InventoryInvoice).where(InventoryInvoice.id == invoice_id)
@@ -93,14 +107,6 @@ async def _get_scn_or_404(db: DB, scn_id: uuid.UUID) -> InventoryCreditNote:
     return scn
 
 
-async def _get_do_or_404(db: DB, do_id: uuid.UUID) -> DeliveryOrder:
-    result = await db.execute(select(DeliveryOrder).where(DeliveryOrder.id == do_id))
-    do = result.scalar_one_or_none()
-    if do is None:
-        raise HTTPException(status_code=404, detail="Delivery order not found")
-    return do
-
-
 async def _inv_lines(db: DB, invoice_id: uuid.UUID) -> list[InventoryInvoiceLine]:
     result = await db.execute(
         select(InventoryInvoiceLine)
@@ -117,30 +123,30 @@ async def _scn_lines(db: DB, scn_id: uuid.UUID) -> list[InventoryCreditNoteLine]
     return list(result.scalars().all())
 
 
-async def _paid_total(db: DB, invoice_id: uuid.UUID) -> float:
+async def _paid_total(db: DB, invoice_id: uuid.UUID) -> Decimal:
     result = await db.execute(
         select(func.coalesce(func.sum(InventoryReceipt.amount), 0)).where(
             InventoryReceipt.invoice_id == invoice_id,
             InventoryReceipt.status == "posted",
         )
     )
-    return _to_float(result.scalar_one())
+    return _money(result.scalar_one())
 
 
-async def _credited_total(db: DB, invoice_id: uuid.UUID) -> float:
+async def _credited_total(db: DB, invoice_id: uuid.UUID) -> Decimal:
     result = await db.execute(
         select(func.coalesce(func.sum(InventoryCreditNote.total), 0)).where(
             InventoryCreditNote.invoice_id == invoice_id,
             InventoryCreditNote.status == "confirmed",
         )
     )
-    return _to_float(result.scalar_one())
+    return _money(result.scalar_one())
 
 
-def _payment_status(inv: InventoryInvoice, paid: float, credited: float) -> str:
+def _payment_status(inv: InventoryInvoice, paid: Decimal, credited: Decimal) -> str:
     if inv.status == "void":
         return "void"
-    total = _to_float(inv.total)
+    total = _money(inv.total)
     if paid + credited >= total:  # zero-total issued invoices count as paid
         return "paid"
     if paid + credited > 0:
@@ -148,17 +154,34 @@ def _payment_status(inv: InventoryInvoice, paid: float, credited: float) -> str:
     return "unpaid"
 
 
-async def _invoiced_qty_for_do_line(db: DB, do_line_id: uuid.UUID) -> int:
-    result = await db.execute(
+async def _draft_invoice_claims(
+    db: DB, so_line_id: uuid.UUID, exclude_invoice_id: uuid.UUID | None = None
+) -> int:
+    """Qty claimed by other draft (not yet issued, not void) invoices on an SO line."""
+    q = (
         select(func.coalesce(func.sum(InventoryInvoiceLine.qty), 0))
         .select_from(InventoryInvoiceLine)
         .join(InventoryInvoice, InventoryInvoice.id == InventoryInvoiceLine.invoice_id)
         .where(
-            InventoryInvoiceLine.do_line_id == do_line_id,
-            InventoryInvoice.status != "void",
+            InventoryInvoiceLine.so_line_id == so_line_id,
+            InventoryInvoice.status == "draft",
         )
     )
-    return int(result.scalar_one() or 0)
+    if exclude_invoice_id is not None:
+        q = q.where(InventoryInvoice.id != exclude_invoice_id)
+    return int((await db.execute(q)).scalar_one() or 0)
+
+
+async def _invoice_do_summaries(db: DB, invoice_id: uuid.UUID) -> list[dict]:
+    result = await db.execute(
+        select(DeliveryOrder)
+        .where(DeliveryOrder.invoice_id == invoice_id)
+        .order_by(DeliveryOrder.delivery_date, DeliveryOrder.do_no)
+    )
+    return [
+        {"id": d.id, "do_no": d.do_no, "delivery_date": d.delivery_date, "status": d.status}
+        for d in result.scalars().all()
+    ]
 
 
 async def _invoice_receipt_summaries(db: DB, invoice_id: uuid.UUID) -> list[dict]:
@@ -200,20 +223,17 @@ async def _invoice_scn_summaries(db: DB, invoice_id: uuid.UUID) -> list[dict]:
 
 async def _inv_detail(db: DB, inv: InventoryInvoice) -> dict:
     lines = await _inv_lines(db, inv.id)
-    do = await _get_do_or_404(db, inv.do_id)
     so_result = await db.execute(select(SalesOrder).where(SalesOrder.id == inv.so_id))
     so = so_result.scalar_one()
     cust_result = await db.execute(select(Customer).where(Customer.id == inv.customer_id))
     customer = cust_result.scalar_one()
     paid = await _paid_total(db, inv.id)
     credited = await _credited_total(db, inv.id)
-    total = _to_float(inv.total)
-    subtotal = _to_float(sum(_to_float(line.amount) for line in lines))
+    total = _money(inv.total)
+    subtotal = sum((_money(line.amount) for line in lines), _ZERO)
     return {
         "id": inv.id,
         "invoice_no": inv.invoice_no,
-        "do_id": inv.do_id,
-        "do_no": do.do_no,
         "so_id": inv.so_id,
         "so_no": so.so_no,
         "customer_id": inv.customer_id,
@@ -222,12 +242,12 @@ async def _inv_detail(db: DB, inv: InventoryInvoice) -> dict:
         "location_id": inv.location_id,
         "issue_date": inv.issue_date,
         "status": inv.status,
-        "discount_amount": _to_float(inv.discount_amount),
+        "discount_amount": _money(inv.discount_amount),
         "subtotal": subtotal,
         "total": total,
         "paid_total": paid,
         "credited_total": credited,
-        "balance": max(total - paid - credited, 0.0),
+        "balance": max(total - paid - credited, _ZERO),
         "payment_status": _payment_status(inv, paid, credited),
         "notes": inv.notes,
         "issued_at": inv.issued_at,
@@ -237,6 +257,7 @@ async def _inv_detail(db: DB, inv: InventoryInvoice) -> dict:
         "lines": [InventoryInvoiceLineOut.model_validate(line).model_dump() for line in lines],
         "receipts": await _invoice_receipt_summaries(db, inv.id),
         "credit_notes": await _invoice_scn_summaries(db, inv.id),
+        "delivery_orders": await _invoice_do_summaries(db, inv.id),
     }
 
 
@@ -304,10 +325,10 @@ async def _assert_item_active_for_restock(db: DB, item_id: uuid.UUID) -> None:
         raise HTTPException(status_code=422, detail="item is inactive or unknown")
 
 
-async def _invoice_balance(db: DB, inv: InventoryInvoice) -> float:
+async def _invoice_balance(db: DB, inv: InventoryInvoice) -> Decimal:
     paid = await _paid_total(db, inv.id)
     credited = await _credited_total(db, inv.id)
-    return max(_to_float(inv.total) - paid - credited, 0.0)
+    return max(_money(inv.total) - paid - credited, _ZERO)
 
 
 # Batched builders for list endpoints — same payload as the per-row helpers
@@ -329,14 +350,15 @@ async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]
     for line in lines_all:
         lines_by_inv.setdefault(line.invoice_id, []).append(line)
 
-    dos = {
-        d.id: d
-        for d in (
-            await db.execute(
-                select(DeliveryOrder).where(DeliveryOrder.id.in_({inv.do_id for inv in rows}))
-            )
-        ).scalars().all()
-    }
+    dos_by_inv: dict[uuid.UUID, list[DeliveryOrder]] = {}
+    for d in (
+        await db.execute(
+            select(DeliveryOrder)
+            .where(DeliveryOrder.invoice_id.in_(inv_ids))
+            .order_by(DeliveryOrder.delivery_date, DeliveryOrder.do_no)
+        )
+    ).scalars().all():
+        dos_by_inv.setdefault(d.invoice_id, []).append(d)
     sos = {
         s.id: s
         for s in (
@@ -354,7 +376,7 @@ async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]
         ).scalars().all()
     }
     paid_map = {
-        inv_id: _to_float(amount)
+        inv_id: _money(amount)
         for inv_id, amount in (
             await db.execute(
                 select(InventoryReceipt.invoice_id, func.sum(InventoryReceipt.amount))
@@ -367,7 +389,7 @@ async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]
         ).all()
     }
     cred_map = {
-        inv_id: _to_float(amount)
+        inv_id: _money(amount)
         for inv_id, amount in (
             await db.execute(
                 select(InventoryCreditNote.invoice_id, func.sum(InventoryCreditNote.total))
@@ -401,18 +423,15 @@ async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]
     out = []
     for inv in rows:
         lines = lines_by_inv.get(inv.id, [])
-        do = dos.get(inv.do_id)
         so = sos.get(inv.so_id)
         customer = custs.get(inv.customer_id)
-        paid = paid_map.get(inv.id, 0.0)
-        credited = cred_map.get(inv.id, 0.0)
-        total = _to_float(inv.total)
+        paid = paid_map.get(inv.id, _ZERO)
+        credited = cred_map.get(inv.id, _ZERO)
+        total = _money(inv.total)
         out.append(
             {
                 "id": inv.id,
                 "invoice_no": inv.invoice_no,
-                "do_id": inv.do_id,
-                "do_no": do.do_no if do else None,
                 "so_id": inv.so_id,
                 "so_no": so.so_no if so else None,
                 "customer_id": inv.customer_id,
@@ -421,12 +440,12 @@ async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]
                 "location_id": inv.location_id,
                 "issue_date": inv.issue_date,
                 "status": inv.status,
-                "discount_amount": _to_float(inv.discount_amount),
-                "subtotal": _to_float(sum(_to_float(line.amount) for line in lines)),
+                "discount_amount": _money(inv.discount_amount),
+                "subtotal": sum((_money(line.amount) for line in lines), _ZERO),
                 "total": total,
                 "paid_total": paid,
                 "credited_total": credited,
-                "balance": max(total - paid - credited, 0.0),
+                "balance": max(total - paid - credited, _ZERO),
                 "payment_status": _payment_status(inv, paid, credited),
                 "notes": inv.notes,
                 "issued_at": inv.issued_at,
@@ -456,6 +475,15 @@ async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]
                         "status": s.status,
                     }
                     for s in scns_by_inv.get(inv.id, [])
+                ],
+                "delivery_orders": [
+                    {
+                        "id": d.id,
+                        "do_no": d.do_no,
+                        "delivery_date": d.delivery_date,
+                        "status": d.status,
+                    }
+                    for d in dos_by_inv.get(inv.id, [])
                 ],
             }
         )
@@ -674,54 +702,49 @@ async def list_invoices(
     return await _inv_details_batch(db, rows)
 
 
+async def _remaining_for_so_line(
+    db: DB, so_line: SalesOrderLine, exclude_invoice_id: uuid.UUID | None = None
+) -> int:
+    """Qty still invoiceable: ordered minus issued-invoiced minus other draft claims."""
+    claimed = await _draft_invoice_claims(db, so_line.id, exclude_invoice_id)
+    return so_line.qty - so_line.invoiced_qty - claimed
+
+
 async def _build_invoice_lines(
     db: DB,
-    do: DeliveryOrder,
     so: SalesOrder,
     line_inputs: list[InventoryInvoiceLineIn],
+    exclude_invoice_id: uuid.UUID | None = None,
 ) -> list[dict]:
-    """Validate inputs against the DO and return frozen line dicts."""
-    do_lines = (
-        await db.execute(select(DeliveryOrderLine).where(DeliveryOrderLine.do_id == do.id))
-    ).scalars().all()
-    do_line_by_id = {line.id: line for line in do_lines}
-    so_lines = (
-        await db.execute(select(SalesOrderLine).where(SalesOrderLine.so_id == so.id))
-    ).scalars().all()
+    """Validate inputs against the SO and return frozen line dicts."""
+    so_lines = await _so_lines(db, so.id)
     so_line_by_id = {line.id: line for line in so_lines}
 
     seen: set[uuid.UUID] = set()
     built: list[dict] = []
     for inp in line_inputs:
-        if inp.do_line_id in seen:
-            raise HTTPException(status_code=422, detail="duplicate do_line_id in invoice lines")
-        seen.add(inp.do_line_id)
-        do_line = do_line_by_id.get(inp.do_line_id)
-        if do_line is None:
-            raise HTTPException(status_code=422, detail=f"do_line_id {inp.do_line_id} not on this DO")
-        so_line = so_line_by_id.get(do_line.so_line_id)
+        if inp.so_line_id in seen:
+            raise HTTPException(status_code=422, detail="duplicate so_line_id in invoice lines")
+        seen.add(inp.so_line_id)
+        so_line = so_line_by_id.get(inp.so_line_id)
         if so_line is None:
-            raise HTTPException(status_code=422, detail="DO line references a removed SO line")
-        already = await _invoiced_qty_for_do_line(db, do_line.id)
-        if already + inp.qty > do_line.qty:
+            raise HTTPException(status_code=422, detail=f"so_line_id {inp.so_line_id} not on this SO")
+        remaining = await _remaining_for_so_line(db, so_line, exclude_invoice_id)
+        if inp.qty > remaining:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"over-invoicing DO line {so_line.sku_code}: delivered {do_line.qty}, "
-                    f"already invoiced {already}, this invoice {inp.qty}"
+                    f"over-invoicing SO line {so_line.sku_code}: ordered {so_line.qty}, "
+                    f"invoiced {so_line.invoiced_qty}, this invoice {inp.qty}"
                 ),
             )
-        unit_price = _to_float(so_line.unit_price) if inp.unit_price is None else inp.unit_price
-        if inp.unit_price is None and inp.discount_amount == 0:
-            discount = round(_to_float(so_line.discount_amount) * inp.qty / so_line.qty, 2)
-        else:
-            discount = inp.discount_amount
-        amount = max(round(inp.qty * unit_price - discount, 2), 0.0)
+        unit_price = _money(so_line.unit_price)
+        discount = _money(_money(so_line.discount_amount) * inp.qty / so_line.qty)
+        amount = max(_money(inp.qty * unit_price - discount), _ZERO)
         built.append(
             {
-                "do_line_id": do_line.id,
                 "so_line_id": so_line.id,
-                "item_id": do_line.item_id,
+                "item_id": so_line.item_id,
                 "sku_code": so_line.sku_code,
                 "name_zh": so_line.name_zh,
                 "unit_price": unit_price,
@@ -735,7 +758,7 @@ async def _build_invoice_lines(
 
 async def _create_invoice_tx(
     db: DB,
-    do: DeliveryOrder,
+    so: SalesOrder,
     *,
     issue_date: date | None,
     discount_amount: float | None,
@@ -743,48 +766,39 @@ async def _create_invoice_tx(
     line_inputs: list[InventoryInvoiceLineIn],
     user,
 ) -> InventoryInvoice:
-    if do.status != "confirmed":
-        raise HTTPException(status_code=422, detail=f"delivery order is {do.status}; cannot invoice")
-
-    so_result = await db.execute(select(SalesOrder).where(SalesOrder.id == do.so_id))
-    so = so_result.scalar_one()
+    if so.status not in ("confirmed", "partial"):
+        raise HTTPException(status_code=422, detail=f"SO {so.so_no} is {so.status}; cannot invoice")
 
     if not line_inputs:
-        do_lines = (
-            await db.execute(
-                select(DeliveryOrderLine).where(DeliveryOrderLine.do_id == do.id)
-            )
-        ).scalars().all()
         line_inputs = []
-        for do_line in do_lines:
-            remaining = do_line.qty - await _invoiced_qty_for_do_line(db, do_line.id)
+        for so_line in await _so_lines(db, so.id):
+            remaining = await _remaining_for_so_line(db, so_line)
             if remaining > 0:
-                line_inputs.append(InventoryInvoiceLineIn(do_line_id=do_line.id, qty=remaining))
+                line_inputs.append(InventoryInvoiceLineIn(so_line_id=so_line.id, qty=remaining))
         if not line_inputs:
-            raise HTTPException(status_code=422, detail="DO is fully invoiced")
+            raise HTTPException(status_code=422, detail="SO is fully invoiced")
 
-    built = await _build_invoice_lines(db, do, so, line_inputs)
+    built = await _build_invoice_lines(db, so, line_inputs)
     if not built:
         raise HTTPException(status_code=422, detail="invoice has no lines")
 
-    subtotal = round(sum(line["amount"] for line in built), 2)
+    subtotal = sum((line["amount"] for line in built), _ZERO)
     if discount_amount is not None:
-        header_discount = discount_amount
+        header_discount = _money(discount_amount)
     else:
-        so_subtotal = _to_float(so.total) + _to_float(so.discount_amount)
+        so_subtotal = _money(so.total) + _money(so.discount_amount)
         header_discount = (
-            round(_to_float(so.discount_amount) * subtotal / so_subtotal, 2)
+            _money(_money(so.discount_amount) * subtotal / so_subtotal)
             if so_subtotal > 0
-            else 0.0
+            else _ZERO
         )
-    total = max(round(subtotal - header_discount, 2), 0.0)
+    total = max(subtotal - header_discount, _ZERO)
 
     inv = InventoryInvoice(
-        do_id=do.id,
         so_id=so.id,
-        customer_id=do.customer_id,
+        customer_id=so.customer_id,
         buyer_name=so.buyer_name,
-        location_id=do.location_id,
+        location_id=so.location_id,
         issue_date=issue_date,
         discount_amount=header_discount,
         total=total,
@@ -799,24 +813,69 @@ async def _create_invoice_tx(
 
 
 async def _issue_invoice_tx(
-    db: DB, inv: InventoryInvoice, issue_date: date | None = None
+    db: DB, inv: InventoryInvoice, user, issue_date: date | None = None
 ) -> None:
-    """Allocate the invoice number and mark issued. Caller commits."""
+    """Issue the invoice: deduct stock + release reservations. Caller commits.
+
+    Locks the invoice row, the SO row, and the SO lines (FOR UPDATE) before
+    re-validating quantities so concurrent issues can't over-invoice. Any
+    stock shortfall aborts the whole issue — nothing is written.
+    """
     lines = await _inv_lines(db, inv.id)
     if not lines:
         raise HTTPException(status_code=422, detail="invoice has no lines")
+
+    so = await _lock_or_404(db, SalesOrder, inv.so_id, "Sales order")
+    so_lines = {
+        line.id: line
+        for line in (
+            await db.execute(
+                select(SalesOrderLine)
+                .where(SalesOrderLine.so_id == so.id)
+                .order_by(SalesOrderLine.id)
+                .with_for_update()
+            )
+        ).scalars().all()
+    }
+
     for line in lines:
-        do_line_result = await db.execute(
-            select(DeliveryOrderLine).where(DeliveryOrderLine.id == line.do_line_id)
-        )
-        do_line = do_line_result.scalar_one()
-        already = await _invoiced_qty_for_do_line(db, line.do_line_id)
-        # 'already' includes this invoice's own qty
-        if already > do_line.qty:
+        so_line = so_lines.get(line.so_line_id)
+        if so_line is None:
+            raise HTTPException(status_code=422, detail="invoice line references a removed SO line")
+        if line.qty > so_line.qty - so_line.invoiced_qty:
             raise HTTPException(
                 status_code=422,
-                detail=f"over-invoicing DO line {line.sku_code}: delivered {do_line.qty}, invoiced {already}",
+                detail=(
+                    f"over-invoicing SO line {so_line.sku_code}: ordered {so_line.qty}, "
+                    f"invoiced {so_line.invoiced_qty}, this invoice {line.qty}"
+                ),
             )
+
+    for line in lines:
+        so_line = so_lines[line.so_line_id]
+        # Release whatever is still reserved for this line before the 'out'
+        # (an 'out' may not push on-hand below the reserved amount). Skipped
+        # for a cancelled SO, whose reservations were already released.
+        if so.status != "cancelled":
+            to_release = min(line.qty, so_line.qty - so_line.invoiced_qty)
+            if to_release > 0:
+                await inventory_svc.release(
+                    db, item_id=line.item_id, location_id=inv.location_id, quantity=to_release
+                )
+        await inventory_svc.apply_movement(
+            db,
+            item_id=line.item_id,
+            location_id=inv.location_id,
+            type="out",
+            quantity=line.qty,
+            reason=f"sales invoice {inv.invoice_no or inv.id}",
+            reason_code="sale",
+            reference=f"SI:{inv.id}:{line.id}",
+            user=user,
+        )
+        so_line.invoiced_qty += line.qty
+    await _recompute_so_status(db, so)
+
     if not inv.invoice_no:
         inv.invoice_no = await doc_numbers_svc.allocate_doc_no(
             db, location_id=inv.location_id, doc_type="SI"
@@ -829,10 +888,13 @@ async def _issue_invoice_tx(
 
 @router.post("/invoices", response_model=InventoryInvoiceOut, status_code=status.HTTP_201_CREATED)
 async def create_invoice(body: InventoryInvoiceCreate, _admin: AdminOnly, db: DB) -> dict:
-    do = await _get_do_or_404(db, body.do_id)
+    result = await db.execute(select(SalesOrder).where(SalesOrder.id == body.so_id))
+    so = result.scalar_one_or_none()
+    if so is None:
+        raise HTTPException(status_code=404, detail="Sales order not found")
     inv = await _create_invoice_tx(
         db,
-        do,
+        so,
         issue_date=body.issue_date,
         discount_amount=body.discount_amount,
         notes=body.notes,
@@ -849,8 +911,8 @@ async def create_invoice(body: InventoryInvoiceCreate, _admin: AdminOnly, db: DB
         action="CREATE",
         table_name="inventory_invoices",
         record_id=inv_id,
-        new_values={"do_id": str(body.do_id), "total": _to_float(inv.total)},
-        description=f"Created draft invoice for DO {do.do_no}",
+        new_values={"so_id": str(body.so_id), "total": _to_float(inv.total)},
+        description=f"Created draft invoice for SO {so.so_no}",
     )
     return await _inv_detail(db, inv)
 
@@ -874,28 +936,27 @@ async def update_invoice(
         inv.notes = body.notes
 
     if body.lines is not None:
-        do = await _get_do_or_404(db, inv.do_id)
         so_result = await db.execute(select(SalesOrder).where(SalesOrder.id == inv.so_id))
         so = so_result.scalar_one()
         old_lines = await _inv_lines(db, inv.id)
         for line in old_lines:
             await db.delete(line)
         await db.flush()
-        built = await _build_invoice_lines(db, do, so, list(body.lines))
+        built = await _build_invoice_lines(db, so, list(body.lines), exclude_invoice_id=inv.id)
         if not built:
             raise HTTPException(status_code=422, detail="invoice must have at least one line")
         for line in built:
             db.add(InventoryInvoiceLine(invoice=inv, **line))
         await db.flush()
-        subtotal = round(sum(line["amount"] for line in built), 2)
+        subtotal = sum((line["amount"] for line in built), _ZERO)
     else:
-        subtotal = round(
-            sum(_to_float(line.amount) for line in await _inv_lines(db, inv.id)), 2
+        subtotal = sum(
+            (_money(line.amount) for line in await _inv_lines(db, inv.id)), _ZERO
         )
 
     if body.discount_amount is not None:
-        inv.discount_amount = body.discount_amount
-    inv.total = max(round(subtotal - _to_float(inv.discount_amount), 2), 0.0)
+        inv.discount_amount = _money(body.discount_amount)
+    inv.total = max(subtotal - _money(inv.discount_amount), _ZERO)
     await db.commit()
     result = await db.execute(select(InventoryInvoice).where(InventoryInvoice.id == invoice_id))
     inv = result.scalar_one()
@@ -935,7 +996,7 @@ async def issue_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
         return await _inv_detail(db, inv)
     if inv.status != "draft":
         raise HTTPException(status_code=409, detail=f"invoice is {inv.status}; cannot issue")
-    await _issue_invoice_tx(db, inv)
+    await _issue_invoice_tx(db, inv, _admin)
     invoice_no = inv.invoice_no
     await db.commit()
     result = await db.execute(select(InventoryInvoice).where(InventoryInvoice.id == invoice_id))
@@ -986,6 +1047,44 @@ async def void_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict
     ).scalar_one()
     if confirmed_scn:
         raise HTTPException(status_code=409, detail="invoice has confirmed credit notes; void them first")
+    open_dos = (
+        await db.execute(
+            select(func.count())
+            .select_from(DeliveryOrder)
+            .where(
+                DeliveryOrder.invoice_id == inv.id,
+                DeliveryOrder.status != "void",
+            )
+        )
+    ).scalar_one()
+    if open_dos:
+        raise HTTPException(status_code=409, detail="invoice has delivery orders; void or delete them first")
+
+    so = await _lock_or_404(db, SalesOrder, inv.so_id, "Sales order")
+    so_lines = {line.id: line for line in await _so_lines(db, so.id)}
+    for line in await _inv_lines(db, inv.id):
+        # Stock already left at issue, so voiding always returns it to stock,
+        # then re-reserves for the SO when it is still open.
+        await inventory_svc.apply_movement(
+            db,
+            item_id=line.item_id,
+            location_id=inv.location_id,
+            type="in",
+            quantity=line.qty,
+            reason=f"void invoice {inv.invoice_no}",
+            reason_code="other",
+            reference=f"SI-VOID:{inv.id}:{line.id}",
+            user=_admin,
+        )
+        so_line = so_lines.get(line.so_line_id)
+        if so_line is not None:
+            so_line.invoiced_qty = max(0, so_line.invoiced_qty - line.qty)
+        if so.status != "cancelled":
+            await inventory_svc.reserve(
+                db, item_id=line.item_id, location_id=inv.location_id, quantity=line.qty
+            )
+    await _recompute_so_status(db, so)
+
     inv.status = "void"
     await db.commit()
     result = await db.execute(select(InventoryInvoice).where(InventoryInvoice.id == invoice_id))
@@ -1028,7 +1127,6 @@ async def print_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
         "location_address": loc.address,
         "location_phone": loc.phone,
         "so_no": detail["so_no"],
-        "do_no": detail["do_no"],
         "lines": detail["lines"],
         "discount_amount": detail["discount_amount"],
         "subtotal": detail["subtotal"],
@@ -1109,6 +1207,7 @@ async def _create_receipt_tx(
     if inv.status != "issued":
         raise HTTPException(status_code=422, detail=f"invoice is {inv.status}; cannot post receipt")
     balance = await _invoice_balance(db, inv)
+    amount = _money(amount)
     if amount > balance:
         raise HTTPException(
             status_code=422, detail=f"receipt amount {amount} exceeds invoice balance {balance}"
@@ -1203,9 +1302,9 @@ async def print_receipt(receipt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
         "receipt_date": rc.receipt_date,
         "status": rc.status,
         "invoice_no": inv.invoice_no,
-        "invoice_total": _to_float(inv.total),
+        "invoice_total": _money(inv.total),
         "invoice_paid_total": paid,
-        "invoice_balance": max(_to_float(inv.total) - paid - credited, 0.0),
+        "invoice_balance": max(_money(inv.total) - paid - credited, _ZERO),
         "buyer_name": inv.buyer_name,
         "customer_code": customer.code,
         "customer_name_zh": customer.name_zh,
@@ -1286,17 +1385,17 @@ async def _build_scn_lines(
         inv_line = inv_line_result.scalar_one_or_none()
         if inv_line is None or inv_line.invoice_id != inv.id:
             raise HTTPException(status_code=422, detail="invoice_line_id not on this invoice")
-        if inv_line.qty > 0 and _to_float(inv_line.amount) is not None:
-            unit_amount = round(_to_float(inv_line.amount) / inv_line.qty, 2)
+        if inv_line.qty > 0:
+            unit_amount = _money(_money(inv_line.amount) / inv_line.qty)
         else:
-            unit_amount = 0.0
+            unit_amount = _ZERO
         built.append(
             {
                 "invoice_line_id": inv_line.id,
                 "item_id": inv_line.item_id,
                 "qty": inp.qty,
                 "unit_amount": unit_amount,
-                "amount": round(inp.qty * unit_amount, 2),
+                "amount": _money(inp.qty * unit_amount),
                 "restock": inp.restock,
             }
         )
@@ -1317,7 +1416,7 @@ async def create_credit_note(body: InventoryCreditNoteCreate, _admin: AdminOnly,
         location_id=inv.location_id,
         credit_date=body.credit_date or date.today(),
         reason=body.reason,
-        total=round(sum(line["amount"] for line in built), 2),
+        total=sum((line["amount"] for line in built), _ZERO),
         created_by=_admin.id,
     )
     db.add(scn)
@@ -1365,7 +1464,7 @@ async def update_credit_note(
         for line in built:
             db.add(InventoryCreditNoteLine(scn=scn, **line))
         await db.flush()
-        scn.total = round(sum(line["amount"] for line in built), 2)
+        scn.total = sum((line["amount"] for line in built), _ZERO)
     await db.commit()
     result = await db.execute(select(InventoryCreditNote).where(InventoryCreditNote.id == scn_id))
     scn = result.scalar_one()
@@ -1426,7 +1525,7 @@ async def confirm_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> d
                 ),
             )
     balance = await _invoice_balance(db, inv)
-    if _to_float(scn.total) > balance:
+    if _money(scn.total) > balance:
         raise HTTPException(
             status_code=422,
             detail="credit exceeds unpaid balance; void the receipt first",
@@ -1560,30 +1659,32 @@ async def quick_fulfill(so_id: uuid.UUID, body: QuickFulfillRequest, _admin: Adm
         await confirm_so_tx(db, so)
         actions.append({"action": "UPDATE", "table": "sales_orders", "desc": f"Confirmed sales order {so.so_no}"})
 
-    do = await create_do_tx(
-        db,
-        so,
-        delivery_date=body.issue_date or date.today(),
-        notes="quick fulfill",
-        line_inputs=[],
-        user=_admin,
-    )
-    actions.append({"action": "CREATE", "table": "delivery_orders", "desc": f"Created delivery order {do.do_no} for {so.so_no}"})
-    await confirm_do_tx(db, do, _admin)
-    actions.append({"action": "UPDATE", "table": "delivery_orders", "desc": f"Confirmed delivery order {do.do_no}"})
-
     inv = await _create_invoice_tx(
         db,
-        do,
+        so,
         issue_date=body.issue_date,
         discount_amount=None,
         notes=None,
         line_inputs=[],
         user=_admin,
     )
-    actions.append({"action": "CREATE", "table": "inventory_invoices", "desc": f"Created invoice for DO {do.do_no}"})
-    await _issue_invoice_tx(db, inv)
+    actions.append({"action": "CREATE", "table": "inventory_invoices", "desc": f"Created invoice for {so.so_no}"})
+    await _issue_invoice_tx(db, inv, _admin, issue_date=body.issue_date)
     actions.append({"action": "UPDATE", "table": "inventory_invoices", "desc": f"Issued invoice {inv.invoice_no}"})
+
+    do = None
+    if body.deliver_now:
+        do = await create_do_tx(
+            db,
+            inv,
+            delivery_date=body.issue_date or date.today(),
+            notes="quick fulfill",
+            line_inputs=[],
+            user=_admin,
+        )
+        actions.append({"action": "CREATE", "table": "delivery_orders", "desc": f"Created delivery order {do.do_no} for invoice {inv.invoice_no}"})
+        await confirm_do_tx(db, do, _admin)
+        actions.append({"action": "UPDATE", "table": "delivery_orders", "desc": f"Confirmed delivery order {do.do_no}"})
 
     receipt = None
     if body.pay is not None:
@@ -1599,12 +1700,11 @@ async def quick_fulfill(so_id: uuid.UUID, body: QuickFulfillRequest, _admin: Adm
         )
         actions.append({"action": "CREATE", "table": "inventory_receipts", "desc": f"Posted receipt {receipt.receipt_no}"})
 
-    so_id_v, do_id, inv_id = so.id, do.id, inv.id
+    so_id_v, do_id, inv_id = so.id, (do.id if do else None), inv.id
     receipt_id = receipt.id if receipt else None
     await db.commit()
 
     so = (await db.execute(select(SalesOrder).where(SalesOrder.id == so_id_v))).scalar_one()
-    do = (await db.execute(select(DeliveryOrder).where(DeliveryOrder.id == do_id))).scalar_one()
     inv = (await db.execute(select(InventoryInvoice).where(InventoryInvoice.id == inv_id))).scalar_one()
     for entry in actions:
         await audit_log_svc.log_audit(
@@ -1620,13 +1720,17 @@ async def quick_fulfill(so_id: uuid.UUID, body: QuickFulfillRequest, _admin: Adm
             }[entry["table"]],
             description=entry["desc"],
         )
+    do_out = None
+    if do_id:
+        do = (await db.execute(select(DeliveryOrder).where(DeliveryOrder.id == do_id))).scalar_one()
+        do_out = await _do_detail(db, do)
     receipt_out = None
     if receipt_id:
         rc = (await db.execute(select(InventoryReceipt).where(InventoryReceipt.id == receipt_id))).scalar_one()
         receipt_out = await _rc_out(db, rc)
     return {
         "so": await _so_detail(db, so),
-        "delivery_order": await _do_detail(db, do),
+        "delivery_order": do_out,
         "invoice": await _inv_detail(db, inv),
         "receipt": receipt_out,
     }

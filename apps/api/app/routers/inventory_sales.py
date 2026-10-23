@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminOnly, DB
 from app.models.inventory import InventoryItem, InventoryStock
-from app.models.inventory_invoicing import InventoryInvoice
+from app.models.inventory_invoicing import InventoryInvoice, InventoryInvoiceLine
 from app.models.inventory_sales import (
     Customer,
     DeliveryOrder,
@@ -148,18 +148,19 @@ async def _so_detail(db: DB, so: SalesOrder) -> dict:
 async def _do_detail(db: DB, do: DeliveryOrder) -> dict:
     lines = await _do_lines(db, do.id)
     items = await _items_map(db, lines)
+    invoice = await db.get(InventoryInvoice, do.invoice_id)
     so = await db.get(SalesOrder, do.so_id)
     customer = await db.get(Customer, do.customer_id)
     location = await db.get(Location, do.location_id)
     out = {
         f: getattr(do, f)
         for f in DeliveryOrderOut.model_fields
-        if f not in ("lines", "so_no_ref", "customer_name", "location_name")
+        if f not in ("lines", "invoice_no", "so_no_ref", "customer_name", "location_name")
     }
     out["lines"] = [
         {
             "id": line.id,
-            "so_line_id": line.so_line_id,
+            "invoice_line_id": line.invoice_line_id,
             "item_id": line.item_id,
             "qty": line.qty,
             "sku_code": items[line.item_id].sku_code if line.item_id in items else None,
@@ -167,6 +168,7 @@ async def _do_detail(db: DB, do: DeliveryOrder) -> dict:
         }
         for line in lines
     ]
+    out["invoice_no"] = invoice.invoice_no if invoice else None
     out["so_no_ref"] = so.so_no if so else None
     out["customer_name"] = customer.name_zh if customer else None
     out["location_name"] = location.name_en if location else None
@@ -193,7 +195,7 @@ async def _build_so_lines(db: DB, so: SalesOrder, line_inputs) -> list[SalesOrde
             sku_code=item.sku_code,
             name_zh=item.name_zh,
             qty=line_in.qty,
-            shipped_qty=0,
+            invoiced_qty=0,
             unit_price=line_in.unit_price,
             discount_amount=line_in.discount_amount,
             amount=amount,
@@ -207,9 +209,9 @@ async def _recompute_so_status(db: DB, so: SalesOrder) -> None:
     if so.status in ("draft", "cancelled"):
         return
     lines = await _so_lines(db, so.id)
-    if lines and all(line.shipped_qty >= line.qty for line in lines):
+    if lines and all(line.invoiced_qty >= line.qty for line in lines):
         so.status = "fulfilled"
-    elif any(line.shipped_qty > 0 for line in lines):
+    elif any(line.invoiced_qty > 0 for line in lines):
         so.status = "partial"
     else:
         so.status = "confirmed"
@@ -608,7 +610,7 @@ async def cancel_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
     lines = await _so_lines(db, so_id)
     if so.status in ("confirmed", "partial"):
         for line in lines:
-            remaining = line.qty - line.shipped_qty
+            remaining = line.qty - line.invoiced_qty
             if remaining > 0:
                 await inventory_svc.release(
                     db, item_id=line.item_id, location_id=so.location_id, quantity=remaining
@@ -717,6 +719,7 @@ async def list_delivery_orders(
     customer_id: uuid.UUID | None = None,
     location_id: uuid.UUID | None = None,
     so_id: uuid.UUID | None = None,
+    invoice_id: uuid.UUID | None = None,
     status: str | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
@@ -729,6 +732,8 @@ async def list_delivery_orders(
         clauses.append(DeliveryOrder.location_id == location_id)
     if so_id is not None:
         clauses.append(DeliveryOrder.so_id == so_id)
+    if invoice_id is not None:
+        clauses.append(DeliveryOrder.invoice_id == invoice_id)
     if status is not None:
         clauses.append(DeliveryOrder.status == status)
     if search:
@@ -756,68 +761,108 @@ async def list_delivery_orders(
     return [await _do_detail(db, do) for do in result.scalars().all()]
 
 
-async def _validate_do_lines_against_so(
-    db: DB, so: SalesOrder, line_inputs
-) -> dict[uuid.UUID, SalesOrderLine]:
-    so_lines = await _so_lines(db, so.id)
-    by_id = {line.id: line for line in so_lines}
-    resolved: dict[uuid.UUID, SalesOrderLine] = {}
-    for line_in in line_inputs:
-        so_line = by_id.get(line_in.so_line_id)
-        if so_line is None:
-            raise HTTPException(status_code=422, detail=f"so_line_id {line_in.so_line_id} not on this SO")
-        if so_line.item_id != line_in.item_id:
-            raise HTTPException(status_code=422, detail="item_id does not match the SO line")
-        resolved[so_line.id] = so_line
-    return resolved
+async def _invoice_lines_map(db: DB, invoice_id: uuid.UUID) -> dict[uuid.UUID, InventoryInvoiceLine]:
+    result = await db.execute(
+        select(InventoryInvoiceLine)
+        .where(InventoryInvoiceLine.invoice_id == invoice_id)
+        .order_by(InventoryInvoiceLine.id)
+    )
+    return {line.id: line for line in result.scalars().all()}
+
+
+async def _draft_do_claims(db: DB, invoice_id: uuid.UUID, exclude_do_id: uuid.UUID | None = None) -> dict[uuid.UUID, int]:
+    """Qty already claimed by other non-void DRAFT DOs, per invoice line."""
+    q = (
+        select(DeliveryOrderLine.invoice_line_id, func.coalesce(func.sum(DeliveryOrderLine.qty), 0))
+        .join(DeliveryOrder, DeliveryOrder.id == DeliveryOrderLine.do_id)
+        .where(
+            DeliveryOrder.invoice_id == invoice_id,
+            DeliveryOrder.status == "draft",
+        )
+        .group_by(DeliveryOrderLine.invoice_line_id)
+    )
+    if exclude_do_id is not None:
+        q = q.where(DeliveryOrder.id != exclude_do_id)
+    result = await db.execute(q)
+    return {line_id: int(qty) for line_id, qty in result.all()}
+
+
+def _deliverable_qty(inv_line: InventoryInvoiceLine, draft_claim: int) -> int:
+    """Deliverable assumes credit notes apply to undelivered goods first."""
+    return max(0, inv_line.qty - inv_line.credited_qty - inv_line.delivered_qty) - draft_claim
 
 
 async def create_do_tx(
     db: DB,
-    so: SalesOrder,
+    invoice: InventoryInvoice,
     *,
     delivery_date: date,
     notes: str | None,
     line_inputs: list[DeliveryOrderLineIn],
     user,
 ) -> DeliveryOrder:
-    """Validate + create a draft DO (prefills remaining qty when no lines). Caller commits.
+    """Validate + create a draft DO under an issued invoice. Caller commits.
 
-    The SO row is locked here so the status check and DO creation serialize
-    against a concurrent cancel/confirm of the same SO.
+    A DO records physical delivery only — it never touches stock or
+    reservations. The invoice row is locked so validation and creation
+    serialize against a concurrent void of the invoice.
     """
-    so = await _lock_or_404(db, SalesOrder, so.id, "Sales order")
-    if so.status not in ("confirmed", "partial"):
-        raise HTTPException(status_code=422, detail=f"SO {so.so_no} is {so.status}; cannot deliver")
+    inv = await _lock_or_404(db, InventoryInvoice, invoice.id, "Invoice")
+    if inv.status != "issued":
+        raise HTTPException(status_code=422, detail=f"invoice is {inv.status}; cannot create a delivery order")
+
+    inv_lines = await _invoice_lines_map(db, inv.id)
+    claims = await _draft_do_claims(db, inv.id, exclude_do_id=None)
 
     if not line_inputs:
-        remaining = [l for l in await _so_lines(db, so.id) if l.qty - l.shipped_qty > 0]
         line_inputs = [
-            DeliveryOrderLineIn(so_line_id=l.id, item_id=l.item_id, qty=l.qty - l.shipped_qty)
-            for l in remaining
+            DeliveryOrderLineIn(invoice_line_id=line.id, qty=_deliverable_qty(line, claims.get(line.id, 0)))
+            for line in inv_lines.values()
+            if _deliverable_qty(line, claims.get(line.id, 0)) > 0
         ]
         if not line_inputs:
-            raise HTTPException(status_code=422, detail="SO is fully shipped")
+            raise HTTPException(status_code=422, detail="invoice is fully delivered")
 
-    for line in line_inputs:
-        await _get_item_or_422(db, line.item_id)
-    await _validate_do_lines_against_so(db, so, line_inputs)
+    seen: set[uuid.UUID] = set()
+    for line_in in line_inputs:
+        if line_in.invoice_line_id in seen:
+            raise HTTPException(status_code=422, detail="duplicate invoice_line_id in delivery lines")
+        seen.add(line_in.invoice_line_id)
+        inv_line = inv_lines.get(line_in.invoice_line_id)
+        if inv_line is None:
+            raise HTTPException(
+                status_code=422, detail=f"invoice_line_id {line_in.invoice_line_id} not on this invoice"
+            )
+        deliverable = _deliverable_qty(inv_line, claims.get(inv_line.id, 0))
+        if line_in.qty > deliverable:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"over-delivery for {inv_line.sku_code}: invoiced {inv_line.qty}, "
+                    f"credited {inv_line.credited_qty}, delivered {inv_line.delivered_qty}, "
+                    f"this DO {line_in.qty}"
+                ),
+            )
 
-    do_no = await doc_numbers_svc.allocate_doc_no(db, location_id=so.location_id, doc_type="DO")
+    do_no = await doc_numbers_svc.allocate_doc_no(db, location_id=inv.location_id, doc_type="DO")
     do = DeliveryOrder(
         do_no=do_no,
-        so_id=so.id,
-        customer_id=so.customer_id,
-        location_id=so.location_id,
+        invoice_id=inv.id,
+        so_id=inv.so_id,
+        customer_id=inv.customer_id,
+        location_id=inv.location_id,
         delivery_date=delivery_date,
         notes=notes,
         created_by=user.id,
     )
     db.add(do)
-    for line in line_inputs:
+    for line_in in line_inputs:
         db.add(
             DeliveryOrderLine(
-                do=do, so_line_id=line.so_line_id, item_id=line.item_id, qty=line.qty
+                do=do,
+                invoice_line_id=line_in.invoice_line_id,
+                item_id=inv_lines[line_in.invoice_line_id].item_id,
+                qty=line_in.qty,
             )
         )
     await db.flush()
@@ -826,10 +871,13 @@ async def create_do_tx(
 
 @router.post("/delivery-orders", response_model=DeliveryOrderOut, status_code=status.HTTP_201_CREATED)
 async def create_delivery_order(body: DeliveryOrderCreate, _admin: AdminOnly, db: DB) -> dict:
-    so = await _get_so_or_404(db, body.so_id)
+    result = await db.execute(select(InventoryInvoice).where(InventoryInvoice.id == body.invoice_id))
+    inv = result.scalar_one_or_none()
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
     do = await create_do_tx(
         db,
-        so,
+        inv,
         delivery_date=body.delivery_date,
         notes=body.notes,
         line_inputs=list(body.lines),
@@ -848,7 +896,7 @@ async def create_delivery_order(body: DeliveryOrderCreate, _admin: AdminOnly, db
         table_name="delivery_orders",
         record_id=do_id,
         new_values={**body.model_dump(), "do_no": do_no},
-        description=f"Created delivery order {do_no} for {so.so_no}",
+        description=f"Created delivery order {do_no} for invoice {inv.invoice_no}",
     )
     return await _do_detail(db, do)
 
@@ -877,10 +925,20 @@ async def update_delivery_order(
     if "lines" in update_data and body.lines is not None:
         if not body.lines:
             raise HTTPException(status_code=422, detail="a delivery order needs at least one line")
+        inv_lines = await _invoice_lines_map(db, do.invoice_id)
+        claims = await _draft_do_claims(db, do.invoice_id, exclude_do_id=do.id)
+        seen: set[uuid.UUID] = set()
         for line_in in body.lines:
-            await _get_item_or_422(db, line_in.item_id)
-        so = await _get_so_or_404(db, do.so_id)
-        await _validate_do_lines_against_so(db, so, body.lines)
+            if line_in.invoice_line_id in seen:
+                raise HTTPException(status_code=422, detail="duplicate invoice_line_id in delivery lines")
+            seen.add(line_in.invoice_line_id)
+            inv_line = inv_lines.get(line_in.invoice_line_id)
+            if inv_line is None:
+                raise HTTPException(status_code=422, detail="invoice_line_id not on this invoice")
+            if line_in.qty > _deliverable_qty(inv_line, claims.get(inv_line.id, 0)):
+                raise HTTPException(
+                    status_code=422, detail=f"over-delivery for {inv_line.sku_code}"
+                )
         existing = await _do_lines(db, do_id)
         old_values["lines"] = [{"item_id": l.item_id, "qty": l.qty} for l in existing]
         for line in existing:
@@ -890,8 +948,8 @@ async def update_delivery_order(
             db.add(
                 DeliveryOrderLine(
                     do=do,
-                    so_line_id=line_in.so_line_id,
-                    item_id=line_in.item_id,
+                    invoice_line_id=line_in.invoice_line_id,
+                    item_id=inv_lines[line_in.invoice_line_id].item_id,
                     qty=line_in.qty,
                 )
             )
@@ -931,44 +989,28 @@ async def delete_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
 
 
 async def confirm_do_tx(db: DB, do: DeliveryOrder, user) -> None:
-    """Validate + ship every DO line and mark the DO confirmed. Caller commits.
+    """Mark the DO confirmed and bump invoice-line delivered_qty.
 
-    Locks the parent SO row before checking per-line remaining quantities.
+    Deliberately writes NO stock movements or reservation changes — stock
+    already left at invoice issue; the DO only records physical delivery.
+    Invoice lines are locked before re-validating quantities.
     """
-    so = await _lock_or_404(db, SalesOrder, do.so_id, "Sales order")
-    so_lines = {line.id: line for line in await _so_lines(db, so.id)}
+    inv_lines = await _invoice_lines_map(db, do.invoice_id)
     for line in await _do_lines(db, do.id):
-        so_line = so_lines.get(line.so_line_id)
-        if so_line is None:
-            raise HTTPException(status_code=422, detail="delivery line references a removed SO line")
-        if line.qty > so_line.qty - so_line.shipped_qty:
+        inv_line = inv_lines.get(line.invoice_line_id)
+        if inv_line is None:
+            raise HTTPException(status_code=422, detail="delivery line references a removed invoice line")
+        if line.qty > inv_line.qty - inv_line.credited_qty - inv_line.delivered_qty:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"over-shipment for {so_line.sku_code}: ordered {so_line.qty}, "
-                    f"shipped {so_line.shipped_qty}, this DO {line.qty}"
+                    f"over-delivery for {inv_line.sku_code}: invoiced {inv_line.qty}, "
+                    f"credited {inv_line.credited_qty}, delivered {inv_line.delivered_qty}, "
+                    f"this DO {line.qty}"
                 ),
             )
-
     for line in await _do_lines(db, do.id):
-        so_line = so_lines[line.so_line_id]
-        await _get_item_or_422(db, line.item_id)
-        await inventory_svc.release(
-            db, item_id=line.item_id, location_id=do.location_id, quantity=line.qty
-        )
-        await inventory_svc.apply_movement(
-            db,
-            item_id=line.item_id,
-            location_id=do.location_id,
-            type="out",
-            quantity=line.qty,
-            reason=f"DO {do.do_no}",
-            reason_code="sale",
-            reference=f"DO:{do.id}:{line.id}",
-            user=user,
-        )
-        so_line.shipped_qty += line.qty
-    await _recompute_so_status(db, so)
+        inv_lines[line.invoice_line_id].delivered_qty += line.qty
     do.status = "confirmed"
     await db.flush()
 
@@ -1006,39 +1048,11 @@ async def void_delivery_order(do_id: uuid.UUID, _admin: AdminOnly, db: DB) -> di
     if do.status != "confirmed":
         raise HTTPException(status_code=409, detail=f"delivery order is {do.status}; cannot void")
 
-    invoiced = await db.execute(
-        select(InventoryInvoice.id).where(
-            InventoryInvoice.do_id == do_id, InventoryInvoice.status != "void"
-        ).limit(1)
-    )
-    if invoiced.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail="delivery order has a non-void invoice; void or delete the invoice first",
-        )
-
-    so = await _lock_or_404(db, SalesOrder, do.so_id, "Sales order")
-    so_lines = {line.id: line for line in await _so_lines(db, so.id)}
+    inv_lines = await _invoice_lines_map(db, do.invoice_id)
     for line in await _do_lines(db, do_id):
-        so_line = so_lines.get(line.so_line_id)
-        await inventory_svc.apply_movement(
-            db,
-            item_id=line.item_id,
-            location_id=do.location_id,
-            type="in",
-            quantity=line.qty,
-            reason=f"void DO {do.do_no}",
-            reason_code="other",
-            reference=f"DO-VOID:{do.id}:{line.id}",
-            user=_admin,
-        )
-        if so_line:
-            so_line.shipped_qty = max(0, so_line.shipped_qty - line.qty)
-        if so.status != "cancelled":
-            await inventory_svc.reserve(
-                db, item_id=line.item_id, location_id=do.location_id, quantity=line.qty
-            )
-    await _recompute_so_status(db, so)
+        inv_line = inv_lines.get(line.invoice_line_id)
+        if inv_line is not None:
+            inv_line.delivered_qty = max(0, inv_line.delivered_qty - line.qty)
 
     do.status = "void"
     await db.commit()

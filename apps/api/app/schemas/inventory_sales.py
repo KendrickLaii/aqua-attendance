@@ -67,7 +67,7 @@ class SalesOrderLineOut(BaseModel):
     sku_code: str
     name_zh: str
     qty: int
-    shipped_qty: int
+    invoiced_qty: int
     unit_price: float
     discount_amount: float
     amount: float
@@ -151,14 +151,13 @@ class ProformaDoc(BaseModel):
 
 
 class DeliveryOrderLineIn(BaseModel):
-    so_line_id: uuid.UUID
-    item_id: uuid.UUID
+    invoice_line_id: uuid.UUID
     qty: int = Field(gt=0)
 
 
 class DeliveryOrderLineOut(BaseModel):
     id: uuid.UUID
-    so_line_id: uuid.UUID
+    invoice_line_id: uuid.UUID
     item_id: uuid.UUID
     qty: int
     sku_code: str | None = None
@@ -168,7 +167,7 @@ class DeliveryOrderLineOut(BaseModel):
 
 
 class DeliveryOrderCreate(BaseModel):
-    so_id: uuid.UUID
+    invoice_id: uuid.UUID
     delivery_date: date
     notes: str | None = Field(default=None, max_length=500)
     lines: list[DeliveryOrderLineIn] = Field(default_factory=list)
@@ -183,6 +182,7 @@ class DeliveryOrderUpdate(BaseModel):
 class DeliveryOrderOut(BaseModel):
     id: uuid.UUID
     do_no: str
+    invoice_id: uuid.UUID
     so_id: uuid.UUID
     customer_id: uuid.UUID
     location_id: uuid.UUID
@@ -194,6 +194,7 @@ class DeliveryOrderOut(BaseModel):
     updated_at: datetime
     lines: list[DeliveryOrderLineOut] = Field(default_factory=list)
 
+    invoice_no: str | None = None
     so_no_ref: str | None = None
     customer_name: str | None = None
     location_name: str | None = None

@@ -92,7 +92,7 @@ class SalesOrderLine(Base):
     sku_code: Mapped[str] = mapped_column(String(100), nullable=False)
     name_zh: Mapped[str] = mapped_column(String(255), nullable=False)
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
-    shipped_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    invoiced_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0, server_default="0")
@@ -106,6 +106,9 @@ class DeliveryOrder(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     do_no: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_invoices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     so_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sales_orders.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -130,6 +133,7 @@ class DeliveryOrder(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    invoice = relationship("InventoryInvoice")
     so = relationship("SalesOrder")
     customer = relationship("Customer")
     location = relationship("Location")
@@ -143,8 +147,8 @@ class DeliveryOrderLine(Base):
     do_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("delivery_orders.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    so_line_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sales_order_lines.id", ondelete="RESTRICT"), nullable=False, index=True
+    invoice_line_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_invoice_lines.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     item_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("inventory_items.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -152,5 +156,5 @@ class DeliveryOrderLine(Base):
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
 
     do = relationship("DeliveryOrder", back_populates="lines")
-    so_line = relationship("SalesOrderLine")
+    invoice_line = relationship("InventoryInvoiceLine")
     item = relationship("InventoryItem")
