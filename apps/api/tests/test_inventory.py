@@ -94,6 +94,35 @@ async def test_item_crud_and_search(client: AsyncClient, admin_token: str):
     assert missing.status_code == 404
 
 
+async def test_item_image_url(client: AsyncClient, admin_token: str):
+    item = await _create_item(client, admin_token)
+    assert item["image_url"] is None
+
+    item = await _create_item(
+        client, admin_token, image_url="/api/uploads/abc123.jpg"
+    )
+    assert item["image_url"] == "/api/uploads/abc123.jpg"
+
+    patched = await client.patch(
+        f"/api/inventory/items/{item['id']}",
+        json={"image_url": "/api/uploads/def456.png"},
+        headers=_h(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["image_url"] == "/api/uploads/def456.png"
+
+    cleared = await client.patch(
+        f"/api/inventory/items/{item['id']}",
+        json={"image_url": None},
+        headers=_h(admin_token),
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["image_url"] is None
+
+    fetched = await client.get(f"/api/inventory/items/{item['id']}", headers=_h(admin_token))
+    assert fetched.json()["image_url"] is None
+
+
 async def test_item_duplicate_sku_rejected(client: AsyncClient, admin_token: str):
     item = await _create_item(client, admin_token)
     dup = await client.post(

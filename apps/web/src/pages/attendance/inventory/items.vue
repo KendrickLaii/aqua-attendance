@@ -9,6 +9,7 @@ import {
 } from '@/api/attendance/inventory'
 import InventoryCategoryDialog from '@/components/attendance/inventory/InventoryCategoryDialog.vue'
 import InventoryItemDialog from '@/components/attendance/inventory/InventoryItemDialog.vue'
+import InventoryItemImage from '@/components/attendance/inventory/InventoryItemImage.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
@@ -333,6 +334,7 @@ function money(value: number | null): string {
           <VTable>
             <thead>
               <tr>
+                <th />
                 <th>SKU</th>
                 <th>Item</th>
                 <th>Category</th>
@@ -357,6 +359,9 @@ function money(value: number | null): string {
                 v-for="item in filteredItems"
                 :key="item.id"
               >
+                <td>
+                  <InventoryItemImage :url="item.image_url" />
+                </td>
                 <td>{{ item.sku_code }}</td>
                 <td>{{ [item.name_zh, item.name_en].filter(Boolean).join(' · ') }}</td>
                 <td>{{ categoryLabel(item.category_id) }}</td>
@@ -391,7 +396,7 @@ function money(value: number | null): string {
               </tr>
               <tr v-if="filteredItems.length === 0">
                 <td
-                  colspan="9"
+                  colspan="10"
                   class="text-center text-medium-emphasis py-8"
                 >
                   No items match. Use “Add Item” to create one.

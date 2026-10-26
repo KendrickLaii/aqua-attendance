@@ -28,6 +28,7 @@ export interface InventoryItem {
   reorder_level: number
   avg_cost: number
   is_active: boolean
+  image_url: string | null
   created_at: string
   updated_at: string
 }
@@ -42,6 +43,7 @@ export interface InventoryItemPayload {
   sale_price?: number | null
   reorder_level?: number
   is_active?: boolean
+  image_url?: string | null
 }
 
 export interface InventoryStock {

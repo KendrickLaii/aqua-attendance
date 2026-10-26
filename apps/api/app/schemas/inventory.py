@@ -50,6 +50,7 @@ class InventoryItemCreate(BaseModel):
     sale_price: float | None = Field(default=None, ge=0)
     reorder_level: int = Field(default=0, ge=0)
     is_active: bool = True
+    image_url: str | None = Field(default=None, max_length=500)
 
 
 class InventoryItemUpdate(BaseModel):
@@ -62,6 +63,7 @@ class InventoryItemUpdate(BaseModel):
     sale_price: float | None = Field(default=None, ge=0)
     reorder_level: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
+    image_url: str | None = Field(default=None, max_length=500)
 
 
 class InventoryItemOut(BaseModel):
@@ -76,6 +78,7 @@ class InventoryItemOut(BaseModel):
     reorder_level: int
     avg_cost: float
     is_active: bool
+    image_url: str | None = None
     created_at: datetime
     updated_at: datetime
 

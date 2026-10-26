@@ -43,6 +43,7 @@ class InventoryItem(Base):
     sale_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     reorder_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     avg_cost: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(

@@ -5,6 +5,7 @@ import {
   createInventoryItem,
   updateInventoryItem,
 } from '@/api/attendance/inventory'
+import LocationPhotoSlot from '@/components/attendance/locations/LocationPhotoSlot.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 const props = defineProps<{
@@ -31,7 +32,10 @@ const form = reactive({
   sale_price: null as number | null,
   reorder_level: 0,
   is_active: true,
+  image_url: '',
 })
+
+const imagePreviewError = ref(false)
 
 const canSave = computed(() => !!(form.sku_code.trim() && form.name_zh.trim()))
 
@@ -47,7 +51,9 @@ function resetForm(item: InventoryItem | null) {
       sale_price: item.sale_price,
       reorder_level: item.reorder_level,
       is_active: item.is_active,
+      image_url: item.image_url ?? '',
     })
+    imagePreviewError.value = false
 
     return
   }
@@ -61,7 +67,9 @@ function resetForm(item: InventoryItem | null) {
     sale_price: null,
     reorder_level: 0,
     is_active: true,
+    image_url: '',
   })
+  imagePreviewError.value = false
 }
 
 watch(() => props.modelValue, open => {
@@ -87,6 +95,7 @@ async function save() {
     sale_price: form.sale_price,
     reorder_level: form.reorder_level ?? 0,
     is_active: form.is_active,
+    image_url: form.image_url.trim() || null,
   }
 
   try {
@@ -228,6 +237,15 @@ async function save() {
               hint="Optional."
               persistent-hint
               density="comfortable"
+            />
+          </VCol>
+          <VCol cols="12">
+            <LocationPhotoSlot
+              v-model:url="form.image_url"
+              v-model:preview-error="imagePreviewError"
+              title="Product image"
+              hint="Optional. One photo per item."
+              :preview-max-height="140"
             />
           </VCol>
           <VCol cols="12">
