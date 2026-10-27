@@ -95,6 +95,7 @@ class Settings(BaseSettings):
     MAX_DETAIL_PHOTOS: int = 10
 
     # Inventory alerts / reporting
+    INVENTORY_ENABLED: bool = False
     INVENTORY_ALERTS_ENABLED: bool = True
     INVENTORY_INVOICE_OVERDUE_DAYS: int = 30
     INVENTORY_ALERT_INTERVAL_HOURS: int = 24

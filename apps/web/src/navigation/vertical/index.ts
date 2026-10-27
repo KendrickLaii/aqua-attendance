@@ -33,6 +33,43 @@ function collectRouteNames(
   }
 }
 
+export interface NavFeatureFlags {
+  inventory: boolean
+}
+
+function navTargetStartsWith(to: unknown, prefix: string): boolean {
+  if (typeof to === 'string')
+    return to.startsWith(prefix)
+
+  if (to && typeof to === 'object') {
+    const named = to as { name?: string; path?: string }
+    if (typeof named.name === 'string' && named.name.startsWith(prefix))
+      return true
+    if (typeof named.path === 'string' && named.path.startsWith(prefix))
+      return true
+  }
+
+  return false
+}
+
+function itemOrDescendantStartsWith(item: { to?: unknown; children?: unknown[] }, prefix: string): boolean {
+  if (navTargetStartsWith(item.to, prefix))
+    return true
+
+  if (Array.isArray(item.children))
+    return item.children.some(child => itemOrDescendantStartsWith(child as typeof item, prefix))
+
+  return false
+}
+
+/** drop top-level nav groups gated behind a disabled runtime feature flag */
+export function filterNavByFeatures(items: VerticalNavItems, flags: NavFeatureFlags): VerticalNavItems {
+  if (flags.inventory)
+    return items
+
+  return items.filter(item => !itemOrDescendantStartsWith(item as { to?: unknown; children?: unknown[] }, 'attendance-inventory'))
+}
+
 /** return the set of route names that are allowed in the prod navigation, pages not in the set should be redirected to 404 */
 export function getAllowedRouteNames(): Set<string> {
   const set = new Set<string>()

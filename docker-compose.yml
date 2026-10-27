@@ -46,6 +46,7 @@ services:
       QR_SECRET: ${QR_SECRET:-change-me-qr-secret}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8081}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      INVENTORY_ENABLED: ${INVENTORY_ENABLED:-true}
       UPLOAD_DIR: /data/uploads
     volumes:
       - uploads:/data/uploads

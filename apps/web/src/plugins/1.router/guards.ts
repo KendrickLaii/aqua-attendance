@@ -1,6 +1,7 @@
 import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
 import { getAllowedRouteNames } from '@/navigation/vertical'
 import { canNavigate } from '@layouts/plugins/casl'
+import { loadFeatureFlags, useFeatureFlags } from '@/composables/useFeatureFlags'
 import { getAttendanceRole, isAttendanceLoggedIn } from '@/utils/attendanceSession'
 
 const ATTENDANCE_PUBLIC_ROUTE_NAMES = new Set(['attendance-login', 'attendance'])
@@ -26,8 +27,9 @@ function resolveAttendanceRedirectTarget(to: { query: Record<string, unknown>; f
 
 export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]: any }>) => {
   const allowedRouteNames = getAllowedRouteNames()
+  const { featureFlags } = useFeatureFlags()
 
-  router.beforeEach(to => {
+  router.beforeEach(async to => {
     if (to.meta.public)
       return
 
@@ -52,6 +54,12 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
         const role = getAttendanceRole()
         if (role !== 'admin' && role !== 'superadmin')
           return { name: 'not-authorized' }
+      }
+
+      if (loggedIn && to.path.startsWith('/attendance/inventory')) {
+        await loadFeatureFlags()
+        if (!featureFlags.value.inventory)
+          return { name: 'attendance-dashboard' }
       }
 
       return

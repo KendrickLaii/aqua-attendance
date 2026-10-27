@@ -40,6 +40,7 @@ services:
       LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5/minute}
       SCAN_RATE_LIMIT: ${SCAN_RATE_LIMIT:-30/minute}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}
       UPLOAD_DIR: /data/uploads
       PYTHONPATH: /app
     volumes:

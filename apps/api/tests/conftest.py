@@ -53,6 +53,19 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 fastapi_app.dependency_overrides[get_db] = override_get_db
 
 
+@pytest.fixture(autouse=True)
+def enable_inventory():
+    """Inventory module is feature-flagged off by default; tests exercise it."""
+    from app.config import settings
+
+    prev = settings.INVENTORY_ENABLED
+    settings.INVENTORY_ENABLED = True
+    try:
+        yield
+    finally:
+        settings.INVENTORY_ENABLED = prev
+
+
 @pytest_asyncio.fixture
 async def client():
     transport = ASGITransport(app=fastapi_app)

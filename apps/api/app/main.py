@@ -46,6 +46,12 @@ from app.routers import (
 logger = logging.getLogger(__name__)
 
 
+async def require_inventory_enabled() -> None:
+    """404-gate for inventory routes; read at request time so tests can monkeypatch."""
+    if not settings.INVENTORY_ENABLED:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+
 async def _attachment_purge_loop() -> None:
     from app.services.attachments import purge_expired_attachments
 
@@ -75,7 +81,7 @@ async def _inventory_alerts_loop() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     tasks = [asyncio.create_task(_attachment_purge_loop())]
-    if settings.INVENTORY_ALERTS_ENABLED:
+    if settings.INVENTORY_ENABLED and settings.INVENTORY_ALERTS_ENABLED:
         tasks.append(asyncio.create_task(_inventory_alerts_loop()))
     try:
         yield
@@ -127,11 +133,11 @@ app.include_router(auto_checkout.router, prefix="/api")
 app.include_router(course_spus.router, prefix="/api")
 app.include_router(course_skus.router, prefix="/api")
 app.include_router(course_enrollments.router, prefix="/api")
-app.include_router(inventory.router, prefix="/api")
-app.include_router(inventory_purchasing.router, prefix="/api")
-app.include_router(inventory_sales.router, prefix="/api")
-app.include_router(inventory_invoicing.router, prefix="/api")
-app.include_router(inventory_reports.router, prefix="/api")
+app.include_router(inventory.router, prefix="/api", dependencies=[Depends(require_inventory_enabled)])
+app.include_router(inventory_purchasing.router, prefix="/api", dependencies=[Depends(require_inventory_enabled)])
+app.include_router(inventory_sales.router, prefix="/api", dependencies=[Depends(require_inventory_enabled)])
+app.include_router(inventory_invoicing.router, prefix="/api", dependencies=[Depends(require_inventory_enabled)])
+app.include_router(inventory_reports.router, prefix="/api", dependencies=[Depends(require_inventory_enabled)])
 app.include_router(tuition_invoices.router, prefix="/api")
 app.include_router(tuition_receipts.router, prefix="/api")  # receipts settle issued invoices
 app.include_router(shifts.templates_router, prefix="/api")
@@ -152,3 +158,9 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
             detail=f"Database unavailable: {exc}",
         ) from exc
     return {"status": "ok", "database": "ok", "version": settings.APP_VERSION}
+
+
+@app.get("/api/features")
+async def features() -> dict:
+    """Runtime feature flags for the web app (public, no auth)."""
+    return {"inventory": settings.INVENTORY_ENABLED}

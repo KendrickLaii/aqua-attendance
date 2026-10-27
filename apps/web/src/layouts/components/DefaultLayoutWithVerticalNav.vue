@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import navItems from '@/navigation/vertical'
+import rawNavItems, { filterNavByFeatures } from '@/navigation/vertical'
+import { loadFeatureFlags, useFeatureFlags } from '@/composables/useFeatureFlags'
 import { themeConfig } from '@themeConfig'
 
 // Components
@@ -13,6 +14,12 @@ import NavBarI18n from '@core/components/I18n.vue'
 
 // @layouts plugin
 import { VerticalNavLayout } from '@layouts'
+
+const { featureFlags } = useFeatureFlags()
+
+loadFeatureFlags()
+
+const navItems = computed(() => filterNavByFeatures(rawNavItems, featureFlags.value))
 </script>
 
 <template>
