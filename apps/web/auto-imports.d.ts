@@ -207,6 +207,7 @@ declare global {
   const ignorableWatch: typeof import('@vueuse/core')['ignorableWatch']
   const inject: typeof import('vue')['inject']
   const injectLocal: typeof import('@vueuse/core')['injectLocal']
+  const inlineLogoForPrint: typeof import('./src/utils/printWindow')['inlineLogoForPrint']
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
   const internalEmailValidator: typeof import('./src/@core/utils/validators')['internalEmailValidator']
   const invoiceClassNames: typeof import('./src/utils/invoiceDisplay')['invoiceClassNames']
@@ -249,6 +250,7 @@ declare global {
   const lastDayOfMonth: typeof import('./src/utils/courseRosterDisplay')['lastDayOfMonth']
   const leaveClassUnbilledNote: typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
+  const loadFeatureFlags: typeof import('./src/composables/useFeatureFlags')['loadFeatureFlags']
   const loadHoursSchedule: typeof import('./src/utils/locationHours')['loadHoursSchedule']
   const locationTitle: typeof import('./src/utils/invoiceDisplay')['locationTitle']
   const logicAnd: typeof import('@vueuse/math')['logicAnd']
@@ -320,6 +322,7 @@ declare global {
   const pickCourseSelectionForSku: typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']
   const prefixWithPlus: typeof import('./src/@core/utils/formatters')['prefixWithPlus']
   const printAttendanceSummaries: typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']
+  const printFromWindow: typeof import('./src/utils/printWindow')['printFromWindow']
   const printPayrollSlip: typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']
   const printShiftWeek: typeof import('./src/utils/printShiftWeek')['printShiftWeek']
   const printTuitionInvoice: typeof import('./src/utils/printTuitionInvoice')['printTuitionInvoice']
@@ -335,6 +338,7 @@ declare global {
   const reactiveComputed: typeof import('@vueuse/core')['reactiveComputed']
   const reactiveOmit: typeof import('@vueuse/core')['reactiveOmit']
   const reactivePick: typeof import('@vueuse/core')['reactivePick']
+  const readAsDataUrl: typeof import('./src/utils/printWindow')['readAsDataUrl']
   const readableTextColor: typeof import('./src/utils/shiftDisplay')['readableTextColor']
   const readonly: typeof import('vue')['readonly']
   const ref: typeof import('vue')['ref']
@@ -491,6 +495,7 @@ declare global {
   const useEventSource: typeof import('@vueuse/core')['useEventSource']
   const useEyeDropper: typeof import('@vueuse/core')['useEyeDropper']
   const useFavicon: typeof import('@vueuse/core')['useFavicon']
+  const useFeatureFlags: typeof import('./src/composables/useFeatureFlags')['useFeatureFlags']
   const useFetch: typeof import('@vueuse/core')['useFetch']
   const useFileDialog: typeof import('@vueuse/core')['useFileDialog']
   const useFileSystemAccess: typeof import('@vueuse/core')['useFileSystemAccess']
@@ -619,6 +624,7 @@ declare global {
   const useWorkingSection: typeof import('./src/composables/useWorkingSection')['useWorkingSection']
   const useYearMonth: typeof import('./src/composables/useYearMonth')['useYearMonth']
   const usernameAttendanceValidator: typeof import('./src/@core/utils/validators')['usernameAttendanceValidator']
+  const waitForImages: typeof import('./src/utils/printWindow')['waitForImages']
   const watch: typeof import('vue')['watch']
   const watchArray: typeof import('@vueuse/core')['watchArray']
   const watchAtMost: typeof import('@vueuse/core')['watchAtMost']
@@ -850,6 +856,7 @@ declare module 'vue' {
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
+    readonly inlineLogoForPrint: UnwrapRef<typeof import('./src/utils/printWindow')['inlineLogoForPrint']>
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
     readonly internalEmailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['internalEmailValidator']>
     readonly invoiceClassNames: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceClassNames']>
@@ -892,6 +899,7 @@ declare module 'vue' {
     readonly lastDayOfMonth: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['lastDayOfMonth']>
     readonly leaveClassUnbilledNote: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
+    readonly loadFeatureFlags: UnwrapRef<typeof import('./src/composables/useFeatureFlags')['loadFeatureFlags']>
     readonly loadHoursSchedule: UnwrapRef<typeof import('./src/utils/locationHours')['loadHoursSchedule']>
     readonly locationTitle: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['locationTitle']>
     readonly logicAnd: UnwrapRef<typeof import('@vueuse/math')['logicAnd']>
@@ -963,6 +971,7 @@ declare module 'vue' {
     readonly pickCourseSelectionForSku: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['pickCourseSelectionForSku']>
     readonly prefixWithPlus: UnwrapRef<typeof import('./src/@core/utils/formatters')['prefixWithPlus']>
     readonly printAttendanceSummaries: UnwrapRef<typeof import('./src/utils/printAttendanceSummaries')['printAttendanceSummaries']>
+    readonly printFromWindow: UnwrapRef<typeof import('./src/utils/printWindow')['printFromWindow']>
     readonly printPayrollSlip: UnwrapRef<typeof import('./src/utils/printPayrollSlip')['printPayrollSlip']>
     readonly printShiftWeek: UnwrapRef<typeof import('./src/utils/printShiftWeek')['printShiftWeek']>
     readonly printTuitionInvoice: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['printTuitionInvoice']>
@@ -978,6 +987,7 @@ declare module 'vue' {
     readonly reactiveComputed: UnwrapRef<typeof import('@vueuse/core')['reactiveComputed']>
     readonly reactiveOmit: UnwrapRef<typeof import('@vueuse/core')['reactiveOmit']>
     readonly reactivePick: UnwrapRef<typeof import('@vueuse/core')['reactivePick']>
+    readonly readAsDataUrl: UnwrapRef<typeof import('./src/utils/printWindow')['readAsDataUrl']>
     readonly readableTextColor: UnwrapRef<typeof import('./src/utils/shiftDisplay')['readableTextColor']>
     readonly readonly: UnwrapRef<typeof import('vue')['readonly']>
     readonly ref: UnwrapRef<typeof import('vue')['ref']>
@@ -1134,6 +1144,7 @@ declare module 'vue' {
     readonly useEventSource: UnwrapRef<typeof import('@vueuse/core')['useEventSource']>
     readonly useEyeDropper: UnwrapRef<typeof import('@vueuse/core')['useEyeDropper']>
     readonly useFavicon: UnwrapRef<typeof import('@vueuse/core')['useFavicon']>
+    readonly useFeatureFlags: UnwrapRef<typeof import('./src/composables/useFeatureFlags')['useFeatureFlags']>
     readonly useFetch: UnwrapRef<typeof import('@vueuse/core')['useFetch']>
     readonly useFileDialog: UnwrapRef<typeof import('@vueuse/core')['useFileDialog']>
     readonly useFileSystemAccess: UnwrapRef<typeof import('@vueuse/core')['useFileSystemAccess']>
@@ -1262,6 +1273,7 @@ declare module 'vue' {
     readonly useWorkingSection: UnwrapRef<typeof import('./src/composables/useWorkingSection')['useWorkingSection']>
     readonly useYearMonth: UnwrapRef<typeof import('./src/composables/useYearMonth')['useYearMonth']>
     readonly usernameAttendanceValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['usernameAttendanceValidator']>
+    readonly waitForImages: UnwrapRef<typeof import('./src/utils/printWindow')['waitForImages']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>
     readonly watchAtMost: UnwrapRef<typeof import('@vueuse/core')['watchAtMost']>

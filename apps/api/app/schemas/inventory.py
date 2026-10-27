@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 MovementType = Literal["in", "out", "adjust"]
 MovementTypeOut = Literal["in", "out", "adjust", "transfer_in", "transfer_out"]
@@ -40,6 +40,12 @@ class InventoryCategoryOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _clean_sub_image_urls(value: list | None) -> list | None:
+    if value is None:
+        return None
+    return [url for url in (entry.strip() if isinstance(entry, str) else entry for entry in value) if url]
+
+
 class InventoryItemCreate(BaseModel):
     sku_code: str = Field(min_length=1, max_length=100)
     name_zh: str = Field(min_length=1, max_length=255)
@@ -51,6 +57,17 @@ class InventoryItemCreate(BaseModel):
     reorder_level: int = Field(default=0, ge=0)
     is_active: bool = True
     image_url: str | None = Field(default=None, max_length=500)
+    sub_image_urls: list[str] | None = Field(default=None, max_length=2)
+
+    @field_validator("sub_image_urls", mode="before")
+    @classmethod
+    def _strip_sub_image_urls(cls, value: list | None) -> list | None:
+        cleaned = _clean_sub_image_urls(value)
+        if cleaned is not None:
+            for url in cleaned:
+                if not isinstance(url, str) or not (1 <= len(url) <= 500):
+                    raise ValueError("Each sub image URL must be 1-500 characters")
+        return cleaned
 
 
 class InventoryItemUpdate(BaseModel):
@@ -64,6 +81,17 @@ class InventoryItemUpdate(BaseModel):
     reorder_level: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
     image_url: str | None = Field(default=None, max_length=500)
+    sub_image_urls: list[str] | None = Field(default=None, max_length=2)
+
+    @field_validator("sub_image_urls", mode="before")
+    @classmethod
+    def _strip_sub_image_urls(cls, value: list | None) -> list | None:
+        cleaned = _clean_sub_image_urls(value)
+        if cleaned is not None:
+            for url in cleaned:
+                if not isinstance(url, str) or not (1 <= len(url) <= 500):
+                    raise ValueError("Each sub image URL must be 1-500 characters")
+        return cleaned
 
 
 class InventoryItemOut(BaseModel):
@@ -79,8 +107,14 @@ class InventoryItemOut(BaseModel):
     avg_cost: float
     is_active: bool
     image_url: str | None = None
+    sub_image_urls: list[str] = []
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("sub_image_urls", mode="before")
+    @classmethod
+    def _none_sub_image_urls(cls, value: list | None) -> list:
+        return value or []
 
     model_config = {"from_attributes": True}
 

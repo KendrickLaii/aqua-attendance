@@ -123,6 +123,51 @@ async def test_item_image_url(client: AsyncClient, admin_token: str):
     assert fetched.json()["image_url"] is None
 
 
+async def test_item_sub_image_urls(client: AsyncClient, admin_token: str):
+    item = await _create_item(client, admin_token)
+    assert item["sub_image_urls"] == []
+
+    item = await _create_item(
+        client,
+        admin_token,
+        sub_image_urls=["/api/uploads/sub1.jpg", "/api/uploads/sub2.jpg"],
+    )
+    assert item["sub_image_urls"] == ["/api/uploads/sub1.jpg", "/api/uploads/sub2.jpg"]
+
+    too_many = await client.post(
+        "/api/inventory/items",
+        json={
+            "sku_code": f"ITM-{uuid.uuid4().hex[:6]}",
+            "name_zh": "課本",
+            "sub_image_urls": ["/a.jpg", "/b.jpg", "/c.jpg"],
+        },
+        headers=_h(admin_token),
+    )
+    assert too_many.status_code == 422
+
+    kept = await client.patch(
+        f"/api/inventory/items/{item['id']}",
+        json={"name_en": "Book"},
+        headers=_h(admin_token),
+    )
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["sub_image_urls"] == ["/api/uploads/sub1.jpg", "/api/uploads/sub2.jpg"]
+
+    cleared = await client.patch(
+        f"/api/inventory/items/{item['id']}",
+        json={"sub_image_urls": []},
+        headers=_h(admin_token),
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["sub_image_urls"] == []
+
+    listed = await client.get("/api/inventory/items", headers=_h(admin_token))
+    assert listed.status_code == 200
+    by_id = {row["id"]: row for row in listed.json()}
+    assert by_id[item["id"]]["sub_image_urls"] == []
+    assert all("sub_image_urls" in row for row in listed.json())
+
+
 async def test_item_duplicate_sku_rejected(client: AsyncClient, admin_token: str):
     item = await _create_item(client, admin_token)
     dup = await client.post(

@@ -33,9 +33,13 @@ const form = reactive({
   reorder_level: 0,
   is_active: true,
   image_url: '',
+  sub_image_url_1: '',
+  sub_image_url_2: '',
 })
 
 const imagePreviewError = ref(false)
+const subImage1PreviewError = ref(false)
+const subImage2PreviewError = ref(false)
 
 const canSave = computed(() => !!(form.sku_code.trim() && form.name_zh.trim()))
 
@@ -52,8 +56,12 @@ function resetForm(item: InventoryItem | null) {
       reorder_level: item.reorder_level,
       is_active: item.is_active,
       image_url: item.image_url ?? '',
+      sub_image_url_1: item.sub_image_urls[0] ?? '',
+      sub_image_url_2: item.sub_image_urls[1] ?? '',
     })
     imagePreviewError.value = false
+    subImage1PreviewError.value = false
+    subImage2PreviewError.value = false
 
     return
   }
@@ -68,8 +76,12 @@ function resetForm(item: InventoryItem | null) {
     reorder_level: 0,
     is_active: true,
     image_url: '',
+    sub_image_url_1: '',
+    sub_image_url_2: '',
   })
   imagePreviewError.value = false
+  subImage1PreviewError.value = false
+  subImage2PreviewError.value = false
 }
 
 watch(() => props.modelValue, open => {
@@ -96,6 +108,7 @@ async function save() {
     reorder_level: form.reorder_level ?? 0,
     is_active: form.is_active,
     image_url: form.image_url.trim() || null,
+    sub_image_urls: [form.sub_image_url_1, form.sub_image_url_2].map(s => s.trim()).filter(Boolean),
   }
 
   try {
@@ -243,8 +256,32 @@ async function save() {
             <LocationPhotoSlot
               v-model:url="form.image_url"
               v-model:preview-error="imagePreviewError"
-              title="Product image"
-              hint="Optional. One photo per item."
+              title="Main image"
+              hint="Optional. Shown in lists."
+              :preview-max-height="140"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            md="6"
+          >
+            <LocationPhotoSlot
+              v-model:url="form.sub_image_url_1"
+              v-model:preview-error="subImage1PreviewError"
+              title="Sub image 1"
+              hint="Optional."
+              :preview-max-height="140"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            md="6"
+          >
+            <LocationPhotoSlot
+              v-model:url="form.sub_image_url_2"
+              v-model:preview-error="subImage2PreviewError"
+              title="Sub image 2"
+              hint="Optional."
               :preview-max-height="140"
             />
           </VCol>
