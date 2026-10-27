@@ -1,5 +1,6 @@
 import type { TuitionReceipt } from '@/api/attendance/tuitionReceipts'
 import type { TuitionInvoicePrintHeader, TuitionInvoicePrintLine } from '@/utils/printTuitionInvoice'
+import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/printWindow'
 
 const RECEIPT_LOGO_URL = ''
 
@@ -307,8 +308,24 @@ ${copies}
   printWindow.document.close()
 }
 
-export function printTuitionReceipt(printWindow: Window, data: TuitionReceiptPrintData) {
-  renderTuitionReceiptPrintWindow(printWindow, data)
-  printWindow.focus()
-  printWindow.print()
+export async function printTuitionReceipt(printWindow: Window, data: TuitionReceiptPrintData): Promise<void> {
+  const logoUrl = data.logoUrl || RECEIPT_LOGO_URL
+  const inlinedLogo = logoUrl ? await inlineLogoForPrint(logoUrl) : ''
+  if (printWindow.closed)
+    return
+
+  renderTuitionReceiptPrintWindow(printWindow, {
+    ...data,
+    logoUrl: inlinedLogo,
+  })
+  if (printWindow.closed)
+    return
+
+  // print() before the logo has decoded captures a blank image. Edge also
+  // ignores that early call, so the print dialog never opens.
+  await waitForImages(printWindow.document)
+  if (printWindow.closed)
+    return
+
+  await printFromWindow(printWindow)
 }

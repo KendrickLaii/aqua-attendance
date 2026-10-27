@@ -257,7 +257,7 @@ async function printReceipt(receipt: TuitionReceipt) {
   try {
     const printWindow = openTuitionReceiptPrintPlaceholder()
     const location = locations.value.find(item => item.id === receipt.location_id)
-    printTuitionReceipt(printWindow, tuitionReceiptPrintData(receipt, {
+    await printTuitionReceipt(printWindow, tuitionReceiptPrintData(receipt, {
       logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
       header: location ? headerFromLocation(location) : undefined,
     }))

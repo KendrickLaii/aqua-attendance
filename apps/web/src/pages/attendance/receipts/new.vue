@@ -320,7 +320,7 @@ async function submit() {
       description: description.value.trim() || null,
     })
     const location = locations.value.find(item => item.id === created.location_id)
-    printTuitionReceipt(printWindow, tuitionReceiptPrintData(created, {
+    await printTuitionReceipt(printWindow, tuitionReceiptPrintData(created, {
       logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
       header: location ? headerFromLocation(location) : undefined,
     }))
