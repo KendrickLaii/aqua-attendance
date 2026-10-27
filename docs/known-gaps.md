@@ -1,6 +1,6 @@
 # 已知缺口（Known Gaps）
 
-> 最後更新：2026-10-02（**#M22** 已做；Courses **Renew**／**Set end**；結束日過後自動 Leave。Migration `a4e8c1d9b6f2`）。2026-09-24（Credit Notes 獨立頁、退款單列印與支票抬頭、收條編號改手打、上傳圖公開讀取）。2026-09-22（未收款可 Edit 且保留報名連結；Paid 用 credit note；作廢單／作廢收條 Remove 後可重用編號；Courses 班次表顯示 In class 人數）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、堂數單一來源（drop `purchased_quantity`））。2026-09-15（手動發票落庫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
+> 最後更新：2026-10-27（**Inventory 模組上線**，推翻 ~~#F1~~：`INVENTORY_ENABLED` runtime flag 把關、預設關（計劃只測試機開）；Alembic head **048**）。2026-10-02（**#M22** 已做；Courses **Renew**／**Set end**；結束日過後自動 Leave。Migration `a4e8c1d9b6f2`）。2026-09-24（Credit Notes 獨立頁、退款單列印與支票抬頭、收條編號改手打、上傳圖公開讀取）。2026-09-22（未收款可 Edit 且保留報名連結；Paid 用 credit note；作廢單／作廢收條 Remove 後可重用編號；Courses 班次表顯示 In class 人數）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、堂數單一來源（drop `purchased_quantity`））。2026-09-15（手動發票落庫＋可結算堂費購買、每中心發票編號系列、`enrollment_purchases` 追蹤；發票列印已做）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，**#M23** 失效；ERP 確認不在本 repo 做，**#F1** 更新）。歷史：已審查：2026-07-28；2026-08-27 補學費發票／課程計價缺口；2026-08-28 堂費按上課日計堂；文首補 **#F1** ERP 路線 → [erp-roadmap.md](erp-roadmap.md)
 > 統合來源：`project-handbook.md` §5、`attendance-summaries.md`、`database-changes.md`
 > 本文件為**程式碼層級**已知問題的單一參考來源（SSOT）。文件本身的問題見 [docs-audit.md](docs-audit.md)。
 
@@ -32,14 +32,15 @@
 
 ---
 
-## 以後／ERP（不是現在的 bug，也不是本 repo 的工作）
+## 以後／ERP（2026-10-27 起 Inventory 已在本 repo，flag-gated）
 
 > **2026-08-28** — 學費月結已上線，當時規劃系統以後可能長成 ERP（庫存、採購、資產）。  
-> **2026-09-04 更新** — 拍板 ERP／庫存**不會在 `juku-attendance` 這個 repo 裡做**，以後有需要是獨立的全新專案（獨立部署、獨立資料庫）。家具等物料**不要**進 `course_skus`、學費 Generate，也**不要**進 `units`／`attendance_events`。[erp-roadmap.md](erp-roadmap.md) 保留作為未來新專案的參考草稿，不是本 repo 的路線圖。追蹤號 **#F1**。
+> ~~**2026-09-04 更新** — 拍板 ERP／庫存**不會在 `juku-attendance` 這個 repo 裡做**，以後有需要是獨立的全新專案（獨立部署、獨立資料庫）。~~  
+> **2026-10-27 推翻** — Inventory 模組已喺本 repo 落地（stock、purchasing、sales、invoicing、reports/alerts），runtime flag `INVENTORY_ENABLED` 把關（預設 `false`，計劃只測試機開）。隔離仍然成立：家具等物料**不要**進 `course_skus`、學費 Generate，也**不要**進 `units`／`attendance_events`；inventory 全部係新表、行 `/api/inventory/*`。[erp-roadmap.md](erp-roadmap.md) 保留作為設計參考草稿。追蹤號 ~~**#F1**~~（已結束）。
 
 | # | 項目 | 狀態 |
 |---|------|------|
-| **#F1** | ERP／庫存／家具主檔 | ⬜ 不在本 repo 做。未來若立新專案，見 [erp-roadmap.md](erp-roadmap.md) 參考草稿 |
+| ~~**#F1**~~ | ERP／庫存／家具主檔 | ✅ **2026-10-27 已做**：Inventory 模組喺本 repo，flag-gated；見 [PROJECT-HANDBOOK.md](PROJECT-HANDBOOK.md) §1.11；[erp-roadmap.md](erp-roadmap.md) 保留作參考草稿 |
 
 ---
 

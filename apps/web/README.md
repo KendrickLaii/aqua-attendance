@@ -66,8 +66,9 @@ npm run dev
 | `/attendance/invoices` | 學費發票（只顯示收費單；Generate → Issue / Mark paid / Void；Manual invoice；列印／重印） |
 | `/attendance/credit-notes` | Credit notes／退款單（`total < 0`；支票抬頭 CHEQUE PAYABLE TO / NAME） |
 | `/attendance/receipts` | 學費收條（開單、列印、Void／Remove；編號手打） |
+| `/attendance/inventory/*` | Inventory 模組（dashboard、items、stocks、stocktakes、movements、suppliers、PO／GRN／purchase returns、customers、SO／DO、invoices、receipts、credit notes、reports）。**Feature-flag gated**：runtime 讀 `GET /api/features`；`inventory=false` 時側欄成個群組唔顯示、行入呢啲路徑會導返 dashboard |
 
-導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。
+導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。Feature flag 過濾喺 `src/navigation/vertical/index.ts`（`filterNavByFeatures`）；flags 載入喺 `src/composables/useFeatureFlags.ts`。
 
 ## API 客戶端
 

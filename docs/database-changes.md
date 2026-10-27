@@ -28,6 +28,7 @@
 | 19 | 堂費購買記錄 | ✅ `enrollment_purchases`（7d340d0ce7de）— 每次購買/top-up 一列（堂數、單價、日期、billed 連結），取代 `purchased_quantity` 作為計費來源；manual invoice 可直接結算未出單購買 |
 | 21 | 學費收條 | ✅ `tuition_receipts` / `tuition_receipt_invoices`（a7f3c1e8d4b2）＋ `adjustments` JSON（c9d2e4f1a8b3）— 一張收條可結算多張 issued 發票；`(location_id, receipt_no)` 唯一；編號由開單人手打 |
 | 22 | Credit note 退款抬頭 | ✅ `tuition_invoices.payable_to_name` / `payee_name`（d4b8e2a1c7f0）— 列印退款單 CHEQUE PAYABLE TO / NAME；負數發票走獨立 Credit Notes 頁 |
+| 23 | Inventory 模組入本 repo | ✅ 推翻 2026-09-04「ERP 唔喺度做」決定（~~#F1~~，2026-10-27）— stock／purchasing／sales／invoicing／reports 全部新表（042–048），`INVENTORY_ENABLED` runtime flag 把關 — 見下方「§ Inventory」 |
 
 ## 完整 ER 圖 (Mermaid)
 
@@ -450,7 +451,7 @@ erDiagram
 | ~~同一學生同一 SKU 可跨學年再報~~ | 2026-10-02 已做：`uq_course_enrollment_unit_sku_active` 只鎖 `status = active` | ~~#M22~~ |
 | 發票發送給家長 | 無 WhatsApp／電郵／PDF 發送 API | **#M24** |
 | 把 Vuexy `/apps/invoice` 當真實帳單 | 不做（假資料） | **D5** |
-| ERP／家具庫存 | **不在本 repo 做**，以後是獨立新專案 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
+| ~~ERP／家具庫存不在本 repo 做~~ | 2026-10-27 推翻：已落地為 Inventory 模組（flag `INVENTORY_ENABLED`） | ~~#F1~~；見下方「§ Inventory」 |
 
 優先順序：發送（#M24）。
 
@@ -497,6 +498,24 @@ Migration `b7c1e9a4d2f6`（down `a4e8c1d9b6f2`）。申請同正式更分開，�
 | 2 | pending 唔寫入 `shifts` | 列印／複製上週只讀正式更 |
 | 3 | 員工申請後端擋重疊；admin 直接開更仍然只係 UI 提示 | 自助提交要嚴，管理員排更保持原行為 |
 | 4 | 批准先複製入 `shifts`，`created_by_id` = 批核人 | 正式更仍然由 admin 負責 |
+
+## Inventory（2026-10-27）
+
+推翻 2026-09-04「ERP／庫存唔喺本 repo 做」決定（~~#F1~~）。Inventory 模組喺本 repo 落地，runtime flag `INVENTORY_ENABLED`（預設 `false`）把關：關嗰陣全部 `/api/inventory/*` 回 404、alerts loop 唔起。Migration **042–048**（042 down_revision `g2a5b8c1d3e4`），全部係新表，**冇改任何現有表**。
+
+|| 模塊 | 表 |
+|| --- | --- |
+|| Stock core（042、043、048） | `inventory_categories`、`inventory_items`（048 加 `image_url` 單圖）、`inventory_stocks`、`inventory_movements`、`inventory_stocktakes`、`inventory_stocktake_lines` |
+|| Purchasing（044） | `suppliers`、`purchase_orders` / `_lines`、`goods_receipts` / `_lines`、`purchase_returns` / `_lines` |
+|| Sales（045、047） | `customers`、`sales_orders` / `_lines`、`delivery_orders` / `_lines`（047 補 delivered/invoiced qty 等 flow 欄位） |
+|| Invoicing（046） | `inventory_invoices` / `_lines`、`inventory_receipts`、`inventory_credit_notes` / `_lines`；發出 invoice 時扣庫存；DO 係 invoice 子單；SO → invoice → DO |
+|| 派號 | `inventory_counters`（獨立系列，唔同 `invoice_counters`／`credit_note_counters` 共用） |
+
+### 隔離規則
+
+- FK 只指去現有 `users`、`locations`、`units`（`customers.student_unit_id` → `units`，SET NULL）；**唔會**指返 `course_*`／`tuition_*`／`attendance_*`。
+- 家具／貨品**唔好**入 `course_skus`、學費 Generate、`attendance_events`（呢條原則由 erp-roadmap 保留落嚟，仍然有效）。
+- Web 路由 `/attendance/inventory/*`；API `GET /api/features` 回 `{"inventory": bool}` 俾前端 runtime 讀。
 
 ## 薪資／加班（OT）計算設計
 
@@ -744,7 +763,7 @@ ot_hours      = ot_slots * 0.25
 ### 📋 Migration 歷史
 
 ```text
-8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10 → e5a1c3d7f9b2 → a7f3c1e8d4b2 → c9d2e4f1a8b3 → d4b8e2a1c7f0 → e1c9a4b7d2f3 → f2a6c8d0b4e1 → a4e8c1d9b6f2 → b7c1e9a4d2f6 → a3d5f7b9c1e2 → c5e8a2f4d6b1 → e7b3f9a1c2d4 → b9e4d2a7c1f5 → d1f6b3e8a9c2 → g2a5b8c1d3e4
+8ea1bd935198 → 08449c298564 → 1426230ad1d9 → 198690b4ecc6 → 3f55c3123aa9 → 4606c336c945 → 232b25394c0f → 025 → 026 → ... → 032 → f8e65b7cf82b → 033 → 034 → 035 → 036 → 037 → 038 → 039 → 040 → 041 → 71296d8b9d7f → f5d44789754d → 7d340d0ce7de → bfb6cd4eb3b9 → a1c9e4d7f2b3 → b8f2c4d6a1e9 → c3e7a95b2d10 → e5a1c3d7f9b2 → a7f3c1e8d4b2 → c9d2e4f1a8b3 → d4b8e2a1c7f0 → e1c9a4b7d2f3 → f2a6c8d0b4e1 → a4e8c1d9b6f2 → b7c1e9a4d2f6 → a3d5f7b9c1e2 → c5e8a2f4d6b1 → e7b3f9a1c2d4 → b9e4d2a7c1f5 → d1f6b3e8a9c2 → g2a5b8c1d3e4 → 042 → 043 → 044 → 045 → 046 → 047 → 048
 ```
 
 1. ✅ users/refresh_tokens 強化
@@ -782,8 +801,12 @@ ot_hours      = ot_slots * 0.25
 32. ✅ Tutor 連結 + 分成快照（b9e4d2a7c1f5）— `tuition_invoices.tutor_unit_id`（FK→units，SET NULL，indexed；id 匹配優先，`staff_name` 名字匹配僅作舊單 fallback）、`payroll_records.commission_rate_snapshot` Numeric(5,2)；正數發票改按**收款月**計分成（posted receipt 的 `receipt_date` 落在工資月），credit note 仍按 bill month；重新 Generate 已存在記錄時用 snapshot 比例（要套用新比例需刪除該記錄再 Generate）
 33. ✅ 分成欄（d1f6b3e8a9c2）— `payroll_records.commission_pay` Numeric(10,2) NOT NULL default 0；idempotent（b9e4d2a7c1f5 部署中途曾包含此欄，已存在則 skip）；分成獨立寫入 `commission_pay`（`gross = base + OT + holiday + commission_pay + adj1`），`adjustment_1` 回復為純手動調整、Generate 永不覆寫
 34. ✅ 補單唯一索引（g2a5b8c1d3e4）— `uq_tuition_invoices_unit_period` partial index 收窄為 `kind = 'tuition' AND status = 'draft'`：每學生每月最多一張未出草稿；已出／已收／作廢單唔限，Generate 可以喺已出單隔籬出補單草稿
+35. ✅ Inventory core（042、043、048）— `inventory_categories`、`inventory_items`、`inventory_stocks`、`inventory_movements`、`inventory_stocktakes` / `_lines`、`inventory_items.image_url`
+36. ✅ Inventory purchasing（044）— `suppliers`、`purchase_orders` / `_lines`、`goods_receipts` / `_lines`、`purchase_returns` / `_lines`、`inventory_counters`
+37. ✅ Inventory sales（045、047）— `customers`、`sales_orders` / `_lines`、`delivery_orders` / `_lines`；047 補 SO→invoice→DO flow 欄位
+38. ✅ Inventory invoicing（046）— `inventory_invoices` / `_lines`、`inventory_receipts`、`inventory_credit_notes` / `_lines`；發單扣庫存
 
-> **目前 Alembic 版本：g2a5b8c1d3e4**（補單唯一索引；前序含分成欄 d1f6b3e8a9c2）
+> **目前 Alembic 版本：048**（inventory 模組 042–048；前序 g2a5b8c1d3e4，每生每期一張未出草稿發票）
 >
 > Migration 032 將 `products` 表重新命名為 `units`，所有 `product_id` 欄位重新命名為 `unit_id`，`product_type` → `unit_type`，`product_name` → `full_name`，`product_code` → `code`，以及相關外鍵和索引。Migration `f8e65b7cf82b` / `033` 將 profile 欄位對齊目前 ER 圖。部分 legacy 約束/索引名稱未重新命名（見下方「§ Legacy 約束與索引名稱」）。
 

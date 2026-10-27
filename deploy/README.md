@@ -68,6 +68,16 @@ cd deploy/
 
 **警告**：還原會先 DROP 既有資料庫，再從備份重建。還原期間 API container 會被停止。
 
+## Feature flags
+
+### `INVENTORY_ENABLED`（Inventory 模組）
+
+- `docker-compose.prod.yml` 嘅 `api.environment` 有 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}`；預設關。
+- 開嘅方法：`.env` 設 `INVENTORY_ENABLED=true` + compose 檔有嗰行 env。**注意**：`deploy/` 檔案係手工複製上伺服器，`update.sh` 只 pull images，**唔會**更新 compose——舊版 compose 要手加 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}` 呢行先 work。
+- 計劃：測試伺服器（Lightsail `Ubuntu-testing-deploy`）開；生產（`Ubuntu-Aqua-Attendance`）保持 `false`。
+- 關嗰陣：`/api/inventory/*` 全部 404；web 側欄冇 Inventory 群組。
+- 驗證：`curl -s http://localhost/api/features` → `{"inventory":true|false}`（或者瀏覽器開 `<site>/api/features`）。
+
 ## 檔案說明
 
 | 檔案 | 用途 |

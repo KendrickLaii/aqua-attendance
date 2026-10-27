@@ -168,6 +168,7 @@ Change all seed passwords before any shared or production use.
 | `LOGIN_RATE_LIMIT` | `5/minute` | Per-IP login attempts |
 | `SCAN_RATE_LIMIT` | `30/minute` | Per-IP QR scan attempts |
 | `REDIS_URL` | `redis://redis:6379/0` | Shared rate-limit store (multi-replica) |
+| `INVENTORY_ENABLED` | `false` | Runtime feature flag for the inventory module. `false` = all `/api/inventory/*` return 404 and `GET /api/features` reports `inventory: false`. Enable only on the testing server. Related: `INVENTORY_ALERTS_ENABLED` (default `true`), `INVENTORY_INVOICE_OVERDUE_DAYS` (30), `INVENTORY_ALERT_INTERVAL_HOURS` (24) — alerts run only when both flags are true |
 
 ### Web (`apps/web/.env`)
 
@@ -184,6 +185,8 @@ Change all seed passwords before any shared or production use.
 ### Production server (`deploy/.env`)
 
 See [deploy/.env.example](deploy/.env.example) and [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md).
+
+`INVENTORY_ENABLED` is optional and defaults to `false` — production needs no change. Only the testing server sets `INVENTORY_ENABLED=true` (and must have the matching line in its `docker-compose.prod.yml`, which is copied to servers manually — see [deploy/README.md](deploy/README.md)).
 
 ## Security design (summary)
 
@@ -216,7 +219,9 @@ Details: [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) §1.3–1.6.
 | Shifts | `/api/shift-templates` (CRUD), `/api/shifts` (`GET ?start=&end=&location_id=`, CRUD, `POST /copy-week`), `/api/shift-requests` (list, approve, reject) | Admin |
 | Staff shifts | `/api/staff-profiles/{id}/shift-pin` (admin resets PIN); `/api/staff-shifts/login`, `/me`, `/week`, `/requests` | Staff PIN / Admin |
 | Uploads | `POST /api/uploads` (admin); `GET /api/uploads/{key}` (public UUID URL) | Mixed |
+| Inventory | `/api/inventory/*` — stock, purchasing, sales, invoicing, reports (feature-flagged: all return **404** when `INVENTORY_ENABLED=false`) | Admin |
 | Health | `/api/health` | None |
+| Features | `GET /api/features` — runtime feature flags (`{"inventory": bool}`) | None |
 
 Full OpenAPI: http://localhost:8000/docs
 
@@ -243,6 +248,7 @@ Full OpenAPI: http://localhost:8000/docs
 | `/attendance/invoices` | Admin | Charge invoices only (Generate → issue / paid / void), manual invoices, print/reprint |
 | `/attendance/credit-notes` | Admin | Negative invoices (credit / refund slips) |
 | `/attendance/receipts` | Admin | Posted receipts, void / remove, print |
+| `/attendance/inventory/*` | Admin + flag | Inventory module (stock, purchasing, sales, invoicing, reports). Sidebar group and routes appear only when `GET /api/features` reports `inventory: true`; otherwise the sidebar hides the group and the router redirects to the dashboard |
 
 Prod navigation is trimmed to these pages via `src/navigation/vertical/custom-pages.ts`. The rest of `apps/web` is AQUA template demos / legacy tax UI (not used in production nav).
 
@@ -271,6 +277,7 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 
 | Doc | Purpose |
 | ----- | --------- |
+| [CHANGELOG.md](CHANGELOG.md) | **Release notes** — versioned changelog (Keep a Changelog) |
 | [docs/INDEX.md](docs/INDEX.md) | **Docs entry point** — find the right doc by role |
 | [docs/attendance-summaries.md](docs/attendance-summaries.md) | **Summaries & payroll** — monthly flow, API, UI, seed, FAQ |
 | [docs/database-changes.md](docs/database-changes.md) | **Schema SSOT** — ER diagram, course catalog, tuition invoices |

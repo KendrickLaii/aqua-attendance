@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-10-02（同一班可再報 #M22；Courses **Renew**／**Set end**；結束日過後自動 Leave；Alembic head **a4e8c1d9b6f2**）。2026-09-24（Credit Notes 獨立頁、退款單列印、`payable_to_name`／`payee_name`；收條編號改手打；上傳圖公開讀取）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。本地 migration 請用 `python -m alembic upgrade head`。
+> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-10-27（**Inventory 模組入咗本 repo**——推翻 2026-09-04「ERP 唔喺度做」決定；由 runtime flag `INVENTORY_ENABLED` 把關，預設關；Alembic head **048**；release `main-279495c`）。2026-10-02（同一班可再報 #M22；Courses **Renew**／**Set end**；結束日過後自動 Leave；Alembic head **a4e8c1d9b6f2**）。2026-09-24（Credit Notes 獨立頁、退款單列印、`payable_to_name`／`payee_name`；收條編號改手打；上傳圖公開讀取）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。本地 migration 請用 `python -m alembic upgrade head`。
 
 ---
 
@@ -11,7 +11,7 @@
    - [1.10 學費發票](#110-學費發票)
    - [1.12 學費收條](#112-學費收條)
    - [1.13 員工更表](#113-員工更表)
-   - [1.11 ERP 不在本專案範圍](#111-erp-不在本專案範圍)
+   - [1.11 Inventory 模組（2026-10-27 推翻原決定）](#111-inventory-模組2026-10-27-推翻原決定)
 2. [本地開發與快速開始](#2-本地開發與快速開始)
 3. [生產部署](#3-生產部署)
 4. [CI/CD 說明](#4-cicd-說明)
@@ -146,6 +146,8 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `POST /api/uploads` | Admin |
 | `GET /api/uploads/{key}` | 無（UUID 路徑；上傳仍要 admin） |
 | `GET /api/health` | 無 |
+| `GET /api/features` | 無（feature flags；`{"inventory": bool}`） |
+| `GET/POST/PATCH/DELETE /api/inventory/...` | Admin（`admin`／`superadmin`，同其他 Admin 端點一致）；`INVENTORY_ENABLED=false` 時全部 **404** |
 
 ### 1.7 環境變數
 
@@ -165,6 +167,10 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `LOGIN_RATE_LIMIT` | `5/minute` | 登入限流 |
 | `SCAN_RATE_LIMIT` | `30/minute` | 掃描限流 |
 | `REDIS_URL` | `redis://redis:6379/0` | Rate limit 共用儲存（多副本） |
+| `INVENTORY_ENABLED` | `false` | Inventory 模組 runtime flag（§1.11）；`false` 時 `/api/inventory/*` 全 404、`/api/features` 回 `inventory: false` |
+| `INVENTORY_ALERTS_ENABLED` | `true` | 低庫存提示 loop 開關；要 `INVENTORY_ENABLED` 都係 true 先生效 |
+| `INVENTORY_INVOICE_OVERDUE_DAYS` | `30` | Inventory 發票過期日數 |
+| `INVENTORY_ALERT_INTERVAL_HOURS` | `24` | 庫存提示 loop 間隔（小時） |
 
 **Web** (`apps/web/.env`)：`VITE_ATTENDANCE_API_URL` = `http://localhost:8000/api`（生產 image 在 build 時烘焙）
 
@@ -257,7 +263,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 | ~~下學年重報同一 SKU~~ | 2026-10-02 已做：同時只准一筆在讀（`a4e8c1d9b6f2`） | ~~#M22~~ |
 | WhatsApp／對外發送發票 | 僅後台狀態流 | **#M24** |
 | Vuexy `/apps/invoice` | 模板假資料，不要當產品 | **D5** |
-| ERP／家具庫存 | **不在本 repo 做**，以後是獨立新專案 | [erp-roadmap.md](erp-roadmap.md) **#F1** |
+| ~~ERP／家具庫存不在本 repo 做~~ | **2026-10-27 推翻**：已落地為 Inventory 模組（runtime flag `INVENTORY_ENABLED`），見 §1.11；`erp-roadmap.md` 留作設計參考 | ~~#F1~~ |
 
 完整 schema 見 [database-changes.md](database-changes.md) § 學費發票。
 
@@ -322,9 +328,34 @@ Admin 週表其餘操作：
 - 揀印邊啲人：全部顯示中嘅員工／只印該期間有更嘅員工／自己揀（可多選）。員工名旁邊嘅列印掣 = 直接揀咗嗰個人 + Personal schedule；想印佢成個月就喺對話框轉 Month。
 - 開關（switch）：備註、休息日（Off）、每人一頁、簽名欄（員工簽名確認報更）。版面同開關會存喺瀏覽器 `localStorage`（`aqua.shiftPrint.prefs`），每部機記住自己嘅預設，例如簽名欄一直開住。揀「All locations」時每更會顯示分店。
 
-### 1.11 ERP 不在本專案範圍
+### 1.11 Inventory 模組（2026-10-27 推翻原決定）
 
-現在是出勤 + 教育營運，**不會**演進成完整 ERP。以後若要家具庫存、採購、資產，是**獨立的全新專案**（獨立部署、獨立資料庫），不會加進 `juku-attendance`：不把家具寫進 `course_skus`、不讓學費 Generate 重算那些行、也不把家具/庫存塞進本系統的 `units`（`goods` 類型是掃碼身份，不是倉庫結存）。這個決定已於 2026-09-04 拍板。`erp-roadmap.md` 保留作為未來新專案的參考草稿，見 **[erp-roadmap.md](erp-roadmap.md)**。
+~~2026-09-04 曾拍板「ERP／庫存不在本 repo 做，是獨立新專案」（#F1）。~~ **2026-10-27 該決定被推翻**：Inventory 模組已在 `juku-attendance` 落地，由 runtime feature flag `INVENTORY_ENABLED`（API env，預設 `false`）把關。計劃只喺測試伺服器（Lightsail `Ubuntu-testing-deploy`）開；生產（`Ubuntu-Aqua-Attendance`）保持關。`erp-roadmap.md` 保留作為設計參考（其中「唔好把家具塞進 `course_skus`／`units`／`attendance_events`」嘅原則仍然有效）。
+
+#### 模組範圍
+
+| 模塊 | 內容 | 路由 |
+| ------ | ------ | ------ |
+| Stock core | categories、items（單圖）、stocks、movements、transfers、stocktakes、CSV | `/api/inventory/...` |
+| Purchasing | suppliers、PO、GRN、purchase returns | `/api/inventory/...` |
+| Sales | customers、sales orders（可出 proforma）、delivery orders | `/api/inventory/...` |
+| Invoicing | inventory invoices、receipts、credit notes；**發出 invoice 時扣庫存**；DO 係 invoice 嘅子單；流程 SO → invoice → DO | `/api/inventory/...` |
+| Reports / Dashboard / Alerts | 庫存報表、dashboard、低庫存提示 | `/api/inventory/...` |
+
+#### 隔離規則（同學費／課程／打卡完全分開）
+
+- 只有**新表**（`inventory_*`、`suppliers`、`purchase_orders*`、`goods_receipt*`、`purchase_return*`、`customers`、`sales_orders*`、`delivery_orders*`、`inventory_invoices*`、`inventory_receipts`、`inventory_credit_note*`），**冇改任何現有表**。
+- FK 只指去現有嘅 `users`、`locations`、`units`（`customers.student_unit_id` → `units`，SET NULL）。
+- 單據編號用自己嘅 `inventory_counters`，同 `invoice_counters`／`credit_note_counters` 分開。
+- 家具／貨品**仍然唔好**入 `course_skus`、學費 Generate、`attendance_events`。
+
+#### Feature flag 行為
+
+- `INVENTORY_ENABLED=false`（預設）：所有 `/api/inventory/*` 回 **404**；inventory alerts loop 唔會起（無通知）。
+- `GET /api/features`（公開、免登入）回 `{"inventory": bool}`——web image 兩邊伺服器共用，所以**唔可以用 build-time VITE var**，係 runtime 問 API。
+- Web：flag 關嗰陣側欄 Inventory 群組唔顯示；行入 `/attendance/inventory/*` 會被 router guard 導返 dashboard。
+- Alerts 要 `INVENTORY_ENABLED` **同** `INVENTORY_ALERTS_ENABLED` 都係 true 先會跑。
+- `AttendanceConfirmDialog`（全站共用）家陣喺標題左邊顯示 tone icon，行為不變；新 `GlobalConfirmDialog` 掛喺 App.vue（inventory 頁用）。
 
 ---
 
@@ -492,8 +523,11 @@ Windows 無 OpenSSL：使用 WSL/Git Bash，或 PowerShell：
 | `POSTGRES_PASSWORD` | 強密碼 |
 | `SECRET_KEY` / `QR_SECRET` | 兩組 `openssl rand -hex 32` |
 | `CORS_ORIGINS` | `https://app.yourdomain.com` |
+| `INVENTORY_ENABLED` | （可選，預設 `false`）設 `true` 先開 Inventory 模組——**只應喺測試伺服器開**；生產唔使設（預設關） |
 
 API 會把上傳圖片寫進 Docker volume `uploads`（container 內 `/data/uploads`）。重新套用 `docker-compose.prod.yml` 後才會掛上；未掛 volume 則下次佈署圖會消失。
+
+> ⚠️ **`deploy/` 檔案係手工複製上伺服器**（`update.sh` 只 pull images，唔會 git-pull compose）。repo 嘅 `docker-compose.prod.yml` 而家有 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}` 呢行；伺服器上嘅 compose 若係舊版，要開 flag 嗰台機（測試）需**手工加返呢行**再喺 `.env` 設 `INVENTORY_ENABLED=true`。驗證：`curl -s http://localhost/api/features`。重新套用 `docker-compose.prod.yml` 後才會掛上；未掛 volume 則下次佈署圖會消失。
 
 **僅用 IP（無域名）**：`APP_DOMAIN` 與 `API_DOMAIN` 都設為公開 IP。Caddy 會將 `/api/*` 導到 API，其餘導到 Web。
 
@@ -786,6 +820,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
+> **2026-10-27 更新**：**Inventory 模組上線**（推翻 2026-09-04 #F1 決定）——stock、purchasing、sales、invoicing、reports/dashboard/alerts，全部喺 `/api/inventory/*`，runtime flag `INVENTORY_ENABLED` 把關（預設關，計劃只測試機開）；公開 `GET /api/features`；Migration **042–048**（Alembic head **048**）。API 測試 **430 passed**（含新 `test_feature_flags.py`）。~~#F1~~ 結束；部署細節見 §8「Release 2026-10」。
 > **2026-09-24 更新**：Credit Notes 獨立頁；退款單列印；`payable_to_name`／`payee_name`（d4b8e2a1c7f0，Paid 後仍可改）；收條編號改手打；`GET /api/uploads/{key}` 公開讀取。Alembic head **d4b8e2a1c7f0**。
 > **2026-09-17 更新**：手動發票不再受 `(unit_id, period_start, period_end)` 唯一限制（改 partial unique index，僅 `kind = 'tuition'`；b8f2c4d6a1e9）；發票 PATCH 至 `void` 時會即時清掉`enrollment_purchases.billed_invoice_line_id`，所以「未出單」只有一個判斷式；`course_enrollments.purchased_quantity` 已移除（c3e7a95b2d10），堂數只存 `enrollment_purchases`。手動發票拒絕同一張單重複結算同一購買（422）及 walk-in 單結算實名學生購買（422）。測試：全套 **164 passed**。
 > **2026-09-15 更新**：手動發票落庫（`kind=manual`、可結算堂費 `purchase_ids`）；發票編號改每中心系列（`location_id` + `invoice_counters`）；堂費改由 `enrollment_purchases` 記錄追蹤，Generate 出未出單購買。Alembic head **7d340d0ce7de**。
@@ -922,7 +957,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 033）
+# 最新可用版本（目前最新為 048）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -938,7 +973,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 d4b8e2a1c7f0**（前序含收條 a7f3c1e8d4b2、adjustments c9d2e4f1a8b3、credit note 抬頭 d4b8e2a1c7f0；再之前是 c3e7a95b2d10 drop `purchased_quantity`）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 048**（inventory 模組 042–048；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1374,6 +1409,58 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 ---
 
+### Release 2026-10 — Inventory（feature flag）
+
+Release tag `main-279495c`（commit `279495c`，2026-10-27）。推翻 2026-09-04「ERP 唔喺本 repo 做」決定（~~#F1~~）：Inventory 模組落地，runtime flag `INVENTORY_ENABLED` 把關（預設 `false`）。Rollback image tag：`sha-16b8856`（上一個 main）。部署前生產已有 backup。
+
+#### API
+
+| 區域 | 變更 |
+| ------ | ------ |
+| Feature flag | `INVENTORY_ENABLED`（預設 `false`）；`false` 時全部 `/api/inventory/*` 回 404（`require_inventory_enabled` dependency）；alerts loop 要 `INVENTORY_ENABLED && INVENTORY_ALERTS_ENABLED` 先起 |
+| New | `GET /api/features` — 公開、免登入，回 `{"inventory": bool}`；web runtime 讀取（兩台伺服器同一個 web image，唔用 build-time var） |
+| New | `/api/inventory/*`：stock core（categories／items／stocks／movements／transfers／stocktakes／CSV）、purchasing（suppliers／PO／GRN／purchase returns）、sales（customers／SO＋proforma／DO）、invoicing（invoices／receipts／credit notes；發單時扣庫存，DO 係 invoice 子單，SO → invoice → DO）、reports／dashboard／alerts |
+| Migration | **042–048**（042 down_revision `g2a5b8c1d3e4` → head **048**）；全部新表，冇改舊表；`inventory_counters` 獨立派號 |
+| Tests | 430 passed（含新 `tests/test_feature_flags.py`；conftest autouse fixture 預設開 flag） |
+
+#### Web
+
+| 區域 | 變更 |
+| ------ | ------ |
+| New | `composables/useFeatureFlags.ts` — runtime fetch `/api/features`（plain `ofetch`，單飛 cache；失敗當 `inventory: false`） |
+| Nav | `filterNavByFeatures()`：flag 關時側欄成個 Inventory 群組（`attendance-inventory*`）唔顯示 |
+| Router | beforeEach 轉 async；`/attendance/inventory/*` 喺 flag 關時導去 `attendance-dashboard` |
+| Shared | `AttendanceConfirmDialog` 標題左加 tone icon（行為不變）；`GlobalConfirmDialog` 掛 App.vue（inventory 頁用） |
+| Pages | `/attendance/inventory/*`：workflow（Start Here）、dashboard、index（Stock Overview）、items、stocktakes、movements、suppliers、purchase-orders、goods-receipts、purchase-returns、customers、sales-orders、delivery-orders、invoices、receipts、credit-notes、reports |
+
+#### 部署前檢查清單
+
+- [x] API pytest 本地 430 passed
+- [ ] GitHub Actions CI green
+- [ ] Publish container images workflow green
+- [x] 生產 backup 已做（`./backup.sh`）
+- [ ] 部署次序：testing server 先（手加 compose 行 + `.env` 設 `INVENTORY_ENABLED=true`，`./update.sh`，驗證 features=true），之後 production（淨係 `./update.sh`，驗證 features=false）
+
+#### Migration
+
+API container 啟動自動跑 `alembic upgrade head` 至 **048**。全部係新表；FK 只指 `users`／`locations`／`units`（`customers.student_unit_id` SET NULL）。既有資料唔郁。
+
+#### 部署後驗證
+
+- [ ] Testing（`Ubuntu-testing-deploy`）：`curl -s http://localhost/api/features` → `{"inventory":true}`；側欄見 Inventory
+- [ ] Production（`Ubuntu-Aqua-Attendance`）：`curl -s http://localhost/api/features` → `{"inventory":false}`；側欄無 Inventory；`/api/inventory/*` 404；學費／課程／billing 頁正常
+
+#### 回滾
+
+```bash
+cd ~/aqua-attendance/deploy
+# .env 將 API_IMAGE / WEB_IMAGE 指去 sha-16b8856，然後：
+docker compose -f docker-compose.prod.yml --env-file .env pull
+docker compose -f docker-compose.prod.yml --env-file .env up -d
+```
+
+---
+
 ## 9. 附錄
 
 ### 9.1 Location 照片（URL + admin 上傳）
@@ -1436,6 +1523,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 > 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→80）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
 >
+> **2026-10-27 補記**：Alembic head 為 **048**（inventory 模組 042–048；前序 g2a5b8c1d3e4，每生每期一張未出草稿發票）。Inventory 已入本 repo（`INVENTORY_ENABLED` runtime flag，預設關、計劃只測試機開）；2026-09-04「ERP 唔喺度做」決定已推翻（~~#F1~~）。§1.11／§5／§8 已同步；API 測試 **430 passed**。
 > **2026-09-24 補記**：Alembic head 為 **d4b8e2a1c7f0**（credit note 抬頭；收條 a7f3c1e8d4b2／c9d2e4f1a8b3）。§1.10／§1.12 已同步。
 > **2026-09-17 補記**：當時 head 為 **c3e7a95b2d10**（手動發票 partial unique b8f2c4d6a1e9；drop `course_enrollments.purchased_quantity`）。堂數單一來源 = `enrollment_purchases`；作廢發票即時釋放購買。
 > **2026-09-15 補記**：Alembic head 為 **a1c9e4d7f2b3**（`enrollment_purchases.unit_price` 可空；另含手動發票 71296d8b9d7f、每中心編號 f5d44789754d、發票行老師名 bfb6cd4eb3b9）。§1.10 已同步：手動發票落庫、堂費由購買記錄追蹤、私補出單時先定價。
@@ -1858,7 +1946,9 @@ erDiagram
     tuition_invoices ||--o{ tuition_receipt_invoices : "paid by"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **d4b8e2a1c7f0**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表（042–048）未畫入此圖，見 [database-changes.md](database-changes.md) § Inventory。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **048**，前序 g2a5b8c1d3e4 每生每期一張未出草稿發票）。
+>
+> **2026-10-27 更新**：Alembic head **048**（inventory 042–048）。
 >
 > **2026-09-24 更新**：`tuition_invoices` 新增 `payable_to_name`／`payee_name`；`tuition_receipts`／`tuition_receipt_invoices` 入 ER（收條編號手打）。
 > **2026-09-15 更新**：`tuition_invoices` 新增 `kind`/`location_id`/`invoice_no`/`issued_at`/`manual_student_name`，`unit_id` 可空；新增 `enrollment_purchases`（堂費購買追蹤，與發票行連結）與每中心 `invoice_counters`；`tuition_invoice_lines` 新增 `month_label`。

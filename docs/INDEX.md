@@ -22,14 +22,15 @@
 | 文件 | 類型 | 內容 | 更新頻率 |
 | ------ | ------ | ------ | ---------- |
 | [../README.md](../README.md) | 總覽 | 系統架構、概念對照表（Unit vs User）、QR 流程、快速開始、倉庫結構 | 架構變更時 |
+| [../CHANGELOG.md](../CHANGELOG.md) | 發布 | Keep a Changelog 格式 release notes（2026-10 起；早期記錄喺 handbook §8） | 每次發布 |
 | [project-handbook.md](project-handbook.md) | 手冊 | 本地開發、生產部署（Docker/Caddy）、CI/CD 流程、運維手冊、已知缺口與評分、Mobile 發布、發布紀錄、課程資料模型、學費發票／Credit Notes／收條、員工更表（§1.13） | 持續累積 |
 | [../apps/api/README.md](../apps/api/README.md) | 開發 | FastAPI 啟動、測試、環境變數、Alembic、seed 資料、課程 API、學費發票 API | API 變更時 |
 | [../apps/web/README.md](../apps/web/README.md) | 開發 | Vue 3 開發伺服器、Vite 設定、出勤頁面路由（含 Invoices／Credit Notes／Receipts）、AQUA 模板注意事項 | Web 變更時 |
 | [../apps/mobile/README.md](../apps/mobile/README.md) | 開發 | Expo 啟動、QR Scanner 設定、實體裝置 LAN IP 設定、entry-point 限制 | Mobile 變更時 |
 | [../REVIEW-PROMPT.md](../REVIEW-PROMPT.md) | 流程 | 合併前檢查清單與 Code Review 提示 | 流程調整時 |
 | [../deploy/README.md](../deploy/README.md) | 部署 | 生產主機目錄結構、輔助腳本說明（`first-boot.sh`、`update.sh`、`reset-db.sh`） | 部署腳本變更時 |
-| [known-gaps.md](known-gaps.md) | 審查 | FastAPI 後端審查與修復計畫 — 架構評價、已修問題、待補缺口（文首有學費「尚未做」與 **#F1 ERP 路線**） | 後端重大變更時 |
-| [erp-roadmap.md](erp-roadmap.md) | 規劃 | ERP／物料／庫存／採購參考草稿（**已拍板不在本 repo 做**，未來若立新專案時參考） | 方向變更時 |
+| [known-gaps.md](known-gaps.md) | 審查 | FastAPI 後端審查與修復計畫 — 架構評價、已修問題、待補缺口（文首有學費「尚未做」；~~#F1~~ ERP 已於 2026-10-27 落地為 Inventory 模組） | 後端重大變更時 |
+| [erp-roadmap.md](erp-roadmap.md) | 規劃 | ERP／物料／庫存／採購參考草稿（~~已拍板不在本 repo 做~~ — 2026-10-27 推翻，Inventory 已上線；本文件留作設計參考） | 方向變更時 |
 | [attendance-summaries.md](attendance-summaries.md) | 功能 | 出勤彙總與薪資月度流程 — API、UI、Generate、seed、FAQ（學費發票為獨立流程，見 handbook §1.10） | Summaries/Payroll 變更時 |
 | [database-changes.md](database-changes.md) | 設計 | 資料庫設計 Single Source of Truth — ER 圖、欄位搬遷、OT 計算、課程 SPU/SKU/Enrollment、學費發票、員工更表 | Schema 變更時 |
 | [project-handbook.md](project-handbook.md) | 計畫 | 前端對齊計畫（Web + Mobile）— 型別、表單、新頁面、權限 | 前後端對齊時 |
@@ -51,7 +52,7 @@
 | `/api/health` 回 503 | §6.3 |
 | Migration 失敗 / 版本不對 | §6.4 |
 | 學費／課程還缺什麼 | [known-gaps.md](known-gaps.md) 文首「尚未做」表（#M24；~~#M22~~ 已做） |
-| ERP／家具庫存要不要做 | 不在本 repo 做，是獨立新專案；參考草稿見 [erp-roadmap.md](erp-roadmap.md) |
+| ERP／家具庫存要不要做 | ~~不在本 repo 做~~ — 2026-10-27 推翻：Inventory 模組已上線（`INVENTORY_ENABLED` flag，見 [project-handbook.md](project-handbook.md) §1.11）；設計參考見 [erp-roadmap.md](erp-roadmap.md) |
 | 如何備份 / 還原資料庫 | §6.5 |
 | 登入後馬上 401 / 被登出 | §6.6 |
 | 磁碟滿 / Docker 日誌膨脹 | §6.7 |
