@@ -1,6 +1,6 @@
 """OT (overtime) calculation service.
 
-Rules (from DATABASE_CHANGES.md):
+Rules (from docs/PROJECT-HANDBOOK.md §1.13):
 - 15-minute time slots, rounded (<7.5min down, >=7.5min up)
 - OT = work beyond location.business_hours.close
 - Work hours = first check_in + last check_out of the day

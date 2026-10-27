@@ -2,13 +2,13 @@
 
 Day-boundary safety net for users who forget to scan out.
 
-Rules (from DATABASE_CHANGES.md):
+Rules (from docs/PROJECT-HANDBOOK.md §1.13):
 - Trigger time = 23:59 (day boundary), NOT closing time
 - All double check_in / check_out are allowed; calculation only uses first & last
 
 **Status (not a complete automated system):**
 - Shared helper + manual ``POST /api/auto-checkout/run`` + Generate backfill for past days: yes
-- Nightly 23:59 cron / worker and 00:00 status reset: **not implemented** (see docs/known-gaps.md #M14)
+- Nightly 23:59 cron / worker and 00:00 status reset: **not implemented** (see docs/PROJECT-HANDBOOK.md §5 #M14)
 - Runtime gate: ``settings.AUTO_CHECKOUT_ENABLED`` (default **false** — prefer Manual correction)
 
 Both the Dashboard Day-end action and summary generate use

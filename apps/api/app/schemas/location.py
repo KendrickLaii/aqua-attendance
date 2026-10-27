@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.config import settings
 from app.schemas.location_photo import LocationDetailPhoto
 
-# Structured business hours for OT (see docs/database-changes.md).
+# Structured business hours for OT (see docs/PROJECT-HANDBOOK.md §1.13).
 # Example: {"monday": {"open": "09:00", "close": "18:00"}, "saturday": null, ...}
 BusinessHours = dict[str, dict[str, str] | None]
 
