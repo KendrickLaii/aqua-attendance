@@ -21,6 +21,7 @@
 8. [發布記錄](#8-發布記錄)
 9. [附錄](#9-附錄)
 10. [資料庫 ER 圖](#10-資料庫-er-圖)
+   - [10.2 Inventory ER 圖](#102-inventory-er-圖042048)
 
 ---
 
@@ -330,7 +331,7 @@ Admin 週表其餘操作：
 
 ### 1.11 Inventory 模組（2026-10-27 推翻原決定）
 
-~~2026-09-04 曾拍板「ERP／庫存不在本 repo 做，是獨立新專案」（#F1）。~~ **2026-10-27 該決定被推翻**：Inventory 模組已在 `juku-attendance` 落地，由 runtime feature flag `INVENTORY_ENABLED`（API env，預設 `false`）把關。計劃只喺測試伺服器（Lightsail `Ubuntu-testing-deploy`）開；生產（`Ubuntu-Aqua-Attendance`）保持關。`erp-roadmap.md` 保留作為設計參考（其中「唔好把家具塞進 `course_skus`／`units`／`attendance_events`」嘅原則仍然有效）。
+~~2026-09-04 曾拍板「ERP／庫存不在本 repo 做，是獨立新專案」（#F1）。~~ **2026-10-27 該決定被推翻**：Inventory 模組已在 `juku-attendance` 落地，由 runtime feature flag `INVENTORY_ENABLED`（API env，預設 `false`）把關。已部署（2026-10-27）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持關。`erp-roadmap.md` 保留作為設計參考（其中「唔好把家具塞進 `course_skus`／`units`／`attendance_events`」嘅原則仍然有效）。
 
 #### 模組範圍
 
@@ -527,7 +528,7 @@ Windows 無 OpenSSL：使用 WSL/Git Bash，或 PowerShell：
 
 API 會把上傳圖片寫進 Docker volume `uploads`（container 內 `/data/uploads`）。重新套用 `docker-compose.prod.yml` 後才會掛上；未掛 volume 則下次佈署圖會消失。
 
-> ⚠️ **`deploy/` 檔案係手工複製上伺服器**（`update.sh` 只 pull images，唔會 git-pull compose）。repo 嘅 `docker-compose.prod.yml` 而家有 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}` 呢行；伺服器上嘅 compose 若係舊版，要開 flag 嗰台機（測試）需**手工加返呢行**再喺 `.env` 設 `INVENTORY_ENABLED=true`。驗證：`curl -s http://localhost/api/features`。重新套用 `docker-compose.prod.yml` 後才會掛上；未掛 volume 則下次佈署圖會消失。
+> ⚠️ **兩台伺服器嘅 `deploy/` 部署方式唔同**：測試機（`Ubuntu-testing-deploy`）係 git clone（`~/juku-attendance`），用 `git pull` 更新 compose；生產（`Ubuntu-Aqua-Attendance`）係手工複製（`~/aqua-attendance/deploy`），`update.sh` 只 pull images，唔會更新 compose。repo 嘅 `docker-compose.prod.yml` 而家有 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}` 呢行；生產嘅 compose 若係舊版而又想開 flag，需**手工加返呢行**再喺 `.env` 設 `INVENTORY_ENABLED=true`。驗證：`curl -s http://localhost/api/features`。重新套用 `docker-compose.prod.yml` 後才會掛上；未掛 volume 則下次佈署圖會消失。
 
 **僅用 IP（無域名）**：`APP_DOMAIN` 與 `API_DOMAIN` 都設為公開 IP。Caddy 會將 `/api/*` 導到 API，其餘導到 Web。
 
@@ -820,7 +821,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 > 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
 > 文件本身的問題見 [docs-audit.md](docs-audit.md)。
 >
-> **2026-10-27 更新**：**Inventory 模組上線**（推翻 2026-09-04 #F1 決定）——stock、purchasing、sales、invoicing、reports/dashboard/alerts，全部喺 `/api/inventory/*`，runtime flag `INVENTORY_ENABLED` 把關（預設關，計劃只測試機開）；公開 `GET /api/features`；Migration **042–048**（Alembic head **048**）。API 測試 **430 passed**（含新 `test_feature_flags.py`）。~~#F1~~ 結束；部署細節見 §8「Release 2026-10」。
+> **2026-10-27 更新**：**Inventory 模組上線**（推翻 2026-09-04 #F1 決定）——stock、purchasing、sales、invoicing、reports/dashboard/alerts，全部喺 `/api/inventory/*`，runtime flag `INVENTORY_ENABLED` 把關（預設關，只測試機開——2026-10-27 已部署）；公開 `GET /api/features`；Migration **042–048**（Alembic head **048**）。API 測試 **430 passed**（含新 `test_feature_flags.py`）。~~#F1~~ 結束；部署細節見 §8「Release 2026-10」。
 > **2026-09-24 更新**：Credit Notes 獨立頁；退款單列印；`payable_to_name`／`payee_name`（d4b8e2a1c7f0，Paid 後仍可改）；收條編號改手打；`GET /api/uploads/{key}` 公開讀取。Alembic head **d4b8e2a1c7f0**。
 > **2026-09-17 更新**：手動發票不再受 `(unit_id, period_start, period_end)` 唯一限制（改 partial unique index，僅 `kind = 'tuition'`；b8f2c4d6a1e9）；發票 PATCH 至 `void` 時會即時清掉`enrollment_purchases.billed_invoice_line_id`，所以「未出單」只有一個判斷式；`course_enrollments.purchased_quantity` 已移除（c3e7a95b2d10），堂數只存 `enrollment_purchases`。手動發票拒絕同一張單重複結算同一購買（422）及 walk-in 單結算實名學生購買（422）。測試：全套 **164 passed**。
 > **2026-09-15 更新**：手動發票落庫（`kind=manual`、可結算堂費 `purchase_ids`）；發票編號改每中心系列（`location_id` + `invoice_counters`）；堂費改由 `enrollment_purchases` 記錄追蹤，Generate 出未出單購買。Alembic head **7d340d0ce7de**。
@@ -1436,10 +1437,10 @@ Release tag `main-279495c`（commit `279495c`，2026-10-27）。推翻 2026-09-0
 #### 部署前檢查清單
 
 - [x] API pytest 本地 430 passed
-- [ ] GitHub Actions CI green
-- [ ] Publish container images workflow green
+- [x] GitHub Actions CI green（279495c）
+- [x] Publish container images workflow green（279495c）
 - [x] 生產 backup 已做（`./backup.sh`）
-- [ ] 部署次序：testing server 先（手加 compose 行 + `.env` 設 `INVENTORY_ENABLED=true`，`./update.sh`，驗證 features=true），之後 production（淨係 `./update.sh`，驗證 features=false）
+- [x] 部署次序：testing server 先（git pull 攞新 compose + `.env` 設 `INVENTORY_ENABLED=true`，`./update.sh`，驗證 features=true），之後 production（淨係 `./update.sh`，驗證 features=false）
 
 #### Migration
 
@@ -1447,8 +1448,9 @@ API container 啟動自動跑 `alembic upgrade head` 至 **048**。全部係新�
 
 #### 部署後驗證
 
-- [ ] Testing（`Ubuntu-testing-deploy`）：`curl -s http://localhost/api/features` → `{"inventory":true}`；側欄見 Inventory
-- [ ] Production（`Ubuntu-Aqua-Attendance`）：`curl -s http://localhost/api/features` → `{"inventory":false}`；側欄無 Inventory；`/api/inventory/*` 404；學費／課程／billing 頁正常
+- [x] Testing（`Ubuntu-testing-deploy`）：`curl -s http://localhost/api/features` → `{"inventory":true}`；側欄見 Inventory
+- [x] Production（`Ubuntu-Aqua-Attendance`）API 檢查：`/api/features` → `{"inventory":false}`；`/api/inventory/items` → 404；`alembic current` → `048 (head)`
+- [ ] Production 瀏覽器抽查：側欄無 Inventory；學費／課程／billing 頁正常
 
 #### 回滾
 
@@ -1523,7 +1525,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 > 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→80）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
 >
-> **2026-10-27 補記**：Alembic head 為 **048**（inventory 模組 042–048；前序 g2a5b8c1d3e4，每生每期一張未出草稿發票）。Inventory 已入本 repo（`INVENTORY_ENABLED` runtime flag，預設關、計劃只測試機開）；2026-09-04「ERP 唔喺度做」決定已推翻（~~#F1~~）。§1.11／§5／§8 已同步；API 測試 **430 passed**。
+> **2026-10-27 補記**：Alembic head 為 **048**（inventory 模組 042–048；前序 g2a5b8c1d3e4，每生每期一張未出草稿發票）。Inventory 已入本 repo（`INVENTORY_ENABLED` runtime flag，預設關、只測試機開——2026-10-27 已部署）；2026-09-04「ERP 唔喺度做」決定已推翻（~~#F1~~）。§1.11／§5／§8 已同步；API 測試 **430 passed**。
 > **2026-09-24 補記**：Alembic head 為 **d4b8e2a1c7f0**（credit note 抬頭；收條 a7f3c1e8d4b2／c9d2e4f1a8b3）。§1.10／§1.12 已同步。
 > **2026-09-17 補記**：當時 head 為 **c3e7a95b2d10**（手動發票 partial unique b8f2c4d6a1e9；drop `course_enrollments.purchased_quantity`）。堂數單一來源 = `enrollment_purchases`；作廢發票即時釋放購買。
 > **2026-09-15 補記**：Alembic head 為 **a1c9e4d7f2b3**（`enrollment_purchases.unit_price` 可空；另含手動發票 71296d8b9d7f、每中心編號 f5d44789754d、發票行老師名 bfb6cd4eb3b9）。§1.10 已同步：手動發票落庫、堂費由購買記錄追蹤、私補出單時先定價。
@@ -1946,7 +1948,365 @@ erDiagram
     tuition_invoices ||--o{ tuition_receipt_invoices : "paid by"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表（042–048）未畫入此圖，見 [database-changes.md](database-changes.md) § Inventory。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **048**，前序 g2a5b8c1d3e4 每生每期一張未出草稿發票）。
+### 10.2 Inventory ER 圖（042–048）
+
+Inventory 相關表全部新增（042–048），與學費／課程 schema 分開；只經 FK 引用 `users`／`locations`／`units`，唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
+
+```mermaid
+erDiagram
+    users {
+        uuid id PK
+    }
+
+    locations {
+        uuid id PK
+    }
+
+    units {
+        uuid id PK
+    }
+
+    inventory_categories {
+        uuid id PK
+        string name_zh
+        string name_en
+        boolean is_active
+        datetime created_at
+    }
+
+    inventory_items {
+        uuid id PK
+        string sku_code "unique"
+        string name_zh
+        string name_en
+        uuid category_id FK
+        string unit_of_measure
+        numeric cost_price
+        numeric sale_price
+        int reorder_level
+        numeric avg_cost
+        string image_url
+        boolean is_active
+        datetime created_at
+    }
+
+    inventory_stocks {
+        uuid id PK
+        uuid item_id FK "uq(item_id, location_id)"
+        uuid location_id FK
+        int quantity
+        int reserved
+        datetime updated_at
+    }
+
+    inventory_movements {
+        uuid id PK
+        uuid item_id FK
+        uuid location_id FK
+        string type "in / out / adjust / transfer_in / transfer_out"
+        int quantity_delta
+        int balance_after
+        string reason
+        string reason_code
+        numeric unit_cost
+        string reference "unique"
+        uuid created_by FK
+        datetime created_at
+    }
+
+    inventory_stocktakes {
+        uuid id PK
+        uuid location_id FK
+        string status "draft / applied / cancelled"
+        string note
+        uuid created_by FK
+        datetime created_at
+        datetime applied_at
+    }
+
+    inventory_stocktake_lines {
+        uuid id PK
+        uuid stocktake_id FK "uq(stocktake_id, item_id); CASCADE"
+        uuid item_id FK
+        int system_qty
+        int counted_qty
+    }
+
+    inventory_counters {
+        int id PK
+        uuid location_id FK "uq(location_id, doc_type); CASCADE"
+        string doc_type "PO / GRN / PRT / SO / PF / DO / SI / SR / SCN"
+        int next_no
+    }
+
+    suppliers {
+        uuid id PK
+        string code "unique"
+        string name_zh
+        string name_en
+        string payment_terms
+        boolean is_active
+        datetime created_at
+    }
+
+    purchase_orders {
+        uuid id PK
+        string po_no "unique"
+        uuid supplier_id FK
+        uuid location_id FK
+        date order_date
+        date expected_date
+        string status "draft / ordered / partial / received / cancelled"
+        numeric discount_amount
+        numeric total
+        uuid created_by FK
+        datetime created_at
+    }
+
+    purchase_order_lines {
+        uuid id PK
+        uuid po_id FK "CASCADE"
+        uuid item_id FK
+        string sku_code
+        int ordered_qty
+        int received_qty
+        numeric unit_cost
+        numeric amount
+    }
+
+    goods_receipts {
+        uuid id PK
+        string grn_no "unique"
+        uuid po_id FK "nullable, SET NULL"
+        uuid supplier_id FK
+        uuid location_id FK
+        date receipt_date
+        string status "draft / confirmed / void"
+        uuid created_by FK
+        datetime created_at
+    }
+
+    goods_receipt_lines {
+        uuid id PK
+        uuid grn_id FK "CASCADE"
+        uuid po_line_id FK "nullable, SET NULL"
+        uuid item_id FK
+        int qty
+        numeric unit_cost
+    }
+
+    purchase_returns {
+        uuid id PK
+        string prt_no "unique"
+        uuid supplier_id FK
+        uuid location_id FK
+        uuid grn_id FK "nullable, SET NULL"
+        date return_date
+        string status "draft / confirmed / void"
+        uuid created_by FK
+        datetime created_at
+    }
+
+    purchase_return_lines {
+        uuid id PK
+        uuid prt_id FK "CASCADE"
+        uuid item_id FK
+        int qty
+        numeric unit_cost
+    }
+
+    customers {
+        uuid id PK
+        string code "unique"
+        string name_zh
+        string type "individual / company"
+        uuid student_unit_id FK "nullable unique, SET NULL"
+        boolean is_active
+        datetime created_at
+    }
+
+    sales_orders {
+        uuid id PK
+        string so_no "unique"
+        uuid customer_id FK
+        uuid location_id FK
+        date order_date
+        string status "draft / confirmed / partial / fulfilled / cancelled"
+        numeric discount_amount
+        numeric total
+        string pf_no "proforma, nullable unique"
+        datetime pf_issued_at
+        date pf_valid_until
+        uuid created_by FK
+        datetime created_at
+    }
+
+    sales_order_lines {
+        uuid id PK
+        uuid so_id FK "CASCADE"
+        uuid item_id FK
+        string sku_code
+        int qty
+        int invoiced_qty
+        numeric unit_price
+        numeric amount
+    }
+
+    delivery_orders {
+        uuid id PK
+        string do_no "unique"
+        uuid invoice_id FK "child of invoice"
+        uuid so_id FK
+        uuid customer_id FK
+        uuid location_id FK
+        date delivery_date
+        string status "draft / confirmed / void"
+        uuid created_by FK
+        datetime created_at
+    }
+
+    delivery_order_lines {
+        uuid id PK
+        uuid do_id FK "CASCADE"
+        uuid invoice_line_id FK
+        uuid item_id FK
+        int qty
+    }
+
+    inventory_invoices {
+        uuid id PK
+        string invoice_no "nullable unique"
+        uuid so_id FK
+        uuid customer_id FK
+        uuid location_id FK
+        date issue_date
+        datetime issued_at
+        string status "draft / issued / void"
+        numeric discount_amount
+        numeric total
+        uuid created_by FK
+        datetime created_at
+    }
+
+    inventory_invoice_lines {
+        uuid id PK
+        uuid invoice_id FK "CASCADE"
+        uuid so_line_id FK
+        uuid item_id FK
+        string sku_code
+        int qty
+        int delivered_qty
+        int credited_qty
+        numeric unit_price
+        numeric amount
+    }
+
+    inventory_receipts {
+        uuid id PK
+        string receipt_no "unique"
+        uuid invoice_id FK
+        uuid customer_id FK
+        uuid location_id FK
+        numeric amount
+        string paid_by "cash / cheque / bank_transfer / card / other"
+        string reference_no
+        date receipt_date
+        string status "posted / void"
+        uuid created_by FK
+        datetime created_at
+    }
+
+    inventory_credit_notes {
+        uuid id PK
+        string scn_no "unique"
+        uuid invoice_id FK
+        uuid customer_id FK
+        uuid location_id FK
+        date credit_date
+        text reason
+        string status "draft / confirmed / void"
+        numeric total
+        uuid created_by FK
+        datetime created_at
+    }
+
+    inventory_credit_note_lines {
+        uuid id PK
+        uuid scn_id FK "CASCADE"
+        uuid invoice_line_id FK
+        uuid item_id FK
+        int qty
+        numeric unit_amount
+        numeric amount
+        boolean restock
+    }
+
+    users ||--o{ inventory_movements : "creates (created_by)"
+    users ||--o{ inventory_stocktakes : "creates (created_by)"
+    users ||--o{ purchase_orders : "creates (created_by)"
+    users ||--o{ goods_receipts : "creates (created_by)"
+    users ||--o{ purchase_returns : "creates (created_by)"
+    users ||--o{ sales_orders : "creates (created_by)"
+    users ||--o{ delivery_orders : "creates (created_by)"
+    users ||--o{ inventory_invoices : "creates (created_by)"
+    users ||--o{ inventory_receipts : "creates (created_by)"
+    users ||--o{ inventory_credit_notes : "creates (created_by)"
+    locations ||--o{ inventory_stocks : "stocked at"
+    locations ||--o{ inventory_movements : "moved at"
+    locations ||--o{ inventory_stocktakes : "counted at"
+    locations ||--o{ inventory_counters : "number series"
+    locations ||--o{ purchase_orders : "orders at"
+    locations ||--o{ goods_receipts : "receives at"
+    locations ||--o{ purchase_returns : "returns at"
+    locations ||--o{ sales_orders : "sells at"
+    locations ||--o{ delivery_orders : "delivers at"
+    locations ||--o{ inventory_invoices : "issued at"
+    locations ||--o{ inventory_receipts : "received at"
+    locations ||--o{ inventory_credit_notes : "issued at"
+    units ||--o| customers : "links (student_unit_id)"
+    inventory_categories ||--o{ inventory_items : "groups"
+    inventory_items ||--o{ inventory_stocks : "on-hand"
+    inventory_items ||--o{ inventory_movements : "moved"
+    inventory_items ||--o{ inventory_stocktake_lines : "counted in"
+    inventory_stocktakes ||--o{ inventory_stocktake_lines : "has"
+    suppliers ||--o{ purchase_orders : "sells to"
+    suppliers ||--o{ goods_receipts : "supplies"
+    suppliers ||--o{ purchase_returns : "returned to"
+    purchase_orders ||--o{ purchase_order_lines : "has"
+    purchase_orders ||--o{ goods_receipts : "received as"
+    purchase_order_lines ||--o{ goods_receipt_lines : "received in"
+    goods_receipts ||--o{ goods_receipt_lines : "has"
+    goods_receipts ||--o{ purchase_returns : "returned as"
+    purchase_returns ||--o{ purchase_return_lines : "has"
+    customers ||--o{ sales_orders : "orders"
+    customers ||--o{ delivery_orders : "delivered to"
+    customers ||--o{ inventory_invoices : "billed"
+    customers ||--o{ inventory_receipts : "pays"
+    customers ||--o{ inventory_credit_notes : "credited"
+    sales_orders ||--o{ sales_order_lines : "has"
+    sales_orders ||--o{ inventory_invoices : "invoiced as"
+    sales_orders ||--o{ delivery_orders : "delivered as"
+    sales_order_lines ||--o{ inventory_invoice_lines : "billed in"
+    inventory_invoices ||--o{ inventory_invoice_lines : "has"
+    inventory_invoices ||--o{ delivery_orders : "delivered by (child doc)"
+    inventory_invoices ||--o{ inventory_receipts : "settled by"
+    inventory_invoices ||--o{ inventory_credit_notes : "credited by"
+    inventory_invoice_lines ||--o{ delivery_order_lines : "delivered in"
+    inventory_invoice_lines ||--o{ inventory_credit_note_lines : "credited in"
+    delivery_orders ||--o{ delivery_order_lines : "has"
+    inventory_credit_notes ||--o{ inventory_credit_note_lines : "has"
+    inventory_items ||--o{ purchase_order_lines : "ordered"
+    inventory_items ||--o{ goods_receipt_lines : "received"
+    inventory_items ||--o{ purchase_return_lines : "returned"
+    inventory_items ||--o{ sales_order_lines : "sold"
+    inventory_items ||--o{ delivery_order_lines : "delivered"
+    inventory_items ||--o{ inventory_invoice_lines : "billed"
+    inventory_items ||--o{ inventory_credit_note_lines : "credited"
+```
+
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.2。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **048**，前序 g2a5b8c1d3e4 每生每期一張未出草稿發票）。
+>
+> **2026-10-27 更新**：新增 §10.2 Inventory ER 圖（042–048，24 張新表）。
 >
 > **2026-10-27 更新**：Alembic head **048**（inventory 042–048）。
 >

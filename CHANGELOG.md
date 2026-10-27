@@ -4,7 +4,7 @@
 
 ## [main-279495c] - 2026-10-27
 
-推翻 2026-09-04「ERP／庫存唔喺本 repo 做」決定（~~#F1~~）：**Inventory 模組**喺本 repo 落地，runtime feature flag `INVENTORY_ENABLED` 把關（預設 `false`）。計劃只喺測試伺服器（Lightsail `Ubuntu-testing-deploy`）開；生產（`Ubuntu-Aqua-Attendance`）保持關。
+推翻 2026-09-04「ERP／庫存唔喺本 repo 做」決定（~~#F1~~）：**Inventory 模組**喺本 repo 落地，runtime feature flag `INVENTORY_ENABLED` 把關（預設 `false`）。已部署（2026-10-27）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持關。
 
 ### 新增
 
@@ -31,3 +31,9 @@
 - 驗證：`curl -s http://localhost/api/features` → `{"inventory":true|false}`。
 - 回滾：image tag `sha-16b8856`（上一個 main）。
 - API 測試：**430 passed**。
+
+### 已部署（2026-10-27）
+
+- CI 同 Publish container images（279495c）兩邊都 green。
+- Testing（`Ubuntu-testing-deploy`）：`git pull` 更新 compose（該機係 `~/juku-attendance` 嘅 git clone）+ `.env` 設 `INVENTORY_ENABLED=true` → `/api/features` 回 `{"inventory":true}`，側欄見 Inventory。
+- Production（`Ubuntu-Aqua-Attendance`）：部署前 backup、`update.sh` → `/api/features` 回 `{"inventory":false}`、`/api/inventory/items` 回 404、`alembic current` = `048 (head)`。瀏覽器抽查學費／課程／billing 頁待確認。

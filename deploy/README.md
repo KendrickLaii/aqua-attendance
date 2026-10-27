@@ -73,8 +73,8 @@ cd deploy/
 ### `INVENTORY_ENABLED`（Inventory 模組）
 
 - `docker-compose.prod.yml` 嘅 `api.environment` 有 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}`；預設關。
-- 開嘅方法：`.env` 設 `INVENTORY_ENABLED=true` + compose 檔有嗰行 env。**注意**：`deploy/` 檔案係手工複製上伺服器，`update.sh` 只 pull images，**唔會**更新 compose——舊版 compose 要手加 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}` 呢行先 work。
-- 計劃：測試伺服器（Lightsail `Ubuntu-testing-deploy`）開；生產（`Ubuntu-Aqua-Attendance`）保持 `false`。
+- 開嘅方法：`.env` 設 `INVENTORY_ENABLED=true` + compose 檔有嗰行 env。**注意**：兩台伺服器嘅 `deploy/` 部署方式唔同——測試機（`Ubuntu-testing-deploy`）係 git clone（`~/juku-attendance`），用 `git pull` 更新 compose；生產（`Ubuntu-Aqua-Attendance`）係手工複製（`~/aqua-attendance/deploy`），`update.sh` 只 pull images，唔會更新 compose——舊版 compose 要手加 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}` 呢行先 work。
+- 現況（2026-10-27 已部署）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持 `false`。
 - 關嗰陣：`/api/inventory/*` 全部 404；web 側欄冇 Inventory 群組。
 - 驗證：`curl -s http://localhost/api/features` → `{"inventory":true|false}`（或者瀏覽器開 `<site>/api/features`）。
 

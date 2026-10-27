@@ -1,6 +1,6 @@
 # 以後做成 ERP 的路線（歷史標題——決定已於 2026-10-27 推翻，見下）
 
-> **⚠️ 2026-10-27 推翻**：「唔喺本 repo 做」呢個決定已經俾人推翻——Inventory 模組已喺 `juku-attendance` 落地，由 runtime flag `INVENTORY_ENABLED`（預設 `false`，計劃只測試伺服器開）把關，見 [PROJECT-HANDBOOK.md](PROJECT-HANDBOOK.md) §1.11。本文件改為**設計參考**保留（隔離原則仍然有效）。以下嘅「唔做／新專案」論述屬歷史，唔再適用於庫存本身。
+> **⚠️ 2026-10-27 推翻**：「唔喺本 repo 做」呢個決定已經俾人推翻——Inventory 模組已喺 `juku-attendance` 落地，由 runtime flag `INVENTORY_ENABLED`（預設 `false`，只測試伺服器開——2026-10-27 已部署）把關，見 [PROJECT-HANDBOOK.md](PROJECT-HANDBOOK.md) §1.11。本文件改為**設計參考**保留（隔離原則仍然有效）。以下嘅「唔做／新專案」論述屬歷史，唔再適用於庫存本身。
 >
 > **狀態（歷史）**：規劃參考，~~**已決定不在 `juku-attendance` 這個 repo 裡做**~~。  
 > **寫於**：2026-08-28；**2026-09-04 更新**：確認 ERP／庫存/採購若要做，是**獨立的全新專案**（獨立部署、獨立資料庫，不跟本系統共用 `units`/`course_*`），不是本系統的下一個 Phase。本文件保留作為**未來新專案的參考草稿**（命名、階段拆分、關鍵決策的思路仍然有效），但不會有任何 migration／程式碼在本 repo 落地。  

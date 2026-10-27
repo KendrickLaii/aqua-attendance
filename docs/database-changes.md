@@ -517,6 +517,8 @@ Migration `b7c1e9a4d2f6`（down `a4e8c1d9b6f2`）。申請同正式更分開，�
 - 家具／貨品**唔好**入 `course_skus`、學費 Generate、`attendance_events`（呢條原則由 erp-roadmap 保留落嚟，仍然有效）。
 - Web 路由 `/attendance/inventory/*`；API `GET /api/features` 回 `{"inventory": bool}` 俾前端 runtime 讀。
 
+ER 圖見 [PROJECT-HANDBOOK.md](PROJECT-HANDBOOK.md) §10.2。
+
 ## 薪資／加班（OT）計算設計
 
 ### 確認的決定
