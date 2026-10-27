@@ -55,10 +55,10 @@ npm run dev
 | `/attendance/qr-codes` | QR 取得 / 輪替 / 預覽 |
 | `/attendance/scanner` | Web 掃描（token + location） |
 | `/attendance/log` | 事件紀錄、手動校正、CSV 匯出 |
-| `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [attendance-summaries.md](../../docs/attendance-summaries.md) |
-| `/attendance/shifts` | 員工更表（週視圖；模板一撳加更、拖放搬更／Ctrl 複製、複製上週、列印／CSV；頁頂批核員工申請；純記錄，唔影響出勤同薪資）— 見 [project-handbook.md](../../docs/project-handbook.md) §1.13 |
+| `/attendance/summaries` | 月度出勤彙總（總覽 → 明細、Generate）— 見 [PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) §1.13 |
+| `/attendance/shifts` | 員工更表（週視圖；模板一撳加更、拖放搬更／Ctrl 複製、複製上週、列印／CSV；頁頂批核員工申請；純記錄，唔影響出勤同薪資）— 見 [PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) §1.12 |
 | `/staff/shifts` | 員工自助報更（員工編號 + PIN；英文介面，粵語只作提示；申請要等 admin 批准） |
-| `/attendance/payroll` | 月度薪資（總覽 → 每日彙總明細、審核、Generate）— 見 [attendance-summaries.md](../../docs/attendance-summaries.md) |
+| `/attendance/payroll` | 月度薪資（總覽 → 每日彙總明細、審核、Generate）— 見 [PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) §1.13 |
 | `/attendance/notifications` | 通知中心 |
 | `/attendance/audit-logs` | 稽核查詢（superadmin） |
 | `/attendance/users` | User CRUD（admin） |
@@ -95,5 +95,4 @@ Docker 生產 image：`prod.Dockerfile`（nginx 服務 `dist/`）。
 ## 更多文件
 
 - 根目錄 [README.md](../../README.md)
-- [docs/attendance-summaries.md](../../docs/attendance-summaries.md) — 彙總 / Payroll 月度流程
-- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 生產部署、課程與學費發票
+- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 生產部署、課程與學費發票；彙總／Payroll 月度流程見 §1.13

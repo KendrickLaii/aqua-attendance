@@ -1,6 +1,6 @@
 # AQUA 專案手冊（統合版）
 
-> 本文檔將 `docs/` 資料夾內所有文件統合為一本手冊，以繁體中文呈現。最後更新：2026-10-27（**Inventory 模組入咗本 repo**——推翻 2026-09-04「ERP 唔喺度做」決定；由 runtime flag `INVENTORY_ENABLED` 把關，預設關；Alembic head **048**；release `main-279495c`）。2026-10-02（同一班可再報 #M22；Courses **Renew**／**Set end**；結束日過後自動 Leave；Alembic head **a4e8c1d9b6f2**）。2026-09-24（Credit Notes 獨立頁、退款單列印、`payable_to_name`／`payee_name`；收條編號改手打；上傳圖公開讀取）。2026-09-17（手動發票不受一人一期一單限制、作廢發票即時釋放堂費購買、drop `course_enrollments.purchased_quantity`）。2026-09-15（手動發票落庫、每中心發票編號系列、堂費購買記錄 `enrollment_purchases`、發票行 `staff_name`、堂費購買價可空出單時先定）。2026-09-04（堂費改一次性 `purchased_quantity` 收費，#M23 失效；ERP 確認不在本 repo 做，見 §1.11）。本地 migration 請用 `python -m alembic upgrade head`。
+> 本手冊為 juku-attendance 嘅統合文件：系統架構、本地開發、生產部署、CI/CD、運維、已知缺口、Mobile 發布、資料庫設計。最後更新：2026-10-27。版本歷史見 [CHANGELOG.md](../CHANGELOG.md)。
 
 ---
 
@@ -9,19 +9,22 @@
 1. [專案概述](#1-專案概述)
    - [1.9 課程資料模型](#19-課程資料模型)
    - [1.10 學費發票](#110-學費發票)
-   - [1.12 學費收條](#112-學費收條)
-   - [1.13 員工更表](#113-員工更表)
-   - [1.11 Inventory 模組（2026-10-27 推翻原決定）](#111-inventory-模組2026-10-27-推翻原決定)
+   - [1.11 學費收條](#111-學費收條)
+   - [1.12 員工更表](#112-員工更表)
+   - [1.13 出勤彙總與薪資](#113-出勤彙總與薪資)
+   - [1.14 Inventory 模組](#114-inventory-模組2026-10-27-推翻原決定)
 2. [本地開發與快速開始](#2-本地開發與快速開始)
 3. [生產部署](#3-生產部署)
 4. [CI/CD 說明](#4-cicd-說明)
-5. [已知缺口與代碼審查](#5-已知缺口與代碼審查)
+5. [已知缺口](#5-已知缺口)
 6. [運維手冊](#6-運維手冊)
 7. [Mobile 開發與發布](#7-mobile-開發與發布)
 8. [發布記錄](#8-發布記錄)
 9. [附錄](#9-附錄)
-10. [資料庫 ER 圖](#10-資料庫-er-圖)
-   - [10.2 Inventory ER 圖](#102-inventory-er-圖042048)
+10. [資料庫](#10-資料庫)
+    - [10.1 設計決策](#101-設計決策)
+    - [10.2 核心 ER 圖](#102-核心-er-圖)
+    - [10.3 Inventory ER 圖](#103-inventory-er-圖042048)
 
 ---
 
@@ -60,7 +63,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | **Location** (`locations`) | 據點／分校；掃描必須帶 `location_id`，且 Unit 須在該據點的允許名單內 |
 | **Profile** (`student_profiles` / `staff_profiles`) | 類型專屬資料：學生（學校、監護人）／員工（雇用類型、薪資） |
 | **Attendance event** | `check_in`、`check_out`、`manual_correction` 或 `auto_checkout` |
-| **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 [attendance-summaries.md](attendance-summaries.md) |
+| **Attendance summary** | 預計算的日／月彙總（`attendance_summaries`）；瀏覽讀 DB，重算用 Generate — 見 §1.13 |
 | **Payroll record** | 薪資計算結果快照（`payroll_records`） |
 | **Audit log** | 資料異動稽核記錄（`audit_logs`） |
 | **Course SPU** | 課程科目（`course_spus`）。課程家族的「概念層」，例如「小學數學」 |
@@ -77,7 +80,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `apps/mobile/` | Expo App — QR 掃描器 + 歷史紀錄 |
 | `docker-compose.yml` | 開發：PostgreSQL + Redis + API |
 | `deploy/` | 生產：Caddy + web + api + db |
-| `docs/` | 本手冊、後端審查、資料庫設計、運維指南 |
+| `docs/` | 本手冊（`PROJECT-HANDBOOK.md`）＋ `archive/`（舊工作記錄） |
 
 ### 1.3 QR Token 流程
 
@@ -168,7 +171,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `LOGIN_RATE_LIMIT` | `5/minute` | 登入限流 |
 | `SCAN_RATE_LIMIT` | `30/minute` | 掃描限流 |
 | `REDIS_URL` | `redis://redis:6379/0` | Rate limit 共用儲存（多副本） |
-| `INVENTORY_ENABLED` | `false` | Inventory 模組 runtime flag（§1.11）；`false` 時 `/api/inventory/*` 全 404、`/api/features` 回 `inventory: false` |
+| `INVENTORY_ENABLED` | `false` | Inventory 模組 runtime flag（§1.14）；`false` 時 `/api/inventory/*` 全 404、`/api/features` 回 `inventory: false` |
 | `INVENTORY_ALERTS_ENABLED` | `true` | 低庫存提示 loop 開關；要 `INVENTORY_ENABLED` 都係 true 先生效 |
 | `INVENTORY_INVOICE_OVERDUE_DAYS` | `30` | Inventory 發票過期日數 |
 | `INVENTORY_ALERT_INTERVAL_HOURS` | `24` | 庫存提示 loop 間隔（小時） |
@@ -208,7 +211,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 - SKU 可選掛載到 `locations`（`location_id`）。
 - **計價在 SKU**：一班一種收法（月費或堂費），單一 `price`。功課輔導／A1／F5 共用這兩個單位。
 - 只有 `unit_type == student` 的 unit 能被報名；`staff`/`device`/`goods` 會回傳 422。
-- 同一學生（`unit_id`）與同一 SKU（`sku_id`）同時只准一筆 `active`；第二筆在讀回傳 409。`cancelled`／`completed` 留低。離開後再 Join 開新報名；Back in class 重開舊報名（已有另一筆在讀則 409）。見 [known-gaps.md](known-gaps.md) ~~#M22~~。
+- 同一學生（`unit_id`）與同一 SKU（`sku_id`）同時只准一筆 `active`；第二筆在讀回傳 409。`cancelled`／`completed` 留低。離開後再 Join 開新報名；Back in class 重開舊報名（已有另一筆在讀則 409）。見 §5 ~~#M22~~。
 - 刪除 SPU 時，若底下仍有 SKU，會因 `ondelete="RESTRICT"` 回傳 409；刪除 SKU 時若仍有報名記錄，同樣回傳 409。
 - 刪除學生 unit 會 cascade 刪除其報名記錄；刪除 SKU 會限制於已有報名（`RESTRICT`）。
 
@@ -260,15 +263,15 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 | 項目 | 現況 | 見 |
 | ------ | ------ | --- |
-| ~~堂費扣公眾假期~~ | 2026-09-04 已失效：堂費改為報名時輸入 `purchased_quantity` 一次性收費，不再按出勤∩上課日計算 | [known-gaps.md](known-gaps.md) ~~#M23~~ |
+| ~~堂費扣公眾假期~~ | 2026-09-04 已失效：堂費改為報名時輸入 `purchased_quantity` 一次性收費，不再按出勤∩上課日計算 | §5 ~~#M23~~ |
 | ~~下學年重報同一 SKU~~ | 2026-10-02 已做：同時只准一筆在讀（`a4e8c1d9b6f2`） | ~~#M22~~ |
-| WhatsApp／對外發送發票 | 僅後台狀態流 | **#M24** |
-| Vuexy `/apps/invoice` | 模板假資料，不要當產品 | **D5** |
-| ~~ERP／家具庫存不在本 repo 做~~ | **2026-10-27 推翻**：已落地為 Inventory 模組（runtime flag `INVENTORY_ENABLED`），見 §1.11；`erp-roadmap.md` 留作設計參考 | ~~#F1~~ |
+| WhatsApp／對外發送發票 | 僅後台狀態流 | **#M24**（§5） |
+| Vuexy `/apps/invoice` | 模板假資料，不要當產品 | **D5**（§5） |
+| ~~ERP／家具庫存不在本 repo 做~~ | **2026-10-27 推翻**：已落地為 Inventory 模組（runtime flag `INVENTORY_ENABLED`），見 §1.14 | ~~#F1~~ |
 
-完整 schema 見 [database-changes.md](database-changes.md) § 學費發票。
+完整 schema 見 §10。
 
-### 1.12 學費收條
+### 1.11 學費收條
 
 收條係真實收款紀錄，**唔係**發票本身。一張 posted 收條可以結算一張或多張 `issued` 發票，並把那些發票標成 `paid`。
 
@@ -285,9 +288,9 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - `DELETE`：只准 voided；posted → 422。Remove 之後同一個收條號可以再用。
 - 列印：Official Receipt；負數金額標題為 CREDIT NOTE。
 
-### 1.13 員工更表
+### 1.12 員工更表
 
-簡化版 Teams Shifts。Admin 可以直接排更；員工用**員工編號 + 6 位 PIN** 登入獨立頁自己交申請，管理員批准之後先寫入正式更。**純記錄**：出勤、Summaries、Payroll 唔讀呢啲表。設計見 [方案設計.md](方案設計.md)（2026-10-02）。
+簡化版 Teams Shifts。Admin 可以直接排更；員工用**員工編號 + 6 位 PIN** 登入獨立頁自己交申請，管理員批准之後先寫入正式更。**純記錄**：出勤、Summaries、Payroll 唔讀呢啲表（2026-10-02 上線）。
 
 | 層級 | 資料表 | 說明 |
 | ------ | ------ | ------ |
@@ -329,9 +332,67 @@ Admin 週表其餘操作：
 - 揀印邊啲人：全部顯示中嘅員工／只印該期間有更嘅員工／自己揀（可多選）。員工名旁邊嘅列印掣 = 直接揀咗嗰個人 + Personal schedule；想印佢成個月就喺對話框轉 Month。
 - 開關（switch）：備註、休息日（Off）、每人一頁、簽名欄（員工簽名確認報更）。版面同開關會存喺瀏覽器 `localStorage`（`aqua.shiftPrint.prefs`），每部機記住自己嘅預設，例如簽名欄一直開住。揀「All locations」時每更會顯示分店。
 
-### 1.11 Inventory 模組（2026-10-27 推翻原決定）
+### 1.13 出勤彙總與薪資
 
-~~2026-09-04 曾拍板「ERP／庫存不在本 repo 做，是獨立新專案」（#F1）。~~ **2026-10-27 該決定被推翻**：Inventory 模組已在 `juku-attendance` 落地，由 runtime feature flag `INVENTORY_ENABLED`（API env，預設 `false`）把關。已部署（2026-10-27）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持關。`erp-roadmap.md` 保留作為設計參考（其中「唔好把家具塞進 `course_skus`／`units`／`attendance_events`」嘅原則仍然有效）。
+Summaries / Payroll 嘅月度流程。學費發票係**另一套**按月 Generate 流程（`POST /api/tuition-invoices/generate`），唔讀打卡、唔寫 `payroll_records`——見 §1.10；**唔好**把 Vuexy `/apps/invoice` 當學費系統。
+
+#### 資料流
+
+```text
+attendance_events（原始打卡）
+        │  POST /attendance-summaries/generate?year=&month=（手動，僅該月）
+        ▼
+attendance_summaries（每人每天一行，持久化於 DB）
+        │  GET /attendance-summaries/overview（瀏覽月份時讀取）
+        │  GET /attendance-summaries（單人每日明細）
+        ▼
+Summaries Web UI（總覽 → 明細）
+        │  POST /payroll-records/generate?year=&month=
+        ▼
+payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額）
+```
+
+瀏覽 Summaries 只讀 DB，**唔需要**每次入頁面都 Generate——該月有新打卡或要重算時先手動觸發。
+
+#### 工時／OT 計算規則
+
+- 以當日**首次 check_in** 與**末次 check_out** 計算；時間四捨五入到 **15 分鐘槽**（1 slot = 15 min = 0.25h；<7.5 分捨、≥7.5 分入）。
+- OT = 超出該據點 `business_hours[weekday]` 嘅部分（開門前簽到或關門後簽退）；未設定營業時間全部算常規。**唔要** `standard_hours_per_day`，OT 完全由 `business_hours` 決定。
+- **唔扣午休／Break**——`lunch_minutes` 參數存在但從未使用，`total_break_minutes` 永遠係 0；會令薪資多計（已知缺口 #H6，見 §5）。
+- `regular_slots`／`ot_slots` 為計薪來源；hours = slots × 0.25。日工時：`total_slots = (check_out_slot − check_in_slot) / 15min`；`ot_slots = max(0, open − in_slot) + max(0, out_slot − close)`；`regular_slots = total − ot`。
+- 雙次 check_in／check_out 全部允許，計算只取首次／末次。忘記簽退用日界 **23:59** 兜底（`source=auto_checkout`），**唔係**關門時間；現況只有手動 Day-end + Generate 回填過去日，**無** 23:59 cron、**無** 00:00 `attendance_status` 重置（見 §5 #M14）。
+- 月度彙總 = 每日 slots 加總 × 0.25。`locations.business_hours` 係結構化 JSON：`{"monday": {"open": "09:00", "close": "18:00"}, …, "saturday": null}`。
+- Payroll：聚合當月 `attendance_summaries` 嘅 slots，按 `staff_profiles` 薪資率計 `base_salary`／`overtime_pay`／`holiday_pay`／`gross_pay`／`net_pay`；凍結 `hourly_rate_snapshot`／`ot_multiplier_snapshot` 防調薪影響歷史。`approved`／`paid` 記錄 Generate 會 skipped；`adjustment_1`／`adjustment_2` 係純手動調整、Generate 永不覆寫；`gross = base + OT + holiday + commission_pay + adj1`，`net = gross + adj2`。
+- 分成：`staff_profiles.commission_rate`（0–100，`NULL`＝無）嘅員工按發票級 Tutor 匹配——`tutor_unit_id` 有值只按 id 匹配（員工改名唔受影響），無值先 fallback 舊式唔分大小寫名字匹配。正數發票按**收款月**計分成（posted receipt 嘅 `receipt_date` 落喺工資月，發票 bill month 無關）；已開或已付 credit note 按 bill month 扣減；結果寫入 `commission_pay`。已有記錄用 `commission_rate_snapshot` 舊比例，要套用新比例需刪記錄再 Generate。發票未填 Tutor 唔計；搵唔到或同名唔唯一唔派發，詳情由 `commission_warnings` 回傳 + Web 提示；`GET /api/payroll-records/{id}/commission-detail` 返回分成明細。分成員工當月無考勤，只要有合資格發票都會建記錄。
+
+#### API（全部 Admin）
+
+| Endpoint | 說明 |
+| ------ | ------ |
+| `GET /api/attendance-summaries` | 每日明細分頁（`unit_id`、`date_from`/`date_to`、`unit_type`、`is_complete`；`X-Total-Count`） |
+| `GET /api/attendance-summaries/overview` | unit × 月份聚合（`date_from`、`date_to` 必填；`search` ILIKE code／名） |
+| `POST /api/attendance-summaries/generate` | 從 `attendance_events` upsert `attendance_summaries`（鍵 `unit_id`+`summary_date`）；僅選中月份、唔篩 `unit_type`、寫 audit log；會刪當月已無 check-in 嘅彙總列，但保留 `calculation_method="seed"` |
+| `GET /api/payroll-records` | 薪資分頁（`year`、`month` 必填；`status`：`draft`/`calculated`/`approved`/`paid`/`cancelled`） |
+| `POST /api/payroll-records/generate` | 聚合當月彙總；回 `{created, updated, skipped, commission_warnings}` |
+
+#### Web UI
+
+- `/attendance/summaries` 主從式：工具列（月份箭頭、Type 篩選預設 **Staff**、Generate、Refresh）→ 統計卡（整月聚合）→ 總覽（每人一行月度彙總）→ 點列入每日明細（Regular / Reg slots / OT / OT slots + 狀態 chips）。Generate 成功提示喺 `src/utils/formatGenerateResult.ts`（區分首次／重算／無事件但有舊彙總／無事件無彙總）。
+- `/attendance/payroll` 主從式：月度薪資總覽 → 點列入明細（直接讀該 unit 當月 `attendance_summaries`，同 Summaries 明細同一資料源）；可編輯 Adjustment 1/2 與 remark。分成員工喺 Unit 編輯表單 **Compensation** 區開 `Commission / sharing`（預設 70%）；明細頁有 **Commission** 區（已收發票連收條號碼／日期、credit notes、awaiting payment）。
+- 狀態流程：`draft`／`calculated` → Approve → `approved` → Pay → `paid`（不可刪、不可重算）；superadmin 可刪 `draft`／`calculated`／`approved`。
+
+#### Seed 與常見問題
+
+- `python seed.py`（或 `--summaries`）寫入 2026-05–07 測試彙總（`calculation_method="seed"`，**無**對應打卡事件）——所以瀏覽有資料但 Generate 顯示「No check-in events」屬正常；無事件時 Generate 會清 orphan 列但保留 seed 列。
+- 常見疑問：未按 Generate 有資料 = seed 或之前 Generate 過（瀏覽只讀 DB）；`updated` 計數唔代表數值有變；Type 篩選只影響顯示，Generate 處理全部有打卡嘅 unit；Incomplete 只係「當天缺簽退且未到日界」；Auto checkout **唔算完整自動版**（見 §5 #M14）。
+
+#### 相關檔案
+
+`apps/api/app/services/summary_generator.py`、`overtime.py`、`payroll_generator.py`、`auto_checkout.py`；`routers/attendance_summaries.py`、`payroll_records.py`；`apps/web/src/pages/attendance/summaries.vue`、`payroll.vue`、`api/attendance/summaries.ts`、`payroll.ts`、`utils/formatGenerateResult.ts`。
+
+### 1.14 Inventory 模組（2026-10-27 推翻原決定）
+
+~~2026-09-04 曾拍板「ERP／庫存不在本 repo 做，是獨立新專案」（#F1）。~~ **2026-10-27 該決定被推翻**：Inventory 模組已在 `juku-attendance` 落地，由 runtime feature flag `INVENTORY_ENABLED`（API env，預設 `false`）把關。已部署（2026-10-27）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持關。「唔好把家具塞進 `course_skus`／`units`／`attendance_events`」嘅隔離原則仍然有效。
 
 #### 模組範圍
 
@@ -816,74 +877,246 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ---
 
-## 5. 已知缺口與代碼審查
+## 5. 已知缺口
 
-> 本節為摘要。完整程式碼層級已知問題（含檔案路徑、修法建議）見 **[known-gaps.md](known-gaps.md)**（SSOT）。
-> 文件本身的問題見 [docs-audit.md](docs-audit.md)。
->
-> **2026-10-27 更新**：**Inventory 模組上線**（推翻 2026-09-04 #F1 決定）——stock、purchasing、sales、invoicing、reports/dashboard/alerts，全部喺 `/api/inventory/*`，runtime flag `INVENTORY_ENABLED` 把關（預設關，只測試機開——2026-10-27 已部署）；公開 `GET /api/features`；Migration **042–048**（Alembic head **048**）。API 測試 **430 passed**（含新 `test_feature_flags.py`）。~~#F1~~ 結束；部署細節見 §8「Release 2026-10」。
-> **2026-09-24 更新**：Credit Notes 獨立頁；退款單列印；`payable_to_name`／`payee_name`（d4b8e2a1c7f0，Paid 後仍可改）；收條編號改手打；`GET /api/uploads/{key}` 公開讀取。Alembic head **d4b8e2a1c7f0**。
-> **2026-09-17 更新**：手動發票不再受 `(unit_id, period_start, period_end)` 唯一限制（改 partial unique index，僅 `kind = 'tuition'`；b8f2c4d6a1e9）；發票 PATCH 至 `void` 時會即時清掉`enrollment_purchases.billed_invoice_line_id`，所以「未出單」只有一個判斷式；`course_enrollments.purchased_quantity` 已移除（c3e7a95b2d10），堂數只存 `enrollment_purchases`。手動發票拒絕同一張單重複結算同一購買（422）及 walk-in 單結算實名學生購買（422）。測試：全套 **164 passed**。
-> **2026-09-15 更新**：手動發票落庫（`kind=manual`、可結算堂費 `purchase_ids`）；發票編號改每中心系列（`location_id` + `invoice_counters`）；堂費改由 `enrollment_purchases` 記錄追蹤，Generate 出未出單購買。Alembic head **7d340d0ce7de**。
-> **2026-09-04 更新**：堂費（per_session）改為報名時輸入 `purchased_quantity` 一次性收費（Migration 038），不再按出勤∩上課日計算，#M23 已失效。ERP／庫存確認不在本 repo 做，是獨立新專案，見 [erp-roadmap.md](erp-roadmap.md)（#F1）。  
-> **2026-08-28 更新**：SKU `meeting_weekdays` 已上線（Migration 037）；堂費 Generate 按上課日∩出勤計堂。剩餘產品缺口見 [known-gaps.md](known-gaps.md) #M22、#M24。  
-> **2026-08-27 更新**：SKU `billing_unit` 與學費發票已上線（Migration 035／036）。  
-> **2026-08-03 更新**：修正產品定位（非僅補習班；多據點已上線）並同步 §1 概述。後端／web／mobile 已完成 product → unit；部分周邊 README 若仍寫 `products` 以程式碼為準。  
-> **2026-07-28 更新**：完成 product → unit 重構審計。#M20 個人資料欄位搬移已完成；#M21 legacy constraint/index 名稱仍待清理。  
-> **2026-07-21 更新**：後端架構審查發現 **午休未扣除** 為新的 High 缺口（直接影響薪資），並新增 Summaries/Payroll 相依、Generate 競態、`attendance_status` 一致性等 Medium 問題 — 見 [known-gaps.md](known-gaps.md) #H6、#M15–#M18。  
-> **2026-07-17 更新**：釐清 **auto checkout 非完整自動版**（有手動 Day-end + Generate 回填，**無** 23:59 cron／無 00:00 status 重置）— 見 [known-gaps.md](known-gaps.md) #M14。  
-> **2026-07-10 更新**：Summaries / Payroll 重構完成（主從式 UI、overview 聚合、Generate upsert、薪資率計算、seed bulk 測試資料）— 見 [attendance-summaries.md](attendance-summaries.md)。多項 Medium/Low 問題已修復。  
-> **2026-06-16 更新**：後端大量修復已完成（StaffProfile 外鍵歧義、`employment_type` 遷移、profile 一對一關係、通知/彙總/薪資/稽核端點、OT 計算、auto_checkout **手動 API／helper** 等），詳見 [known-gaps.md](known-gaps.md)。
+> 程式碼層級已知問題嘅單一參考來源（SSOT）。已解決項目嘅歷史見 [CHANGELOG.md](../CHANGELOG.md)／git 歷史。
 
-### 5.1 優先行動計劃
+| 標記 | 含義 |
+|------|------|
+| 🔴 High | 上線前或盡快處理 |
+| 🟡 Medium | 上線前應補 |
+| 🟢 Low | 可延後 |
+| ⚠️ 設計取捨 | 已知但刻意接受的 trade-off |
+
+### 學費／課程 — 刻意尚未做
+
+> 計價在 SKU、班次名冊、按月 Generate **已做**。堂費（per_session）由 `enrollment_purchases` 記錄追蹤：報名記「買咗幾多堂 × 每堂價」，出單主要經 **Manual invoice** 揀學生後一鍵加入未出單 package（私補場景），Generate 亦會補收未出單購買；**不再看出勤**。手動發票已落庫（`kind=manual`），發票編號每中心獨立系列，列印已做。仍然延後的是 **#M24**。
+
+| # | 尚未做 | 現況 | 影響 |
+|---|--------|------|------|
+| **#M24** | 把帳單發給家長 | 後台 `draft` → `issued` → `paid`；列印發票已做（2026-09-15） | 沒有 WhatsApp／電郵發送 |
+| — | Vuexy `/apps/invoice` | AQUA 模板假資料 | **不是**學費系統（見 **D5**） |
+
+建議下一件產品工作：**#M24 發送**。
+
+### 🔴 High
+
+#### #H6 午休（break）未從工時扣除
+
+- **位置**：`apps/api/app/services/overtime.py:calculate_workday`、`apps/api/app/services/summary_generator.py`
+- **問題**：`calculate_workday` 只計算 `first_check_in → last_check_out` 總時長，**未扣除午休**；`summary_generator` 雖有 `lunch_minutes` 參數但**從未使用**，`total_break_minutes` 永遠寫入 `0`。
+- **影響**：9:00–18:00 出勤會被算成 9 小時 regular（含午休），staff 薪資會**多算**。
+- **建議**：在 `calculate_workday` 加入 break 扣除邏輯（例如超過 X 小時自動扣 60 分鐘，或依 `location` 設定），並寫入 `total_break_minutes`。上線前必修。
+
+### 🟡 Medium — 部署與維運
+
+#### #M1 Compose 無 API/Web healthcheck
+
+- **位置**：`deploy/docker-compose.prod.yml`
+- **問題**：僅 `db` 有 healthcheck；`/api/health` 已存在但未使用。
+- **建議**：為 api/web 加 healthcheck，Caddy `depends_on` 改 `condition: service_healthy`。
+
+#### #M2 API Dockerfile 以 root 執行、無 HEALTHCHECK
+
+- **位置**：`apps/api/Dockerfile`
+- **問題**：無 `USER`、無 `HEALTHCHECK`。
+- **建議**：加非 root user 與 `HEALTHCHECK` curl `/api/health`。
+
+#### #M3 無日誌 / 監控 / 追蹤
+
+- **問題**：無 `logging`/`structlog` 設定、無 Sentry、無 request ID。
+- **建議**：加結構化 logging + request ID middleware；接 Sentry（可選）。
+
+#### #M4 CSV 匯出非真串流
+
+- **位置**：`apps/api/app/services/attendance.py`
+- **問題**：已改為分頁載入（`CSV_EXPORT_PAGE_SIZE`），但仍將所有事件累積到 `all_events` list 後再一次寫入 `StringIO`，非真正串流。
+- **現況**：已改善（分頁讀取 + 上限 `CSV_EXPORT_MAX_ROWS`），但 `StringIO` 仍會佔用與資料量成正比的記憶體。
+- **建議**：改為逐頁 yield 寫入 generator，真正串流。
+
+### 🟡 Medium — 安全與架構
+
+#### #M6 Refresh token 存非 HttpOnly cookie
+
+- **位置**：`apps/web/src/utils/attendanceSession.ts`
+- **問題**：Web 用 `useCookie('refreshToken')`（JS 可讀），大型模板依賴樹增加 XSS 面。Mobile 用 SecureStore 已 OK。
+- **建議**：改後端設 HttpOnly + Secure + SameSite cookie。
+
+#### #M7 CORS 設定過寬
+
+- **位置**：`apps/api/app/main.py`
+- **問題**：`allow_methods=["*"], allow_headers=["*"]`。
+- **建議**：生產環境收斂為白名單。
+
+#### #M8 bcrypt 72-byte 截斷
+
+- **位置**：`apps/api/app/services/auth.py`
+- **問題**：passlib bcrypt 對 >72 bytes 靜默截斷。
+- **建議**：在 schema 加密碼長度上限驗證。
+
+#### #M9 測試覆蓋缺口
+
+- **問題**：RBAC 僅部分覆蓋；無 refresh 競態測試；Web/Mobile 零測試（僅 typecheck）。
+- **建議**：補完整 RBAC 矩陣 + 並發 refresh 測試；Web 加 Vitest 關鍵路徑。
+
+### 🟡 Medium — Summaries / Payroll
+
+#### #M11 Generate orphan 清理（已實作，保留 seed）
+
+- **位置**：`apps/api/app/services/summary_generator.py`
+- **現況**：Generate 會刪除當月無可用 check-in 的彙總列；**不刪** `calculation_method=seed`（`python seed.py --summaries`）。若同日後來有真實事件，會被 upsert 成 `standard` 並可再參與 orphan 清理。
+
+#### #M12 無 cron 自動月度 Generate
+
+- **問題**：Summaries 與 Payroll 的 Generate 均需手動觸發。
+- **建議**：月度 Generate cron + 結構化 logging。
+
+#### #M13 Holiday 無獨立 chip
+
+- **位置**：`apps/web/src/pages/attendance/summaries.vue`
+- **問題**：Holiday 僅在狀態欄顯示文字，無獨立篩選 chip（如同 Weekend chip）。
+- **建議**：新增 Holiday chip 前端篩選。
+
+#### #M14b Attendance timezone = Asia/Hong_Kong（已對齊）
+
+- **現況（2026-07-17）**：後端共用 `app/attendance_tz.py`（掃描跨日、OT 關門、日界 23:59、Generate 分日）；Web / Mobile 篩選與顯示用同一時區。舊 Day-end 若曾寫 **UTC 23:59**，在 Log「Today」可能落在隔天早上——用 All time + Source=Auto checkout 可查。
+- **勿再假設**：`.date()` on UTC、ISO `slice(0,16)`、或 `date.today()` 等於出勤日。
+
+#### #M14 Auto checkout **不是**完整自動版
+
+> ⚠️ 開發者常見誤解：看到 `auto_checkout` 服務、Dashboard「Day-end checkout」、或 Generate 會補 23:59 簽退，就以為「每晚會自動跑完」。**目前沒有排程；上線前不可當成已完成的自動系統。**
+
+| 已實作 | 未實作 |
+|--------|--------|
+| 共用 helper：`make_day_boundary_checkout_event`（23:59、`source=auto_checkout`） | **無** 23:59 cron / scheduler / worker |
+| 手動 `POST /api/auto-checkout/run`（Dashboard Day-end） | **無** 00:00 自動把 `attendance_status` 重設為 `checked_out` |
+| Generate 對**過去日期**缺簽退時補日界 `check_out` | 關門時間（`business_hours.close`）**不會**觸發簽退（只用於 OT / UI 標籤） |
+| `GET /api/auto-checkout/status` + 仍 checked_in 清單 | 隔夜仍 `checked_in` 會一直掛著，直到手動 Day-end 或隔日 Generate 回填 |
+
+- **位置**：`apps/api/app/services/auto_checkout.py`、`routers/auto_checkout.py`、Dashboard Day-end、`summary_generator.py`
+- **設計意圖**：日界 23:59 兜底，非關門時間；避免忘記簽退造成 OT 虛高（見 §10.1）。
+- **現況**：邏輯與手動／Generate 路徑已對齊，但**不會自己跑**。Router 註解裡「Normally run by a scheduled job」是目標態，不是現況。
+- **建議**：部署後加排程（例如每天 23:59 呼叫 `POST /api/auto-checkout/run`，或獨立 worker）；可選再補 00:00 status 重置 job。文件與 UI 文案應持續標明「手動／回填」，避免當成完整自動。
+
+#### #M15 Payroll 必須先手動 Generate summaries（過期警告 ✅ 已實作）
+
+- **位置**：`apps/api/app/services/payroll_generator.py`
+- **問題**：Payroll generate 只讀 `attendance_summaries`。如果 admin 忘記先 Generate summaries，Payroll 會用**過期彙總**算薪水。
+- **現況（過期警告已補，2026-07-22）**：`detect_stale_summary_units()` 會比對每個 unit 該月 events 的最後異動時間（`created_at` / `voided_at`）vs summaries `updated_at`，`POST /payroll-records/generate` 回傳 `stale_summaries`（reason=`outdated` 或 `no_summary`），前端顯示黃色警告提示先重新 Generate summaries。
+- **待辦（可選）**：Payroll generate 前**自動**觸發 summary generate（同交易），免去手動兩步驟。
+
+#### #M16 Void 事件後 summary 不會自動重算
+
+- **位置**：`apps/api/app/routers/attendance.py`（`POST /api/attendance/{event_id}/void`）
+- **問題**：作廢 event 只寫 audit log 與 `voided_at`；該 unit 該日的 `attendance_summaries` 要等到下次手動 Generate 才更新。期間 UI 顯示舊數字。
+- **建議**：void endpoint 順便重算該 unit 該日的 summary（單日重算很便宜）。
+
+#### #M17 Generate 端點無互斥鎖
+
+- **位置**：`apps/api/app/routers/attendance_summaries.py`、`routers/payroll_records.py`、`routers/tuition_invoices.py`
+- **問題**：Summaries / Payroll / 學費發票 generate 都是「select 再 upsert」；兩個 admin 同時按會競態。學費發票撞唯一約束時現回 **409**（不再是未處理 500）；Summaries／Payroll 仍可能 500。
+- **建議**：改用 PostgreSQL `INSERT ... ON CONFLICT DO UPDATE`，或以 Redis/advisory lock 互斥。單一塾使用下機率低，但修法便宜。
+
+#### #M18 `units.attendance_status` 非正規化狀態可能與 events 不一致
+
+- **位置**：`apps/api/app/services/attendance.py:_next_event_type`、`models/unit.py`
+- **問題**：scan 的 check_in/check_out 推斷依賴 `units.attendance_status`。void、manual correction、隔夜未簽退後，此欄位可能與實際 events 不一致（雖有 `recompute_unit_attendance_status` 但不是所有路徑都會觸發）。
+- **建議**：確保所有寫入/作廢 events 的路徑都呼叫 recompute，或改用「查最近一筆非作廢 event」來決定下一個動作。
+
+#### #M21 Legacy constraint/index 名稱未清理
+
+- **位置**：DB constraints 和 indexes
+- **問題**：`units` 表的 PK 仍為 `products_pkey`、`ix_products_code` 索引未改名；`unit_scan_locations` 表有舊的 `product_allowed_locations_*` constraint 與新的 `unit_scan_locations_*` constraint 並存；`attendance_events` 表有舊索引 `ix_attendance_events_product_recorded`（ORM 已叫 `ix_attendance_events_unit_recorded`）。
+- **影響**：不影響功能，但影響可維護性和 DB 工具的可讀性。
+- **建議**：在未來的 migration 中統一重新命名。
+
+#### #M24 學費發票未接 WhatsApp／對外發送
+
+- **位置**：Web `/attendance/invoices`；無發送 API
+- **問題**：發票只存在管理後台（draft → issued → paid）。2026-09-15 起可列印 PDF（Issue 後自動開、舊單可 Reprint），但仍沒有把帳單主動推給家長的管道。
+- **建議**：在 issued 之後接既有通知／WhatsApp 流程，不要把 Vuexy `/apps/invoice` 當發送層。
+
+### 🟢 Low — 前端改善
+
+#### #L1 CASL admin 與 superadmin 權限相同
+
+- **位置**：`apps/web/src/utils/attendanceCasl.ts`
+- **問題**：CASL 規則兩者都回 `manage all`（UI 層有局部區分：僅 superadmin 見 Super Admin 選項、可刪使用者、Audit Logs 限 superadmin）。
+- **建議**：前端區分 superadmin-only 功能。
+
+#### #L2 硬刷新 CASL ability 短暫遺失
+
+- **位置**：`apps/web/src/composables/useAttendanceCaslSync.ts`
+- **問題**：靠 `watch(immediate)` 修復，但時序脆弱。
+- **建議**：在 router guard 或 app 啟動時也同步一次。
+
+#### #L3 AQUA 模板死代碼
+
+- **位置**：`apps/web/src/pages/apps/`、`src/views/demos/`
+- **問題**：大量未使用 demo 路由與元件殘留。
+- **建議**：逐步刪除未使用路由（tree-shaking 已處理打包體積，非緊急）。
+
+#### #L4 列表端點無排序參數
+
+- **位置**：多個 list endpoint
+- **問題**：固定排序（如 `created_at desc`），未開放 client 控制。
+- **建議**：加入 `sort_by` / `sort_order` query 參數。
+
+### 🟢 Low — API 改善
+
+#### #L5 QR 錯誤訊息洩漏例外細節
+
+- **位置**：`apps/api/app/routers/attendance.py`
+- **問題**：`detail=f"Invalid QR: {e}"` 回傳例外內容。
+- **建議**：回傳通用訊息，細節只記 log。
+
+#### #L6 `recorded_by_user_id` 無 FK 載入
+
+- **位置**：CSV/列表查詢
+- **問題**：只存 UUID，未 join user 顯示姓名。
+- **建議**：查詢時 eager load user 關係。
+
+#### #L7 Seed 可選 `--no-summaries`
+
+- **位置**：`apps/api/seed.py`
+- **問題**：`python seed.py` 預設寫入 summaries。已有 `--summaries` flag（僅 summaries），但無反向的 `--no-summaries` flag。
+- **建議**：加 `--no-summaries` flag。
+
+### ⚠️ 設計取捨（已知且接受）
+
+| # | 項目 | 說明 |
+|---|------|------|
+| D1 | QR token 無過期 | 設計上無 `exp`，靠 `qr_token_version` 手動輪替。洩漏後在輪替前一直有效。 |
+| D2 | 登入撤銷所有 refresh token | `login` 呼叫 `revoke_all_refresh_tokens_for_user` → 單一 session，手機登入會踢掉 Web。 |
+| D3 | Mobile 無離線處理 | 所有網路失敗直接顯示 "Cannot reach API"。除非有實際斷網需求，否則不優先。 |
+| D4 | Weekend 篩選為前端 | 明細層 Weekend chip 為前端篩選已載入列；Complete/Incomplete 走 API `is_complete`。 |
+| D5 | 學費與 Vuexy invoice 模板分離 | 真實帳單是 `tuition_invoices`。`/apps/invoice` 仍為 AQUA 假資料，不應當產品功能。 |
+
+### 優先行動計劃
 
 **第一階段 — 立即修（High）**
-1. `recorded_at` 複合索引 ✅
-2. Web/Mobile refresh single-flight ✅
-3. 多副本前換 Redis rate limit storage ✅
-4. **午休 / Break 扣除**（`services/overtime.py`、`summary_generator.py`）⬜ — 見 [known-gaps.md](known-gaps.md) #H6
+1. **午休 / Break 扣除**（`services/overtime.py`、`summary_generator.py`）⬜ — #H6
 
 **第二階段 — 上線前應補（Medium）**
-5. Compose / Dockerfile healthcheck + 非 root ⬜
-6. 結構化 logging + request ID ⬜
-7. 統一 API 錯誤格式 ✅ Done（2026-07）
-8. CSV 真串流 ⬜
-9. 補 RBAC 矩陣 + refresh 競態測試 ⬜
-9b. Auto checkout **排程**（現僅手動 Day-end + Generate 回填；見 known-gaps #M14）⬜
-9c. Payroll 前自動 Generate summaries / 過期警告 ⬜ — 見 [known-gaps.md](known-gaps.md) #M15
-9d. Void event 後自動重算單日 summary ⬜ — 見 [known-gaps.md](known-gaps.md) #M16
-9e. Generate 端點互斥鎖 ⬜ — 見 [known-gaps.md](known-gaps.md) #M17
-9f. `units.attendance_status` 一致性 ⬜ — 見 [known-gaps.md](known-gaps.md) #M18
-9g. **個人資料欄位搬移至 profiles**（units 瘦身）✅ — 已於 2026-07-28 建立並執行 Alembic migration `f8e65b7cf82b_align_schema_with_er_diagram`；見 [database-changes.md](database-changes.md) § 個人資料欄位搬移狀態。
-9h. 同一學生同一 SKU 永久唯一（下學年重報 409）✅ — 2026-10-02 改為只鎖在讀（`a4e8c1d9b6f2`）。見 [known-gaps.md](known-gaps.md) ~~#M22~~
-9i. ~~堂費扣公眾假期~~ ✅ 2026-09-04 已失效（堂費改一次性 `purchased_quantity` 收費，不再依出勤／上課日）— 見 [known-gaps.md](known-gaps.md) ~~#M23~~
-9j. 學費發票對外發送（WhatsApp）⬜ — 見 [known-gaps.md](known-gaps.md) #M24
+2. Compose / Dockerfile healthcheck + 非 root ⬜（#M1、#M2）
+3. 結構化 logging + request ID ⬜（#M3）
+4. CSV 真串流 ⬜（#M4）
+5. 補 RBAC 矩陣 + refresh 競態測試 ⬜（#M9）
+6. Auto checkout **排程**（現僅手動 Day-end + Generate 回填）⬜（#M14）
+7. Payroll 前自動 Generate summaries（過期警告已有）⬜（#M15）
+8. Void event 後自動重算單日 summary ⬜（#M16）
+9. Generate 端點互斥鎖 ⬜（#M17）
+10. `units.attendance_status` 一致性 ⬜（#M18）
+11. 學費發票對外發送（WhatsApp）⬜（#M24）
 
 **第三階段 — 可延後（Low）**
-10. Refresh token 改 HttpOnly cookie ⬜
-11. 前端區分 admin/superadmin ⬜
-12. QR 錯誤訊息、密碼長度、mobile EAS build/release automation ⬜
-13. 出勤端點 `unit_type` 白名單檢查 ✅ — 見 [known-gaps.md](known-gaps.md) #M19
+12. Refresh token 改 HttpOnly cookie ⬜（#M6）
+13. 前端區分 admin/superadmin ⬜（#L1）
+14. QR 錯誤訊息、密碼長度、mobile EAS build/release automation ⬜
 
-**設計取捨（已知且接受）**
-- QR token 無過期（靠 `qr_token_version` 手動輪替）
-- 登入撤銷所有 refresh token（單一 session）
-- Mobile 無離線處理
-- AQUA 模板死代碼（tree-shaking 已處理打包體積）
+**其他未解技術債**：AQUA 模板死代碼（deferred）；Mobile My QR tab 為說明 placeholder（deferred）；Mobile M3.5 unit QR 待排；S3/R2 圖片儲存延後。
 
-> 完整清單（含檔案路徑、修法建議、Summaries/Payroll 限制）→ **[known-gaps.md](known-gaps.md)**
-
-### 5.2 各領域評分
-
-| 領域 | 分數 | 說明 |
-| ------ | ------ | ------ |
-| Backend Security | **8.5/10** | JWT rotation、RBAC、QR 金鑰分離扎實；rate limit 已改用 Redis（多副本安全）；扣分在 QR 無過期 |
-| Frontend Architecture | **7/10** | Pinia + CASL 整合合理；Summaries/Payroll 主從式 UI 完善；扣分在非 HttpOnly token、CASL 時序脆弱、模板死代碼 |
-| Mobile UX/Reliability | **6.5/10** | Token refresh + 401 retry 完整；History filters 已實作；扣分在無離線、無 EAS build/release automation、Phase 3/4 待辦 |
-| Documentation | **8/10** | README/DEPLOY/backup 齊全；Summaries/Payroll 文件完整（attendance-summaries.md）；扣分在缺 logging/監控文件 |
-| Test Coverage | **6/10** | 後端 **157** 個測試涵蓋核心（含 `test_courses.py`、`test_tuition_invoices.py` 47 項：每中心編號、堂費購買、手動發票結算）；扣分在無 refresh 競態測試、RBAC 不完整、Web/Mobile 主要仍只有 typecheck |
-
-> **最關鍵三件事**：`recorded_at` 索引 ✅、Web/Mobile refresh 單飛 ✅、多副本 rate limit 儲存 ✅。
+已解決（詳見 CHANGELOG／git 歷史）：#H1–#H5、#M5、#M10、#M19、#M20、#M22、#M23、#F1、API 錯誤格式統一、product→unit 重構、profile 欄位搬移、void 端點、Summaries/Payroll 主從式重構、前端對齊 Batch 1–4、Location photo 上傳、`unit_type` 白名單等。
 
 ---
 
@@ -1090,44 +1323,10 @@ docker compose -f docker-compose.prod.yml down
 
 ### 7.1 Sprint 計劃（Phase 1–4）
 
-**Phase 1 — 基礎修復** ✅ Done
-
-| ID | 任務 | 檔案 | API | 狀態 |
-| ---- | ------ | ------ | ----- | ------ |
-| M1.1 | Scan tab：`admin` + `superadmin`（非 `staff`） | `AppNavigator.tsx` | `GET /auth/me` → `role` | ✅ |
-| M1.2 | `User.role` type = `admin \| superadmin` | `services/auth.ts` | — | ✅ |
-| M1.3 | Logout 呼叫 `POST /auth/logout` | `services/auth.ts`, `App.tsx` | `/auth/logout` | ✅ |
-| M1.4 | Entry point `expo/AppEntry.js` → `App.tsx` | `package.json` | — | ✅ |
-| M1.5 | 401 refresh；auth path 跳過 refresh | `services/api.ts` | `/auth/refresh` | ✅ |
-| M1.6 | FastAPI error `detail` 解析 | `services/api.ts` | — | ✅ |
-
-**Phase 2 — 與 Web 掃描對齊** ✅ Done
-
-| ID | 任務 | 檔案 | API | 狀態 |
-| ---- | ------ | ------ | ----- | ------ |
-| M2.1 | `listLocations` client | `services/locations.ts` | `GET /locations?is_active=true` | ✅ |
-| M2.2 | Scan：location picker + 持久化 | `ScannerScreen.tsx` | `POST /attendance/scan` + `location_id` | ✅ |
-| M2.3 | Scan：簽到/簽退 + 持久化 | `ScannerScreen.tsx` | `event_type` on scan | ✅ |
-| M2.4 | Result modal 顯示 location | `ScannerScreen.tsx` | `AttendanceOut.location` | ✅ |
-| M2.5 | History 顯示 location | `HistoryScreen.tsx` | `GET /attendance` | ✅ |
-| M2.6 | `scanQR` options object | `services/attendance.ts` | — | ✅ |
-
-**Phase 3 — 體驗與功能（部分 Done）**
-
-| ID | 任務 | 優先級 | 狀態 |
-| ---- | ------ | -------- | ------ |
-| M3.1 | History：date filter + pagination | P2 | ✅ Done |
-| M3.2 | History：pull-to-refresh error toast | P3 | ✅ Done |
-| M3.3 | My QR tab：改為「說明」 | P3 | ✅ Done |
-| M3.4 | Login：失敗時顯示 API connection hint | P3 | ✅ Done |
-| M3.5 | Mobile 顯示 unit QR（admin） | P4 | 待排 |
-| M3.6 | Username login trim | P3 | ✅ Done |
-| M3.8 | Session：啟動時透過 `/auth/me` 驗證 token | P2 | ✅ Done |
-| M3.9 | 401 → 返回 login | P2 | ✅ Done |
-| M3.10 | QR token normalize（URL / quotes） | P2 | ✅ Done |
-| M3.11 | App icon + metro.config.js | P3 | ✅ Done |
-
-**Phase 4 — 上線前**
+- **Phase 1 — 基礎修復** ✅ Done（M1.1–M1.6：admin/superadmin 角色、logout、entry point、401 refresh、FastAPI `detail` 解析）
+- **Phase 2 — 與 Web 掃描對齊** ✅ Done（M2.1–M2.6：location picker、check-in/out 切換、result/history 顯示地點）
+- **Phase 3 — 體驗與功能** 大部分 Done；**M3.5**（Mobile 顯示 unit QR，admin）仍**待排**
+- **Phase 4 — 上線前**（open）：
 
 | ID | 任務 | 負責人 | 狀態 |
 | ---- | ------ | -------- | ------ |
@@ -1137,6 +1336,7 @@ docker compose -f docker-compose.prod.yml down
 | M4.4 | CORS / HTTPS API URL for builds | DevOps | ⬜ |
 | M4.5 | End-to-end test matrix（devices） | QA | ⬜ |
 | M4.6 | Internal distribution（TestFlight / APK） | Ops | ⬜ |
+
 
 ### 7.2 Mobile 目錄結構（2026-07 現況）
 
@@ -1274,192 +1474,7 @@ npx expo start
 
 ## 8. 發布記錄
 
-### Release 2026-05 — Web polish + dashboard stats
-
-Ship checklist for `main` → GHCR → Lightsail（`deploy/update.sh`）。
-
-#### Web（attendance admin）
-
-| 區域 | 變更 |
-| ------ | ------ |
-| P1 | Login `?to=` redirect；`formatApiError` on load errors |
-| P1 | Dashboard today event total via `X-Total-Count` |
-| P2 | UserProfile attendance menu；Web Scanner（QR dialog entry only） |
-| P2 | Shared `DialogFooter`；dialog 統一 P1–P3 |
-| P3 | Unit checked-in/out filter（API + UI） |
-| P3 | List pagination — units, users, locations |
-| Fix | Dashboard check-in/out counts — `GET /api/attendance/stats` |
-| Refactor | `locations.vue` split |
-| Fix | Location create when Chinese name empty |
-| Feature | **Staff employment type** — `part_time` / `full_time` on units |
-| Feature | **QR Codes** — QR shown on each card；multi-select + **Print selected** |
-
-#### API
-
-| 區域 | 變更 |
-| ------ | ------ |
-| New | `GET /api/attendance/stats` — aggregate day counts for dashboard |
-| Enhancement | `X-Total-Count` + `attendance_status` filter on units list |
-| New | Unit `employment_type`（`part_time` \| `full_time`）；list filter `?employment_type=` |
-| Migration | `008_product_employment_type` — adds `units.employment_type` column |
-
-#### 部署前檢查清單
-
-- [ ] GitHub Actions CI green on latest `main` commit
-- [ ] Publish container images workflow green
-- [ ] `VITE_ATTENDANCE_API_URL` matches prod API URL
-- [ ] Server `.env`：`SECRET_KEY`、`QR_SECRET`、`POSTGRES_PASSWORD` 非佔位符
-- [ ] GHCR login on server still valid
-
-#### Migration
-
-API container 啟動時會自動執行 Alembic — `008` 新增 `units.employment_type`。既有 staff rows 維持 `NULL`，直到在 Unit Management 編輯。
-
-#### 部署後驗證
-
-- [ ] `curl -s http://<host>/api/health` → `{"status":"ok"}`
-- [ ] `curl -s -o /dev/null -w "%{http_code}" http://<host>/api/attendance/stats` → **403**（not 404）
-- [ ] Login at `/attendance/login` — dashboard 無 console errors
-- [ ] Dashboard — Check-ins / Check-outs Today 顯示數字
-- [ ] Units — attendance filter + pagination；staff Employment（part/full-time）
-- [ ] Locations — create / edit / delete（tabbed form）
-- [ ] QR Codes — QR visible on cards；select several → **Print selected**
-- [ ] QR Codes — **Rotate / copy** 仍可運作
-- [ ] 修改 seed 預設帳號密碼（若仍使用 seed.py 內建密碼）
-
-#### 回滾
-
-```bash
-cd ~/aqua-attendance/deploy
-# 將 .env 的 API_IMAGE / WEB_IMAGE 指向舊 SHA tag，然後：
-docker compose -f docker-compose.prod.yml --env-file .env pull
-docker compose -f docker-compose.prod.yml --env-file .env up -d
-```
-
----
-
-### Release 2026-06 — 後端大量修復 + 多型 Profile
-
-> 詳見 [known-gaps.md](known-gaps.md)。
-
-#### API
-
-| 區域 | 變更 |
-| ------ | ------ |
-| Critical | StaffProfile 多重外鍵歧義修復（`foreign_keys` 明確指定） |
-| Critical | profile 關係 `uselist=False`（一對一映射修正） |
-| Migration | `employment_type` 從 `units` 遷移至 `staff_profiles`（`e350a1e954db`） |
-| New | `staff_profiles` / `student_profiles` CRUD 端點 |
-| New | `notifications` CRUD + 標記已讀 |
-| New | `audit_logs` 查詢端點（superadmin） |
-| New | `auto_checkout` **手動**觸發端點（`POST /api/auto-checkout/run`；**非**已上線排程，見 known-gaps #M14） |
-| New | OT 計算服務（`services/overtime.py` — 15 分鐘槽） |
-| Enhancement | Rate limit 改用 Redis backend（多副本安全） |
-| Enhancement | `notification.extra_data` 改 JSON 型別 |
-| Enhancement | attendance 作廢端點（`voided_at`） |
-| Enhancement | audit_log 寫入 helper，接線關鍵操作 |
-| Migration | 001–033（含 `attendance_summaries`、`payroll_records`、slots、薪資率；032/033 於 7 月完成 product→unit 與 profile 欄位對齊） |
-
-#### Web
-
-| 區域 | 變更 |
-| ------ | ------ |
-| New | Notifications 頁面 |
-| New | Audit Logs 頁面（superadmin） |
-| Enhancement | Staff/Student profile 編輯整合進 Unit 頁面 |
-
----
-
-### Release 2026-07 — Summaries / Payroll 重構
-
-> 詳見 [attendance-summaries.md](attendance-summaries.md)。
-
-#### API
-
-| 區域 | 變更 |
-| ------ | ------ |
-| New | `POST /api/attendance-summaries/generate` — 從 events 計算並 upsert 每日彙總 |
-| New | `GET /api/attendance-summaries/overview` — unit × 月份聚合（含工時、天數） |
-| New | `POST /api/payroll-records/generate` — 從 summaries 聚合薪資記錄 |
-| Enhancement | `GET /api/payroll-records` — 新增 `year`/`month`/`unit_type`/`status` 篩選 |
-| Enhancement | Payroll generate 依 `staff_profiles` 薪資率計算 `base_salary`/`overtime_pay`/`gross_pay`/`net_pay` |
-| Enhancement | 員工可設定 `commission_rate`（0–100%）；Generate 按發票級 Tutor 匹配（`tutor_unit_id` 優先，舊單 fallback 名字）**收款月**內已收發票，扣除 credit note 後將分成寫入 `commission_pay` 欄（Adjustment 1 為純手動調整）；比例由 `commission_rate_snapshot` 凍結（套用新比例需刪記錄重 Generate）；名字無法唯一匹配時回傳 `commission_warnings`；`GET /payroll-records/{id}/commission-detail` 提供明細 |
-| Enhancement | `payroll_records` 凍結 `hourly_rate_snapshot`/`ot_multiplier_snapshot`（防歷史污染） |
-| Enhancement | Generate 寫入 audit log（`DATA_EXPORT`） |
-| Migration | `026_add_slots_and_pay_rates.py` — slots + 薪資率欄位；`032_rename_products_to_units.py` — product → unit 重新命名 |
-
-#### Web
-
-| 區域 | 變更 |
-| ------ | ------ |
-| New | `/attendance/summaries` — 主從式頁面（總覽 → 每日明細） |
-| New | `/attendance/payroll` — 主從式頁面（月度薪資 → 明細） |
-| Enhancement | Unit 表單 Compensation 區新增 `Commission / sharing` 開關與可編輯比例（開啟時預設 70%） |
-| Enhancement | Payroll Generate 提示 Tutor 找不到員工或同名不唯一的 commission warnings |
-| Enhancement | Summaries：月份切換、Type 篩選（預設 Staff）、Generate、統計卡 |
-| Enhancement | Payroll：狀態流程（draft → calculated → approved → paid）、Approve/Pay 動作 |
-| Enhancement | Generate 成功提示（區分首次/重算/無事件/seed 既有資料） |
-| Enhancement | Payroll 明細直接讀取 `attendance_summaries`（與 Summaries 同資料源） |
-
-#### Seed 資料
-
-| 資料集 | 月份 | 說明 |
-| -------- | ------ | ------ |
-| `SEED_SUMMARIES` | 2026-05 | 固定少數列 |
-| `build_bulk_summary_rows` | 2026-06、2026-07 | 大量隨機模式（`calculation_method = "seed"`） |
-
----
-
-### Release 2026-10 — Inventory（feature flag）
-
-Release tag `main-279495c`（commit `279495c`，2026-10-27）。推翻 2026-09-04「ERP 唔喺本 repo 做」決定（~~#F1~~）：Inventory 模組落地，runtime flag `INVENTORY_ENABLED` 把關（預設 `false`）。Rollback image tag：`sha-16b8856`（上一個 main）。部署前生產已有 backup。
-
-#### API
-
-| 區域 | 變更 |
-| ------ | ------ |
-| Feature flag | `INVENTORY_ENABLED`（預設 `false`）；`false` 時全部 `/api/inventory/*` 回 404（`require_inventory_enabled` dependency）；alerts loop 要 `INVENTORY_ENABLED && INVENTORY_ALERTS_ENABLED` 先起 |
-| New | `GET /api/features` — 公開、免登入，回 `{"inventory": bool}`；web runtime 讀取（兩台伺服器同一個 web image，唔用 build-time var） |
-| New | `/api/inventory/*`：stock core（categories／items／stocks／movements／transfers／stocktakes／CSV）、purchasing（suppliers／PO／GRN／purchase returns）、sales（customers／SO＋proforma／DO）、invoicing（invoices／receipts／credit notes；發單時扣庫存，DO 係 invoice 子單，SO → invoice → DO）、reports／dashboard／alerts |
-| Migration | **042–048**（042 down_revision `g2a5b8c1d3e4` → head **048**）；全部新表，冇改舊表；`inventory_counters` 獨立派號 |
-| Tests | 430 passed（含新 `tests/test_feature_flags.py`；conftest autouse fixture 預設開 flag） |
-
-#### Web
-
-| 區域 | 變更 |
-| ------ | ------ |
-| New | `composables/useFeatureFlags.ts` — runtime fetch `/api/features`（plain `ofetch`，單飛 cache；失敗當 `inventory: false`） |
-| Nav | `filterNavByFeatures()`：flag 關時側欄成個 Inventory 群組（`attendance-inventory*`）唔顯示 |
-| Router | beforeEach 轉 async；`/attendance/inventory/*` 喺 flag 關時導去 `attendance-dashboard` |
-| Shared | `AttendanceConfirmDialog` 標題左加 tone icon（行為不變）；`GlobalConfirmDialog` 掛 App.vue（inventory 頁用） |
-| Pages | `/attendance/inventory/*`：workflow（Start Here）、dashboard、index（Stock Overview）、items、stocktakes、movements、suppliers、purchase-orders、goods-receipts、purchase-returns、customers、sales-orders、delivery-orders、invoices、receipts、credit-notes、reports |
-
-#### 部署前檢查清單
-
-- [x] API pytest 本地 430 passed
-- [x] GitHub Actions CI green（279495c）
-- [x] Publish container images workflow green（279495c）
-- [x] 生產 backup 已做（`./backup.sh`）
-- [x] 部署次序：testing server 先（git pull 攞新 compose + `.env` 設 `INVENTORY_ENABLED=true`，`./update.sh`，驗證 features=true），之後 production（淨係 `./update.sh`，驗證 features=false）
-
-#### Migration
-
-API container 啟動自動跑 `alembic upgrade head` 至 **048**。全部係新表；FK 只指 `users`／`locations`／`units`（`customers.student_unit_id` SET NULL）。既有資料唔郁。
-
-#### 部署後驗證
-
-- [x] Testing（`Ubuntu-testing-deploy`）：`curl -s http://localhost/api/features` → `{"inventory":true}`；側欄見 Inventory
-- [x] Production（`Ubuntu-Aqua-Attendance`）API 檢查：`/api/features` → `{"inventory":false}`；`/api/inventory/items` → 404；`alembic current` → `048 (head)`
-- [ ] Production 瀏覽器抽查：側欄無 Inventory；學費／課程／billing 頁正常
-
-#### 回滾
-
-```bash
-cd ~/aqua-attendance/deploy
-# .env 將 API_IMAGE / WEB_IMAGE 指去 sha-16b8856，然後：
-docker compose -f docker-compose.prod.yml --env-file .env pull
-docker compose -f docker-compose.prod.yml --env-file .env up -d
-```
+發布內容、部署清單與驗證結果已搬去根目錄 [CHANGELOG.md](../CHANGELOG.md)（Keep a Changelog 格式；含 `main-279495c` 及之前各 release／更新記錄）。
 
 ---
 
@@ -1499,93 +1514,71 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 **Migration note**：Legacy single `photo_url` 於 migration `007` 遷移到 `main_photo_url`。
 
-### 9.2 技術債追蹤（精簡版）
-
-| 區域 | 項目 | 狀態 |
-| ------ | ------ | ------ |
-| Web | ~~Dual cookies~~ | ✅ Done — unified to `accessToken`/`refreshToken`/`userData` |
-| Web | Template bloat | Deferred — AQUA demo tree 仍保留 |
-| Web | ~~Summaries 主從式重構~~ | ✅ Done — overview 聚合 + 每日明細 + Generate |
-| Web | ~~Payroll 主從式重構~~ | ✅ Done — 月度薪資 + 狀態流程 + 明細 |
-| Mobile | ~~History filters~~ | ✅ Done — date range chips + event type filter + pagination |
-| Mobile | My QR tab | Deferred — 目前為「說明」placeholder |
-| Mobile | EAS / store build | `eas.json` 已存在；已有 mobile typecheck CI，仍缺 EAS build/release automation |
-| Mobile | Phase 3 待辦（M3.5 unit QR） | 待排 |
-| API | ~~Scan race~~ | ✅ Done — `SELECT FOR UPDATE` on PostgreSQL |
-| API | ~~python-jose~~ | ✅ Done — migrated to `PyJWT` 2.10.1 |
-| API | ~~Rate limiting~~ | ✅ Done — `slowapi` on login/scan（Redis backend） |
-| API | ~~Summaries/Payroll endpoints~~ | ✅ Done — generate + overview + 薪資率計算 |
-| API | RBAC tests | 後端測試含 `test_courses.py`、`test_tuition_invoices.py`（2026-08-28 兩檔共 38 項）；無 full permission matrix |
-| API | 結構化 logging | 待實作 |
-| Data | Location photo upload | ✅ Done — `POST/GET /api/uploads` + Photos tab picker；S3/R2 仍延後 |
-| API / Web | 課程資料（SPU/SKU/Enrollment） | Done — 模型、Router、Migration 034；SKU `billing_unit`（035）、`meeting_weekdays`（037，僅供顯示）、`staff_id`（041）；`course_enrollments.unit_price`（041）；`enrollment_purchases`（7d340d0ce7de）；Web 班次名冊 + 起迄日 + 購買堂數 + unbilled 標示 |
-| API / Web | 學費發票 | Done — Generate、`/attendance/invoices` + `/attendance/credit-notes`；收條 `/attendance/receipts`；退款抬頭 d4b8e2a1c7f0。Vuexy `/apps/invoice` 仍非真實帳單 |
-
-### 9.3 文件評分卡（2026-08-04 複核）
-
-> 本次複核方式：逐項對照 `apps/api`、`apps/web`、`apps/mobile`、`.github/workflows/`、`deploy/` 與 `docs/` 實際檔案內容（非僅閱讀文件本身），發現的落差已同步修正於本手冊（例如 §5.2／§9.2 測試數量 66→80）。整體而言**文件與程式碼的一致性高**，本節分數多維持 2026-07 版本，僅依查核證據微調並補充理由。
->
-> **2026-10-27 補記**：Alembic head 為 **048**（inventory 模組 042–048；前序 g2a5b8c1d3e4，每生每期一張未出草稿發票）。Inventory 已入本 repo（`INVENTORY_ENABLED` runtime flag，預設關、只測試機開——2026-10-27 已部署）；2026-09-04「ERP 唔喺度做」決定已推翻（~~#F1~~）。§1.11／§5／§8 已同步；API 測試 **430 passed**。
-> **2026-09-24 補記**：Alembic head 為 **d4b8e2a1c7f0**（credit note 抬頭；收條 a7f3c1e8d4b2／c9d2e4f1a8b3）。§1.10／§1.12 已同步。
-> **2026-09-17 補記**：當時 head 為 **c3e7a95b2d10**（手動發票 partial unique b8f2c4d6a1e9；drop `course_enrollments.purchased_quantity`）。堂數單一來源 = `enrollment_purchases`；作廢發票即時釋放購買。
-> **2026-09-15 補記**：Alembic head 為 **a1c9e4d7f2b3**（`enrollment_purchases.unit_price` 可空；另含手動發票 71296d8b9d7f、每中心編號 f5d44789754d、發票行老師名 bfb6cd4eb3b9）。§1.10 已同步：手動發票落庫、堂費由購買記錄追蹤、私補出單時先定價。
-> **2026-09-04 補記**：Alembic head 為 **038**（`course_enrollments.purchased_quantity`；堂費改一次性收費，不再看出勤）。§1.10／§1.11 已同步。
-> **2026-08-28 補記**：Alembic head 為 **037**（SKU `meeting_weekdays`；堂費按上課日計堂）。§1.9／§1.10／§10 已同步。下表「本次複核」仍為 2026-08-04 當日證據，請以本補記與程式碼為準。
-> **2026-08-27 補記**：當時 head 為 **036**（非 034）；後端測試約 **95** 個 `test_*`。
-
-| 項目 | 評分 | 說明 |
-| ------ | ------ | ------ |
-| README 清晰度 | 9/10 | Root `README.md` 架構圖、概念表、repo 結構、seed data、API/Web/Mobile 三份 env var 表齊全並與程式碼一致；扣分在部分表格為示例而非完整枚舉 |
-| 部署文件 | 8/10 | 本手冊 §3 覆蓋 Docker 安裝、GHCR 登入、密鑰生成、`deploy/` 五個腳本（`first-boot.sh`/`update.sh`/`reset-db.sh`/`backup.sh`/`restore.sh`）皆存在且行為與描述一致；扣分在未提及 `deploy/README.md` 與備份腳本在 §9.3 之外才被提及 |
-| API Docs | 7/10 | OpenAPI (`/docs`) 自動生成 ✅，§1.6 授權表對應實際 router（含 courses 三組 + tuition-invoices）；扣分在仍缺 API 版本策略說明（無 `/api/v1` 或 header 版本化機制） |
-| 操作手冊 | 7.5/10 | §6 運維手冊（健康檢查、容器起不來、DB 連線、migration、backup/restore、認證問題、磁碟/日誌、TLS、SOP）覆蓋完整且與 `deploy/` 腳本內容一致；扣分在仍缺可觀測性（結構化 logging／監控／告警）文件，因為該功能本身也尚未實作 |
-| 內部一致性（新增） | 8/10 | 2026-08-27 已同步 migration head 036、學費發票、測試數與 known-gaps #M22–#M24。扣分在 §9.3 歷史評分卡仍保留 2026-08-04 當日數字，需讀補記 |
-
-**本次複核逐項驗證結果（摘要）**：
-
-| 驗證項目 | 結果 |
-| ---------- | ------ |
-| Alembic migration 最新為 `034` | ⚠️ 2026-08-04 當時屬實；**2026-08-27 起 head 為 `036`**（見本節開頭補記與 §6.4） |
-| 後端測試數量「66 個」 | ❌ 實測當時 **80** 個；**2026-08-27 約 95 個**（含 `test_courses.py` 15、`test_tuition_invoices.py` 5） |
-| 課程資料模型（SPU/SKU/Enrollment） | ✅ 屬實並已延伸：`billing_unit`（035）、學費發票（036）、Web `/attendance/courses` 班次名冊、`/attendance/invoices` |
-| Rate limit 用 slowapi + Redis backend | ✅ 屬實（`app/limiter.py`、`requirements.txt`） |
-| JWT 用 PyJWT（非 python-jose） | ✅ 屬實（`requirements.txt: pyjwt==2.10.1`） |
-| `SECRET_KEY`/`QR_SECRET` production 強制檢查（≥32 字元、拒絕佔位符） | ✅ 屬實（`app/config.py: validate_production_secrets`） |
-| 午休扣除未實作（#H6） | ✅ 屬實，仍為 Open High（`overtime.py:calculate_workday` 未扣除；`lunch_minutes` 參數存在但未使用） |
-| Scan 用 `SELECT FOR UPDATE` 防競態 | ✅ 屬實（`routers/attendance.py`，僅 PostgreSQL） |
-| Auto-checkout 僅手動端點、無 23:59 cron | ✅ 屬實，程式碼註解明確標註「not implemented」 |
-| Generate 端點無互斥鎖（#M17） | ✅ 屬實，未找到任何 lock/mutex 機制 |
-| Dockerfile 無 `USER`／`HEALTHCHECK`（#M2） | ✅ 屬實 |
-| 結構化 logging 待實作 | ⚠️ 部分：`audit_logs.request_id` 欄位與 service 已存在，但**無 middleware 自動產生/掛載 request ID**，整體仍無 structlog/JSON logging；文件結論方向正確 |
-| Web：CASL、Pinia、single-flight refresh、非 HttpOnly cookie | ✅ 全部屬實（逐行核對 `attendanceApi.ts`、`useCookie.ts`、`useAttendanceAuthStore.ts`） |
-| Web：前端未區分 admin/superadmin | ⚠️ 部分：CASL 權限規則兩者相同（`manage: all`），但 Users 頁面 UI 已有差異（僅 superadmin 可見「Super Admin」選項、可刪除使用者、Audit Logs 頁限 superadmin）；建議措辭改為「CASL 權限規則未區分，UI 層有局部區分」 |
-| Web 無 vitest/jest，僅 `vue-tsc` typecheck | ✅ 屬實 |
-| Mobile：History 篩選/分頁、My QR 為說明頁、token 存 `expo-secure-store`、無 EAS build automation | ✅ 全部屬實 |
-| CI（`ci.yml`）跑 API pytest／Web build／Mobile typecheck；`docker-publish.yml` 建置並推送 GHCR image，且以 build-arg 帶入 `VITE_ATTENDANCE_API_URL` | ✅ 全部屬實 |
-
-**Docs 待補**：
-
-| 項目 | 對應評分 | 建議 |
-| ------ | ---------- | ------ |
-| API 版本策略 | API Docs 7/10 | 在 README/本手冊說明 API 版本化策略（目前無版本化機制，應先决定是否需要） |
-| 故障排查 runbook | 操作手冊 7.5/10 | ✅ Done — 本手冊 §6 已涵蓋且與 `deploy/` 腳本一致 |
-| 可觀測性文件 | 操作手冊 7.5/10 | logging/監控（見 known-gaps #M3）導入後補日誌查看與告警設定說明 |
-| 文件間日期同步 | 內部一致性 7/10 | ✅ 2026-08-27 已同步 `known-gaps.md` / `docs-audit.md` / `attendance-summaries.md` 與本手冊日期 |
-| 「統合來源」清單 | 內部一致性 7/10 | ✅ Done（2026-08-04）— 已加註哪些來源檔案已不存在，避免誤導讀者尋找已刪除的獨立文件 |
-
 ---
 
-> 本手冊統合來源（歷史上）：`README.md`、`docs/index.md`、`docs/DEPLOY.md`、`docs/CICD-EXPLAINED.md`、`docs/known-gaps.md`、`docs/CODE-REVIEW-2026-06.md`、`docs/RUNBOOK.md`、`docs/RELEASE-2026-05.md`、`docs/MOBILE-SPRINT.md`、`docs/MOBILE-RELEASE-CHECKLIST.md`、`docs/LOCATIONS.md`、`docs/database-changes.md`、`docs/attendance-summaries.md`、`docs/docs-audit.md`。
->
-> **2026-08-27 校對備註**：`docs/` 另含 `程式碼審查.md`（課程／發票產品審查與跟進）。`known-gaps.md`、`docs-audit.md`、`attendance-summaries.md` 已與本手冊同日勾稽。
->
-> **2026-08-04 校對備註**：上述獨立檔案中，`DEPLOY.md`、`CICD-EXPLAINED.md`、`CODE-REVIEW-2026-06.md`、`RUNBOOK.md`、`RELEASE-2026-05.md`、`MOBILE-SPRINT.md`、`MOBILE-RELEASE-CHECKLIST.md`、`LOCATIONS.md` 內容已完全併入本手冊對應章節（§2–§9），檔案本身已不存在於 `docs/`。目前 `docs/` 實際僅存：`project-handbook.md`、`known-gaps.md`、`docs-audit.md`、`attendance-summaries.md`、`database-changes.md`、`index.md`、`程式碼審查.md`。上面清單保留作為「歷史沿革」紀錄，避免誤解為目前仍有 12 份並存文件。
+## 10. 資料庫
 
----
+### 10.1 設計決策
 
-## 10. 資料庫 ER 圖
+#### 已確認的決定（Decisions Log）
 
-> 完整 schema 設計與決策記錄見 [database-changes.md](database-changes.md)。以下為核心資料表關聯圖。
+| # | 決定 | 結果 |
+| --- | --- | --- |
+| 1 | units 多型拆表（CTI） | ✅ 核心 `units` + `student_profiles` / `staff_profiles` 子表 |
+| 2 | 監護人 guardians | ✅ 不建表 → `student_profiles.guardians` JSON 陣列 |
+| 3 | grade_class | ✅ 留在 `student_profiles`（不建 groups 表） |
+| 4 | 假期／請假／班級部門／授權裝置 | ✅ **全部不要**（holidays / leave_requests / groups / devices） |
+| 5 | 緊急聯絡人 emergency_contact | ✅ **放 `units` 共用**（學生＋員工都用） |
+| 6 | 通知記錄 notifications | ✅ **要**（自動通知家長＋留存發送記錄） |
+| 7 | 考勤彙總 attendance_summaries | ✅ **要**（每日一行，含 slot 與小時） |
+| 8 | 員工薪資／OT | ✅ `staff_profiles` 薪資率＋`attendance_summaries` slots＋`payroll_records` 快照與計算 |
+| 9 | 未來 device/goods | ✅ 預留 `device_profiles` / `goods_profiles` 子表 |
+| 10 | 個人資料欄位搬移至 profiles | ✅ 已執行（2026-07-28，`f8e65b7cf82b` + `033`）：`gender`/`date_of_birth` 入 profiles；lifecycle 日期 `start_date`/`exit_date` 與共用聯絡欄位留 `units` |
+| 11 | 出勤邏輯保留在 units | ✅ 保留（見下方「出勤邏輯架構決定」） |
+| 12 | `status` enum 拆分 | 🔄 **可選**（見下方「status enum 拆分」） |
+| 13 | 課程資料 SPU/SKU/Enrollment | ✅ `course_spus`/`course_skus`/`course_enrollments`（034）— 見 §1.9 |
+| 14 | 學費發票（與 Vuexy `/apps/invoice` 無關） | ✅ `tuition_invoices`/`tuition_invoice_lines`（036）— 見 §1.10 |
+| 15 | 堂費改一次性收費 | ✅ `course_enrollments.purchased_quantity`（038；後由 #20 取代） |
+| 16 | 發票編號與列印 | ✅ `invoice_no`/`issued_at`（039）＋每中心系列 `invoice_counters`＋`location_id`（f5d44789754d）；唯一鍵 `(location_id, invoice_no)`；派號用獨立 session `UPDATE…RETURNING` 原子遞增並跳過手打已佔用號碼 |
+| 17 | SKU 指派教師＋學生個別價 | ✅ `course_skus.staff_id`（040）、`course_enrollments.unit_price`（041） |
+| 18 | 手動發票 | ✅ `kind`/`manual_student_name`、`unit_id` 可空、`lines.month_label`（71296d8b9d7f） |
+| 19 | 堂費購買記錄 | ✅ `enrollment_purchases`（7d340d0ce7de）— 每次購買一列；`billed_invoice_line_id IS NULL` = 未出單；作廢發票即時清連結釋放購買 |
+| 20 | 堂費單一來源 | ✅ drop `course_enrollments.purchased_quantity`（c3e7a95b2d10） |
+| 21 | 學費收條 | ✅ `tuition_receipts`/`tuition_receipt_invoices`（a7f3c1e8d4b2）＋`adjustments` JSON（c9d2e4f1a8b3）；`(location_id, receipt_no)` 唯一；編號手打 |
+| 22 | Credit note 退款抬頭 | ✅ `payable_to_name`/`payee_name`（d4b8e2a1c7f0）；負數發票走獨立 Credit Notes 頁 |
+| 23 | Inventory 模組入本 repo | ✅ **推翻** 2026-09-04「ERP 唔喺度做」決定（~~#F1~~，2026-10-27）— 全部新表（042–048），`INVENTORY_ENABLED` runtime flag 把關 — 見 §1.14 |
+
+#### 其他設計規則（§1.x 未覆蓋嘅細節）
+
+- SPU/SKU 刪除採 `RESTRICT`：避免誤刪仍有 SKU／報名的上層資料。
+- 發票編號：`invoice_counters` 每 `location_id` 一列；`void` 後復活嘅發票清空 `invoice_no`/`issued_at`，再 Issue 派新號；編號預設佔住，Remove cancelled invoice／voided receipt 先可以重用。
+- 員工更表：更掛 staff **unit** 唔係 `users`（users 同 units 冇關聯）；`end_time > start_time` 由 API 422 把關（過夜更延後）；刪分店被已有更擋住（RESTRICT），刪員工連更一齊刪（CASCADE）。申請同正式更分開（`shift_requests` → approve 先複製入 `shifts`）；`shift_pin_hash` 只存 6 位 PIN 哈希。
+- Inventory：全部新表；FK 只指 `users`/`locations`/`units`；派號用獨立 `inventory_counters`；`INVENTORY_ENABLED` 關時表仍在但 `/api/inventory/*` 全部 404 — 見 §1.14。
+
+#### 概念釐清（事件 vs 彙總 vs 稽核）
+
+| 資料表 | 記錄內容 | 比喻 |
+| --- | --- | --- |
+| `attendance_events` | 每次個別打卡記錄 | 銀行交易明細（每一筆都永久保留，不能改，只能作廢） |
+| `attendance_summaries` | 預計算的日／月彙總 | 月結單 |
+| `payroll_records` | 薪資計算結果快照 | 工資單 |
+| `audit_logs` | 哪位管理員改了哪筆資料 | 監視器錄影 |
+
+**Generate 與瀏覽分離**：列表與 overview 直接讀 `attendance_summaries`；`POST .../generate` 僅從 `attendance_events` 重算**選中月份**並 upsert。Seed 可直寫彙總而無打卡事件 — 見 §1.13。
+
+#### 出勤邏輯架構決定（2026-07-27）
+
+`attendance_*` FK 與 `attendance_status`／`qr_token_version`／`last_event_*` 等欄位**保留喺 `units`**，唔搬去 profiles：搬去會做成 polymorphic FK 噩夢（兩張出勤表／union table 都唔值得），`_next_event_type()` 每次掃碼都要直接讀呢啲欄位。代價係 device/goods 類型會有空嘅出勤欄位——supertype 表嘅正常 trade-off。配套：`ATTENDANCE_ELIGIBLE_TYPES = {"staff","student"}` + `ensure_attendance_eligible()` 白名單（掃碼／補登／QR 發放都過呢關，#M19）。未來新增需出勤嘅 unit_type 只需加入白名單。
+
+#### `status` enum 拆分（可選）
+
+`UnitStatus` 混合學生同員工狀態（`graduated` 僅學生、`terminated` 僅員工）。**決定：可選，唔急**——`status` 係業務狀態留喺 `units`；拆分只係 schema 層防呆，現時無功能錯誤。
+
+#### Migration 狀態
+
+目前 Alembic head：**048**。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–048 為 Inventory 模組（042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）。
+
+### 10.2 核心 ER 圖
 
 ```mermaid
 erDiagram
@@ -1662,6 +1655,9 @@ erDiagram
         numeric hourly_rate
         numeric monthly_salary
         numeric ot_multiplier "預設 1.5"
+        numeric commission_rate "發票分成比例 0-100 NULL=無"
+        string shift_pin_hash "自助報更 PIN 哈希"
+        datetime shift_pin_set_at
         string work_schedule
         uuid supervisor_id FK
         string employment_notes
@@ -1784,6 +1780,8 @@ erDiagram
         numeric adjustment_2
         string adjustment_1_remark
         string adjustment_2_remark
+        numeric commission_pay "發票分成"
+        numeric commission_rate_snapshot "分成比例快照"
     }
 
     audit_logs {
@@ -1827,7 +1825,8 @@ erDiagram
         int capacity
         numeric price
         string billing_unit "monthly / per_session"
-        json meeting_weekdays "monday–sunday；新建堂費必填；空=舊資料qty 1"
+        json meeting_weekdays "monday–sunday；僅供課表顯示"
+        uuid staff_id FK "負責教師 unit（可空）"
         boolean is_active
         datetime created_at
         datetime updated_at
@@ -1841,6 +1840,7 @@ erDiagram
         date enrolled_at
         date start_date
         date end_date
+        numeric unit_price "學生個別價 override"
         text notes
         datetime created_at
         datetime updated_at
@@ -1859,6 +1859,8 @@ erDiagram
         string status "draft / issued / paid / void"
         string payable_to_name "credit note 支票抬頭"
         string payee_name "credit note 收款人"
+        uuid tutor_unit_id FK "Tutor 分成對象（可空）"
+        string staff_name "開單人（佣金用，唔印喺發票）"
         numeric total
         text notes
         datetime created_at
@@ -1872,6 +1874,7 @@ erDiagram
         uuid sku_id FK
         string sku_code
         string name_zh
+        string staff_name "快照班次負責老師"
         string month_label "手動行月份標籤"
         string billing_unit
         numeric unit_price
@@ -1883,6 +1886,7 @@ erDiagram
     enrollment_purchases {
         uuid id PK
         uuid enrollment_id FK
+        int purchased_quantity "購買堂數"
         numeric unit_price "可空＝出單時先定價（私補）"
         date purchased_at
         uuid billed_invoice_line_id FK "出單後連結"
@@ -1893,24 +1897,30 @@ erDiagram
     invoice_counters {
         int id PK
         uuid location_id FK "每中心一條系列"
-        int next_number
+        int next_no
     }
 
     tuition_receipts {
         uuid id PK
         uuid location_id FK
         uuid unit_id FK "可空"
+        string payer_name "walk-in 付款人"
+        string paid_by "收款職員"
         string receipt_no
         date receipt_date
-        numeric amount
+        numeric amount "發票合計＋adjustments"
         string status "posted / void"
-        json adjustments
+        json adjustments "額外加減行"
+        text description
+        datetime created_at
+        datetime updated_at
     }
 
     tuition_receipt_invoices {
         uuid id PK
         uuid receipt_id FK
         uuid invoice_id FK
+        numeric amount "該張發票結算金額"
         boolean is_posted
     }
 
@@ -1933,10 +1943,12 @@ erDiagram
     locations ||--o{ attendance_summaries : "where summarized"
     units ||--o{ staff_profiles : "supervises (supervisor_id)"
     course_spus ||--o{ course_skus : "has"
+    units ||--o{ course_skus : "tutor (staff_id)"
     locations ||--o{ course_skus : "hosts"
     course_skus ||--o{ course_enrollments : "enrolled"
     units ||--o{ course_enrollments : "enrolls"
     units ||--o{ tuition_invoices : "billed"
+    units ||--o{ tuition_invoices : "tutors (tutor_unit_id)"
     locations ||--o{ tuition_invoices : "issued at"
     locations ||--o{ invoice_counters : "number series"
     tuition_invoices ||--o{ tuition_invoice_lines : "has"
@@ -1948,7 +1960,7 @@ erDiagram
     tuition_invoices ||--o{ tuition_receipt_invoices : "paid by"
 ```
 
-### 10.2 Inventory ER 圖（042–048）
+### 10.3 Inventory ER 圖（042–048）
 
 Inventory 相關表全部新增（042–048），與學費／課程 schema 分開；只經 FK 引用 `users`／`locations`／`units`，唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
 
@@ -2304,17 +2316,4 @@ erDiagram
     inventory_items ||--o{ inventory_credit_note_lines : "credited"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.2。完整 migration 歷史見 `apps/api/alembic/versions/`（目前 head **048**，前序 g2a5b8c1d3e4 每生每期一張未出草稿發票）。
->
-> **2026-10-27 更新**：新增 §10.2 Inventory ER 圖（042–048，24 張新表）。
->
-> **2026-10-27 更新**：Alembic head **048**（inventory 042–048）。
->
-> **2026-09-24 更新**：`tuition_invoices` 新增 `payable_to_name`／`payee_name`；`tuition_receipts`／`tuition_receipt_invoices` 入 ER（收條編號手打）。
-> **2026-09-15 更新**：`tuition_invoices` 新增 `kind`/`location_id`/`invoice_no`/`issued_at`/`manual_student_name`，`unit_id` 可空；新增 `enrollment_purchases`（堂費購買追蹤，與發票行連結）與每中心 `invoice_counters`；`tuition_invoice_lines` 新增 `month_label`。
-> **2026-09-04 更新**：`course_enrollments` 新增 `purchased_quantity`（038）。堂費 Generate 改用該欄位一次性收費，不再依出勤∩上課日計算；`meeting_weekdays`（037）僅保留供課表顯示。`(unit_id, sku_id)` 永久唯一仍為已知限制（#M22）。
-> **2026-08-28 更新**：ER 圖已與 [database-changes.md](database-changes.md) 同步：SKU `meeting_weekdays`（037）。堂費 Generate 按上課日∩該據點出勤計 `quantity`（未到已扣）；不減公眾假期日曆。`(unit_id, sku_id)` 永久唯一仍為已知限制。
->
-> **2026-08-27 更新**：SKU `billing_unit`（035）、`tuition_invoices` / `tuition_invoice_lines`（036）。課程頁為班次名冊 + 起迄日；學費 Generate 快照價錢。
->
-> **2026-08-04 更新（歷史）**：當時新增 `course_spus`、`course_skus`、`course_enrollments`（Migration `034`）。`units` 表保留 `phone`、`address`、`email`、`emergency_contact_*`、`start_date`/`exit_date`；`student_profiles` 與 `staff_profiles` 都包含 `gender`、`date_of_birth`。出勤邏輯保留在 `units`（supertype）；`unit_type` 白名單（#M19）已實作——目前僅 `staff`／`student` 可出勤，`device`／`goods` 仍為未來擴充。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **048**）。

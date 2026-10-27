@@ -277,12 +277,8 @@ CI also runs API tests and web `npm run build` on every PR and push to `main`.
 
 | Doc | Purpose |
 | ----- | --------- |
-| [CHANGELOG.md](CHANGELOG.md) | **Release notes** — versioned changelog (Keep a Changelog) |
-| [docs/INDEX.md](docs/INDEX.md) | **Docs entry point** — find the right doc by role |
-| [docs/attendance-summaries.md](docs/attendance-summaries.md) | **Summaries & payroll** — monthly flow, API, UI, seed, FAQ |
-| [docs/database-changes.md](docs/database-changes.md) | **Schema SSOT** — ER diagram, course catalog, tuition invoices |
-| [docs/known-gaps.md](docs/known-gaps.md) | **Open gaps** — includes a tuition/courses “not done” table (#M22–#M24) |
-| [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — deploy, CI/CD, ops, courses, tuition invoices, known gaps |
+| [CHANGELOG.md](CHANGELOG.md) | **Release notes** — versioned changelog & dated update history (Keep a Changelog) |
+| [docs/PROJECT-HANDBOOK.md](docs/PROJECT-HANDBOOK.md) | **Unified handbook** — architecture, deploy, CI/CD, ops, domain model (courses, tuition, shifts, summaries/payroll, inventory), known gaps (§5), DB design & ER (§10) |
 | [apps/api/README.md](apps/api/README.md) | API setup and tests |
 | [apps/web/README.md](apps/web/README.md) | Web quick start |
 | [apps/mobile/README.md](apps/mobile/README.md) | Mobile scanner setup |

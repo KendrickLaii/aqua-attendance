@@ -59,7 +59,7 @@ python seed.py --summaries  # 僅 attendance_summaries（需已有 units）
   - 2026-05：固定少數列（含 `regular_slots` / `ot_slots`）
   - 2026-06、2026-07：大量 bulk 列（**無**對應打卡事件；slots = hours × 4）
 
-彙總與 Generate 行為見 [docs/attendance-summaries.md](../../docs/attendance-summaries.md)。學費發票見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) §1.10。
+彙總與 Generate 行為見 [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) §1.13。學費發票見 §1.10。
 
 ## 目錄結構
 
@@ -125,10 +125,7 @@ API image 由 `Dockerfile` 建置，`.github/workflows/docker-publish.yml` 推�
 
 ## 相關文件
 
-- [docs/attendance-summaries.md](../../docs/attendance-summaries.md) — 彙總 / 薪資月度流程、Generate、seed FAQ
-- [docs/database-changes.md](../../docs/database-changes.md) — 資料庫設計 SSOT（ER 圖、課程、學費發票）
-- [docs/known-gaps.md](../../docs/known-gaps.md) — 後端審查與修復計畫（架構評價、已知缺口）
-- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 部署、CI/CD、運維、課程與學費發票
+- [docs/PROJECT-HANDBOOK.md](../../docs/PROJECT-HANDBOOK.md) — 部署、CI/CD、運維、課程與學費發票；彙總／薪資月度流程 §1.13；已知缺口 §5；資料庫設計與 ER 圖 §10
 
 ---
 
