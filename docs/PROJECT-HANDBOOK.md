@@ -934,6 +934,12 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **現況**：已改善（分頁讀取 + 上限 `CSV_EXPORT_MAX_ROWS`），但 `StringIO` 仍會佔用與資料量成正比的記憶體。
 - **建議**：改為逐頁 yield 寫入 generator，真正串流。
 
+#### #M25 上傳圖片未納入備份
+
+- **位置**：`deploy/backup.sh`、Docker volume `uploads`（container `/data/uploads`）
+- **問題**：`backup.sh` 只做 `pg_dump`。Location 照片、商品主圖／副圖等上傳檔案只存喺 `uploads` volume，**唔喺備份入面**。伺服器重建或 volume 被刪（例如 `down -v`）之後，DB 還原返嚟網址仲喺，但圖片會全部唔見。另外換圖／Remove 唔會刪舊檔，硬碟會慢慢累積。
+- **建議**：`backup.sh` 同時打包 `uploads` volume（例如 `docker run --rm -v <project>_uploads:/data -v "$PWD/backups":/out alpine tar czf /out/uploads_<timestamp>.tar.gz -C /data .`），沿用 14 份輪替；`restore.sh` 加對應還原步驟。（2026-10-27 記錄，待做）
+
 ### 🟡 Medium — 安全與架構
 
 #### #M6 Refresh token 存非 HttpOnly cookie
@@ -1191,7 +1197,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 048）
+# 最新可用版本（目前最新為 049）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -1207,7 +1213,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 048**（inventory 模組 042–048；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 049**（inventory 模組 042–049；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1576,7 +1582,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**048**。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–048 為 Inventory 模組（042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）。
+目前 Alembic head：**049**。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）。
 
 ### 10.2 核心 ER 圖
 
@@ -1997,7 +2003,8 @@ erDiagram
         numeric sale_price
         int reorder_level
         numeric avg_cost
-        string image_url
+        string image_url "main image"
+        json sub_image_urls "up to 2 sub images (049)"
         boolean is_active
         datetime created_at
     }
@@ -2316,4 +2323,4 @@ erDiagram
     inventory_items ||--o{ inventory_credit_note_lines : "credited"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **048**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **049**）。

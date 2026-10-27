@@ -2,6 +2,25 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [main-f7bec86] - 2026-10-27（後續）
+
+### 新增
+
+- **Inventory 商品副圖**：每件商品 1 張主圖（`image_url`）+ 最多 2 張副圖（`sub_image_urls`，JSON，Migration **049**）；上傳流程同 Location 照片（`POST /api/uploads` → `uploads` volume）。列表縮圖仍只顯示主圖。
+
+### 修正
+
+- **收條列印冇 logo**（`b368a8d`）：之前寫完列印頁即刻 `print()`，logo 未載入就印咗空白。改用發票同一套流程：logo 轉 data URL 嵌入 → 等圖片 decode → 喺列印視窗內呼叫 `print()`。共用 helper 搬去 `utils/printWindow.ts`。
+
+### 文件
+
+- 文件整併：只留 README、CHANGELOG、`docs/PROJECT-HANDBOOK.md`；舊設計／審查紀錄移到 `docs/archive/`。
+- 手冊 §5 新增 **#M25**：上傳圖片未納入 `backup.sh` 備份（待做）。
+
+### 部署
+
+- 兩台伺服器跑 `sudo ./update.sh` 即可（compose／`.env` 冇改）；API 啟動會自動跑 Migration 049（只加一個可空欄位）。
+
 ## [main-279495c] - 2026-10-27
 
 推翻 2026-09-04「ERP／庫存唔喺本 repo 做」決定（~~#F1~~）：**Inventory 模組**喺本 repo 落地，runtime feature flag `INVENTORY_ENABLED` 把關（預設 `false`）。已部署（2026-10-27）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持關。
