@@ -2,6 +2,13 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [2026-10-29]
+
+### 變更
+
+- **Courses 名冊「Join a student」**：揀咗已經喺班嘅學生唔再顯示「This student is already in the class.」鎖掣。堂費（per_session）班個掣變 **Top up sessions**：新增一筆 `enrollment_purchases` 記錄（表單結束日遲過現有結束日時順便延長 `end_date`；ongoing 唔郁；開始日唔改）。月費（monthly）班個掣變 **Update**：自動填返現有開始／結束日同價錢，撳落去 PATCH 日期同價錢。已在班學生唔佔新位，容量滿都頂得。
+- **API**：`POST /course-enrollments/{id}/purchases` 而家會寫 audit log（`enrollment_purchases` / `CREATE`）。
+
 ## [main-f7bec86] - 2026-10-27（後續）
 
 ### 新增

@@ -221,10 +221,12 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 - 選 SPU → 選 SKU（或 Class 下拉）→ 該班名冊。
 - Class Offerings 表有 **In class** 欄：該班現正在讀（`status=active`）的學生人數。有容量時顯示 `人數 / 容量`。已 Leave class 的不計。Join／Leave／Back in class 後即時更新。
-- 名冊掣名：**Join class** / **Leave class** / **Back in class** / **Renew**（月費、有結束日）／**Set end**（月費、Ongoing）／**Remove record**。按鈕英文；提示同確認框粵語。
+- 名冊掣名：**Join class** / **Leave class** / **Back in class** / **Renew**（月費、有結束日）／**Set end**（月費、Ongoing）／**Remove record**。按鈕英文；提示同確認框粵語。「Join a student」揀咗已在班嘅學生時個掣會變 **Top up sessions**（堂費）或 **Update**（月費）。
 - **月費續報**：人仲喺 In class 時撳 **Renew**，同一筆報名把結束日拉長（預設下一個月最後一日，可改）。Ongoing（無結束日）用 **Set end** 設最後計費日。
 - **結束日過後自動 Leave**：結束日 = 最後計費日（當日仍 In class）。香港日期**過咗結束日**之後，開名冊／GET／容量檢查／再 Join 前會自動變成 Left（資料庫 `completed`），唔再佔容量；已經出咗嘅單唔會改。員工撳 Leave 係 `cancelled`，之後 Generate 唔再計呢期。自動結束（`completed`）嘅月份如果未出單，遲啲 Generate 仍然會出（日期要重疊該月）。**Back in class** 若結束日已過，要先改新結束日。改日期唔會自動開單；去 Invoices 撳 Generate 先出該月單。每個月仍然係成個月費，發票印月份（如 Sept-26），唔印日數。
-- **堂費再收**：用 **Top up**，唔用 Renew。
+- **堂費再收（top-up）**：喺「Join a student」揀返已經喺班嘅學生，個掣變 **Top up sessions**，唔用 Renew。填加幾多堂 → 新增一筆 `enrollment_purchases`（每筆分開出單，舊記錄保留）；購買價用報名價 → 班價 → 空（出單時先定）。表單結束日遲過現有結束日會順便 PATCH `end_date` 延長計費窗（ongoing／無結束日唔郁；開始日唔改）。`POST /course-enrollments/{id}/purchases` 會寫 audit log。
+- **月費在讀學生改 window**：「Join a student」揀已在班學生 → 個掣變 **Update**，自動填返現有開始／結束日同價錢；撳落去 PATCH 該筆報名嘅 `start_date`／`end_date`／`unit_price`，唔會開新報名。列上嘅 **Edit** 照用得。
+- **已在班學生唔佔新位**：揀已在班學生時容量（In class 人數上限）唔會鎖掣；只在揀新學生時先檢查。
 - 名冊新增學生時填 **Start / End** 日期；列上可改日期並 Save（不必刪掉重報）。留空 End = Ongoing。
 - 學生搜尋仍為分頁（`page_size: 20`）+ 伺服器搜尋，不是一次載入全校。
 - SKU 表單含計價單位（月費／堂費）、上課日（Mon–Sun，僅供顯示）與負責教師（`staff_id`）。
