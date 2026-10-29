@@ -4,7 +4,7 @@
 
 ## [2026-10-29]（員工掃碼）
 
-### 新增
+### 新增（員工掃碼）
 
 - **Mobile 員工掃碼打卡**：員工可以用員工編號 + 6 位 shift PIN 登入 mobile app（`POST /api/staff-shifts/login`，token type `staff_shift`，12 小時，無 refresh），喺自己允許嘅地點掃**其他人**嘅 QR 簽到／簽退，並睇返今日自己掃嘅紀錄。
   - 新端點（staff token 專用，admin token 會 401）：`POST /api/staff-shifts/attendance/scan`、`POST /api/staff-shifts/attendance/scan/preview`、`GET /api/staff-shifts/attendance`（伺服器強制今日香港日＋`recorded_by_unit_id`＝登入員工）。員工冇手動更正／作廢權限。
@@ -17,27 +17,27 @@
 
 ## [2026-10-29]
 
-### 變更
+### 變更（Join a student）
 
 - **Courses 名冊「Join a student」**：揀咗已經喺班嘅學生唔再顯示「This student is already in the class.」鎖掣。堂費（per_session）班個掣變 **Top up sessions**：新增一筆 `enrollment_purchases` 記錄（表單結束日遲過現有結束日時順便延長 `end_date`；ongoing 唔郁；開始日唔改）。月費（monthly）班個掣變 **Update**：自動填返現有開始／結束日同價錢，撳落去 PATCH 日期同價錢。已在班學生唔佔新位，容量滿都頂得。
 - **API**：`POST /course-enrollments/{id}/purchases` 而家會寫 audit log（`enrollment_purchases` / `CREATE`）。
 
 ## [main-f7bec86] - 2026-10-27（後續）
 
-### 新增
+### 新增（10-27 後續）
 
 - **Inventory 商品副圖**：每件商品 1 張主圖（`image_url`）+ 最多 2 張副圖（`sub_image_urls`，JSON，Migration **049**）；上傳流程同 Location 照片（`POST /api/uploads` → `uploads` volume）。列表縮圖仍只顯示主圖。
 
-### 修正
+### 修正（10-27 後續）
 
 - **收條列印冇 logo**（`b368a8d`）：之前寫完列印頁即刻 `print()`，logo 未載入就印咗空白。改用發票同一套流程：logo 轉 data URL 嵌入 → 等圖片 decode → 喺列印視窗內呼叫 `print()`。共用 helper 搬去 `utils/printWindow.ts`。
 
-### 文件
+### 文件（10-27 後續）
 
 - 文件整併：只留 README、CHANGELOG、`docs/PROJECT-HANDBOOK.md`；舊設計／審查紀錄移到 `docs/archive/`。
 - 手冊 §5 新增 **#M25**：上傳圖片未納入 `backup.sh` 備份（待做）。
 
-### 部署
+### 部署（10-27 後續）
 
 - 兩台伺服器跑 `sudo ./update.sh` 即可（compose／`.env` 冇改）；API 啟動會自動跑 Migration 049（只加一個可空欄位）。
 
@@ -45,7 +45,7 @@
 
 推翻 2026-09-04「ERP／庫存唔喺本 repo 做」決定（~~#F1~~）：**Inventory 模組**喺本 repo 落地，runtime feature flag `INVENTORY_ENABLED` 把關（預設 `false`）。已部署（2026-10-27）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持關。
 
-### 新增
+### 新增（Inventory）
 
 - **API — Inventory 模組**（全部喺 `/api/inventory/*`，flag 關時全部回 404）：
   - Stock core：categories、items（單圖）、stocks、movements、transfers、stocktakes、CSV 匯出
@@ -58,12 +58,12 @@
 - **Web — `GlobalConfirmDialog`** 掛喺 App.vue（inventory 頁用）。
 - **測試**：`tests/test_feature_flags.py`（features endpoint + flag 關時 404）。
 
-### 變更
+### 變更（Inventory）
 
 - `AttendanceConfirmDialog`（全站共用）標題左邊加咗 tone icon，行為不變。
 - Router `beforeEach` 轉 async（等 feature flags 載入）。
 
-### 部署
+### 部署（Inventory）
 
 - `deploy/docker-compose.prod.yml`：`api.environment` 加 `INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}`。`deploy/` 檔案係手工複製上伺服器——要開 flag 嗰台機需手加 compose 行 + `.env` 設 `INVENTORY_ENABLED=true`；生產唔使郁（預設關）。
 - Migration **042–048**（Alembic head **048**）：全部新表，冇改現有表；FK 只指 `users`／`locations`／`units`；獨立派號表 `inventory_counters`。
