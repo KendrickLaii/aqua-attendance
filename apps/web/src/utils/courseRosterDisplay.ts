@@ -63,7 +63,7 @@ export function purchaseSummary(e: Pick<CourseEnrollment, 'purchases'>) {
   }
 }
 
-export function purchaseTooltip(e: Pick<CourseEnrollment, 'purchases'>): string {
+export function purchaseTooltipLines(e: Pick<CourseEnrollment, 'purchases'>): string[] {
   const lines = (e.purchases ?? [])
     .map(p => [
       formatRosterDate(p.purchased_at),
@@ -75,7 +75,7 @@ export function purchaseTooltip(e: Pick<CourseEnrollment, 'purchases'>): string 
   if ((e.purchases ?? []).some(p => p.billed_invoice_line_id === null))
     lines.push('Run Generate on the Invoices page — unbilled sessions go on this month’s draft, or on a supplementary draft if the bill is already issued.')
 
-  return lines.join('\n')
+  return lines
 }
 
 export function enrollmentStatusLabel(status: string): string {
@@ -217,6 +217,8 @@ export function enrollDisabledReason(input: {
   studentId: string | null
   activeUnitIds: Set<string>
   purchasedQuantity: number | null
+  startDate?: string | null
+  existingStart?: string | null
 }): string {
   if (!input.skuId)
     return 'Pick a class first.'
@@ -227,8 +229,12 @@ export function enrollDisabledReason(input: {
   if (input.studentId && input.activeUnitIds.has(input.studentId)) {
     // Already in class: the form tops up (per_session) or updates the window
     // (monthly) instead of joining, and takes no new seat.
-    if (input.sku?.billing_unit === 'per_session' && !input.purchasedQuantity)
-      return 'Enter how many sessions to add.'
+    if (input.sku?.billing_unit === 'per_session') {
+      if (!input.purchasedQuantity)
+        return 'Enter how many sessions to add.'
+      if (input.startDate && input.existingStart && input.startDate < input.existingStart)
+        return `Start date can't be before this student's current start (${formatRosterDate(input.existingStart)}).`
+    }
 
     return ''
   }
@@ -238,6 +244,23 @@ export function enrollDisabledReason(input: {
     return 'Enter how many sessions this student bought.'
 
   return ''
+}
+
+export function topUpWindowPreview(
+  existing: Pick<CourseEnrollment, 'start_date' | 'end_date'>,
+  formEnd: string | null,
+): string {
+  const window = billingWindowLabel(existing)
+  if (!existing.end_date)
+    return `Billing window stays ongoing (${window}).`
+  if (formEnd && formEnd > existing.end_date)
+    return `Billing window will extend to ${formEnd}.`
+
+  const earlier = formEnd && formEnd < existing.end_date
+    ? ' (End date earlier than current end — not shortened; use Edit to shorten.)'
+    : ''
+
+  return `Billing window stays ${window}.${earlier}`
 }
 
 export function existingEnrollmentHint(

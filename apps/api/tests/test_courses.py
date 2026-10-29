@@ -847,3 +847,37 @@ async def test_enrollment_purchase_top_up_is_audited(
     assert len(rows) == 1
     assert rows[0].action == "CREATE"
     assert "Topped up 6 sessions" in (rows[0].description or "")
+
+
+@pytest.mark.asyncio
+async def test_enrollment_purchase_before_start_rejected(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrolled = await client.post(
+        "/api/course-enrollments",
+        json={
+            "unit_id": sample_unit["id"],
+            "sku_id": sku["id"],
+            "purchased_quantity": 4,
+            "start_date": "2026-10-01",
+        },
+        headers=_auth(admin_token),
+    )
+    assert enrolled.status_code == 201, enrolled.text
+    enrollment_id = enrolled.json()["id"]
+
+    too_early = await client.post(
+        f"/api/course-enrollments/{enrollment_id}/purchases",
+        json={"purchased_quantity": 2, "unit_price": 150, "purchased_at": "2026-09-30"},
+        headers=_auth(admin_token),
+    )
+    assert too_early.status_code == 422
+
+    ok = await client.post(
+        f"/api/course-enrollments/{enrollment_id}/purchases",
+        json={"purchased_quantity": 2, "unit_price": 150, "purchased_at": "2026-10-01"},
+        headers=_auth(admin_token),
+    )
+    assert ok.status_code == 201, ok.text

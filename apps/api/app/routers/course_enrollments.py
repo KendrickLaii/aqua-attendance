@@ -328,6 +328,8 @@ async def create_enrollment_purchase(
     sku = await db.get(CourseSku, enrollment.sku_id)
     if sku and sku.billing_unit != "per_session":
         raise HTTPException(status_code=422, detail="Top-ups are only allowed for per_session classes")
+    if enrollment.start_date is not None and body.purchased_at < enrollment.start_date:
+        raise HTTPException(status_code=422, detail="purchased_at cannot be before the enrollment start_date")
 
     purchase = EnrollmentPurchase(
         enrollment_id=enrollment_id,

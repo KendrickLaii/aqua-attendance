@@ -47,13 +47,14 @@ import {
   matchesRosterSearch,
   lastDayOfMonth,
   purchaseSummary,
-  purchaseTooltip,
+  purchaseTooltipLines,
   renewEndDate,
   todayIsoDate,
   rosterMetaLine,
   rosterPriceLabel,
   studentCode,
   studentLabel,
+  topUpWindowPreview,
 } from '@/utils/courseRosterDisplay'
 import { type SortValue, type TableSort, compareSortValues, sortIconFor, toggleSort } from '@/utils/tableSort'
 
@@ -143,6 +144,10 @@ const deleteTarget = ref<{ title: string; detail: string; confirmLabel: string; 
 function cacheStudents(units: Unit[]) {
   for (const unit of units)
     studentById[unit.id] = unit
+}
+
+function sortedPurchases(enrollment: CourseEnrollment) {
+  return [...(enrollment.purchases ?? [])].sort((a, b) => a.purchased_at.localeCompare(b.purchased_at))
 }
 
 function labelFor(enrollment: CourseEnrollment): string {
@@ -295,6 +300,14 @@ const existingEnrollment = computed(() =>
 
 const existingHint = computed(() => existingEnrollmentHint(rosterSku.value, existingEnrollment.value))
 
+const topUpPreview = computed(() => {
+  const existing = existingEnrollment.value
+  if (!existing || !enrollNeedsPurchasedQuantity())
+    return ''
+
+  return topUpWindowPreview(existing, emptyToNull(enrollEndDate.value))
+})
+
 const enrollButtonLabel = computed(() => {
   if (!existingEnrollment.value)
     return 'Join class'
@@ -420,6 +433,8 @@ const disabledReason = computed(() => enrollDisabledReason({
   studentId: selectedStudentId.value,
   activeUnitIds: activeRosterUnitIds.value,
   purchasedQuantity: enrollPurchasedQuantity.value,
+  startDate: emptyToNull(enrollStartDate.value),
+  existingStart: existingEnrollment.value?.start_date ?? null,
 }))
 
 function beginEditEnrollmentDates(enrollment: CourseEnrollment) {
@@ -536,13 +551,52 @@ async function topUpExistingEnrollment(existing: CourseEnrollment) {
     return
   }
 
+  let purchasedAt = startDate || todayIsoDate()
+  if (existing.start_date) {
+    if (startDate && startDate < existing.start_date) {
+      enrollError.value = `Start date can't be before this student's current start (${formatRosterDate(existing.start_date)}).`
+
+      return
+    }
+    if (purchasedAt < existing.start_date)
+      purchasedAt = existing.start_date
+  }
+
+  const duplicate = (existing.purchases ?? [])
+    .some(p => formatRosterDate(p.purchased_at) === purchasedAt && p.purchased_quantity === quantity)
+
+  if (duplicate) {
+    openDeleteConfirm({
+      title: `Add another ${quantity} sessions?`,
+      detail: `${labelFor(existing)} already has a ${quantity}-session purchase on ${purchasedAt}. Add another one anyway?`,
+      confirmLabel: 'Add again',
+      run: () => submitTopUp(existing, quantity, purchasedAt, endDate),
+    })
+
+    return
+  }
+
+  try {
+    await submitTopUp(existing, quantity, purchasedAt, endDate)
+  }
+  catch (e) {
+    enrollError.value = formatApiError(e, 'Could not add top-up.')
+  }
+}
+
+async function submitTopUp(
+  existing: CourseEnrollment,
+  quantity: number,
+  purchasedAt: string,
+  endDate: string | null,
+) {
   enrolling.value = true
   enrollError.value = ''
   try {
     const created = await createEnrollmentPurchase(existing.id, {
       purchased_quantity: quantity,
       unit_price: existing.unit_price ?? rosterSku.value?.price ?? null,
-      purchased_at: startDate || todayIsoDate(),
+      purchased_at: purchasedAt,
       notes: null,
     })
 
@@ -579,9 +633,6 @@ async function topUpExistingEnrollment(existing: CourseEnrollment) {
     enrollSuccess.value = `Added ${created.purchased_quantity} session${created.purchased_quantity === 1 ? '' : 's'} for ${labelFor(existing)} — now ${total} sessions in total.${extendedEnd ? ` Billing window extended to ${formatRosterDate(extendedEnd)}.` : ''}`
     resetEnrollForm()
     rosterStatusFilter.value = 'active'
-  }
-  catch (e) {
-    enrollError.value = formatApiError(e, 'Could not add top-up.')
   }
   finally {
     enrolling.value = false
@@ -1149,6 +1200,12 @@ defineExpose({ scrollIntoView })
         >
           {{ existingHint }}
         </div>
+        <div
+          v-if="topUpPreview"
+          class="text-caption text-medium-emphasis mt-1"
+        >
+          {{ topUpPreview }}
+        </div>
       </VSheet>
 
       <div class="roster-toolbar">
@@ -1332,8 +1389,8 @@ defineExpose({ scrollIntoView })
               <td v-if="rosterSku?.billing_unit === 'per_session'">
                 <VTooltip
                   v-if="e.purchases.length > 0"
-                  :text="purchaseTooltip(e)"
                   location="top"
+                  max-width="420"
                 >
                   <template #activator="{ props: tooltipProps }">
                     <span v-bind="tooltipProps">
@@ -1349,6 +1406,12 @@ defineExpose({ scrollIntoView })
                       </VChip>
                     </span>
                   </template>
+                  <div
+                    v-for="(line, lineIdx) in purchaseTooltipLines(e)"
+                    :key="lineIdx"
+                  >
+                    {{ line }}
+                  </div>
                 </VTooltip>
                 <template v-else>
                   —
@@ -1605,6 +1668,45 @@ defineExpose({ scrollIntoView })
               />
             </VCol>
           </VRow>
+          <template v-if="rosterSku?.billing_unit === 'per_session' && editingEnrollment.purchases.length">
+            <div class="text-subtitle-2 mt-4 mb-1">
+              Purchase history
+            </div>
+            <VTable density="compact">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Sessions</th>
+                  <th>Price</th>
+                  <th>Status</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="p in sortedPurchases(editingEnrollment)"
+                  :key="p.id"
+                >
+                  <td>{{ formatRosterDate(p.purchased_at) }}</td>
+                  <td>{{ p.purchased_quantity }}</td>
+                  <td>{{ p.unit_price != null ? `× HK$${Number(p.unit_price).toFixed(2)}` : 'price TBD' }}</td>
+                  <td>
+                    <VChip
+                      size="x-small"
+                      variant="tonal"
+                      :color="p.billed_invoice_line_id === null ? 'warning' : 'success'"
+                    >
+                      {{ p.billed_invoice_line_id === null ? 'unbilled' : 'billed' }}
+                    </VChip>
+                  </td>
+                  <td>{{ p.notes ?? '—' }}</td>
+                </tr>
+              </tbody>
+            </VTable>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Total {{ purchaseSummary(editingEnrollment).total }} sessions · {{ purchaseSummary(editingEnrollment).unbilledQty }} unbilled
+            </div>
+          </template>
           <VAlert
             v-if="enrollError"
             type="error"

@@ -12,9 +12,11 @@ import {
   lastDayOfMonth,
   matchesRosterSearch,
   purchaseSummary,
+  purchaseTooltipLines,
   renewEndDate,
   rosterPriceLabel,
   skuBillingPreview,
+  topUpWindowPreview,
 } from './courseRosterDisplay'
 
 function sku(over: Partial<CourseSku> = {}): CourseSku {
@@ -210,6 +212,27 @@ describe('enrollDisabledReason', () => {
       purchasedQuantity: null,
     }), '')
   })
+
+  it('blocks a top-up dated before the enrollment start', () => {
+    const perSession = sku({ billing_unit: 'per_session' })
+
+    const base = {
+      skuId: perSession.id,
+      sku: perSession,
+      atCapacity: false,
+      studentId: 'u1',
+      activeUnitIds: new Set(['u1']),
+      purchasedQuantity: 4,
+      existingStart: '2026-06-01',
+    }
+
+    assert.equal(
+      enrollDisabledReason({ ...base, startDate: '2026-05-15' }),
+      'Start date can\'t be before this student\'s current start (2026-06-01).',
+    )
+    assert.equal(enrollDisabledReason({ ...base, startDate: '2026-06-01' }), '')
+    assert.equal(enrollDisabledReason({ ...base, startDate: null }), '')
+  })
 })
 
 describe('existingEnrollmentHint', () => {
@@ -251,6 +274,51 @@ describe('lastDayOfMonth', () => {
     assert.equal(lastDayOfMonth('2026-10-02'), '2026-10-31')
     assert.equal(lastDayOfMonth('2026-02-10'), '2026-02-28')
     assert.equal(lastDayOfMonth('2024-02-01'), '2024-02-29')
+  })
+})
+
+describe('topUpWindowPreview', () => {
+  it('describes the ongoing window and extensions', () => {
+    assert.equal(
+      topUpWindowPreview(enrollment({ end_date: null }), null),
+      'Billing window stays ongoing (2026-03-01 → Ongoing).',
+    )
+
+    const ended = enrollment({ end_date: '2026-05-31' })
+
+    assert.equal(topUpWindowPreview(ended, '2026-08-31'), 'Billing window will extend to 2026-08-31.')
+    assert.equal(topUpWindowPreview(ended, '2026-05-31'), 'Billing window stays 2026-03-01 → 2026-05-31.')
+    assert.equal(
+      topUpWindowPreview(ended, '2026-04-30'),
+      'Billing window stays 2026-03-01 → 2026-05-31. (End date earlier than current end — not shortened; use Edit to shorten.)',
+    )
+    assert.equal(topUpWindowPreview(ended, null), 'Billing window stays 2026-03-01 → 2026-05-31.')
+  })
+})
+
+describe('purchaseTooltipLines', () => {
+  it('returns one line per purchase plus a hint only when unbilled exists', () => {
+    const row = enrollment({
+      purchases: [
+        { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: 'line-1', notes: null, created_at: '' },
+        { id: 'p2', enrollment_id: 'e1', purchased_quantity: 4, unit_price: null, purchased_at: '2026-04-01', billed_invoice_line_id: null, notes: 'cash', created_at: '' },
+      ],
+    })
+
+    const lines = purchaseTooltipLines(row)
+
+    assert.equal(lines.length, 3)
+    assert.equal(lines[0], '2026-03-01 · 8 × 120.00 · billed')
+    assert.equal(lines[1], '2026-04-01 · 4 sessions · price TBD · unbilled · cash')
+    assert.match(lines[2], /Run Generate/)
+
+    const allBilled = enrollment({
+      purchases: [
+        { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: 'line-1', notes: null, created_at: '' },
+      ],
+    })
+
+    assert.equal(purchaseTooltipLines(allBilled).length, 1)
   })
 })
 
