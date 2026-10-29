@@ -21,6 +21,8 @@
 
 - **Courses 名冊「Join a student」**：揀咗已經喺班嘅學生唔再顯示「This student is already in the class.」鎖掣。堂費（per_session）班個掣變 **Top up sessions**：新增一筆 `enrollment_purchases` 記錄（表單結束日遲過現有結束日時順便延長 `end_date`；ongoing 唔郁；開始日唔改）。月費（monthly）班個掣變 **Update**：自動填返現有開始／結束日同價錢，撳落去 PATCH 日期同價錢。已在班學生唔佔新位，容量滿都頂得。
 - **API**：`POST /course-enrollments/{id}/purchases` 而家會寫 audit log（`enrollment_purchases` / `CREATE`）。
+- **Top up 日期檢查**：開始日（即 `purchased_at`）早過該筆報名嘅 `start_date` 會鎖掣；留空就用今日，今日早過開始日則用開始日。表單下面預覽計費窗會延長定唔變（結束日早過現有唔會縮短）。同一日同堂數已有購買時彈確認框，防重複撳。後端 `POST /course-enrollments/{id}/purchases` 對 `purchased_at < start_date` 回 422。
+- **購買紀錄顯示**：Sessions 欄 tooltip 改成每筆一行（之前換行被壓成一行睇唔到）；堂費班 **Edit** 對話框加「Purchase history」表（日期／堂數／價錢／billed 狀態／備註＋總數）。
 
 ## [main-f7bec86] - 2026-10-27（後續）
 
