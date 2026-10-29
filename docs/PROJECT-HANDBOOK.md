@@ -133,6 +133,9 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `POST /api/auto-checkout/run` | Admin（**手動** Day-end；尚無 23:59 cron） |
 | `GET /api/auto-checkout/status` | Admin |
 | `GET/POST/PATCH /api/staff-profiles` | Admin |
+| `POST /api/staff-shifts/attendance/scan` | Staff PIN + `can_take_attendance` |
+| `POST /api/staff-shifts/attendance/scan/preview` | Staff PIN + `can_take_attendance` |
+| `GET /api/staff-shifts/attendance` | Staff PIN + `can_take_attendance` |
 | `GET/POST/PATCH /api/student-profiles` | Admin |
 | `GET/POST/PATCH/DELETE /api/course-spus` | Admin |
 | `GET/POST/PATCH/DELETE /api/course-skus` | Admin |
@@ -307,6 +310,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - Admin 直接開更：同人同日可以有多更；時間重疊只喺 UI 提示，後端唔擋。
 - 員工申請：唔可以係過去日期（香港日）；地點必須係註冊地點或可打卡地點；唔可以同自己已確認嘅更、或其他 pending 申請重疊（409）。`unit_id` 來自登入 token，唔接受客戶端傳入。已確認嘅更員工唔可以改或刪。
 - 登入：`POST /api/staff-shifts/login`，body `{code, pin}`。只限 active staff。Cookie 叫 `staff_shift_access`，同 admin 嘅 `attendance_access` 分開，約 12 小時，冇 refresh。呢個 token 唔可以呼叫 `/api/shifts` 寫入。
+- **Mobile 員工掃碼**（Migration **050**）：同一個 staff token 可以登入 mobile app。`staff_profiles.can_take_attendance`（預設 true，舊員工 migration 後都係 true）決定員工可唔可以用 app 掃其他人嘅 QR 打卡；Admin 喺員工資料嘅「Can take attendance (mobile scanner)」checkbox 取消。被停權員工 `/api/staff-shifts/attendance/*` 全部 403。掃碼地點必須係**該員工**嘅註冊／可打卡地點（`allowed_location_ids`，403「Location not allowed for this staff」），之後仍過被掃 unit 自己嘅 scan_locations 檢查。員工掃嘅事件記 `attendance_events.recorded_by_unit_id`（`recorded_by_user_id` 為空），CSV export 多一欄。`GET /api/staff-shifts/attendance` 只回**今日（香港日）由該員工掃**嘅紀錄，冇手動更正／作廢權限。
 - 批准：`POST /api/shift-requests/{id}/approve` 複製一行入 `shifts`，`created_by_id` 係批核嘅 admin。拒絕可填原因，員工喺自己頁睇到。
 - `GET /api/shifts?start=&end=` 包頭包尾，最多 62 日；`location_id` 只篩更嘅分店。
 - `POST /api/shifts/copy-week`：`source_week_start`、`target_week_start` 必須係星期一；目標週已有「同人同分店同日同時間」嘅更、或員工已 inactive → 跳過；回 `{created, skipped}`，重複撳唔會抄多份。
@@ -1215,7 +1219,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 049**（inventory 模組 042–049；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 050**（staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1584,7 +1588,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**049**。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）。
+目前 Alembic head：**050**（`can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）。
 
 ### 10.2 核心 ER 圖
 
@@ -1666,6 +1670,7 @@ erDiagram
         numeric commission_rate "發票分成比例 0-100 NULL=無"
         string shift_pin_hash "自助報更 PIN 哈希"
         datetime shift_pin_set_at
+        boolean can_take_attendance "可用 app 掃碼打卡"
         string work_schedule
         uuid supervisor_id FK
         string employment_notes
@@ -1708,6 +1713,7 @@ erDiagram
         string qr_jti
         uuid location_id FK
         uuid recorded_by_user_id FK
+        uuid recorded_by_unit_id FK "員工掃碼者 unit"
         string client_device_id
         string location
         string notes
@@ -1940,6 +1946,7 @@ erDiagram
     units ||--o| student_profiles : "has (1:1)"
     units ||--o| staff_profiles : "has (1:1)"
     units ||--o{ attendance_events : generates
+    units ||--o{ attendance_events : "scans (recorded_by_unit_id)"
     units ||--o{ attendance_summaries : aggregates
     units ||--o{ payroll_records : receives
     units ||--o{ unit_scan_locations : "allowed at"
@@ -2325,4 +2332,4 @@ erDiagram
     inventory_items ||--o{ inventory_credit_note_lines : "credited"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **049**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **050**）。

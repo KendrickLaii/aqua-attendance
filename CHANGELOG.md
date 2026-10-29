@@ -2,6 +2,19 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [2026-10-29]（員工掃碼）
+
+### 新增
+
+- **Mobile 員工掃碼打卡**：員工可以用員工編號 + 6 位 shift PIN 登入 mobile app（`POST /api/staff-shifts/login`，token type `staff_shift`，12 小時，無 refresh），喺自己允許嘅地點掃**其他人**嘅 QR 簽到／簽退，並睇返今日自己掃嘅紀錄。
+  - 新端點（staff token 專用，admin token 會 401）：`POST /api/staff-shifts/attendance/scan`、`POST /api/staff-shifts/attendance/scan/preview`、`GET /api/staff-shifts/attendance`（伺服器強制今日香港日＋`recorded_by_unit_id`＝登入員工）。員工冇手動更正／作廢權限。
+  - Migration **050**：`staff_profiles.can_take_attendance`（NOT NULL，預設 true，舊員工自動有權；Admin 喺員工資料嘅「Can take attendance (mobile scanner)」取消權限）＋ `attendance_events.recorded_by_unit_id`（FK `units.id` ON DELETE SET NULL，有索引）。
+  - 員工掃嘅事件 `recorded_by_unit_id`＝掃碼員工、`recorded_by_user_id`＝空；CSV export 加 `recorded_by_unit_id` 欄（喺 `recorded_by_user_id` 之後）。
+  - `/api/staff-shifts/login`、`/me` 回 `can_take_attendance`；`/api/staff-shifts/locations` 加 `code`／`region`／`is_active` 欄位。
+  - 掃碼共用邏輯搬到 `app/services/attendance_scan.py`；`record_scan`／`list_events` 支援 `recorded_by_unit_id`。
+- **Mobile app**：登入頁加 Admin / Staff 切換（staff 用員工編號 + PIN）；staff session 只有 Help tab，`can_take_attendance=true` 先有 Scanner 同 History（History 只顯示今日自己掃嘅紀錄）。
+- **Web**：員工編輯框 Staff profile 區加「Can take attendance (mobile scanner)」checkbox，新員工預設勾選。
+
 ## [2026-10-29]
 
 ### 變更
