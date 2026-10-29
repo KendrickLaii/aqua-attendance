@@ -15,10 +15,10 @@ import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import { billingUnitShortLabel, enrollmentStatusColor } from '@/utils/courseEnrollmentDisplay'
 import {
   JOIN_CLASS_HINT,
-  ONGOING_END_DATE_HINT,
-  ONGOING_SET_END_HINT,
   JOIN_FIRST_STUDENT,
   LEAVE_CLASS_CONFIRM,
+  ONGOING_END_DATE_HINT,
+  ONGOING_SET_END_HINT,
   REMOVE_RECORD_CONFIRM,
   RENEW_DATE_HINT,
   RENEW_END_BEFORE_START,
@@ -26,11 +26,11 @@ import {
   RENEW_END_REQUIRED,
   RENEW_SUBTITLE,
   SET_END_HINT,
+  leaveClassUnbilledNote,
+  mapEnrollmentApiError,
   renewExtendHint,
   renewSavedHint,
   setEndSavedHint,
-  leaveClassUnbilledNote,
-  mapEnrollmentApiError,
 } from '@/utils/billingStaffCopy'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -42,19 +42,18 @@ import {
   enrollPriceHint,
   enrollmentPriceParts,
   enrollmentStatusLabel,
-  existingEnrollmentHint,
+  existingEnrollmentStatus,
   formatRosterDate,
-  matchesRosterSearch,
+  isFieldPromptReason,
   lastDayOfMonth,
+  matchesRosterSearch,
   purchaseSummary,
-  purchaseTooltipLines,
   renewEndDate,
-  todayIsoDate,
   rosterMetaLine,
   rosterPriceLabel,
   studentCode,
   studentLabel,
-  topUpWindowPreview,
+  todayIsoDate,
 } from '@/utils/courseRosterDisplay'
 import { type SortValue, type TableSort, compareSortValues, sortIconFor, toggleSort } from '@/utils/tableSort'
 
@@ -101,6 +100,7 @@ let rosterRequestId = 0
 
 const rosterSku = computed(() => props.skus.find(k => k.id === props.skuId) ?? null)
 const activeRosterCount = computed(() => enrollments.value.filter(e => e.status === 'active').length)
+
 const rosterAtCapacity = computed(() => {
   const cap = rosterSku.value?.capacity
   if (cap == null)
@@ -146,8 +146,15 @@ function cacheStudents(units: Unit[]) {
     studentById[unit.id] = unit
 }
 
-function sortedPurchases(enrollment: CourseEnrollment) {
-  return [...(enrollment.purchases ?? [])].sort((a, b) => a.purchased_at.localeCompare(b.purchased_at))
+const expandedEnrollmentIds = ref(new Set<string>())
+
+function togglePurchaseHistory(id: string) {
+  const next = new Set(expandedEnrollmentIds.value)
+  if (next.has(id))
+    next.delete(id)
+  else
+    next.add(id)
+  expandedEnrollmentIds.value = next
 }
 
 function labelFor(enrollment: CourseEnrollment): string {
@@ -205,6 +212,7 @@ async function loadRoster(skuId: string | null) {
       return
     enrollments.value = items
     syncEnrollmentDates(items)
+
     const missing = items.filter(e => !e.unit_name && !studentById[e.unit_id])
     if (missing.length)
       await ensureStudentNames(missing)
@@ -277,11 +285,29 @@ function enrollNeedsPurchasedQuantity() {
   return rosterSku.value?.billing_unit === 'per_session'
 }
 
-const enrollPreview = computed(() => enrollBillPreview({
-  sku: rosterSku.value,
-  unitPrice: enrollUnitPrice.value,
-  purchasedQuantity: enrollPurchasedQuantity.value,
-}))
+const existingEnrollment = computed(() =>
+  enrollments.value.find(e => e.status === 'active' && e.unit_id === selectedStudentId.value) ?? null,
+)
+
+const enrollPreview = computed(() => {
+  if (existingEnrollment.value)
+    return ''
+
+  return enrollBillPreview({
+    sku: rosterSku.value,
+    unitPrice: enrollUnitPrice.value,
+    purchasedQuantity: enrollPurchasedQuantity.value,
+  })
+})
+
+const sessionsFieldLabel = computed(() => existingEnrollment.value ? 'Sessions to add' : 'Sessions bought')
+
+const sessionsFieldHint = computed(() => {
+  if (existingEnrollment.value || !enrollPurchasedQuantity.value)
+    return ''
+
+  return `${enrollPurchasedQuantity.value} session${enrollPurchasedQuantity.value === 1 ? '' : 's'}`
+})
 
 const classOptions = computed(() =>
   props.skus
@@ -294,19 +320,9 @@ const activeRosterUnitIds = computed(
   () => new Set(enrollments.value.filter(e => e.status === 'active').map(e => e.unit_id)),
 )
 
-const existingEnrollment = computed(() =>
-  enrollments.value.find(e => e.status === 'active' && e.unit_id === selectedStudentId.value) ?? null,
+const existingStatus = computed(() =>
+  existingEnrollmentStatus(rosterSku.value, existingEnrollment.value, emptyToNull(enrollEndDate.value)),
 )
-
-const existingHint = computed(() => existingEnrollmentHint(rosterSku.value, existingEnrollment.value))
-
-const topUpPreview = computed(() => {
-  const existing = existingEnrollment.value
-  if (!existing || !enrollNeedsPurchasedQuantity())
-    return ''
-
-  return topUpWindowPreview(existing, emptyToNull(enrollEndDate.value))
-})
 
 const enrollButtonLabel = computed(() => {
   if (!existingEnrollment.value)
@@ -817,7 +833,9 @@ async function confirmRenew() {
       price: updated.unit_price != null ? String(updated.unit_price) : '',
     }
     renewingEnrollment.value = null
+
     const savedEnd = formatRosterDate(updated.end_date)
+
     enrollSuccess.value = renewMode.value === 'end'
       ? setEndSavedHint(labelFor(enrollment), savedEnd)
       : renewSavedHint(labelFor(enrollment), savedEnd)
@@ -861,6 +879,7 @@ async function reactivateEnrollment(enrollment: CourseEnrollment) {
 
 function removeEnrollment(enrollment: CourseEnrollment) {
   const { total, unbilledQty } = purchaseSummary(enrollment)
+
   const purchaseNote = total > 0
     ? ` This also removes ${total} session purchase record${total === 1 ? '' : 's'}${unbilledQty > 0 ? ` (${unbilledQty} never billed)` : ''} — issued invoices keep their snapshots.`
     : ''
@@ -919,7 +938,9 @@ async function saveTopUp() {
 
 async function scrollIntoView() {
   await nextTick()
+
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
   rosterSection.value?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
 }
 
@@ -1132,12 +1153,12 @@ defineExpose({ scrollIntoView })
           >
             <VTextField
               v-model.number="enrollPurchasedQuantity"
-              label="Sessions bought"
+              :label="sessionsFieldLabel"
               type="number"
               min="1"
               density="comfortable"
-              :hint="enrollPurchasedQuantity ? `${enrollPurchasedQuantity} session${enrollPurchasedQuantity === 1 ? '' : 's'}` : 'One-time purchase, billed once'"
-              persistent-hint
+              :hint="sessionsFieldHint"
+              :persistent-hint="Boolean(sessionsFieldHint)"
               :disabled="!skuId"
             />
           </VCol>
@@ -1189,22 +1210,21 @@ defineExpose({ scrollIntoView })
           {{ enrollPreview }}
         </div>
         <div
-          v-if="disabledReason && selectedStudentId"
+          v-if="disabledReason && selectedStudentId && !isFieldPromptReason(disabledReason)"
           class="text-caption text-medium-emphasis mt-1"
         >
           {{ disabledReason }}
         </div>
         <div
-          v-if="existingHint"
-          class="text-caption text-medium-emphasis mt-1"
+          v-if="existingStatus"
+          class="text-caption text-medium-emphasis mt-1 d-flex align-center"
         >
-          {{ existingHint }}
-        </div>
-        <div
-          v-if="topUpPreview"
-          class="text-caption text-medium-emphasis mt-1"
-        >
-          {{ topUpPreview }}
+          <VIcon
+            icon="ri-information-line"
+            size="14"
+            class="me-1"
+          />
+          {{ existingStatus }}
         </div>
       </VSheet>
 
@@ -1366,150 +1386,157 @@ defineExpose({ scrollIntoView })
             </tr>
           </thead>
           <tbody>
-            <tr
+            <template
               v-for="e in filteredRosterRows"
               :key="e.id"
-              :class="{ 'roster-row--left': e.status !== 'active' }"
             >
-              <td>
-                <div class="roster-student">
-                  <span class="roster-student__name">{{ labelFor(e) }}</span>
-                  <span class="roster-student__code">{{ codeFor(e) }}</span>
-                </div>
-              </td>
-              <td>
-                <VChip
-                  size="small"
-                  variant="tonal"
-                  :color="enrollmentStatusColor[e.status] ?? 'grey'"
-                >
-                  {{ enrollmentStatusLabel(e.status) }}
-                </VChip>
-              </td>
-              <td v-if="rosterSku?.billing_unit === 'per_session'">
-                <VTooltip
-                  v-if="e.purchases.length > 0"
-                  location="top"
-                  max-width="420"
-                >
-                  <template #activator="{ props: tooltipProps }">
-                    <span v-bind="tooltipProps">
-                      {{ purchaseSummary(e).total }} session{{ purchaseSummary(e).total === 1 ? '' : 's' }}
-                      <VChip
-                        v-if="purchaseSummary(e).unbilledQty > 0"
-                        size="x-small"
-                        color="warning"
-                        variant="tonal"
-                        class="ms-1"
-                      >
-                        {{ purchaseSummary(e).unbilledQty }} unbilled
-                      </VChip>
-                    </span>
-                  </template>
-                  <div
-                    v-for="(line, lineIdx) in purchaseTooltipLines(e)"
-                    :key="lineIdx"
+              <tr :class="{ 'roster-row--left': e.status !== 'active' }">
+                <td>
+                  <div class="roster-student">
+                    <span class="roster-student__name">{{ labelFor(e) }}</span>
+                    <span class="roster-student__code">{{ codeFor(e) }}</span>
+                  </div>
+                </td>
+                <td>
+                  <VChip
+                    size="small"
+                    variant="tonal"
+                    :color="enrollmentStatusColor[e.status] ?? 'grey'"
                   >
-                    {{ line }}
+                    {{ enrollmentStatusLabel(e.status) }}
+                  </VChip>
+                </td>
+                <td v-if="rosterSku?.billing_unit === 'per_session'">
+                  <VBtn
+                    v-if="e.purchases.length > 0"
+                    variant="text"
+                    size="small"
+                    class="text-none px-1"
+                    :aria-expanded="expandedEnrollmentIds.has(e.id)"
+                    @click="togglePurchaseHistory(e.id)"
+                  >
+                    {{ purchaseSummary(e).total }} session{{ purchaseSummary(e).total === 1 ? '' : 's' }}
+                    <VChip
+                      v-if="purchaseSummary(e).unbilledQty > 0"
+                      size="x-small"
+                      color="warning"
+                      variant="tonal"
+                      class="ms-1"
+                    >
+                      {{ purchaseSummary(e).unbilledQty }} unbilled
+                    </VChip>
+                    <VIcon
+                      :icon="expandedEnrollmentIds.has(e.id) ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"
+                      size="16"
+                      class="ms-1"
+                    />
+                  </VBtn>
+                  <template v-else>
+                    —
+                  </template>
+                </td>
+                <td class="text-end">
+                  <template v-if="enrollmentPriceParts(e, rosterSku)">
+                    <div>{{ enrollmentPriceParts(e, rosterSku)?.amount }}</div>
+                    <div class="text-caption text-medium-emphasis">
+                      {{ enrollmentPriceParts(e, rosterSku)?.hint }}
+                    </div>
+                  </template>
+                  <template v-else>
+                    —
+                  </template>
+                </td>
+                <td>
+                  <div class="d-flex align-center">
+                    <div>{{ billingWindowLabel(e) }}</div>
+                    <HelpBubble
+                      v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
+                      :text="ONGOING_SET_END_HINT"
+                      inline
+                    />
                   </div>
-                </VTooltip>
-                <template v-else>
-                  —
-                </template>
-              </td>
-              <td class="text-end">
-                <template v-if="enrollmentPriceParts(e, rosterSku)">
-                  <div>{{ enrollmentPriceParts(e, rosterSku)?.amount }}</div>
                   <div class="text-caption text-medium-emphasis">
-                    {{ enrollmentPriceParts(e, rosterSku)?.hint }}
+                    Added {{ formatRosterDate(e.enrolled_at) }}
                   </div>
-                </template>
-                <template v-else>
-                  —
-                </template>
-              </td>
-              <td>
-                <div class="d-flex align-center">
-                  <div>{{ billingWindowLabel(e) }}</div>
-                  <HelpBubble
+                </td>
+                <td class="text-end text-no-wrap col-actions">
+                  <VBtn
+                    v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && e.end_date"
+                    size="x-small"
+                    variant="tonal"
+                    color="primary"
+                    class="roster-action-btn me-1"
+                    @click="openRenew(e)"
+                  >
+                    Renew
+                  </VBtn>
+                  <VBtn
                     v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
-                    :text="ONGOING_SET_END_HINT"
-                    inline
-                  />
-                </div>
-                <div class="text-caption text-medium-emphasis">
-                  Added {{ formatRosterDate(e.enrolled_at) }}
-                </div>
-              </td>
-              <td class="text-end text-no-wrap col-actions">
-                <VBtn
-                  v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && e.end_date"
-                  size="x-small"
-                  variant="tonal"
-                  color="primary"
-                  class="roster-action-btn me-1"
-                  @click="openRenew(e)"
-                >
-                  Renew
-                </VBtn>
-                <VBtn
-                  v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
-                  size="x-small"
-                  variant="tonal"
-                  color="warning"
-                  class="roster-action-btn me-1"
-                  @click="openEndBilling(e)"
-                >
-                  Set end
-                </VBtn>
-                <VBtn
-                  size="small"
-                  variant="text"
-                  @click="beginEditEnrollmentDates(e)"
-                >
-                  Edit
-                </VBtn>
-                <VBtn
-                  icon
-                  size="small"
-                  variant="text"
-                  aria-label="More actions"
-                >
-                  <VIcon
-                    icon="ri-more-2-line"
-                    size="18"
-                  />
-                  <VMenu activator="parent">
-                    <VList density="compact">
-                      <VListItem
-                        v-if="e.status === 'active'"
-                        prepend-icon="ri-user-unfollow-line"
-                        title="Leave class"
-                        @click="cancelEnrollment(e)"
-                      />
-                      <VListItem
-                        v-else
-                        prepend-icon="ri-user-follow-line"
-                        title="Back in class"
-                        @click="reactivateEnrollment(e)"
-                      />
-                      <VListItem
-                        v-if="topUpEnabled && rosterSku?.billing_unit === 'per_session' && e.status === 'active'"
-                        prepend-icon="ri-add-circle-line"
-                        title="Top up sessions"
-                        @click="openTopUp(e)"
-                      />
-                      <VListItem
-                        prepend-icon="ri-delete-bin-line"
-                        title="Remove record"
-                        class="text-error"
-                        @click="removeEnrollment(e)"
-                      />
-                    </VList>
-                  </VMenu>
-                </VBtn>
-              </td>
-            </tr>
+                    size="x-small"
+                    variant="tonal"
+                    color="warning"
+                    class="roster-action-btn me-1"
+                    @click="openEndBilling(e)"
+                  >
+                    Set end
+                  </VBtn>
+                  <VBtn
+                    size="small"
+                    variant="text"
+                    @click="beginEditEnrollmentDates(e)"
+                  >
+                    Edit
+                  </VBtn>
+                  <VBtn
+                    icon
+                    size="small"
+                    variant="text"
+                    aria-label="More actions"
+                  >
+                    <VIcon
+                      icon="ri-more-2-line"
+                      size="18"
+                    />
+                    <VMenu activator="parent">
+                      <VList density="compact">
+                        <VListItem
+                          v-if="e.status === 'active'"
+                          prepend-icon="ri-user-unfollow-line"
+                          title="Leave class"
+                          @click="cancelEnrollment(e)"
+                        />
+                        <VListItem
+                          v-else
+                          prepend-icon="ri-user-follow-line"
+                          title="Back in class"
+                          @click="reactivateEnrollment(e)"
+                        />
+                        <VListItem
+                          v-if="topUpEnabled && rosterSku?.billing_unit === 'per_session' && e.status === 'active'"
+                          prepend-icon="ri-add-circle-line"
+                          title="Top up sessions"
+                          @click="openTopUp(e)"
+                        />
+                        <VListItem
+                          prepend-icon="ri-delete-bin-line"
+                          title="Remove record"
+                          class="text-error"
+                          @click="removeEnrollment(e)"
+                        />
+                      </VList>
+                    </VMenu>
+                  </VBtn>
+                </td>
+              </tr>
+              <tr
+                v-if="expandedEnrollmentIds.has(e.id)"
+                class="roster-row-detail"
+              >
+                <td :colspan="rosterSku?.billing_unit === 'per_session' ? 6 : 5">
+                  <EnrollmentPurchaseHistory :enrollment="e" />
+                </td>
+              </tr>
+            </template>
             <tr v-if="filteredRosterRows.length === 0">
               <td
                 :colspan="rosterSku?.billing_unit === 'per_session' ? 6 : 5"
@@ -1668,45 +1695,11 @@ defineExpose({ scrollIntoView })
               />
             </VCol>
           </VRow>
-          <template v-if="rosterSku?.billing_unit === 'per_session' && editingEnrollment.purchases.length">
-            <div class="text-subtitle-2 mt-4 mb-1">
-              Purchase history
-            </div>
-            <VTable density="compact">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Sessions</th>
-                  <th>Price</th>
-                  <th>Status</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="p in sortedPurchases(editingEnrollment)"
-                  :key="p.id"
-                >
-                  <td>{{ formatRosterDate(p.purchased_at) }}</td>
-                  <td>{{ p.purchased_quantity }}</td>
-                  <td>{{ p.unit_price != null ? `× HK$${Number(p.unit_price).toFixed(2)}` : 'price TBD' }}</td>
-                  <td>
-                    <VChip
-                      size="x-small"
-                      variant="tonal"
-                      :color="p.billed_invoice_line_id === null ? 'warning' : 'success'"
-                    >
-                      {{ p.billed_invoice_line_id === null ? 'unbilled' : 'billed' }}
-                    </VChip>
-                  </td>
-                  <td>{{ p.notes ?? '—' }}</td>
-                </tr>
-              </tbody>
-            </VTable>
-            <div class="text-caption text-medium-emphasis mt-1">
-              Total {{ purchaseSummary(editingEnrollment).total }} sessions · {{ purchaseSummary(editingEnrollment).unbilledQty }} unbilled
-            </div>
-          </template>
+          <EnrollmentPurchaseHistory
+            v-if="rosterSku?.billing_unit === 'per_session' && editingEnrollment.purchases.length"
+            :enrollment="editingEnrollment"
+            class="mt-4"
+          />
           <VAlert
             v-if="enrollError"
             type="error"
@@ -1974,6 +1967,11 @@ defineExpose({ scrollIntoView })
 
 .roster-row--left td {
   opacity: 0.58;
+}
+
+.roster-row-detail > td {
+  padding-top: 0;
+  border-top: none;
 }
 
 th.sortable {

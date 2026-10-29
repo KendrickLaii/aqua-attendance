@@ -7,16 +7,16 @@ import {
   enrollDisabledReason,
   enrollmentPriceParts,
   enrollmentStatusLabel,
-  existingEnrollmentHint,
+  existingEnrollmentStatus,
   formatRosterDate,
+  isFieldPromptReason,
   lastDayOfMonth,
   matchesRosterSearch,
   purchaseSummary,
-  purchaseTooltipLines,
   renewEndDate,
   rosterPriceLabel,
   skuBillingPreview,
-  topUpWindowPreview,
+  sortedPurchases,
 } from './courseRosterDisplay'
 
 function sku(over: Partial<CourseSku> = {}): CourseSku {
@@ -235,28 +235,54 @@ describe('enrollDisabledReason', () => {
   })
 })
 
-describe('existingEnrollmentHint', () => {
-  it('explains the per-session top-up with the running total', () => {
-    const row = enrollment({
-      purchases: [
-        { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: null, notes: null, created_at: '' },
-      ],
-    })
+describe('existingEnrollmentStatus', () => {
+  const withPurchase = enrollment({
+    purchases: [
+      { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: null, notes: null, created_at: '' },
+    ],
+  })
+
+  const perSession = sku({ billing_unit: 'per_session' })
+
+  it('summarises the per-session window and end-date effect', () => {
+    const ended = enrollment({ ...withPurchase, end_date: '2026-05-31' })
 
     assert.equal(
-      existingEnrollmentHint(sku({ billing_unit: 'per_session' }), row),
-      'Already in class (8 sessions so far) — this adds a new purchase record. Each top-up is billed separately.',
+      existingEnrollmentStatus(perSession, ended, '2026-08-31'),
+      'In class · 8 sessions · 2026-03-01 → 2026-05-31 · extends to 2026-08-31',
+    )
+    assert.equal(
+      existingEnrollmentStatus(perSession, ended, '2026-04-30'),
+      'In class · 8 sessions · 2026-03-01 → 2026-05-31 · end not shortened (use Edit)',
+    )
+    assert.equal(
+      existingEnrollmentStatus(perSession, ended, '2026-05-31'),
+      'In class · 8 sessions · 2026-03-01 → 2026-05-31',
+    )
+    assert.equal(
+      existingEnrollmentStatus(perSession, withPurchase, null),
+      'In class · 8 sessions · 2026-03-01 → Ongoing',
     )
   })
 
-  it('shows the current billing window for monthly classes', () => {
+  it('marks the monthly update and empty cases', () => {
     const row = enrollment({ start_date: '2026-03-01', end_date: '2026-05-31' })
 
     assert.equal(
-      existingEnrollmentHint(sku(), row),
-      'Already in class — this updates the current billing window (2026-03-01 → 2026-05-31).',
+      existingEnrollmentStatus(sku(), row, null),
+      'In class · 2026-03-01 → 2026-05-31 · Update replaces this window',
     )
-    assert.equal(existingEnrollmentHint(sku(), null), '')
+    assert.equal(existingEnrollmentStatus(sku(), null, null), '')
+  })
+})
+
+describe('isFieldPromptReason', () => {
+  it('covers prompts but not real blockers', () => {
+    assert.equal(isFieldPromptReason('Enter how many sessions to add.'), true)
+    assert.equal(isFieldPromptReason('Enter how many sessions this student bought.'), true)
+    assert.equal(isFieldPromptReason('Search and pick a student.'), true)
+    assert.equal(isFieldPromptReason('This class is full.'), false)
+    assert.equal(isFieldPromptReason('Start date can\'t be before this student\'s current start (2026-06-01).'), false)
   })
 })
 
@@ -277,54 +303,26 @@ describe('lastDayOfMonth', () => {
   })
 })
 
-describe('topUpWindowPreview', () => {
-  it('describes the ongoing window and extensions', () => {
-    assert.equal(
-      topUpWindowPreview(enrollment({ end_date: null }), null),
-      'Billing window stays ongoing (2026-03-01 → Ongoing).',
-    )
-
-    const ended = enrollment({ end_date: '2026-05-31' })
-
-    assert.equal(topUpWindowPreview(ended, '2026-08-31'), 'Billing window will extend to 2026-08-31.')
-    assert.equal(topUpWindowPreview(ended, '2026-05-31'), 'Billing window stays 2026-03-01 → 2026-05-31.')
-    assert.equal(
-      topUpWindowPreview(ended, '2026-04-30'),
-      'Billing window stays 2026-03-01 → 2026-05-31. (End date earlier than current end — not shortened; use Edit to shorten.)',
-    )
-    assert.equal(topUpWindowPreview(ended, null), 'Billing window stays 2026-03-01 → 2026-05-31.')
-  })
-})
-
-describe('purchaseTooltipLines', () => {
-  it('returns one line per purchase plus a hint only when unbilled exists', () => {
+describe('sortedPurchases', () => {
+  it('orders purchases by purchased_at ascending', () => {
     const row = enrollment({
       purchases: [
-        { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: 'line-1', notes: null, created_at: '' },
-        { id: 'p2', enrollment_id: 'e1', purchased_quantity: 4, unit_price: null, purchased_at: '2026-04-01', billed_invoice_line_id: null, notes: 'cash', created_at: '' },
+        { id: 'p2', enrollment_id: 'e1', purchased_quantity: 4, unit_price: 120, purchased_at: '2026-04-01', billed_invoice_line_id: null, notes: null, created_at: '' },
+        { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: null, notes: null, created_at: '' },
       ],
     })
 
-    const lines = purchaseTooltipLines(row)
-
-    assert.equal(lines.length, 3)
-    assert.equal(lines[0], '2026-03-01 · 8 × 120.00 · billed')
-    assert.equal(lines[1], '2026-04-01 · 4 sessions · price TBD · unbilled · cash')
-    assert.match(lines[2], /Run Generate/)
-
-    const allBilled = enrollment({
-      purchases: [
-        { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: 'line-1', notes: null, created_at: '' },
-      ],
-    })
-
-    assert.equal(purchaseTooltipLines(allBilled).length, 1)
+    assert.deepEqual(sortedPurchases(row).map(p => p.id), ['p1', 'p2'])
   })
 })
 
 describe('enrollBillPreview', () => {
   it('describes monthly vs per-session billing', () => {
     assert.match(enrollBillPreview({ sku: sku(), unitPrice: null, purchasedQuantity: null }), /every month/)
+    assert.equal(
+      enrollBillPreview({ sku: sku({ billing_unit: 'per_session' }), unitPrice: null, purchasedQuantity: null }),
+      '',
+    )
     assert.match(
       enrollBillPreview({ sku: sku({ billing_unit: 'per_session' }), unitPrice: null, purchasedQuantity: 8 }),
       /8 sessions/,

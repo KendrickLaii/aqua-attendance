@@ -377,6 +377,7 @@ declare module 'vue' {
     DialogFooter: typeof import('./src/components/attendance/DialogFooter.vue')['default']
     DropZone: typeof import('./src/@core/components/DropZone.vue')['default']
     EnableOneTimePasswordDialog: typeof import('./src/components/dialogs/EnableOneTimePasswordDialog.vue')['default']
+    EnrollmentPurchaseHistory: typeof import('./src/components/attendance/courses/EnrollmentPurchaseHistory.vue')['default']
     ErrorHeader: typeof import('./src/components/ErrorHeader.vue')['default']
     FileUploadZone: typeof import('./src/components/FileUploadZone.vue')['default']
     GlobalConfirmDialog: typeof import('./src/components/attendance/GlobalConfirmDialog.vue')['default']

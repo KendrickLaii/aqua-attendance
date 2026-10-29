@@ -1,4 +1,4 @@
-import type { BillingUnit, CourseEnrollment, CourseSku, Weekday } from '../api/attendance/courses'
+import type { BillingUnit, CourseEnrollment, CourseSku, EnrollmentPurchase, Weekday } from '../api/attendance/courses'
 
 export const billingUnitOptions: { title: string; value: BillingUnit }[] = [
   { title: 'Monthly (月費)', value: 'monthly' },
@@ -63,19 +63,8 @@ export function purchaseSummary(e: Pick<CourseEnrollment, 'purchases'>) {
   }
 }
 
-export function purchaseTooltipLines(e: Pick<CourseEnrollment, 'purchases'>): string[] {
-  const lines = (e.purchases ?? [])
-    .map(p => [
-      formatRosterDate(p.purchased_at),
-      p.unit_price != null ? `${p.purchased_quantity} × ${Number(p.unit_price).toFixed(2)}` : `${p.purchased_quantity} session${p.purchased_quantity === 1 ? '' : 's'} · price TBD`,
-      p.billed_invoice_line_id === null ? 'unbilled' : 'billed',
-      p.notes ?? '',
-    ].filter(Boolean).join(' · '))
-
-  if ((e.purchases ?? []).some(p => p.billed_invoice_line_id === null))
-    lines.push('Run Generate on the Invoices page — unbilled sessions go on this month’s draft, or on a supplementary draft if the bill is already issued.')
-
-  return lines
+export function sortedPurchases(e: Pick<CourseEnrollment, 'purchases'>): EnrollmentPurchase[] {
+  return [...(e.purchases ?? [])].sort((a, b) => a.purchased_at.localeCompare(b.purchased_at))
 }
 
 export function enrollmentStatusLabel(status: string): string {
@@ -198,7 +187,7 @@ export function enrollBillPreview(input: {
   if (sku.billing_unit === 'per_session') {
     const qty = input.purchasedQuantity
     if (qty == null || qty <= 0)
-      return 'Per-session class — enter how many sessions this student bought. Billed once, not monthly.'
+      return ''
     if (sku.price != null)
       return `${qty} session${qty === 1 ? '' : 's'} recorded — bill it from the Manual invoice (default HK$${sku.price.toFixed(2)}/session, adjustable when issuing).`
 
@@ -208,6 +197,17 @@ export function enrollBillPreview(input: {
     return 'No class price — this student will be skipped at Generate until a price is set.'
 
   return `Bills HK$${price.toFixed(2)} every month that overlaps the billed window.`
+}
+
+/** Reasons that are just field prompts — the button title still carries them. */
+const FIELD_PROMPT_REASONS = new Set([
+  'Search and pick a student.',
+  'Enter how many sessions this student bought.',
+  'Enter how many sessions to add.',
+])
+
+export function isFieldPromptReason(reason: string): boolean {
+  return FIELD_PROMPT_REASONS.has(reason)
 }
 
 export function enrollDisabledReason(input: {
@@ -246,33 +246,27 @@ export function enrollDisabledReason(input: {
   return ''
 }
 
-export function topUpWindowPreview(
-  existing: Pick<CourseEnrollment, 'start_date' | 'end_date'>,
-  formEnd: string | null,
-): string {
-  const window = billingWindowLabel(existing)
-  if (!existing.end_date)
-    return `Billing window stays ongoing (${window}).`
-  if (formEnd && formEnd > existing.end_date)
-    return `Billing window will extend to ${formEnd}.`
-
-  const earlier = formEnd && formEnd < existing.end_date
-    ? ' (End date earlier than current end — not shortened; use Edit to shorten.)'
-    : ''
-
-  return `Billing window stays ${window}.${earlier}`
-}
-
-export function existingEnrollmentHint(
+export function existingEnrollmentStatus(
   sku: Pick<CourseSku, 'billing_unit'> | null,
   enrollment: Pick<CourseEnrollment, 'purchases' | 'start_date' | 'end_date'> | null,
+  formEnd: string | null,
 ): string {
   if (!sku || !enrollment)
     return ''
-  if (sku.billing_unit === 'per_session')
-    return `Already in class (${purchaseSummary(enrollment).total} sessions so far) — this adds a new purchase record. Each top-up is billed separately.`
+  const window = billingWindowLabel(enrollment)
+  if (sku.billing_unit === 'per_session') {
+    let suffix = ''
+    if (enrollment.end_date && formEnd) {
+      if (formEnd > enrollment.end_date)
+        suffix = ` · extends to ${formEnd}`
+      else if (formEnd < enrollment.end_date)
+        suffix = ' · end not shortened (use Edit)'
+    }
 
-  return `Already in class — this updates the current billing window (${billingWindowLabel(enrollment)}).`
+    return `In class · ${purchaseSummary(enrollment).total} sessions · ${window}${suffix}`
+  }
+
+  return `In class · ${window} · Update replaces this window`
 }
 
 export function rosterMetaLine(input: {
