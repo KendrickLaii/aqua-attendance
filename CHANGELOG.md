@@ -15,6 +15,10 @@
 - **Mobile app**：登入頁加 Admin / Staff 切換（staff 用員工編號 + PIN）；staff session 只有 Help tab，`can_take_attendance=true` 先有 Scanner 同 History（History 只顯示今日自己掃嘅紀錄）。
 - **Web**：員工編輯框 Staff profile 區加「Can take attendance (mobile scanner)」checkbox，新員工預設勾選。
 
+### 修正（員工掃碼）
+
+- `POST /api/attendance/{id}/void` 漏 import `selectinload`，作廢打卡會 500（CI pytest 3 個失敗，image 未 build）。
+
 ## [2026-10-29]
 
 ### 變更（Join a student）
