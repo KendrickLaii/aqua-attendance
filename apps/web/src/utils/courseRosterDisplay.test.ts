@@ -2,16 +2,17 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { CourseEnrollment, CourseSku } from '../api/attendance/courses'
 import {
+  emptyToNull,
   enrollBillPreview,
   enrollDisabledReason,
   enrollmentPriceParts,
   enrollmentStatusLabel,
-  emptyToNull,
+  existingEnrollmentHint,
   formatRosterDate,
-  matchesRosterSearch,
   lastDayOfMonth,
-  renewEndDate,
+  matchesRosterSearch,
   purchaseSummary,
+  renewEndDate,
   rosterPriceLabel,
   skuBillingPreview,
 } from './courseRosterDisplay'
@@ -123,8 +124,9 @@ describe('matchesRosterSearch', () => {
 })
 
 describe('enrollDisabledReason', () => {
-  it('blocks enroll when the class is full, inactive, or the student is already in', () => {
+  it('blocks enroll when the class is missing, inactive, or full for a new student', () => {
     const monthly = sku()
+
     assert.equal(enrollDisabledReason({
       skuId: null,
       sku: null,
@@ -146,24 +148,25 @@ describe('enrollDisabledReason', () => {
     assert.equal(enrollDisabledReason({
       skuId: monthly.id,
       sku: monthly,
+      atCapacity: false,
+      studentId: null,
+      activeUnitIds: new Set(),
+      purchasedQuantity: null,
+    }), 'Search and pick a student.')
+
+    assert.equal(enrollDisabledReason({
+      skuId: monthly.id,
+      sku: monthly,
       atCapacity: true,
       studentId: 'u1',
       activeUnitIds: new Set(),
       purchasedQuantity: null,
     }), 'This class is full.')
-
-    assert.equal(enrollDisabledReason({
-      skuId: monthly.id,
-      sku: monthly,
-      atCapacity: false,
-      studentId: 'u1',
-      activeUnitIds: new Set(['u1']),
-      purchasedQuantity: null,
-    }), 'This student is already in the class.')
   })
 
   it('requires session count for per-session classes', () => {
     const perSession = sku({ billing_unit: 'per_session' })
+
     assert.equal(enrollDisabledReason({
       skuId: perSession.id,
       sku: perSession,
@@ -172,6 +175,65 @@ describe('enrollDisabledReason', () => {
       activeUnitIds: new Set(),
       purchasedQuantity: null,
     }), 'Enter how many sessions this student bought.')
+  })
+
+  it('lets an in-class student top up or update instead of blocking', () => {
+    const perSession = sku({ billing_unit: 'per_session' })
+    const monthly = sku()
+
+    // In-class per_session still needs a quantity for the new purchase.
+    assert.equal(enrollDisabledReason({
+      skuId: perSession.id,
+      sku: perSession,
+      atCapacity: false,
+      studentId: 'u1',
+      activeUnitIds: new Set(['u1']),
+      purchasedQuantity: null,
+    }), 'Enter how many sessions to add.')
+
+    // Capacity never blocks someone already in class — no new seat.
+    assert.equal(enrollDisabledReason({
+      skuId: perSession.id,
+      sku: perSession,
+      atCapacity: true,
+      studentId: 'u1',
+      activeUnitIds: new Set(['u1']),
+      purchasedQuantity: 4,
+    }), '')
+
+    assert.equal(enrollDisabledReason({
+      skuId: monthly.id,
+      sku: monthly,
+      atCapacity: true,
+      studentId: 'u1',
+      activeUnitIds: new Set(['u1']),
+      purchasedQuantity: null,
+    }), '')
+  })
+})
+
+describe('existingEnrollmentHint', () => {
+  it('explains the per-session top-up with the running total', () => {
+    const row = enrollment({
+      purchases: [
+        { id: 'p1', enrollment_id: 'e1', purchased_quantity: 8, unit_price: 120, purchased_at: '2026-03-01', billed_invoice_line_id: null, notes: null, created_at: '' },
+      ],
+    })
+
+    assert.equal(
+      existingEnrollmentHint(sku({ billing_unit: 'per_session' }), row),
+      'Already in class (8 sessions so far) — this adds a new purchase record. Each top-up is billed separately.',
+    )
+  })
+
+  it('shows the current billing window for monthly classes', () => {
+    const row = enrollment({ start_date: '2026-03-01', end_date: '2026-05-31' })
+
+    assert.equal(
+      existingEnrollmentHint(sku(), row),
+      'Already in class — this updates the current billing window (2026-03-01 → 2026-05-31).',
+    )
+    assert.equal(existingEnrollmentHint(sku(), null), '')
   })
 })
 

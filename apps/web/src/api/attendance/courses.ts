@@ -190,7 +190,7 @@ export async function deleteCourseEnrollment(id: string): Promise<void> {
 
 export interface EnrollmentPurchasePayload {
   purchased_quantity: number
-  unit_price: number
+  unit_price: number | null
   purchased_at: string
   notes?: string | null
 }

@@ -42,6 +42,7 @@ import {
   enrollPriceHint,
   enrollmentPriceParts,
   enrollmentStatusLabel,
+  existingEnrollmentHint,
   formatRosterDate,
   matchesRosterSearch,
   lastDayOfMonth,
@@ -288,6 +289,30 @@ const activeRosterUnitIds = computed(
   () => new Set(enrollments.value.filter(e => e.status === 'active').map(e => e.unit_id)),
 )
 
+const existingEnrollment = computed(() =>
+  enrollments.value.find(e => e.status === 'active' && e.unit_id === selectedStudentId.value) ?? null,
+)
+
+const existingHint = computed(() => existingEnrollmentHint(rosterSku.value, existingEnrollment.value))
+
+const enrollButtonLabel = computed(() => {
+  if (!existingEnrollment.value)
+    return 'Join class'
+
+  return enrollNeedsPurchasedQuantity() ? 'Top up sessions' : 'Update'
+})
+
+watch(selectedStudentId, () => {
+  const existing = existingEnrollment.value
+  if (existing && rosterSku.value?.billing_unit === 'monthly') {
+    // Prefill so submitting doesn't wipe the current window. Per-session
+    // top-ups and non-roster picks keep whatever was typed.
+    enrollStartDate.value = existing.start_date ?? ''
+    enrollEndDate.value = existing.end_date ?? ''
+    enrollUnitPrice.value = existing.unit_price
+  }
+})
+
 type RosterSortKey = 'student' | 'status' | 'sessions' | 'price' | 'window'
 type RosterStatusFilter = 'active' | 'ended' | 'all'
 
@@ -415,14 +440,36 @@ function cancelEditEnrollmentDates(enrollment: CourseEnrollment) {
   rosterEditingId.value = null
 }
 
+function enrollWindowError(startDate: string | null, endDate: string | null, unitPrice: number | null): string {
+  if (startDate && endDate && endDate < startDate)
+    return 'Last billed day must be on or after first billed day.'
+  if (unitPrice != null && (Number.isNaN(unitPrice) || unitPrice < 0))
+    return 'Price must be zero or more.'
+
+  return ''
+}
+
+function resetEnrollForm() {
+  selectedStudentId.value = null
+  studentSearch.value = ''
+  enrollStartDate.value = ''
+  enrollEndDate.value = ''
+  enrollPurchasedQuantity.value = null
+  enrollUnitPrice.value = null
+}
+
 async function enrollStudent() {
-  if (!selectedStudentId.value || !props.skuId || rosterSku.value?.is_active === false || rosterAtCapacity.value)
-    return
-  if (activeRosterUnitIds.value.has(selectedStudentId.value)) {
-    enrollError.value = 'This student is already enrolled in this class.'
+  const existing = existingEnrollment.value
+  if (existing) {
+    if (enrollNeedsPurchasedQuantity())
+      await topUpExistingEnrollment(existing)
+    else
+      await updateExistingEnrollment(existing)
 
     return
   }
+  if (!selectedStudentId.value || !props.skuId || rosterSku.value?.is_active === false || rosterAtCapacity.value)
+    return
   if (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity.value) {
     enrollError.value = 'Enter how many sessions this student purchased.'
 
@@ -431,13 +478,9 @@ async function enrollStudent() {
 
   const startDate = emptyToNull(enrollStartDate.value)
   const endDate = emptyToNull(enrollEndDate.value)
-  if (startDate && endDate && endDate < startDate) {
-    enrollError.value = 'Last billed day must be on or after first billed day.'
-
-    return
-  }
-  if (enrollUnitPrice.value != null && enrollUnitPrice.value < 0) {
-    enrollError.value = 'Price cannot be negative.'
+  const windowError = enrollWindowError(startDate, endDate, enrollUnitPrice.value)
+  if (windowError) {
+    enrollError.value = windowError
 
     return
   }
@@ -465,16 +508,120 @@ async function enrollStudent() {
       cacheStudents([picked])
 
     enrollSuccess.value = `${picked?.full_name ?? 'Student'} joined ${rosterSku.value?.name_zh ?? 'class'}.`
-    selectedStudentId.value = null
-    studentSearch.value = ''
-    enrollStartDate.value = ''
-    enrollEndDate.value = ''
-    enrollPurchasedQuantity.value = null
-    enrollUnitPrice.value = null
+    resetEnrollForm()
     rosterStatusFilter.value = 'active'
   }
   catch (e) {
     enrollError.value = formatApiError(e, 'Could not join this class.')
+  }
+  finally {
+    enrolling.value = false
+  }
+}
+
+async function topUpExistingEnrollment(existing: CourseEnrollment) {
+  const quantity = enrollPurchasedQuantity.value
+  if (!quantity || quantity < 1) {
+    enrollError.value = 'Enter how many sessions this student purchased.'
+
+    return
+  }
+
+  const startDate = emptyToNull(enrollStartDate.value)
+  const endDate = emptyToNull(enrollEndDate.value)
+  const windowError = enrollWindowError(startDate, endDate, null)
+  if (windowError) {
+    enrollError.value = windowError
+
+    return
+  }
+
+  enrolling.value = true
+  enrollError.value = ''
+  try {
+    const created = await createEnrollmentPurchase(existing.id, {
+      purchased_quantity: quantity,
+      unit_price: existing.unit_price ?? rosterSku.value?.price ?? null,
+      purchased_at: startDate || todayIsoDate(),
+      notes: null,
+    })
+
+    const idx = enrollments.value.findIndex(e => e.id === existing.id)
+    if (idx !== -1) {
+      const row = enrollments.value[idx]
+
+      row.purchases = [...row.purchases, created]
+    }
+    let extendedEnd: string | null = null
+    if (endDate && existing.end_date && endDate > existing.end_date) {
+      // Push the billing window out so the student doesn't auto-leave.
+      try {
+        const updated = await updateCourseEnrollment(existing.id, { end_date: endDate })
+        if (idx !== -1)
+          enrollments.value[idx] = updated
+        extendedEnd = updated.end_date
+      }
+      catch (e) {
+        enrollError.value = `Sessions were added, but the end date could not be extended (${formatApiError(e, 'unknown error')}) — use Edit to set it.`
+      }
+    }
+
+    const row = idx !== -1 ? enrollments.value[idx] : existing
+
+    enrollmentDates.value[existing.id] = {
+      start: row.start_date ?? '',
+      end: row.end_date ?? '',
+      price: row.unit_price != null ? String(row.unit_price) : '',
+    }
+
+    const total = purchaseSummary(row).total
+
+    enrollSuccess.value = `Added ${created.purchased_quantity} session${created.purchased_quantity === 1 ? '' : 's'} for ${labelFor(existing)} — now ${total} sessions in total.${extendedEnd ? ` Billing window extended to ${formatRosterDate(extendedEnd)}.` : ''}`
+    resetEnrollForm()
+    rosterStatusFilter.value = 'active'
+  }
+  catch (e) {
+    enrollError.value = formatApiError(e, 'Could not add top-up.')
+  }
+  finally {
+    enrolling.value = false
+  }
+}
+
+async function updateExistingEnrollment(existing: CourseEnrollment) {
+  const startDate = emptyToNull(enrollStartDate.value)
+  const endDate = emptyToNull(enrollEndDate.value)
+  const windowError = enrollWindowError(startDate, endDate, enrollUnitPrice.value)
+  if (windowError) {
+    enrollError.value = windowError
+
+    return
+  }
+
+  enrolling.value = true
+  enrollError.value = ''
+  try {
+    const updated = await updateCourseEnrollment(existing.id, {
+      start_date: startDate,
+      end_date: endDate,
+      unit_price: enrollUnitPrice.value,
+    })
+
+    const idx = enrollments.value.findIndex(e => e.id === existing.id)
+    if (idx !== -1)
+      enrollments.value[idx] = updated
+
+    enrollmentDates.value[existing.id] = {
+      start: updated.start_date ?? '',
+      end: updated.end_date ?? '',
+      price: updated.unit_price != null ? String(updated.unit_price) : '',
+    }
+    enrollSuccess.value = `Updated ${labelFor(existing)}'s billing window: ${billingWindowLabel(updated)}.`
+    resetEnrollForm()
+    rosterStatusFilter.value = 'active'
+  }
+  catch (e) {
+    enrollError.value = formatApiError(e, 'Could not update this enrollment.')
   }
   finally {
     enrolling.value = false
@@ -488,16 +635,11 @@ async function saveEnrollmentDates(enrollment: CourseEnrollment) {
 
   const startDate = emptyToNull(draft.start)
   const endDate = emptyToNull(draft.end)
-  if (startDate && endDate && endDate < startDate) {
-    enrollError.value = 'Last billed day must be on or after first billed day.'
-
-    return
-  }
-
   const trimmedPrice = draft.price.trim()
   const unitPrice = trimmedPrice ? Number(trimmedPrice) : null
-  if (unitPrice != null && (Number.isNaN(unitPrice) || unitPrice < 0)) {
-    enrollError.value = 'Price must be zero or more.'
+  const windowError = enrollWindowError(startDate, endDate, unitPrice)
+  if (windowError) {
+    enrollError.value = windowError
 
     return
   }
@@ -980,7 +1122,7 @@ defineExpose({ scrollIntoView })
               :title="disabledReason || undefined"
               @click="enrollStudent"
             >
-              Join class
+              {{ enrollButtonLabel }}
             </VBtn>
           </VCol>
         </VRow>
@@ -1000,6 +1142,12 @@ defineExpose({ scrollIntoView })
           class="text-caption text-medium-emphasis mt-1"
         >
           {{ disabledReason }}
+        </div>
+        <div
+          v-if="existingHint"
+          class="text-caption text-medium-emphasis mt-1"
+        >
+          {{ existingHint }}
         </div>
       </VSheet>
 

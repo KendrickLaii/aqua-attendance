@@ -339,6 +339,15 @@ async def create_enrollment_purchase(
     db.add(purchase)
     await db.commit()
     await db.refresh(purchase)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="enrollment_purchases",
+        record_id=purchase.id,
+        new_values=body.model_dump(mode="json"),
+        description=f"Topped up {body.purchased_quantity} sessions for enrollment {enrollment_id}",
+    )
     return purchase
 
 

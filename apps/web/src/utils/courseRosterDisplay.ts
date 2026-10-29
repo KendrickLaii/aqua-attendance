@@ -222,16 +222,34 @@ export function enrollDisabledReason(input: {
     return 'Pick a class first.'
   if (input.sku?.is_active === false)
     return 'This class is inactive — Generate skips it.'
-  if (input.atCapacity)
-    return 'This class is full.'
   if (!input.studentId)
     return 'Search and pick a student.'
-  if (input.activeUnitIds.has(input.studentId))
-    return 'This student is already in the class.'
+  if (input.studentId && input.activeUnitIds.has(input.studentId)) {
+    // Already in class: the form tops up (per_session) or updates the window
+    // (monthly) instead of joining, and takes no new seat.
+    if (input.sku?.billing_unit === 'per_session' && !input.purchasedQuantity)
+      return 'Enter how many sessions to add.'
+
+    return ''
+  }
+  if (input.atCapacity)
+    return 'This class is full.'
   if (input.sku?.billing_unit === 'per_session' && !input.purchasedQuantity)
     return 'Enter how many sessions this student bought.'
 
   return ''
+}
+
+export function existingEnrollmentHint(
+  sku: Pick<CourseSku, 'billing_unit'> | null,
+  enrollment: Pick<CourseEnrollment, 'purchases' | 'start_date' | 'end_date'> | null,
+): string {
+  if (!sku || !enrollment)
+    return ''
+  if (sku.billing_unit === 'per_session')
+    return `Already in class (${purchaseSummary(enrollment).total} sessions so far) — this adds a new purchase record. Each top-up is billed separately.`
+
+  return `Already in class — this updates the current billing window (${billingWindowLabel(enrollment)}).`
 }
 
 export function rosterMetaLine(input: {

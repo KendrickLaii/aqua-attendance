@@ -800,3 +800,50 @@ async def test_rejoin_after_end_date_without_opening_roster(
     assert second.status_code == 201, second.text
     assert second.json()["status"] == "active"
     assert second.json()["id"] != first.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_enrollment_purchase_top_up_is_audited(
+    client: AsyncClient, admin_token: str, spu_payload: dict, sample_unit: dict
+) -> None:
+    from sqlalchemy import select
+
+    from app.models.audit_log import AuditLog
+    from tests.conftest import TestSessionLocal
+
+    spu = await _create_spu(client, admin_token, spu_payload)
+    sku = await _create_sku(client, admin_token, spu["id"], billing_unit="per_session", price=150)
+    enrolled = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": sample_unit["id"], "sku_id": sku["id"], "purchased_quantity": 4},
+        headers=_auth(admin_token),
+    )
+    assert enrolled.status_code == 201, enrolled.text
+    enrollment_id = enrolled.json()["id"]
+
+    resp = await client.post(
+        f"/api/course-enrollments/{enrollment_id}/purchases",
+        json={"purchased_quantity": 6, "unit_price": 150, "purchased_at": "2026-06-01"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    purchase = resp.json()
+    assert purchase["enrollment_id"] == enrollment_id
+    assert purchase["purchased_quantity"] == 6
+
+    async with TestSessionLocal() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(AuditLog).where(
+                        AuditLog.table_name == "enrollment_purchases",
+                        AuditLog.record_id == uuid.UUID(purchase["id"]),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(rows) == 1
+    assert rows[0].action == "CREATE"
+    assert "Topped up 6 sessions" in (rows[0].description or "")
