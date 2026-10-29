@@ -7,6 +7,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    __head_roster: typeof import('./src/components/attendance/courses/__head_roster.vue')['default']
     AddAuthenticatorAppDialog: typeof import('./src/components/dialogs/AddAuthenticatorAppDialog.vue')['default']
     AddEditAddressDialog: typeof import('./src/components/dialogs/AddEditAddressDialog.vue')['default']
     AddEditPermissionDialog: typeof import('./src/components/dialogs/AddEditPermissionDialog.vue')['default']
@@ -389,6 +390,7 @@ declare module 'vue' {
     InventoryDocChain: typeof import('./src/components/attendance/inventory/InventoryDocChain.vue')['default']
     InventoryInvoicePrintDialog: typeof import('./src/components/attendance/inventory/InventoryInvoicePrintDialog.vue')['default']
     InventoryItemDialog: typeof import('./src/components/attendance/inventory/InventoryItemDialog.vue')['default']
+    InventoryItemImage: typeof import('./src/components/attendance/inventory/InventoryItemImage.vue')['default']
     InventoryMovementDialog: typeof import('./src/components/attendance/inventory/InventoryMovementDialog.vue')['default']
     InventoryReceiptPrintDialog: typeof import('./src/components/attendance/inventory/InventoryReceiptPrintDialog.vue')['default']
     InventoryRecordPaymentDialog: typeof import('./src/components/attendance/inventory/InventoryRecordPaymentDialog.vue')['default']
@@ -446,7 +448,6 @@ declare module 'vue' {
     UnitQrDialogs: typeof import('./src/components/attendance/UnitQrDialogs.vue')['default']
     UserInfoEditDialog: typeof import('./src/components/dialogs/UserInfoEditDialog.vue')['default']
     UserUpgradePlanDialog: typeof import('./src/components/dialogs/UserUpgradePlanDialog.vue')['default']
-    VueApexCharts: typeof import('vue3-apexcharts')['default']
     WorkingSectionDialog: typeof import('./src/components/dialogs/tax/WorkingSectionDialog.vue')['default']
   }
 }

@@ -147,6 +147,7 @@ declare global {
   const entriesOf: typeof import('./src/utils/review-format')['entriesOf']
   const eventSourceColor: typeof import('./src/utils/attendanceDisplay')['eventSourceColor']
   const eventSourceLabel: typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']
+  const existingEnrollmentHint: typeof import('./src/utils/courseRosterDisplay')['existingEnrollmentHint']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const fetchAllAttendancePages: typeof import('./src/utils/attendanceListApi')['fetchAllAttendancePages']
   const fetchAttendanceListWithTotal: typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']
@@ -796,6 +797,7 @@ declare module 'vue' {
     readonly entriesOf: UnwrapRef<typeof import('./src/utils/review-format')['entriesOf']>
     readonly eventSourceColor: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceColor']>
     readonly eventSourceLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']>
+    readonly existingEnrollmentHint: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['existingEnrollmentHint']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly fetchAllAttendancePages: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAllAttendancePages']>
     readonly fetchAttendanceListWithTotal: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']>
