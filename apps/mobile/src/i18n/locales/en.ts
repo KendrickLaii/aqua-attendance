@@ -18,6 +18,11 @@ export const en = {
     signIn: 'Sign In',
     failed: 'Login failed',
     emptyFields: 'Enter username and password.',
+    adminTab: 'Admin',
+    staffTab: 'Staff',
+    staffCode: 'Staff code',
+    pin: 'PIN',
+    staffEmptyFields: 'Enter staff code and a 6-digit PIN.',
   },
   diagnostics: {
     title: 'App information',
@@ -63,6 +68,7 @@ export const en = {
     loadMore: 'Load more',
     noMore: 'No more records',
     voided: 'Voided',
+    staffTodayCaption: 'Today – scanned by you',
   },
   scanner: {
     setupTitle: 'Scan setup',

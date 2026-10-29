@@ -86,7 +86,12 @@ class Unit(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    attendance_events = relationship("AttendanceEvent", back_populates="unit", lazy="select")
+    attendance_events = relationship(
+        "AttendanceEvent",
+        back_populates="unit",
+        lazy="select",
+        foreign_keys="AttendanceEvent.unit_id",
+    )
     registered_location = relationship(
         "Location", foreign_keys=[registered_location_id], back_populates="registered_units"
     )

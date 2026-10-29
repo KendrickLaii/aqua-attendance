@@ -20,6 +20,7 @@ class StaffProfileCreate(BaseModel):
     work_schedule: str | None = Field(default=None, max_length=255)
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
+    can_take_attendance: bool = True
 
 
 class StaffProfileUpdate(BaseModel):
@@ -38,6 +39,7 @@ class StaffProfileUpdate(BaseModel):
     work_schedule: str | None = Field(default=None, max_length=255)
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
+    can_take_attendance: bool | None = None
 
 
 class StaffProfileOut(BaseModel):
@@ -57,6 +59,7 @@ class StaffProfileOut(BaseModel):
     work_schedule: str | None = None
     supervisor_id: uuid.UUID | None = None
     employment_notes: str | None = None
+    can_take_attendance: bool = True
     shift_pin_set: bool = False
     shift_pin_set_at: datetime | None = None
 

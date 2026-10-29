@@ -86,3 +86,19 @@ async def get_current_staff(
 
 
 CurrentStaff = Annotated[Unit, Depends(get_current_staff)]
+
+
+async def get_scanner_staff(staff: CurrentStaff, db: DB) -> Unit:
+    """Staff unit allowed to take attendance (scan other units' QR) in the app."""
+    from app.models.staff_profile import StaffProfile
+
+    profile = await db.get(StaffProfile, staff.id)
+    if not profile or not profile.can_take_attendance:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Attendance scanning not permitted",
+        )
+    return staff
+
+
+ScannerStaff = Annotated[Unit, Depends(get_scanner_staff)]

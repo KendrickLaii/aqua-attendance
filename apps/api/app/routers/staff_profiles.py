@@ -73,6 +73,8 @@ async def update_staff_profile(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff profile not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    if update_data.get("can_take_attendance") is None:
+        update_data.pop("can_take_attendance", None)
     old_values = {field: getattr(profile, field) for field in update_data}
     for field, value in update_data.items():
         setattr(profile, field, value)

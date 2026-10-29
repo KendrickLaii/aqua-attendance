@@ -5,158 +5,38 @@ from io import StringIO
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
-import jwt
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.deps import DB, AdminOnly
 from app.limiter import limiter
 from app.models.attendance import AttendanceEvent
-from app.models.location import Location
 from app.models.unit import Unit
 from app.schemas.attendance import (
     AttendanceDayStatsOut,
     AttendanceOut,
     ManualCorrectionRequest,
-    ScanAllowedLocation,
-    ScanLocationNotAllowedDetail,
     ScanPreviewOut,
     ScanPreviewRequest,
     ScanRequest,
 )
 from app.services import attendance as att_svc
 from app.services import audit_log as audit_svc
-from app.services.qr import verify_qr_token
+from app.services.attendance_scan import (
+    event_to_out,
+    reload_with_unit,
+    resolve_location,
+    resolve_unit_for_scan,
+)
 from app.services.unit import ensure_attendance_eligible
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
 
-def _event_to_out(event: AttendanceEvent) -> AttendanceOut:
-    return AttendanceOut(
-        id=event.id,
-        unit_id=event.unit_id,
-        unit_code=event.unit.code if event.unit else None,
-        unit_name=event.unit.full_name if event.unit else None,
-        unit_type=event.unit.unit_type if event.unit else None,
-        event_type=event.event_type,
-        source=event.source,
-        recorded_at=event.recorded_at,
-        created_at=event.created_at,
-        attendance_status=event.unit.attendance_status if event.unit else None,
-        qr_jti=event.qr_jti,
-        recorded_by_user_id=event.recorded_by_user_id,
-        client_device_id=event.client_device_id,
-        location_id=event.location_id,
-        location=event.location,
-        notes=event.notes,
-        voided_at=event.voided_at,
-    )
-
-
-async def _resolve_location(db: DB, location_id: uuid.UUID | None, location_text: str | None) -> tuple[uuid.UUID | None, str | None]:
-    if location_id is None:
-        return None, location_text
-    result = await db.execute(select(Location).where(Location.id == location_id))
-    location = result.scalar_one_or_none()
-    if not location:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Location not found")
-    if not location.is_active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Location is inactive")
-    display_name = location.name_en or location.name_zh or ""
-    return location.id, display_name
-
-
-async def _reload_with_unit(db: AsyncSession, event_id: uuid.UUID) -> AttendanceEvent:
-    result = await db.execute(
-        select(AttendanceEvent)
-        .options(selectinload(AttendanceEvent.unit))
-        .where(AttendanceEvent.id == event_id)
-    )
-    return result.scalar_one()
-
-
-def _raise_location_not_allowed(unit: Unit) -> None:
-    allowed = [
-        ScanAllowedLocation(
-            id=loc.id,
-            code=loc.code,
-            name_zh=loc.name_zh,
-            name_en=loc.name_en,
-        )
-        for loc in unit.scan_locations
-    ]
-    detail = ScanLocationNotAllowedDetail(
-        message="Unit is not allowed to scan at this location",
-        unit_name=unit.full_name,
-        unit_code=unit.code,
-        allowed_locations=allowed,
-    )
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail=detail.model_dump(mode="json"),
-    )
-
-
-async def _resolve_unit_for_scan(
-    db: AsyncSession,
-    *,
-    qr_token: str,
-    location_id: uuid.UUID | None,
-    location_text: str | None = None,
-) -> tuple[Unit, uuid.UUID, str | None, dict]:
-    """Validate QR and location; return unit, location, and JWT payload. Does not record attendance."""
-    try:
-        payload = verify_qr_token(qr_token)
-    except jwt.PyJWTError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid QR: {e}")
-
-    try:
-        target_unit_id = uuid.UUID(payload["sub"])
-    except (KeyError, ValueError):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid QR: bad subject")
-
-    unit_query = (
-        select(Unit)
-        .options(selectinload(Unit.scan_locations))
-        .where(Unit.id == target_unit_id)
-    )
-    # PostgreSQL only: row lock prevents concurrent scans of the same unit
-    # from creating duplicate attendance events within the debounce window.
-    if settings.DATABASE_URL.startswith("postgresql"):
-        unit_query = unit_query.with_for_update()
-    result = await db.execute(unit_query)
-    unit = result.scalar_one_or_none()
-    if not unit:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
-    if not unit.is_active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unit is inactive")
-    ensure_attendance_eligible(unit)
-
-    if payload.get("ver") != unit.qr_token_version:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid QR: token has been rotated, please refresh the QR",
-        )
-
-    resolved_location_id, location_name = await _resolve_location(db, location_id, location_text)
-    if resolved_location_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="location_id is required for scan",
-        )
-    if not any(loc.id == resolved_location_id for loc in unit.scan_locations):
-        _raise_location_not_allowed(unit)
-    return unit, resolved_location_id, location_name, payload
-
-
 @router.post("/scan/preview", response_model=ScanPreviewOut)
 async def scan_preview(body: ScanPreviewRequest, _admin: AdminOnly, db: DB) -> ScanPreviewOut:
     """Resolve QR to unit identity without recording attendance (for confirm UI)."""
-    unit, _location_id, location_name, _payload = await _resolve_unit_for_scan(
+    unit, _location_id, location_name, _payload = await resolve_unit_for_scan(
         db,
         qr_token=body.qr_token,
         location_id=body.location_id,
@@ -181,7 +61,7 @@ async def scan(request: Request, body: ScanRequest, admin: AdminOnly, db: DB) ->
     unit's current ``attendance_status``.  Rapid duplicate scans within
     ``SCAN_DEBOUNCE_SECONDS`` return the existing event (no duplicate row).
     """
-    unit, location_id, location_name, payload = await _resolve_unit_for_scan(
+    unit, location_id, location_name, payload = await resolve_unit_for_scan(
         db,
         qr_token=body.qr_token,
         location_id=body.location_id,
@@ -201,8 +81,8 @@ async def scan(request: Request, body: ScanRequest, admin: AdminOnly, db: DB) ->
         event_type=explicit_type,
     )
 
-    event = await _reload_with_unit(db, event.id)
-    return _event_to_out(event)
+    event = await reload_with_unit(db, event.id)
+    return event_to_out(event)
 
 
 @router.get("/stats", response_model=AttendanceDayStatsOut)
@@ -252,7 +132,7 @@ async def list_attendance(
         page_size=page_size,
     )
     response.headers["X-Total-Count"] = str(total)
-    return [_event_to_out(e) for e in events]
+    return [event_to_out(e) for e in events]
 
 
 @router.post("/manual", response_model=AttendanceOut, status_code=status.HTTP_201_CREATED)
@@ -264,7 +144,7 @@ async def create_manual_correction(
     if not unit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
     ensure_attendance_eligible(unit)
-    location_id, location_name = await _resolve_location(db, body.location_id, body.location)
+    location_id, location_name = await resolve_location(db, body.location_id, body.location)
 
     event = await att_svc.manual_correction(
         db,
@@ -276,7 +156,7 @@ async def create_manual_correction(
         notes=body.notes,
         recorded_by_user_id=admin.id,
     )
-    event = await _reload_with_unit(db, event.id)
+    event = await reload_with_unit(db, event.id)
 
     await audit_svc.log_audit(
         db,
@@ -288,7 +168,7 @@ async def create_manual_correction(
         description=f"Manual correction for {unit.code}: {body.event_type.value}",
         request=request,
     )
-    return _event_to_out(event)
+    return event_to_out(event)
 
 
 @router.get("/export/csv")
@@ -328,6 +208,7 @@ async def export_csv(
         "recorded_at",
         "created_at",
         "recorded_by_user_id",
+        "recorded_by_unit_id",
         "device_id",
         "location_id",
         "location",
@@ -346,6 +227,7 @@ async def export_csv(
             e.recorded_at.isoformat(),
             e.created_at.isoformat(),
             str(e.recorded_by_user_id) if e.recorded_by_user_id else "",
+            str(e.recorded_by_unit_id) if e.recorded_by_unit_id else "",
             e.client_device_id or "",
             str(e.location_id) if e.location_id else "",
             e.location or "",
@@ -383,7 +265,7 @@ async def void_attendance_event(
         )
 
     event = await att_svc.void_event(db, event=event)
-    event = await _reload_with_unit(db, event.id)
+    event = await reload_with_unit(db, event.id)
 
     await audit_svc.log_audit(
         db,
@@ -395,4 +277,4 @@ async def void_attendance_event(
         description=f"Voided attendance event {event_id}",
         request=request,
     )
-    return _event_to_out(event)
+    return event_to_out(event)

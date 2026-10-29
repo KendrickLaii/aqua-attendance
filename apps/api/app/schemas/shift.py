@@ -166,6 +166,7 @@ class StaffShiftMe(BaseModel):
     id: uuid.UUID
     code: str
     full_name: str
+    can_take_attendance: bool = False
 
 
 class StaffShiftLoginOut(BaseModel):
@@ -183,5 +184,8 @@ class StaffLocationOut(BaseModel):
     id: uuid.UUID
     name_en: str
     name_zh: str | None = None
+    code: str | None = None
+    region: str | None = None
+    is_active: bool = True
 
     model_config = {"from_attributes": True}

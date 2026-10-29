@@ -33,6 +33,7 @@ from app.routers import (
     payroll_records,
     qr,
     shifts,
+    staff_attendance,
     staff_shifts,
     staff_profiles,
     student_profiles,
@@ -144,6 +145,7 @@ app.include_router(shifts.templates_router, prefix="/api")
 app.include_router(shifts.router, prefix="/api")
 app.include_router(staff_shifts.router, prefix="/api")
 app.include_router(staff_shifts.admin_router, prefix="/api")
+app.include_router(staff_attendance.router, prefix="/api")
 
 
 

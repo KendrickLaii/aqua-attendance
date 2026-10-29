@@ -48,6 +48,7 @@ export interface UnitFormState {
     work_schedule: string
     supervisor_id: string
     employment_notes: string
+    can_take_attendance: boolean
   }
   guardians: UnitGuardianForm[]
 }
@@ -118,6 +119,7 @@ export function emptyUnitForm(defaults?: { registered_location_id?: string; scan
       work_schedule: '',
       supervisor_id: '',
       employment_notes: '',
+      can_take_attendance: true,
     },
     guardians: [{ name: '', relationship: '', phone: '' }],
   }
@@ -222,6 +224,7 @@ export function buildUnitSavePayload(form: UnitFormState): UnitSavePayload {
       work_schedule: normalizeFormString(form.staff_profile.work_schedule),
       supervisor_id: normalizeFormString(form.staff_profile.supervisor_id),
       employment_notes: normalizeFormString(form.staff_profile.employment_notes),
+      can_take_attendance: form.staff_profile.can_take_attendance,
     },
   }
 }

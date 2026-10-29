@@ -75,7 +75,12 @@ async def staff_login(request: Request, response: Response, body: StaffShiftLogi
     set_staff_shift_cookie(response, token)
     return StaffShiftLoginOut(
         access_token=token,
-        unit=StaffShiftMe(id=unit.id, code=unit.code, full_name=unit.full_name),
+        unit=StaffShiftMe(
+            id=unit.id,
+            code=unit.code,
+            full_name=unit.full_name,
+            can_take_attendance=profile.can_take_attendance,
+        ),
     )
 
 
@@ -85,8 +90,14 @@ async def staff_logout(response: Response) -> None:
 
 
 @router.get("/me", response_model=StaffShiftMe)
-async def staff_me(staff: CurrentStaff) -> StaffShiftMe:
-    return StaffShiftMe(id=staff.id, code=staff.code, full_name=staff.full_name)
+async def staff_me(staff: CurrentStaff, db: DB) -> StaffShiftMe:
+    profile = await db.get(StaffProfile, staff.id)
+    return StaffShiftMe(
+        id=staff.id,
+        code=staff.code,
+        full_name=staff.full_name,
+        can_take_attendance=bool(profile and profile.can_take_attendance),
+    )
 
 
 @router.get("/templates", response_model=list[ShiftTemplateOut])

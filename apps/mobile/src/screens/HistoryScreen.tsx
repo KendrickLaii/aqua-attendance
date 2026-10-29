@@ -11,7 +11,7 @@ import {
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import { useI18n } from '../i18n/I18nContext';
-import { listAttendance, type AttendanceEvent } from '../services/attendance';
+import { listAttendance, type AttendanceEvent, type ScannerMode } from '../services/attendance';
 import { colors, layout, radius, spacing, typography } from '../theme';
 import {
   formatAttendanceDateTime,
@@ -72,7 +72,11 @@ function Chip({ label, active, onPress }: ChipProps) {
   );
 }
 
-export default function HistoryScreen() {
+interface Props {
+  mode?: ScannerMode;
+}
+
+export default function HistoryScreen({ mode = 'admin' }: Props) {
   const { t, dateLocale } = useI18n();
   const gateRef = useRef(createRequestGate());
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
@@ -87,36 +91,39 @@ export default function HistoryScreen() {
 
   const buildParams = useCallback(
     (pageNum: number): Record<string, string> => {
-      const range = getDateRange(dateFilter);
       const params: Record<string, string> = {
         page: String(pageNum),
         page_size: String(PAGE_SIZE),
-        date_from: range.from,
-        date_to: range.to,
         include_voided: 'true',
       };
+      // Staff history is fixed to today (Hong Kong) server-side.
+      if (mode !== 'staff') {
+        const range = getDateRange(dateFilter);
+        params.date_from = range.from;
+        params.date_to = range.to;
+      }
       if (eventFilter) params.event_type = eventFilter;
       return params;
     },
-    [eventFilter, dateFilter],
+    [eventFilter, dateFilter, mode],
   );
 
   const load = useCallback(
-    async (targetPage: number, mode: LoadMode) => {
+    async (targetPage: number, loadMode: LoadMode) => {
       const req = gateRef.current.start();
-      if (mode === 'replace') {
+      if (loadMode === 'replace') {
         setInitialLoading(true);
         setLoadingMore(false);
         setLoadError('');
         setEvents([]);
         setTotal(0);
-      } else if (mode === 'refresh') {
+      } else if (loadMode === 'refresh') {
         setLoadError('');
       }
       try {
-        const { events: data, total: totalCount } = await listAttendance(buildParams(targetPage));
+        const { events: data, total: totalCount } = await listAttendance(buildParams(targetPage), mode);
         if (!req.isCurrent()) return;
-        setEvents((prev) => (mode === 'append' ? [...prev, ...data] : data));
+        setEvents((prev) => (loadMode === 'append' ? [...prev, ...data] : data));
         setTotal(totalCount);
         setPage(targetPage);
         setLoadError('');
@@ -124,7 +131,7 @@ export default function HistoryScreen() {
         if (!req.isCurrent()) return;
         const msg = e instanceof Error ? e.message : t('history.loadFailed');
         setLoadError(msg);
-        if (mode !== 'append') setEvents([]);
+        if (loadMode !== 'append') setEvents([]);
       } finally {
         if (!req.isCurrent()) return;
         setInitialLoading(false);
@@ -132,7 +139,7 @@ export default function HistoryScreen() {
         setLoadingMore(false);
       }
     },
-    [buildParams, t],
+    [buildParams, t, mode],
   );
 
   useEffect(() => {
@@ -218,24 +225,28 @@ export default function HistoryScreen() {
             onPress={() => setEventFilter('check_out')}
           />
         </View>
-        <View style={styles.chipRow}>
-          <Chip label={t('history.today')} active={dateFilter === 'today'} onPress={() => setDateFilter('today')} />
-          <Chip
-            label={t('history.yesterday')}
-            active={dateFilter === 'yesterday'}
-            onPress={() => setDateFilter('yesterday')}
-          />
-          <Chip
-            label={t('history.last7Days')}
-            active={dateFilter === '7d'}
-            onPress={() => setDateFilter('7d')}
-          />
-          <Chip
-            label={t('history.last30Days')}
-            active={dateFilter === '30d'}
-            onPress={() => setDateFilter('30d')}
-          />
-        </View>
+        {mode === 'staff' ? (
+          <Text style={styles.staffCaption}>{t('history.staffTodayCaption')}</Text>
+        ) : (
+          <View style={styles.chipRow}>
+            <Chip label={t('history.today')} active={dateFilter === 'today'} onPress={() => setDateFilter('today')} />
+            <Chip
+              label={t('history.yesterday')}
+              active={dateFilter === 'yesterday'}
+              onPress={() => setDateFilter('yesterday')}
+            />
+            <Chip
+              label={t('history.last7Days')}
+              active={dateFilter === '7d'}
+              onPress={() => setDateFilter('7d')}
+            />
+            <Chip
+              label={t('history.last30Days')}
+              active={dateFilter === '30d'}
+              onPress={() => setDateFilter('30d')}
+            />
+          </View>
+        )}
       </View>
 
       {view.kind === 'error' ? (
@@ -294,6 +305,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   filterTitle: { ...typography.label, marginBottom: spacing.xs },
+  staffCaption: { ...typography.caption, color: colors.textSecondary },
   chipRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   chip: {
     minHeight: 44,

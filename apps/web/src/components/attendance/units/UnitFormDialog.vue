@@ -262,6 +262,7 @@ function fillForm(unit: Unit) {
       work_schedule: stp?.work_schedule ?? '',
       supervisor_id: stp?.supervisor_id ?? '',
       employment_notes: stp?.employment_notes ?? '',
+      can_take_attendance: stp?.can_take_attendance ?? true,
     },
   })
 }
@@ -814,6 +815,12 @@ async function handleSave() {
                 : STAFF_PIN_SAVE_FIRST_HINT
             }}
           </span>
+          <VCheckbox
+            v-model="form.staff_profile.can_take_attendance"
+            label="Can take attendance (mobile scanner)"
+            hide-details
+            density="compact"
+          />
         </div>
         <VAlert
           v-if="revealedPin"

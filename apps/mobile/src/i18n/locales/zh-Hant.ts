@@ -20,6 +20,11 @@ export const zhHant = {
     signIn: '登入',
     failed: '登入失敗',
     emptyFields: '請輸入使用者名稱與密碼。',
+    adminTab: '管理員',
+    staffTab: '職員',
+    staffCode: '員工編號',
+    pin: 'PIN 密碼',
+    staffEmptyFields: '請輸入員工編號及 6 位數 PIN。',
   },
   diagnostics: {
     title: 'App 資訊',
@@ -65,6 +70,7 @@ export const zhHant = {
     loadMore: '載入更多',
     noMore: '沒有更多紀錄',
     voided: '已作廢',
+    staffTodayCaption: '今日 – 由你掃描',
   },
   scanner: {
     setupTitle: '掃描設定',

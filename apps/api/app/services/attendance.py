@@ -85,6 +85,7 @@ async def record_scan(
     unit: Unit,
     jti: str | None,
     recorded_by_user_id: uuid.UUID | None = None,
+    recorded_by_unit_id: uuid.UUID | None = None,
     device_id: str | None = None,
     location_id: uuid.UUID | None = None,
     location: str | None = None,
@@ -129,6 +130,7 @@ async def record_scan(
         recorded_at=now,
         qr_jti=jti,
         recorded_by_user_id=recorded_by_user_id,
+        recorded_by_unit_id=recorded_by_unit_id,
         client_device_id=device_id,
         location_id=location_id,
         location=loc,
@@ -167,6 +169,7 @@ async def list_events(
     date_to: datetime | None = None,
     event_type: str | None = None,
     source: str | None = None,
+    recorded_by_unit_id: uuid.UUID | None = None,
     include_voided: bool = False,
     page: int = 1,
     page_size: int = 50,
@@ -195,6 +198,8 @@ async def list_events(
         conditions.append(AttendanceEvent.event_type == event_type)
     if source:
         conditions.append(AttendanceEvent.source == source)
+    if recorded_by_unit_id:
+        conditions.append(AttendanceEvent.recorded_by_unit_id == recorded_by_unit_id)
     if not include_voided:
         conditions.append(AttendanceEvent.voided_at.is_(None))
 

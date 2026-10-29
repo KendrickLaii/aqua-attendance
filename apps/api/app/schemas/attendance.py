@@ -71,6 +71,7 @@ class AttendanceOut(BaseModel):
     attendance_status: str | None = None
     qr_jti: str | None = None
     recorded_by_user_id: uuid.UUID | None = None
+    recorded_by_unit_id: uuid.UUID | None = None
     client_device_id: str | None = None
     location_id: uuid.UUID | None = None
     location: str | None = None

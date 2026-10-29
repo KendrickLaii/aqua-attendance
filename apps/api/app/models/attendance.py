@@ -54,6 +54,7 @@ class AttendanceEvent(Base):
     qr_jti: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    recorded_by_unit_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("units.id", ondelete="SET NULL"), nullable=True, index=True)
     client_device_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     location_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)

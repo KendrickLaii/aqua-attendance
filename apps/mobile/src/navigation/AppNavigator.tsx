@@ -7,21 +7,25 @@ import HelpScreen from '../screens/QRDisplayScreen';
 import ScannerScreen from '../screens/ScannerScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import { useI18n } from '../i18n/I18nContext';
-import { canScanAttendance, type User } from '../services/auth';
+import { canScanAttendance, type Session } from '../services/auth';
 import { colors, spacing } from '../theme';
 
 const Tab = createBottomTabNavigator();
 const TAB_BAR_CONTENT_HEIGHT = 62;
 
 interface Props {
-  user: User;
+  session: Session;
   onLogout: () => void;
 }
 
-export default function AppNavigator({ user, onLogout }: Props) {
+export default function AppNavigator({ session, onLogout }: Props) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const showScan = canScanAttendance(user.role);
+  const mode = session.kind;
+  const showScan =
+    session.kind === 'admin'
+      ? canScanAttendance(session.user.role)
+      : session.staff.can_take_attendance;
   const tabBarBottom = Math.max(insets.bottom, spacing.md);
 
   return (
@@ -49,30 +53,34 @@ export default function AppNavigator({ user, onLogout }: Props) {
           ),
         }}
       >
-        {() => <HelpScreen user={user} onLogout={onLogout} />}
+        {() => <HelpScreen session={session} onLogout={onLogout} />}
       </Tab.Screen>
       {showScan ? (
         <Tab.Screen
           name="Scanner"
-          component={ScannerScreen}
           options={{
             title: t('tabs.scan'),
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="qr-code-outline" size={size} color={color} />
             ),
           }}
-        />
+        >
+          {() => <ScannerScreen mode={mode} />}
+        </Tab.Screen>
       ) : null}
-      <Tab.Screen
-        name="History"
-        component={HistoryScreen}
-        options={{
-          title: t('tabs.history'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="time-outline" size={size} color={color} />
-          ),
-        }}
-      />
+      {showScan ? (
+        <Tab.Screen
+          name="History"
+          options={{
+            title: t('tabs.history'),
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="time-outline" size={size} color={color} />
+            ),
+          }}
+        >
+          {() => <HistoryScreen mode={mode} />}
+        </Tab.Screen>
+      ) : null}
     </Tab.Navigator>
   );
 }

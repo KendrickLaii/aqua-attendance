@@ -29,3 +29,9 @@ export async function listLocations(params?: {
   const query = qs.toString() ? `?${qs.toString()}` : '';
   return apiRequest<LocationItem[]>(`/locations${query}`);
 }
+
+/** Locations this staff member may scan at (staff_shift token). */
+export async function listStaffLocations(): Promise<LocationItem[]> {
+  const data = await apiRequest<LocationItem[]>('/staff-shifts/locations');
+  return data.filter((loc) => loc.is_active);
+}

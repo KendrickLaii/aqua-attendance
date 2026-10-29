@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -45,6 +45,11 @@ class StaffProfile(Base):
 
     # Notes
     employment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Whether this staff may log into the mobile app and scan others' QR codes.
+    can_take_attendance: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
 
     # Hashed 6-digit PIN for the staff shift portal. Plaintext is shown once at reset.
     shift_pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)

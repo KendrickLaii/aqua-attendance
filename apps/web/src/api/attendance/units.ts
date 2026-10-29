@@ -42,6 +42,7 @@ export interface StaffProfileOut {
   work_schedule: string | null
   supervisor_id: string | null
   employment_notes: string | null
+  can_take_attendance: boolean
   shift_pin_set: boolean
   shift_pin_set_at: string | null
 }
@@ -104,6 +105,7 @@ export interface StaffProfileInput {
   work_schedule?: string | null
   supervisor_id?: string | null
   employment_notes?: string | null
+  can_take_attendance?: boolean
 }
 
 export async function listUnits(params?: {

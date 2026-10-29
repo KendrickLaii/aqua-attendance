@@ -6,24 +6,29 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import { useI18n } from '../i18n/I18nContext';
 import { APP_DIAGNOSTICS } from '../services/api';
-import type { User } from '../services/auth';
+import type { Session } from '../services/auth';
 import { colors, layout, spacing, typography } from '../theme';
 
 interface Props {
-  user: User;
+  session: Session;
   onLogout: () => void;
 }
 
-function initials(user: User): string {
-  const name = user.full_name || user.username;
+function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
 }
 
-export default function HelpScreen({ user, onLogout }: Props) {
+export default function HelpScreen({ session, onLogout }: Props) {
   const { t } = useI18n();
-  const roleTone = user.role === 'superadmin' ? 'warning' : 'info';
+  const displayName =
+    session.kind === 'staff'
+      ? session.staff.full_name || session.staff.code
+      : session.user.full_name || session.user.username;
+  const badgeLabel = session.kind === 'staff' ? 'staff' : session.user.role;
+  const roleTone =
+    session.kind === 'admin' && session.user.role === 'superadmin' ? 'warning' : 'info';
 
   function confirmLogout() {
     Alert.alert(t('common.logoutConfirmTitle'), t('common.logoutConfirmBody'), [
@@ -36,12 +41,12 @@ export default function HelpScreen({ user, onLogout }: Props) {
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
       <Card style={styles.profileCard}>
         <View style={styles.profileRow}>
-          <View style={styles.avatar} accessibilityLabel={user.full_name || user.username}>
-            <Text style={styles.avatarText}>{initials(user)}</Text>
+          <View style={styles.avatar} accessibilityLabel={displayName}>
+            <Text style={styles.avatarText}>{initials(displayName)}</Text>
           </View>
           <View style={styles.profileMeta}>
-            <Text style={styles.name}>{user.full_name || user.username}</Text>
-            <Badge label={user.role} tone={roleTone} />
+            <Text style={styles.name}>{displayName}</Text>
+            <Badge label={badgeLabel} tone={roleTone} />
           </View>
         </View>
       </Card>

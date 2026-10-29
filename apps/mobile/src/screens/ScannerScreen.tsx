@@ -14,9 +14,9 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Button from '../components/ui/Button';
 import { colors, layout, radius, spacing, typography } from '../theme';
-import { previewScanQR, scanQR, type AttendanceEvent, type ScanPreview } from '../services/attendance';
+import { previewScanQR, scanQR, type AttendanceEvent, type ScanPreview, type ScannerMode } from '../services/attendance';
 import { normalizeQrToken } from '../utils/qrToken';
-import { listLocations, locationDisplayName, type LocationItem } from '../services/locations';
+import { listLocations, listStaffLocations, locationDisplayName, type LocationItem } from '../services/locations';
 import { useI18n } from '../i18n/I18nContext';
 import {
   allowedLocationLabel,
@@ -34,7 +34,11 @@ import {
 
 type Phase = 'setup' | 'camera';
 
-export default function ScannerScreen() {
+interface Props {
+  mode?: ScannerMode;
+}
+
+export default function ScannerScreen({ mode = 'admin' }: Props) {
   const { t, dateLocale, locale } = useI18n();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -66,7 +70,10 @@ export default function ScannerScreen() {
     setLocationsError('');
     try {
       const prefs = await loadScanPrefs();
-      const data = await listLocations({ is_active: true, page_size: 200 });
+      const data =
+        mode === 'staff'
+          ? await listStaffLocations()
+          : await listLocations({ is_active: true, page_size: 200 });
       setLocations(data);
 
       const validId = resolveDefaultLocationId(
@@ -86,7 +93,7 @@ export default function ScannerScreen() {
     } finally {
       setLocationsLoading(false);
     }
-  }, [t]);
+  }, [t, mode]);
 
   useEffect(() => {
     void loadLocations();
@@ -174,6 +181,7 @@ export default function ScannerScreen() {
     try {
       const preview = await previewScanQR(token, {
         locationId: selectedLocationId ?? undefined,
+        mode,
       });
       setPendingPreview(preview);
       setConfirmVisible(true);
@@ -205,6 +213,7 @@ export default function ScannerScreen() {
         deviceId: `mobile-${Platform.OS}`,
         eventType: selectedEventType,
         locationId: selectedLocationId ?? undefined,
+        mode,
       });
       setResult(evt);
       setResultVisible(true);

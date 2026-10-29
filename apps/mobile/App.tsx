@@ -11,7 +11,7 @@ import LoginScreen from './src/screens/LoginScreen';
 
 import AppNavigator from './src/navigation/AppNavigator';
 
-import { getMe, getSavedUser, logout, type User } from './src/services/auth';
+import { fetchSession, getSavedSession, logout, type Session } from './src/services/auth';
 
 import { clearTokens, getToken, SessionExpiredError, setOnUnauthorized } from './src/services/api';
 
@@ -24,7 +24,7 @@ import { colors } from './src/theme';
 
 function AppRoot() {
 
-  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -36,19 +36,21 @@ function AppRoot() {
 
     if (!token) {
 
-      setUser(null);
+      setSession(null);
 
       return;
 
     }
 
+    const saved = await getSavedSession();
+
     try {
 
-      const me = await getMe();
+      const me = await fetchSession(saved);
 
       await setItemAsync('userData', JSON.stringify(me));
 
-      setUser(me);
+      setSession(me);
 
     } catch (error: unknown) {
 
@@ -56,15 +58,13 @@ function AppRoot() {
 
         await clearTokens();
 
-        setUser(null);
+        setSession(null);
 
         return;
 
       }
 
-      const savedUser = await getSavedUser();
-
-      setUser(savedUser);
+      setSession(saved);
 
     }
 
@@ -76,7 +76,7 @@ function AppRoot() {
 
     setOnUnauthorized(() => {
 
-      void clearTokens().then(() => setUser(null));
+      void clearTokens().then(() => setSession(null));
 
     });
 
@@ -96,17 +96,17 @@ function AppRoot() {
 
   async function handleLogout() {
 
-    await logout();
+    await logout(session);
 
-    setUser(null);
+    setSession(null);
 
   }
 
 
 
-  function handleLoginSuccess(me: User) {
+  function handleLoginSuccess(me: Session) {
 
-    setUser(me);
+    setSession(me);
 
   }
 
@@ -134,9 +134,9 @@ function AppRoot() {
 
       <StatusBar style="auto" />
 
-      {user ? (
+      {session ? (
 
-        <AppNavigator user={user} onLogout={handleLogout} />
+        <AppNavigator session={session} onLogout={handleLogout} />
 
       ) : (
 

@@ -33,7 +33,7 @@ function networkErrorHint(): string {
   return 'Check phone internet, API URL in .env / eas.json, then rebuild or npx expo start -c';
 }
 
-const AUTH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
+const AUTH_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout', '/staff-shifts/login'];
 
 let onUnauthorized: (() => void) | null = null;
 

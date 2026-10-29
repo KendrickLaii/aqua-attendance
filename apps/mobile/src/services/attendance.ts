@@ -18,6 +18,7 @@ export interface AttendanceEvent {
   attendance_status: 'checked_in' | 'checked_out' | null;
   qr_jti: string | null;
   recorded_by_user_id: string | null;
+  recorded_by_unit_id: string | null;
   client_device_id: string | null;
   location_id: string | null;
   location: string | null;
@@ -38,11 +39,17 @@ export interface ScanPreview {
   location: string | null;
 }
 
+export type ScannerMode = 'admin' | 'staff';
+
+function attendanceBase(mode: ScannerMode = 'admin'): string {
+  return mode === 'staff' ? '/staff-shifts/attendance' : '/attendance';
+}
+
 export async function previewScanQR(
   qrToken: string,
-  options?: { locationId?: string },
+  options?: { locationId?: string; mode?: ScannerMode },
 ): Promise<ScanPreview> {
-  return apiRequest('/attendance/scan/preview', {
+  return apiRequest(`${attendanceBase(options?.mode)}/scan/preview`, {
     method: 'POST',
     body: JSON.stringify({
       qr_token: qrToken,
@@ -57,9 +64,10 @@ export async function scanQR(
     deviceId?: string;
     eventType?: 'check_in' | 'check_out';
     locationId?: string;
+    mode?: ScannerMode;
   },
 ): Promise<AttendanceEvent> {
-  return apiRequest('/attendance/scan', {
+  return apiRequest(`${attendanceBase(options?.mode)}/scan`, {
     method: 'POST',
     body: JSON.stringify({
       qr_token: qrToken,
@@ -75,9 +83,12 @@ export interface ListAttendanceResult {
   total: number;
 }
 
-export async function listAttendance(params?: Record<string, string>): Promise<ListAttendanceResult> {
+export async function listAttendance(
+  params?: Record<string, string>,
+  mode?: ScannerMode,
+): Promise<ListAttendanceResult> {
   const qs = params ? `?${new URLSearchParams(params).toString()}` : '';
-  const { data, headers } = await apiRequestWithHeaders<AttendanceEvent[]>(`/attendance${qs}`);
+  const { data, headers } = await apiRequestWithHeaders<AttendanceEvent[]>(`${attendanceBase(mode)}${qs}`);
   const total = parseInt(headers.get('X-Total-Count') || '0', 10);
   return { events: data, total };
 }
