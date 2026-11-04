@@ -24,7 +24,7 @@
 10. [資料庫](#10-資料庫)
     - [10.1 設計決策](#101-設計決策)
     - [10.2 核心 ER 圖](#102-核心-er-圖)
-    - [10.3 Inventory ER 圖](#103-inventory-er-圖042048)
+    - [10.3 Inventory ER 圖](#103-inventory-er-圖042052)
 
 ---
 
@@ -155,6 +155,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `GET /api/health` | 無 |
 | `GET /api/features` | 無（feature flags；`{"inventory": bool}`） |
 | `GET/POST/PATCH/DELETE /api/inventory/...` | Admin（`admin`／`superadmin`，同其他 Admin 端點一致）；`INVENTORY_ENABLED=false` 時全部 **404** |
+| `GET/POST /api/inventory/warehouses`、`PATCH/DELETE /api/inventory/warehouses/{id}` | Admin；被引用時 DELETE **409**（改為停用）；code 重複 **409** |
 
 ### 1.7 環境變數
 
@@ -415,8 +416,8 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 #### 隔離規則（同學費／課程／打卡完全分開）
 
 - 只有**新表**（`inventory_*`、`suppliers`、`purchase_orders*`、`goods_receipt*`、`purchase_return*`、`customers`、`sales_orders*`、`delivery_orders*`、`inventory_invoices*`、`inventory_receipts`、`inventory_credit_note*`），**冇改任何現有表**。
-- FK 只指去現有嘅 `users`、`locations`、`units`（`customers.student_unit_id` → `units`，SET NULL）。
-- 單據編號用自己嘅 `inventory_counters`，同 `invoice_counters`／`credit_note_counters` 分開。
+- 庫存單據同庫存數量嘅 FK 指 `inventory_warehouses`、`users`；`customers.student_unit_id` → `units`（SET NULL）。同打卡中心嘅唯一連接係 `inventory_warehouses.location_id`（可空，ON DELETE SET NULL）。
+- 單據編號用自己嘅 `inventory_counters`（按倉庫），同 `invoice_counters`／`credit_note_counters` 分開。編號用倉庫 `code`（例如 `PO-MK-000001`）。
 - 家具／貨品**仍然唔好**入 `course_skus`、學費 Generate、`attendance_events`。
 
 #### Feature flag 行為
@@ -426,6 +427,33 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 - Web：flag 關嗰陣側欄 Inventory 群組唔顯示；行入 `/attendance/inventory/*` 會被 router guard 導返 dashboard。
 - Alerts 要 `INVENTORY_ENABLED` **同** `INVENTORY_ALERTS_ENABLED` 都係 true 先會跑。
 - `AttendanceConfirmDialog`（全站共用）家陣喺標題左邊顯示 tone icon，行為不變；新 `GlobalConfirmDialog` 掛喺 App.vue（inventory 頁用）。
+- Inventory UI 慣例：成功操作用 `useToast`（`AppToastStack` 全域掛喺 `App.vue`）；彈窗內出錯顯示喺彈窗內，頁面層級操作出錯用 error toast；金額一律 `formatMoney()`（`utils/inventoryDisplay.ts`）；彈窗闊度 560（簡單表單）／900（有行表），手機全螢幕；`GET /inventory/dashboard` 回 `overdue_days`。
+- Stocktake apply 規則：按**差異**調整，新庫存 = 套用當刻即時庫存 +（`counted_qty` − 開單時 `system_qty`）；差異為 0 或未點數嘅行跳過。開單後至套用前發生嘅入／出貨唔會被點數覆蓋；調整後低於 reserved 或負數會 422（整張不套用）。
+- 取消銷售單會一併刪除該單嘅 **draft** 發票（已發出嘅發票不受影響）；SO 已取消時 draft 發票不能 Issue（409）。
+- 折讓單行金額會按行小計比例攤分發票整單折扣（尾差落在最後一行），所以有折扣嘅發票可以全數折讓；折讓總額仍不能超過發票未收餘額，已全數收款嘅發票要先作廢收據（UI 會停用 Create Credit Note）。
+- 庫存移動列表 `date_from`／`date_to` 按香港日曆日計；items 列表搜尋（server 同 web）包含 `barcode`；銷售單列表 API 支援 `search`（so_no／buyer_name）。CSV import 只喺 CSV 有 `barcode`／`other_cost` 欄時先會更新對應欄位；`NaN`／`Infinity` 當錯誤行。
+- Item 欄位（Migration **051**）：`inventory_items` 加 `barcode`（String(100)，可空，有 index、非 unique；API trim 後空白存 NULL）同 `other_cost`（Numeric(10,2)，可空，≥0）。`cost_price` 欄名不變；Item dialog label 改「Purchase price」，Items 表頭「Cost」改「Purchase price」並加「Other cost」欄。Items CSV export／import 加 `barcode`、`other_cost` 兩欄；舊 CSV 冇呢兩欄照樣入到（update 時會清返 NULL，同 `cost_price` 一致）。
+
+#### 倉庫同中心脫鉤（Migration 052）
+
+庫存唔再直接用打卡中心 `locations`。新表 `inventory_warehouses`：`code` String(20) UNIQUE（派單號）、`name_zh` 必填、`name_en`／`address`／`phone` 可空、`location_id` 可空（FK `locations.id` ON DELETE SET NULL，表示掛喺邊個中心）、`is_active`。
+
+`inventory_stocks`、`inventory_movements`、`inventory_stocktakes`、`inventory_counters`、`purchase_orders`、`goods_receipts`、`purchase_returns`、`sales_orders`、`delivery_orders`、`inventory_invoices`、`inventory_receipts`、`inventory_credit_notes` 嘅 `location_id` 改名 `warehouse_id`，FK 改指 `inventory_warehouses.id`，ondelete 沿用原本（counters 係 CASCADE，其餘 RESTRICT）。調撥冇獨立表，仍然係兩筆 movement。唯一約束同索引名同步：`uq_inventory_stocks_item_warehouse`、`uq_inventory_counters_wh_type`、`ix_inventory_movements_item_wh_created`。
+
+升級時，每個已被上面任何欄引用嘅 location 會插一行倉庫，**id 沿用 location id**。code 用 `location.code`（空白就用 id 前 8 碼；長過 20 字截斷；截斷後撞碼就改用 id 前 8 碼）。名字、地址、電話、`is_active` 複製，`location_id` 指返原中心。因為 id 唔變，已有外鍵值同單號系列唔使改。未出現喺庫存資料嘅中心唔會自動變倉庫。
+
+Downgrade 前會檢查每個 warehouse id 是否存在於 `locations`；有升級之後先新增、對唔上中心嘅倉庫就 raise，唔會靜靜刪資料。
+
+API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
+
+| 方法 | 路徑 | 說明 |
+| ------ | ------ | ------ |
+| GET | `/api/inventory/warehouses` | `?is_active`、`?search`（code／name_zh／name_en） |
+| POST | `/api/inventory/warehouses` | 建立；code 重複 409；`location_id` 有給就要存在，否則 422 |
+| PATCH | `/api/inventory/warehouses/{id}` | 更新，規則同上 |
+| DELETE | `/api/inventory/warehouses/{id}` | 有庫存、流水或單據（含編號 counter）→ 409，應改為停用 |
+
+列印 payload 用 `warehouse_name_zh`／`warehouse_name_en`／`warehouse_address`／`warehouse_phone`（顯示名係 name_en，冇就 name_zh）。Web 頁 `/attendance/inventory/warehouses`；庫存各頁選單改 Warehouse，冇倉庫時總覽空狀態連去倉庫頁。
 
 ---
 
@@ -1205,7 +1233,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 049）
+# 最新可用版本（目前最新為 052）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -1221,7 +1249,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 050**（staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 052**（inventory 倉庫同中心脫鉤；051 為 item `barcode`＋`other_cost`；050 為 staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1567,7 +1595,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 - SPU/SKU 刪除採 `RESTRICT`：避免誤刪仍有 SKU／報名的上層資料。
 - 發票編號：`invoice_counters` 每 `location_id` 一列；`void` 後復活嘅發票清空 `invoice_no`/`issued_at`，再 Issue 派新號；編號預設佔住，Remove cancelled invoice／voided receipt 先可以重用。
 - 員工更表：更掛 staff **unit** 唔係 `users`（users 同 units 冇關聯）；`end_time > start_time` 由 API 422 把關（過夜更延後）；刪分店被已有更擋住（RESTRICT），刪員工連更一齊刪（CASCADE）。申請同正式更分開（`shift_requests` → approve 先複製入 `shifts`）；`shift_pin_hash` 只存 6 位 PIN 哈希。
-- Inventory：全部新表；FK 只指 `users`/`locations`/`units`；派號用獨立 `inventory_counters`；`INVENTORY_ENABLED` 關時表仍在但 `/api/inventory/*` 全部 404 — 見 §1.14。
+- Inventory：全部新表；庫存 FK 指 `inventory_warehouses`／`users`，可選 `inventory_warehouses.location_id` → `locations`，`customers.student_unit_id` → `units`；派號用獨立 `inventory_counters`（倉庫 code）；`INVENTORY_ENABLED` 關時表仍在但 `/api/inventory/*` 全部 404 — 見 §1.14。
 
 #### 概念釐清（事件 vs 彙總 vs 稽核）
 
@@ -1590,7 +1618,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**050**（`can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）。
+目前 Alembic head：**052**（inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）。
 
 ### 10.2 核心 ER 圖
 
@@ -1977,9 +2005,9 @@ erDiagram
     tuition_invoices ||--o{ tuition_receipt_invoices : "paid by"
 ```
 
-### 10.3 Inventory ER 圖（042–048）
+### 10.3 Inventory ER 圖（042–052）
 
-Inventory 相關表全部新增（042–048），與學費／課程 schema 分開；只經 FK 引用 `users`／`locations`／`units`，唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
+Inventory 相關表全部新增（042–052），與學費／課程 schema 分開。庫存數量同單據指 `inventory_warehouses`；倉庫可以可選掛住打卡中心 `locations`。`customers` 先至指 `units`。唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
 
 ```mermaid
 erDiagram
@@ -1993,6 +2021,18 @@ erDiagram
 
     units {
         uuid id PK
+    }
+
+    inventory_warehouses {
+        uuid id PK
+        string code "unique, doc numbers"
+        string name_zh
+        string name_en
+        string address
+        string phone
+        uuid location_id FK "optional centre, SET NULL"
+        boolean is_active
+        datetime created_at
     }
 
     inventory_categories {
@@ -2010,7 +2050,9 @@ erDiagram
         string name_en
         uuid category_id FK
         string unit_of_measure
+        string barcode "indexed, not unique (051)"
         numeric cost_price
+        numeric other_cost "(051)"
         numeric sale_price
         int reorder_level
         numeric avg_cost
@@ -2022,8 +2064,8 @@ erDiagram
 
     inventory_stocks {
         uuid id PK
-        uuid item_id FK "uq(item_id, location_id)"
-        uuid location_id FK
+        uuid item_id FK "uq(item_id, warehouse_id)"
+        uuid warehouse_id FK
         int quantity
         int reserved
         datetime updated_at
@@ -2032,7 +2074,7 @@ erDiagram
     inventory_movements {
         uuid id PK
         uuid item_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         string type "in / out / adjust / transfer_in / transfer_out"
         int quantity_delta
         int balance_after
@@ -2046,7 +2088,7 @@ erDiagram
 
     inventory_stocktakes {
         uuid id PK
-        uuid location_id FK
+        uuid warehouse_id FK
         string status "draft / applied / cancelled"
         string note
         uuid created_by FK
@@ -2064,7 +2106,7 @@ erDiagram
 
     inventory_counters {
         int id PK
-        uuid location_id FK "uq(location_id, doc_type); CASCADE"
+        uuid warehouse_id FK "uq(warehouse_id, doc_type); CASCADE"
         string doc_type "PO / GRN / PRT / SO / PF / DO / SI / SR / SCN"
         int next_no
     }
@@ -2083,7 +2125,7 @@ erDiagram
         uuid id PK
         string po_no "unique"
         uuid supplier_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         date order_date
         date expected_date
         string status "draft / ordered / partial / received / cancelled"
@@ -2109,7 +2151,7 @@ erDiagram
         string grn_no "unique"
         uuid po_id FK "nullable, SET NULL"
         uuid supplier_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         date receipt_date
         string status "draft / confirmed / void"
         uuid created_by FK
@@ -2129,7 +2171,7 @@ erDiagram
         uuid id PK
         string prt_no "unique"
         uuid supplier_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         uuid grn_id FK "nullable, SET NULL"
         date return_date
         string status "draft / confirmed / void"
@@ -2159,7 +2201,7 @@ erDiagram
         uuid id PK
         string so_no "unique"
         uuid customer_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         date order_date
         string status "draft / confirmed / partial / fulfilled / cancelled"
         numeric discount_amount
@@ -2188,7 +2230,7 @@ erDiagram
         uuid invoice_id FK "child of invoice"
         uuid so_id FK
         uuid customer_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         date delivery_date
         string status "draft / confirmed / void"
         uuid created_by FK
@@ -2208,7 +2250,7 @@ erDiagram
         string invoice_no "nullable unique"
         uuid so_id FK
         uuid customer_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         date issue_date
         datetime issued_at
         string status "draft / issued / void"
@@ -2236,7 +2278,7 @@ erDiagram
         string receipt_no "unique"
         uuid invoice_id FK
         uuid customer_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         numeric amount
         string paid_by "cash / cheque / bank_transfer / card / other"
         string reference_no
@@ -2251,7 +2293,7 @@ erDiagram
         string scn_no "unique"
         uuid invoice_id FK
         uuid customer_id FK
-        uuid location_id FK
+        uuid warehouse_id FK
         date credit_date
         text reason
         string status "draft / confirmed / void"
@@ -2281,18 +2323,19 @@ erDiagram
     users ||--o{ inventory_invoices : "creates (created_by)"
     users ||--o{ inventory_receipts : "creates (created_by)"
     users ||--o{ inventory_credit_notes : "creates (created_by)"
-    locations ||--o{ inventory_stocks : "stocked at"
-    locations ||--o{ inventory_movements : "moved at"
-    locations ||--o{ inventory_stocktakes : "counted at"
-    locations ||--o{ inventory_counters : "number series"
-    locations ||--o{ purchase_orders : "orders at"
-    locations ||--o{ goods_receipts : "receives at"
-    locations ||--o{ purchase_returns : "returns at"
-    locations ||--o{ sales_orders : "sells at"
-    locations ||--o{ delivery_orders : "delivers at"
-    locations ||--o{ inventory_invoices : "issued at"
-    locations ||--o{ inventory_receipts : "received at"
-    locations ||--o{ inventory_credit_notes : "issued at"
+    locations ||--o{ inventory_warehouses : "optional centre"
+    inventory_warehouses ||--o{ inventory_stocks : "stocked at"
+    inventory_warehouses ||--o{ inventory_movements : "moved at"
+    inventory_warehouses ||--o{ inventory_stocktakes : "counted at"
+    inventory_warehouses ||--o{ inventory_counters : "number series"
+    inventory_warehouses ||--o{ purchase_orders : "orders at"
+    inventory_warehouses ||--o{ goods_receipts : "receives at"
+    inventory_warehouses ||--o{ purchase_returns : "returns at"
+    inventory_warehouses ||--o{ sales_orders : "sells at"
+    inventory_warehouses ||--o{ delivery_orders : "delivers at"
+    inventory_warehouses ||--o{ inventory_invoices : "issued at"
+    inventory_warehouses ||--o{ inventory_receipts : "received at"
+    inventory_warehouses ||--o{ inventory_credit_notes : "issued at"
     units ||--o| customers : "links (student_unit_id)"
     inventory_categories ||--o{ inventory_items : "groups"
     inventory_items ||--o{ inventory_stocks : "on-hand"
@@ -2334,4 +2377,4 @@ erDiagram
     inventory_items ||--o{ inventory_credit_note_lines : "credited"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **050**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **052**）。

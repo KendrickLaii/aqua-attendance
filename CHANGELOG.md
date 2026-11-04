@@ -2,6 +2,42 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [2026-11-04]（Inventory 倉庫脫鉤）
+
+### 新增（Inventory 倉庫）
+
+- **Inventory 倉庫同打卡中心脫鉤**（Migration **052**）：新表 `inventory_warehouses`。庫存、流水、盤點、單據嘅 `location_id` 改為 `warehouse_id`，指向倉庫；升級時沿用已被引用嘅中心 id，所以現有數量同單號系列不變。單號改用倉庫 code。新頁 `/attendance/inventory/warehouses`（Admin）可以新增、編輯、停用；有庫存或單據嘅倉庫不能刪（409）。
+
+## [2026-11-04]（Inventory 商品欄位）
+
+### 新增（Inventory 商品欄位）
+
+- **Inventory 商品新欄位**（Migration **051**）：`inventory_items` 加 `barcode`（String(100)，可空、有索引、非 unique；API trim 後空白存 NULL）同 `other_cost`（Numeric(10,2)，可空、≥0）。Item dialog 加 Barcode 同 Other cost 兩格；Items CSV export／import 加 `barcode`、`other_cost` 欄（舊 CSV 冇呢兩欄照樣入到）。
+
+### 修正（Inventory）
+
+- **New Invoice 打開即報錯**：`@click="openCreate"` 將點擊事件當成銷售單 id（`path.so_id` 錯誤、選單顯示 `undefined`）；而家打開時選單為空，錯誤顯示喺 dialog 內，從銷售單跳過嚟會預選並顯示正確標題，銷售單選單改用 server 搜尋（`GET /inventory/sales-orders?search=`）。
+- **Paid by 下拉顯示 `[object Object]`**：選項改用 `title`。
+- **Stocktake apply** 改為按差異調整（即時庫存 + 點數差異），唔再覆蓋開單後嘅出入貨。
+- 取消銷售單會刪除其 draft 發票；已取消銷售單嘅發票不能 Issue。
+- 折讓單按比例攤分發票整單折扣，有折扣發票可全數折讓；已全數收款發票嘅 Create Credit Note 停用。
+- Items 搜尋（API／頁面）包含 barcode；CSV import 舊格式（冇 barcode／other_cost 欄）唔再清空呢兩欄，`NaN`／`Infinity` 當錯誤行；庫存移動日期篩選按香港日；Delivery Order confirm 鎖定發票行。
+
+### 變更（Inventory 商品欄位）
+
+- **加品項合併規則**：`useInventoryLinePicker` 只喺同品項**而且單價相同**（`unit_cost`／`unit_price`，空值當 0）先合併數量；單價唔同就保留兩行，唔彈提示。
+- **效能（內部）**：銷售單、出貨單、採購單、收貨單、退貨單列表由逐行查詢改為批次載入（`_so/_do/_po/_grn/_prt_details_batch`，單張 detail 共用同一段程式，輸出不變）；新增 `tests/test_inventory_list_batching.py` 比對列表同單張輸出，並斷言 1 張同 5 張單嘅 SELECT 數量相同。
+- **修正**：`PATCH /inventory/goods-receipts/{id}` 改行時按 PO＋品項解析 `po_line_id`（同建立時一樣，並驗證屬於該 PO），確認後 PO `received_qty`／狀態會正確更新；新增測試。
+
+- **Inventory 全模組操作提示**：`AppToastStack` 掛到 `App.vue`（移除 units／tax 頁各自掛載）；所有 inventory 成功操作改用 `useToast`，移除頁面 `actionSuccess`／`actionError` 橫額；彈窗內出錯顯示喺彈窗內（dialog-local VAlert），頁面層級操作出錯用 error toast。
+- **加品項回饋**：新 composable `useInventoryLinePicker`（PO／SO／GRN／PR 行）——重複品項合併數量（info toast「Qty +n for SKU」）、停用品項拒絕（warning toast）；SO 無可用庫存時提示。
+- **彈窗統一**：分段標題（`text-overline`）、闊度 560／900、手機全螢幕（`useDisplay`）、`VDivider` 分隔動作列；GRN／PR 行表加 Line total 同 Subtotal；Payment／Customer／Supplier 彈窗分段排版。
+- **格式**：新 `utils/inventoryDisplay.ts` `formatMoney()`（`HK$1,234.50`，空值 `—`）取代各頁 `fmtMoney`／`toFixed`（列印版面不變）；movements／stocktakes 日期用 `formatAttendanceDateTime`（香港時間）。
+- **空白狀態**：新 `InventoryEmptyState` 組件（圖示＋文字＋新增按鈕）。
+- `GET /inventory/dashboard` 加 `overdue_days`（`INVENTORY_INVOICE_OVERDUE_DAYS`），Dashboard 逾期說明不再寫死 30 天；Reports 逾期欄位改標示「31 天以上」（對應固定賬齡分檔）。
+
+- **「Cost price」改名「Purchase price」**：Item dialog label 同 Items 表頭（「Cost」→「Purchase price」，列表加埋「Other cost」欄）改名；DB／API 欄名 `cost_price` 不變。
+
 ## [2026-10-29]（員工掃碼）
 
 ### 新增（員工掃碼）
