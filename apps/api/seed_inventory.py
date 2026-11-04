@@ -71,6 +71,7 @@ from app.models.inventory import (  # noqa: E402
     InventoryStock,
     InventoryStocktake,
     InventoryStocktakeLine,
+    InventoryWarehouse,
 )
 from app.models.inventory_invoicing import (  # noqa: E402
     InventoryCreditNote,
@@ -198,6 +199,22 @@ async def get_locations(db) -> tuple[Location, Location]:
         created = True
     if created:
         await db.commit()
+    for loc in (by_code["YT-WF"], by_code["YT-AB"]):
+        await db.refresh(loc)
+        existing = await db.get(InventoryWarehouse, loc.id)
+        if existing:
+            continue
+        db.add(InventoryWarehouse(
+            id=loc.id,
+            code=(loc.code or str(loc.id)[:8])[:20],
+            name_zh=loc.name_zh,
+            name_en=loc.name_en,
+            address=loc.address,
+            phone=loc.phone,
+            location_id=loc.id,
+            is_active=loc.is_active,
+        ))
+    await db.commit()
     return by_code["YT-WF"], by_code["YT-AB"]
 
 
@@ -255,33 +272,33 @@ async def seed() -> None:
         for sku, (q_wf, q_ab) in OPENING.items():
             for loc, qty, ago in ((wf, q_wf, 60), (ab, q_ab, 58)):
                 mv = await api.post(f"{inv}/movements", json={
-                    "item_id": item_id[sku], "location_id": str(loc.id), "type": "in",
+                    "item_id": item_id[sku], "warehouse_id": str(loc.id), "type": "in",
                     "quantity": qty, "reason_code": "opening",
                     "reason": f"{DEMO} opening stock {loc.code}",
                 })
                 movement_ids.append((mv["id"], ago))
 
         adj = await api.post(f"{inv}/movements", json={
-            "item_id": item_id["DEMO-ST-004"], "location_id": str(wf.id), "type": "adjust",
+            "item_id": item_id["DEMO-ST-004"], "warehouse_id": str(wf.id), "type": "adjust",
             "quantity": OPENING["DEMO-ST-004"][0] + 4,
             "reason": f"{DEMO} recount +4",
         })
         movement_ids.append((adj["id"], 50))
         for sku, code, note, ago in (("DEMO-BK-003", "damage", "水浸損毀", 40), ("DEMO-ST-002", "gift", "贈送學生禮物", 35)):
             mv = await api.post(f"{inv}/movements", json={
-                "item_id": item_id[sku], "location_id": str(wf.id), "type": "out",
+                "item_id": item_id[sku], "warehouse_id": str(wf.id), "type": "out",
                 "quantity": 3 if code == "damage" else 5, "reason_code": code,
                 "reason": f"{DEMO} {note}",
             })
             movement_ids.append((mv["id"], ago))
         trf = await api.post(f"{inv}/transfers", json={
-            "item_id": item_id["DEMO-BK-003"], "from_location_id": str(wf.id),
-            "to_location_id": str(ab.id), "quantity": 10, "reason": f"{DEMO} 分校調撥",
+            "item_id": item_id["DEMO-BK-003"], "from_warehouse_id": str(wf.id),
+            "to_warehouse_id": str(ab.id), "quantity": 10, "reason": f"{DEMO} 分校調撥",
         })
         movement_ids.append((trf["out_movement"]["id"], 30))
         movement_ids.append((trf["in_movement"]["id"], 30))
         st = await api.post(f"{inv}/stocktakes", json={
-            "location_id": str(ab.id), "item_ids": [item_id["DEMO-BK-001"], item_id["DEMO-BK-002"]],
+            "warehouse_id": str(ab.id), "item_ids": [item_id["DEMO-BK-001"], item_id["DEMO-BK-002"]],
             "note": f"{DEMO} 月結盤點(未完成)",
         })
 
@@ -303,7 +320,7 @@ async def seed() -> None:
 
         # --- purchasing ---
         po1 = await api.post(f"{inv}/purchase-orders", json={
-            "supplier_id": sup1["id"], "location_id": str(wf.id), "order_date": d(55),
+            "supplier_id": sup1["id"], "warehouse_id": str(wf.id), "order_date": d(55),
             "expected_date": d(50), "notes": f"{DEMO} 教材補貨",
             "lines": [
                 {"item_id": item_id["DEMO-BK-001"], "ordered_qty": 60, "unit_cost": 30},
@@ -312,7 +329,7 @@ async def seed() -> None:
         })
         await api.post(f"{inv}/purchase-orders/{po1['id']}/order")
         grn1 = await api.post(f"{inv}/goods-receipts", json={
-            "po_id": po1["id"], "supplier_id": sup1["id"], "location_id": str(wf.id),
+            "po_id": po1["id"], "supplier_id": sup1["id"], "warehouse_id": str(wf.id),
             "receipt_date": d(50), "notes": f"{DEMO} 首批到貨",
             "lines": [
                 {"item_id": item_id["DEMO-BK-001"], "qty": 30, "unit_cost": 30},
@@ -321,14 +338,14 @@ async def seed() -> None:
         })
         await api.post(f"{inv}/goods-receipts/{grn1['id']}/confirm")
         grn2 = await api.post(f"{inv}/goods-receipts", json={
-            "po_id": po1["id"], "supplier_id": sup1["id"], "location_id": str(wf.id),
+            "po_id": po1["id"], "supplier_id": sup1["id"], "warehouse_id": str(wf.id),
             "receipt_date": d(45), "notes": f"{DEMO} 第二批到貨(成本上升)",
             "lines": [{"item_id": item_id["DEMO-BK-001"], "qty": 30, "unit_cost": 36}],
         })
         await api.post(f"{inv}/goods-receipts/{grn2['id']}/confirm")
 
         po2 = await api.post(f"{inv}/purchase-orders", json={
-            "supplier_id": sup2["id"], "location_id": str(wf.id), "order_date": d(35),
+            "supplier_id": sup2["id"], "warehouse_id": str(wf.id), "order_date": d(35),
             "expected_date": d(5), "notes": f"{DEMO} 文具補貨(逾期未齊)",
             "lines": [
                 {"item_id": item_id["DEMO-ST-001"], "ordered_qty": 200, "unit_cost": 3},
@@ -337,20 +354,20 @@ async def seed() -> None:
         })
         await api.post(f"{inv}/purchase-orders/{po2['id']}/order")
         grn3 = await api.post(f"{inv}/goods-receipts", json={
-            "po_id": po2["id"], "supplier_id": sup2["id"], "location_id": str(wf.id),
+            "po_id": po2["id"], "supplier_id": sup2["id"], "warehouse_id": str(wf.id),
             "receipt_date": d(30), "notes": f"{DEMO} 部分到貨",
             "lines": [{"item_id": item_id["DEMO-ST-001"], "qty": 100, "unit_cost": 3}],
         })
         await api.post(f"{inv}/goods-receipts/{grn3['id']}/confirm")
 
         po3 = await api.post(f"{inv}/purchase-orders", json={
-            "supplier_id": sup1["id"], "location_id": str(ab.id), "order_date": d(3),
+            "supplier_id": sup1["id"], "warehouse_id": str(ab.id), "order_date": d(3),
             "expected_date": d(-7), "notes": f"{DEMO} 草稿採購單",
             "lines": [{"item_id": item_id["DEMO-PR-001"], "ordered_qty": 30, "unit_cost": 12}],
         })
 
         prt = await api.post(f"{inv}/purchase-returns", json={
-            "supplier_id": sup1["id"], "location_id": str(wf.id), "grn_id": grn1["id"],
+            "supplier_id": sup1["id"], "warehouse_id": str(wf.id), "grn_id": grn1["id"],
             "return_date": d(40), "notes": f"{DEMO} 次品退回",
             "lines": [{"item_id": item_id["DEMO-BK-002"], "qty": 5, "unit_cost": 25}],
         })
@@ -360,7 +377,7 @@ async def seed() -> None:
         # New flow: SO confirm reserves -> invoice issued from SO (issue deducts
         # stock) -> DO sub-documents record physical delivery only -> receipts.
         so_draft = await api.post(f"{inv}/sales-orders", json={
-            "customer_id": cust3["id"], "location_id": str(wf.id), "order_date": d(20),
+            "customer_id": cust3["id"], "warehouse_id": str(wf.id), "order_date": d(20),
             "notes": f"{DEMO} 草稿銷售單",
             "lines": [{"item_id": item_id["DEMO-ST-003"], "qty": 10, "unit_price": 12}],
         })
@@ -368,7 +385,7 @@ async def seed() -> None:
 
         # cust1 SO invoiced in two invoices (partial invoicing)
         so_conf = await api.post(f"{inv}/sales-orders", json={
-            "customer_id": cust1["id"], "location_id": str(wf.id), "order_date": d(20),
+            "customer_id": cust1["id"], "warehouse_id": str(wf.id), "order_date": d(20),
             "discount_amount": 20, "notes": f"{DEMO} 分批開票銷售單",
             "lines": [
                 {"item_id": item_id["DEMO-BK-001"], "qty": 5, "unit_price": 55, "discount_amount": 10},
@@ -428,7 +445,7 @@ async def seed() -> None:
 
         # issued invoice with nothing delivered yet
         so_nodel = await api.post(f"{inv}/sales-orders", json={
-            "customer_id": cust2["id"], "location_id": str(wf.id), "order_date": d(8),
+            "customer_id": cust2["id"], "warehouse_id": str(wf.id), "order_date": d(8),
             "notes": f"{DEMO} 已開票未送貨",
             "lines": [
                 {"item_id": item_id["DEMO-BK-002"], "qty": 10, "unit_price": 48},
@@ -443,7 +460,7 @@ async def seed() -> None:
 
         # unpaid overdue invoice (delivered, never paid)
         so_late = await api.post(f"{inv}/sales-orders", json={
-            "customer_id": cust3["id"], "location_id": str(wf.id), "order_date": d(50),
+            "customer_id": cust3["id"], "warehouse_id": str(wf.id), "order_date": d(50),
             "notes": f"{DEMO} 逾期未收款",
             "lines": [{"item_id": item_id["DEMO-BK-003"], "qty": 8, "unit_price": 50}],
         })
@@ -460,7 +477,7 @@ async def seed() -> None:
         # draft invoice on the not-yet-delivered SO? so_nodel is fulfilled; use a
         # partially-invoiced SO instead
         so_draft_inv = await api.post(f"{inv}/sales-orders", json={
-            "customer_id": cust2["id"], "location_id": str(wf.id), "order_date": d(5),
+            "customer_id": cust2["id"], "warehouse_id": str(wf.id), "order_date": d(5),
             "notes": f"{DEMO} 部分開票中",
             "lines": [{"item_id": item_id["DEMO-ST-001"], "qty": 30, "unit_price": 8}],
         })
@@ -502,7 +519,7 @@ async def seed() -> None:
 
         print("=== inventory demo seed done ===")
         print(f"admin login: {DEMO_ADMIN_USERNAME} / {DEMO_ADMIN_PASSWORD} ({'created' if created_admin else 'existing/updated'})")
-        print(f"categories: {len(CATEGORIES)} | items: {len(ITEMS)} | locations: {wf.code}, {ab.code}")
+        print(f"categories: {len(CATEGORIES)} | items: {len(ITEMS)} | warehouses: {wf.code}, {ab.code}")
         print(f"suppliers: {sup1['code']}, {sup2['code']} | customers: {cust1['name_zh']}, {cust2['name_zh']}, {cust3['name_zh']}")
         print(f"POs: {po1['po_no']}(received) {po2['po_no']}(partial, overdue) {po3['po_no']}(draft)")
         print(f"GRNs: {grn1['grn_no']} {grn2['grn_no']} {grn3['grn_no']} | PRT: {prt['prt_no']}(confirmed)")
@@ -558,7 +575,7 @@ async def reset_demo() -> None:
         )).scalars().all())
 
         # notifications created by the demo alert run reference demo doc ids;
-        # low-stock alerts use ref "<item_id>:<location_id>"
+        # low-stock alerts use ref "<item_id>:<warehouse_id>"
         notif_refs = {str(x) for x in ref_ids} | {str(x) for x in demo_items}
         notif = (await db.execute(select(Notification.id, Notification.extra_data))).all()
         notif_ids = [

@@ -1,5 +1,58 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
-import { fetchAllAttendancePages, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
+import { type AttendanceListResult, fetchAllAttendancePages, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
+
+export interface InventoryWarehouse {
+  id: string
+  code: string
+  name_zh: string
+  name_en: string | null
+  address: string | null
+  phone: string | null
+  location_id: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface InventoryWarehousePayload {
+  code: string
+  name_zh: string
+  name_en?: string | null
+  address?: string | null
+  phone?: string | null
+  location_id?: string | null
+  is_active?: boolean
+}
+
+export async function listWarehouses(params?: {
+  is_active?: boolean
+  search?: string
+}): Promise<InventoryWarehouse[]> {
+  const result = await fetchAllAttendancePages<InventoryWarehouse>('/inventory/warehouses', params)
+
+  return result.items
+}
+
+export async function listWarehousesWithTotal(params?: {
+  is_active?: boolean
+  search?: string
+  page?: number
+  page_size?: number
+}): Promise<AttendanceListResult<InventoryWarehouse>> {
+  return await fetchAttendanceListWithTotal<InventoryWarehouse>('/inventory/warehouses', params)
+}
+
+export async function createWarehouse(payload: InventoryWarehousePayload): Promise<InventoryWarehouse> {
+  return await $attendanceApi('/inventory/warehouses', { method: 'POST', body: payload })
+}
+
+export async function updateWarehouse(id: string, payload: Partial<InventoryWarehousePayload>): Promise<InventoryWarehouse> {
+  return await $attendanceApi(`/inventory/warehouses/${id}`, { method: 'PATCH', body: payload })
+}
+
+export async function deleteWarehouse(id: string): Promise<void> {
+  await $attendanceApi(`/inventory/warehouses/${id}`, { method: 'DELETE' })
+}
 
 export interface InventoryCategory {
   id: string
@@ -23,7 +76,9 @@ export interface InventoryItem {
   name_en: string | null
   category_id: string | null
   unit_of_measure: string | null
+  barcode: string | null
   cost_price: number | null
+  other_cost: number | null
   sale_price: number | null
   reorder_level: number
   avg_cost: number
@@ -40,7 +95,9 @@ export interface InventoryItemPayload {
   name_en?: string | null
   category_id?: string | null
   unit_of_measure?: string | null
+  barcode?: string | null
   cost_price?: number | null
+  other_cost?: number | null
   sale_price?: number | null
   reorder_level?: number
   is_active?: boolean
@@ -51,7 +108,7 @@ export interface InventoryItemPayload {
 export interface InventoryStock {
   id: string
   item_id: string
-  location_id: string
+  warehouse_id: string
   quantity: number
   reserved: number
   available: number
@@ -88,7 +145,7 @@ export function reasonCodeLabel(code: string | null | undefined): string {
 export interface InventoryMovement {
   id: string
   item_id: string
-  location_id: string
+  warehouse_id: string
   type: InventoryMovementTypeOut
   quantity_delta: number
   balance_after: number
@@ -102,7 +159,7 @@ export interface InventoryMovement {
 
 export interface InventoryMovementPayload {
   item_id: string
-  location_id: string
+  warehouse_id: string
   type: InventoryMovementType
   quantity: number
   reason?: string | null
@@ -112,8 +169,8 @@ export interface InventoryMovementPayload {
 
 export interface InventoryTransferPayload {
   item_id: string
-  from_location_id: string
-  to_location_id: string
+  from_warehouse_id: string
+  to_warehouse_id: string
   quantity: number
   reason?: string | null
 }
@@ -128,7 +185,7 @@ export type InventoryStocktakeStatus = 'draft' | 'applied' | 'cancelled'
 
 export interface InventoryStocktake {
   id: string
-  location_id: string
+  warehouse_id: string
   status: InventoryStocktakeStatus
   note: string | null
   created_by: string | null
@@ -198,13 +255,13 @@ export async function updateInventoryItem(
 // ---- Stocks ----
 
 export async function listInventoryStocks(params?: {
-  location_id?: string
+  warehouse_id?: string
   item_id?: string
 }): Promise<InventoryStock[]> {
   return await $attendanceApi('/inventory/stocks', { params })
 }
 
-export async function listLowStock(params?: { location_id?: string }): Promise<InventoryStock[]> {
+export async function listLowStock(params?: { warehouse_id?: string }): Promise<InventoryStock[]> {
   return await $attendanceApi('/inventory/low-stock', { params })
 }
 
@@ -216,7 +273,7 @@ export async function createInventoryMovement(payload: InventoryMovementPayload)
 
 export async function listInventoryMovements(params?: {
   item_id?: string
-  location_id?: string
+  warehouse_id?: string
   type?: InventoryMovementTypeOut
   reason_code?: string
   date_from?: string
@@ -236,7 +293,7 @@ export async function createInventoryTransfer(payload: InventoryTransferPayload)
 // ---- Stocktakes ----
 
 export async function listInventoryStocktakes(params?: {
-  location_id?: string
+  warehouse_id?: string
   status?: InventoryStocktakeStatus
   page?: number
   page_size?: number
@@ -249,7 +306,7 @@ export async function getInventoryStocktake(id: string): Promise<InventoryStockt
 }
 
 export async function createInventoryStocktake(payload: {
-  location_id: string
+  warehouse_id: string
   item_ids?: string[] | null
   note?: string | null
 }): Promise<InventoryStocktakeDetail> {
@@ -280,7 +337,7 @@ export async function exportInventoryItemsCSV(): Promise<Blob> {
   return await $attendanceApi<Blob>('/inventory/export/items.csv', { responseType: 'blob' })
 }
 
-export async function exportInventoryStocksCSV(params?: { location_id?: string }): Promise<Blob> {
+export async function exportInventoryStocksCSV(params?: { warehouse_id?: string }): Promise<Blob> {
   return await $attendanceApi<Blob>('/inventory/export/stocks.csv', { params, responseType: 'blob' })
 }
 

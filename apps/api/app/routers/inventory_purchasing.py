@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -7,7 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminOnly, DB
-from app.models.inventory import InventoryItem
+from app.models.inventory import InventoryItem, InventoryWarehouse
 from app.models.inventory_purchasing import (
     GoodsReceipt,
     GoodsReceiptLine,
@@ -18,7 +19,6 @@ from app.models.inventory_purchasing import (
     Supplier,
 )
 from app.models.inventory import InventoryStock
-from app.models.location import Location
 from app.schemas.inventory_purchasing import (
     GoodsReceiptConfirm,
     GoodsReceiptCreate,
@@ -43,13 +43,13 @@ from app.utils.search import ilike_contains
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
-async def _assert_location_exists(db: DB, location_id: uuid.UUID) -> None:
-    result = await db.execute(select(Location).where(Location.id == location_id))
+async def _assert_warehouse_exists(db: DB, warehouse_id: uuid.UUID) -> None:
+    result = await db.execute(select(InventoryWarehouse).where(InventoryWarehouse.id == warehouse_id))
     location = result.scalar_one_or_none()
     if not location:
-        raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+        raise HTTPException(status_code=422, detail="warehouse_id does not reference an existing warehouse")
     if not location.is_active:
-        raise HTTPException(status_code=422, detail=f"location {location.name_en or location_id} is inactive")
+        raise HTTPException(status_code=422, detail=f"warehouse {location.name_en or location.name_zh} is inactive")
 
 
 async def _get_supplier_or_422(db: DB, supplier_id: uuid.UUID) -> Supplier:
@@ -148,76 +148,126 @@ async def _items_map(db: DB, lines) -> dict[uuid.UUID, InventoryItem]:
     return {item.id: item for item in result.scalars().all()}
 
 
+async def _rows_by_id(db: DB, model, ids) -> dict:
+    wanted = {i for i in ids if i is not None}
+    if not wanted:
+        return {}
+    result = await db.execute(select(model).where(model.id.in_(wanted)))
+    return {row.id: row for row in result.scalars().all()}
+
+
+async def _lines_grouped(db: DB, line_model, fk_column, parent_ids) -> dict[uuid.UUID, list]:
+    grouped: dict[uuid.UUID, list] = defaultdict(list)
+    if not parent_ids:
+        return grouped
+    result = await db.execute(
+        select(line_model).where(fk_column.in_(parent_ids)).order_by(line_model.id)
+    )
+    for line in result.scalars().all():
+        grouped[getattr(line, fk_column.key)].append(line)
+    return grouped
+
+
+async def _po_details_batch(db: DB, pos: list[PurchaseOrder]) -> list[dict]:
+    """Detail dicts for many POs in a constant number of queries."""
+    lines_by_po = await _lines_grouped(db, PurchaseOrderLine, PurchaseOrderLine.po_id, [p.id for p in pos])
+    suppliers = await _rows_by_id(db, Supplier, [p.supplier_id for p in pos])
+    locations = await _rows_by_id(db, InventoryWarehouse, [p.warehouse_id for p in pos])
+    outs = []
+    for po in pos:
+        supplier = suppliers.get(po.supplier_id)
+        location = locations.get(po.warehouse_id)
+        out = {
+            f: getattr(po, f)
+            for f in PurchaseOrderOut.model_fields
+            if f not in ("lines", "supplier_name", "warehouse_name")
+        }
+        out["lines"] = lines_by_po.get(po.id, [])
+        out["supplier_name"] = supplier.name_zh if supplier else None
+        out["warehouse_name"] = (location.name_en or location.name_zh) if location else None
+        outs.append(out)
+    return outs
+
+
 async def _po_detail(db: DB, po: PurchaseOrder) -> dict:
-    lines = await _po_lines(db, po.id)
-    supplier = await db.get(Supplier, po.supplier_id)
-    location = await db.get(Location, po.location_id)
-    out = {
-        f: getattr(po, f)
-        for f in PurchaseOrderOut.model_fields
-        if f not in ("lines", "supplier_name", "location_name")
-    }
-    out["lines"] = lines
-    out["supplier_name"] = supplier.name_zh if supplier else None
-    out["location_name"] = location.name_en if location else None
-    return out
+    return (await _po_details_batch(db, [po]))[0]
+
+
+async def _grn_details_batch(db: DB, grns: list[GoodsReceipt]) -> list[dict]:
+    lines_by_grn = await _lines_grouped(db, GoodsReceiptLine, GoodsReceiptLine.grn_id, [g.id for g in grns])
+    items = await _items_map(db, [line for lines in lines_by_grn.values() for line in lines])
+    suppliers = await _rows_by_id(db, Supplier, [g.supplier_id for g in grns])
+    locations = await _rows_by_id(db, InventoryWarehouse, [g.warehouse_id for g in grns])
+    pos = await _rows_by_id(db, PurchaseOrder, [g.po_id for g in grns])
+    outs = []
+    for grn in grns:
+        supplier = suppliers.get(grn.supplier_id)
+        location = locations.get(grn.warehouse_id)
+        po = pos.get(grn.po_id) if grn.po_id else None
+        out = {
+            f: getattr(grn, f)
+            for f in GoodsReceiptOut.model_fields
+            if f not in ("lines", "supplier_name", "warehouse_name", "po_no")
+        }
+        out["lines"] = [
+            {
+                "id": line.id,
+                "item_id": line.item_id,
+                "po_line_id": line.po_line_id,
+                "qty": line.qty,
+                "unit_cost": line.unit_cost,
+                "sku_code": items[line.item_id].sku_code if line.item_id in items else None,
+                "name_zh": items[line.item_id].name_zh if line.item_id in items else None,
+            }
+            for line in lines_by_grn.get(grn.id, [])
+        ]
+        out["supplier_name"] = supplier.name_zh if supplier else None
+        out["warehouse_name"] = (location.name_en or location.name_zh) if location else None
+        out["po_no"] = po.po_no if po else None
+        outs.append(out)
+    return outs
 
 
 async def _grn_detail(db: DB, grn: GoodsReceipt) -> dict:
-    lines = await _grn_lines(db, grn.id)
-    items = await _items_map(db, lines)
-    supplier = await db.get(Supplier, grn.supplier_id)
-    location = await db.get(Location, grn.location_id)
-    po = await db.get(PurchaseOrder, grn.po_id) if grn.po_id else None
-    out = {
-        f: getattr(grn, f)
-        for f in GoodsReceiptOut.model_fields
-        if f not in ("lines", "supplier_name", "location_name", "po_no")
-    }
-    out["lines"] = [
-        {
-            "id": line.id,
-            "item_id": line.item_id,
-            "po_line_id": line.po_line_id,
-            "qty": line.qty,
-            "unit_cost": line.unit_cost,
-            "sku_code": items[line.item_id].sku_code if line.item_id in items else None,
-            "name_zh": items[line.item_id].name_zh if line.item_id in items else None,
+    return (await _grn_details_batch(db, [grn]))[0]
+
+
+async def _prt_details_batch(db: DB, prts: list[PurchaseReturn]) -> list[dict]:
+    lines_by_prt = await _lines_grouped(db, PurchaseReturnLine, PurchaseReturnLine.prt_id, [p.id for p in prts])
+    items = await _items_map(db, [line for lines in lines_by_prt.values() for line in lines])
+    suppliers = await _rows_by_id(db, Supplier, [p.supplier_id for p in prts])
+    locations = await _rows_by_id(db, InventoryWarehouse, [p.warehouse_id for p in prts])
+    grns = await _rows_by_id(db, GoodsReceipt, [p.grn_id for p in prts])
+    outs = []
+    for prt in prts:
+        supplier = suppliers.get(prt.supplier_id)
+        location = locations.get(prt.warehouse_id)
+        grn = grns.get(prt.grn_id) if prt.grn_id else None
+        out = {
+            f: getattr(prt, f)
+            for f in PurchaseReturnOut.model_fields
+            if f not in ("lines", "supplier_name", "warehouse_name", "grn_no")
         }
-        for line in lines
-    ]
-    out["supplier_name"] = supplier.name_zh if supplier else None
-    out["location_name"] = location.name_en if location else None
-    out["po_no"] = po.po_no if po else None
-    return out
+        out["lines"] = [
+            {
+                "id": line.id,
+                "item_id": line.item_id,
+                "qty": line.qty,
+                "unit_cost": line.unit_cost,
+                "sku_code": items[line.item_id].sku_code if line.item_id in items else None,
+                "name_zh": items[line.item_id].name_zh if line.item_id in items else None,
+            }
+            for line in lines_by_prt.get(prt.id, [])
+        ]
+        out["supplier_name"] = supplier.name_zh if supplier else None
+        out["warehouse_name"] = (location.name_en or location.name_zh) if location else None
+        out["grn_no"] = grn.grn_no if grn else None
+        outs.append(out)
+    return outs
 
 
 async def _prt_detail(db: DB, prt: PurchaseReturn) -> dict:
-    lines = await _prt_lines(db, prt.id)
-    items = await _items_map(db, lines)
-    supplier = await db.get(Supplier, prt.supplier_id)
-    location = await db.get(Location, prt.location_id)
-    grn = await db.get(GoodsReceipt, prt.grn_id) if prt.grn_id else None
-    out = {
-        f: getattr(prt, f)
-        for f in PurchaseReturnOut.model_fields
-        if f not in ("lines", "supplier_name", "location_name", "grn_no")
-    }
-    out["lines"] = [
-        {
-            "id": line.id,
-            "item_id": line.item_id,
-            "qty": line.qty,
-            "unit_cost": line.unit_cost,
-            "sku_code": items[line.item_id].sku_code if line.item_id in items else None,
-            "name_zh": items[line.item_id].name_zh if line.item_id in items else None,
-        }
-        for line in lines
-    ]
-    out["supplier_name"] = supplier.name_zh if supplier else None
-    out["location_name"] = location.name_en if location else None
-    out["grn_no"] = grn.grn_no if grn else None
-    return out
+    return (await _prt_details_batch(db, [prt]))[0]
 
 
 def _po_line_amount(ordered_qty: int, unit_cost: float, discount_amount: float) -> Decimal:
@@ -413,7 +463,7 @@ async def list_purchase_orders(
     db: DB,
     response: Response,
     supplier_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -423,8 +473,8 @@ async def list_purchase_orders(
     clauses = []
     if supplier_id is not None:
         clauses.append(PurchaseOrder.supplier_id == supplier_id)
-    if location_id is not None:
-        clauses.append(PurchaseOrder.location_id == location_id)
+    if warehouse_id is not None:
+        clauses.append(PurchaseOrder.warehouse_id == warehouse_id)
     if status is not None:
         clauses.append(PurchaseOrder.status == status)
     if date_from is not None:
@@ -443,19 +493,19 @@ async def list_purchase_orders(
     q = q.order_by(PurchaseOrder.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return [await _po_detail(db, po) for po in result.scalars().all()]
+    return await _po_details_batch(db, list(result.scalars().all()))
 
 
 @router.post("/purchase-orders", response_model=PurchaseOrderOut, status_code=status.HTTP_201_CREATED)
 async def create_purchase_order(body: PurchaseOrderCreate, _admin: AdminOnly, db: DB) -> dict:
     await _get_supplier_or_422(db, body.supplier_id)
-    await _assert_location_exists(db, body.location_id)
+    await _assert_warehouse_exists(db, body.warehouse_id)
 
-    po_no = await doc_numbers_svc.allocate_doc_no(db, location_id=body.location_id, doc_type="PO")
+    po_no = await doc_numbers_svc.allocate_doc_no(db, warehouse_id=body.warehouse_id, doc_type="PO")
     po = PurchaseOrder(
         po_no=po_no,
         supplier_id=body.supplier_id,
-        location_id=body.location_id,
+        warehouse_id=body.warehouse_id,
         order_date=body.order_date,
         expected_date=body.expected_date,
         discount_amount=body.discount_amount,
@@ -502,9 +552,9 @@ async def update_purchase_order(
     old_values: dict = {}
     if "supplier_id" in update_data:
         await _get_supplier_or_422(db, update_data["supplier_id"])
-    if "location_id" in update_data:
-        await _assert_location_exists(db, update_data["location_id"])
-    for field in ("supplier_id", "location_id", "order_date", "expected_date", "discount_amount", "notes"):
+    if "warehouse_id" in update_data:
+        await _assert_warehouse_exists(db, update_data["warehouse_id"])
+    for field in ("supplier_id", "warehouse_id", "order_date", "expected_date", "discount_amount", "notes"):
         if field in update_data:
             old_values[field] = getattr(po, field)
             setattr(po, field, update_data[field])
@@ -623,7 +673,7 @@ async def list_goods_receipts(
     db: DB,
     response: Response,
     supplier_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     po_id: uuid.UUID | None = None,
     status: str | None = None,
     date_from: date | None = None,
@@ -634,8 +684,8 @@ async def list_goods_receipts(
     clauses = []
     if supplier_id is not None:
         clauses.append(GoodsReceipt.supplier_id == supplier_id)
-    if location_id is not None:
-        clauses.append(GoodsReceipt.location_id == location_id)
+    if warehouse_id is not None:
+        clauses.append(GoodsReceipt.warehouse_id == warehouse_id)
     if po_id is not None:
         clauses.append(GoodsReceipt.po_id == po_id)
     if status is not None:
@@ -656,20 +706,20 @@ async def list_goods_receipts(
     q = q.order_by(GoodsReceipt.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return [await _grn_detail(db, grn) for grn in result.scalars().all()]
+    return await _grn_details_batch(db, list(result.scalars().all()))
 
 
 @router.post("/goods-receipts", response_model=GoodsReceiptOut, status_code=status.HTTP_201_CREATED)
 async def create_goods_receipt(body: GoodsReceiptCreate, _admin: AdminOnly, db: DB) -> dict:
     await _get_supplier_or_422(db, body.supplier_id)
-    await _assert_location_exists(db, body.location_id)
+    await _assert_warehouse_exists(db, body.warehouse_id)
 
     po: PurchaseOrder | None = None
     po_lines: dict[uuid.UUID, PurchaseOrderLine] = {}
     if body.po_id:
         po = await _get_po_or_404(db, body.po_id)
-        if po.supplier_id != body.supplier_id or po.location_id != body.location_id:
-            raise HTTPException(status_code=422, detail="supplier_id/location_id must match the PO")
+        if po.supplier_id != body.supplier_id or po.warehouse_id != body.warehouse_id:
+            raise HTTPException(status_code=422, detail="supplier_id/warehouse_id must match the PO")
         if po.status not in ("ordered", "partial"):
             raise HTTPException(status_code=422, detail=f"PO {po.po_no} is {po.status}; cannot receive")
 
@@ -703,12 +753,12 @@ async def create_goods_receipt(body: GoodsReceiptCreate, _admin: AdminOnly, db: 
         resolved = await _validate_grn_lines_against_po(db, po, line_inputs, body.allow_over_receipt)
         po_line_by_item = {pl.item_id: pl.id for pl in resolved.values()}
 
-    grn_no = await doc_numbers_svc.allocate_doc_no(db, location_id=body.location_id, doc_type="GRN")
+    grn_no = await doc_numbers_svc.allocate_doc_no(db, warehouse_id=body.warehouse_id, doc_type="GRN")
     grn = GoodsReceipt(
         grn_no=grn_no,
         po_id=body.po_id,
         supplier_id=body.supplier_id,
-        location_id=body.location_id,
+        warehouse_id=body.warehouse_id,
         receipt_date=body.receipt_date,
         notes=body.notes,
         created_by=_admin.id,
@@ -771,9 +821,11 @@ async def update_goods_receipt(
             raise HTTPException(status_code=422, detail="a goods receipt needs at least one line")
         for line_in in body.lines:
             await _get_item_or_422(db, line_in.item_id)
+        po_line_by_item: dict[uuid.UUID, uuid.UUID] = {}
         if grn.po_id:
             po = await _get_po_or_404(db, grn.po_id)
-            await _validate_grn_lines_against_po(db, po, body.lines, body.allow_over_receipt)
+            resolved = await _validate_grn_lines_against_po(db, po, body.lines, body.allow_over_receipt)
+            po_line_by_item = {pl.item_id: pl.id for pl in resolved.values()}
         existing = await _grn_lines(db, grn_id)
         old_values["lines"] = [{"item_id": line.item_id, "qty": line.qty} for line in existing]
         for line in existing:
@@ -782,7 +834,7 @@ async def update_goods_receipt(
         new_lines = [
             GoodsReceiptLine(
                 grn=grn,
-                po_line_id=line_in.po_line_id,
+                po_line_id=line_in.po_line_id or po_line_by_item.get(line_in.item_id),
                 item_id=line_in.item_id,
                 qty=line_in.qty,
                 unit_cost=line_in.unit_cost,
@@ -882,7 +934,7 @@ async def confirm_goods_receipt(
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
-            location_id=grn.location_id,
+            warehouse_id=grn.warehouse_id,
             type="in",
             quantity=line.qty,
             reason=f"GRN {grn.grn_no}",
@@ -947,7 +999,7 @@ async def void_goods_receipt(grn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> di
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
-            location_id=grn.location_id,
+            warehouse_id=grn.warehouse_id,
             type="out",
             quantity=line.qty,
             reason=f"void GRN {grn.grn_no}",
@@ -988,7 +1040,7 @@ async def list_purchase_returns(
     db: DB,
     response: Response,
     supplier_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     grn_id: uuid.UUID | None = None,
     status: str | None = None,
     page: int = Query(default=1, ge=1),
@@ -997,8 +1049,8 @@ async def list_purchase_returns(
     clauses = []
     if supplier_id is not None:
         clauses.append(PurchaseReturn.supplier_id == supplier_id)
-    if location_id is not None:
-        clauses.append(PurchaseReturn.location_id == location_id)
+    if warehouse_id is not None:
+        clauses.append(PurchaseReturn.warehouse_id == warehouse_id)
     if grn_id is not None:
         clauses.append(PurchaseReturn.grn_id == grn_id)
     if status is not None:
@@ -1015,21 +1067,21 @@ async def list_purchase_returns(
     q = q.order_by(PurchaseReturn.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return [await _prt_detail(db, prt) for prt in result.scalars().all()]
+    return await _prt_details_batch(db, list(result.scalars().all()))
 
 
 @router.post("/purchase-returns", response_model=PurchaseReturnOut, status_code=status.HTTP_201_CREATED)
 async def create_purchase_return(body: PurchaseReturnCreate, _admin: AdminOnly, db: DB) -> dict:
     await _get_supplier_or_422(db, body.supplier_id)
-    await _assert_location_exists(db, body.location_id)
+    await _assert_warehouse_exists(db, body.warehouse_id)
     if not body.lines:
         raise HTTPException(status_code=422, detail="a purchase return needs at least one line")
 
     grn: GoodsReceipt | None = None
     if body.grn_id:
         grn = await _get_grn_or_404(db, body.grn_id)
-        if grn.supplier_id != body.supplier_id or grn.location_id != body.location_id:
-            raise HTTPException(status_code=422, detail="supplier_id/location_id must match the GRN")
+        if grn.supplier_id != body.supplier_id or grn.warehouse_id != body.warehouse_id:
+            raise HTTPException(status_code=422, detail="supplier_id/warehouse_id must match the GRN")
         if grn.status != "confirmed":
             raise HTTPException(status_code=422, detail=f"GRN {grn.grn_no} is {grn.status}; cannot return against it")
 
@@ -1038,11 +1090,11 @@ async def create_purchase_return(body: PurchaseReturnCreate, _admin: AdminOnly, 
     if grn:
         await _validate_return_qty(db, grn, body.lines)
 
-    prt_no = await doc_numbers_svc.allocate_doc_no(db, location_id=body.location_id, doc_type="PRT")
+    prt_no = await doc_numbers_svc.allocate_doc_no(db, warehouse_id=body.warehouse_id, doc_type="PRT")
     prt = PurchaseReturn(
         prt_no=prt_no,
         supplier_id=body.supplier_id,
-        location_id=body.location_id,
+        warehouse_id=body.warehouse_id,
         grn_id=body.grn_id,
         return_date=body.return_date,
         notes=body.notes,
@@ -1117,8 +1169,8 @@ async def update_purchase_return(
     old_values: dict = {}
     if "grn_id" in update_data and update_data["grn_id"]:
         grn = await _get_grn_or_404(db, update_data["grn_id"])
-        if grn.supplier_id != prt.supplier_id or grn.location_id != prt.location_id:
-            raise HTTPException(status_code=422, detail="supplier/location must match the GRN")
+        if grn.supplier_id != prt.supplier_id or grn.warehouse_id != prt.warehouse_id:
+            raise HTTPException(status_code=422, detail="supplier/warehouse must match the GRN")
     for field in ("grn_id", "return_date", "notes"):
         if field in update_data:
             old_values[field] = getattr(prt, field)
@@ -1197,7 +1249,7 @@ async def confirm_purchase_return(prt_id: uuid.UUID, _admin: AdminOnly, db: DB) 
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
-            location_id=prt.location_id,
+            warehouse_id=prt.warehouse_id,
             type="out",
             quantity=line.qty,
             reason=f"purchase return {prt.prt_no}",
@@ -1235,7 +1287,7 @@ async def void_purchase_return(prt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> 
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
-            location_id=prt.location_id,
+            warehouse_id=prt.warehouse_id,
             type="in",
             quantity=line.qty,
             reason=f"void purchase return {prt.prt_no}",

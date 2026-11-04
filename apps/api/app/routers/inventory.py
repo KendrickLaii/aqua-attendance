@@ -8,15 +8,20 @@ from fastapi import APIRouter, HTTPException, Query, Response, UploadFile, statu
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
+from app.attendance_tz import ATTENDANCE_TZ
 from app.deps import AdminOnly, DB
 from app.models.inventory import (
     InventoryCategory,
     InventoryItem,
+    InventoryWarehouse,
     InventoryMovement,
     InventoryStock,
     InventoryStocktake,
     InventoryStocktakeLine,
 )
+from app.models.inventory_invoicing import InventoryCreditNote, InventoryInvoice, InventoryReceipt
+from app.models.inventory_purchasing import GoodsReceipt, InventoryCounter, PurchaseOrder, PurchaseReturn
+from app.models.inventory_sales import DeliveryOrder, SalesOrder
 from app.models.location import Location
 from app.schemas.inventory import (
     InventoryCategoryCreate,
@@ -35,6 +40,9 @@ from app.schemas.inventory import (
     InventoryStocktakeOut,
     InventoryTransferCreate,
     InventoryTransferOut,
+    InventoryWarehouseCreate,
+    InventoryWarehouseOut,
+    InventoryWarehouseUpdate,
 )
 from app.services import audit_log as audit_log_svc
 from app.services import inventory as inventory_svc
@@ -44,13 +52,13 @@ from app.utils.search import ilike_contains
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
-async def _assert_location_exists(db: DB, location_id: uuid.UUID) -> None:
-    result = await db.execute(select(Location).where(Location.id == location_id))
+async def _assert_warehouse_exists(db: DB, warehouse_id: uuid.UUID) -> None:
+    result = await db.execute(select(InventoryWarehouse).where(InventoryWarehouse.id == warehouse_id))
     location = result.scalar_one_or_none()
     if not location:
-        raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+        raise HTTPException(status_code=422, detail="warehouse_id does not reference an existing warehouse")
     if not location.is_active:
-        raise HTTPException(status_code=422, detail=f"location {location.name_en or location_id} is inactive")
+        raise HTTPException(status_code=422, detail=f"warehouse {location.name_en or location.name_zh} is inactive")
 
 
 async def _assert_item_active(db: DB, item_id: uuid.UUID) -> InventoryItem:
@@ -74,6 +82,167 @@ async def _get_item_or_404(db: DB, item_id: uuid.UUID) -> InventoryItem:
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item
+
+
+async def _assert_centre_exists(db: DB, location_id: uuid.UUID | None) -> None:
+    if location_id is None:
+        return
+    result = await db.execute(select(Location.id).where(Location.id == location_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=422, detail="location_id does not reference an existing centre")
+
+
+_WAREHOUSE_REF_COLUMNS = (
+    InventoryStock.warehouse_id,
+    InventoryMovement.warehouse_id,
+    InventoryStocktake.warehouse_id,
+    InventoryCounter.warehouse_id,
+    PurchaseOrder.warehouse_id,
+    GoodsReceipt.warehouse_id,
+    PurchaseReturn.warehouse_id,
+    SalesOrder.warehouse_id,
+    DeliveryOrder.warehouse_id,
+    InventoryInvoice.warehouse_id,
+    InventoryReceipt.warehouse_id,
+    InventoryCreditNote.warehouse_id,
+)
+
+
+async def _warehouse_is_referenced(db: DB, warehouse_id: uuid.UUID) -> bool:
+    for column in _WAREHOUSE_REF_COLUMNS:
+        hit = await db.scalar(select(column).where(column == warehouse_id).limit(1))
+        if hit is not None:
+            return True
+    return False
+
+
+# ---- Warehouses ----
+
+
+@router.get("/warehouses", response_model=list[InventoryWarehouseOut])
+async def list_warehouses(
+    _admin: AdminOnly,
+    db: DB,
+    response: Response,
+    is_active: bool | None = None,
+    search: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200),
+) -> list[InventoryWarehouse]:
+    clauses = []
+    if is_active is not None:
+        clauses.append(InventoryWarehouse.is_active == is_active)
+    if search:
+        clauses.append(
+            or_(
+                ilike_contains(InventoryWarehouse.code, search),
+                ilike_contains(InventoryWarehouse.name_zh, search),
+                ilike_contains(InventoryWarehouse.name_en, search),
+            )
+        )
+    count_q = select(func.count()).select_from(InventoryWarehouse)
+    if clauses:
+        count_q = count_q.where(*clauses)
+    total = await db.scalar(count_q) or 0
+    q = select(InventoryWarehouse)
+    if clauses:
+        q = q.where(*clauses)
+    q = q.order_by(InventoryWarehouse.code).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(q)
+    response.headers["X-Total-Count"] = str(total)
+    return list(result.scalars().all())
+
+
+@router.post("/warehouses", response_model=InventoryWarehouseOut, status_code=status.HTTP_201_CREATED)
+async def create_warehouse(body: InventoryWarehouseCreate, _admin: AdminOnly, db: DB) -> InventoryWarehouse:
+    exists = await db.execute(select(InventoryWarehouse.id).where(InventoryWarehouse.code == body.code))
+    if exists.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Warehouse code already exists")
+    await _assert_centre_exists(db, body.location_id)
+    warehouse = InventoryWarehouse(**body.model_dump())
+    db.add(warehouse)
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="Warehouse code already exists")
+    await db.commit()
+    await db.refresh(warehouse)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="inventory_warehouses",
+        record_id=warehouse.id,
+        new_values=body.model_dump(mode="json"),
+        description=f"Created warehouse {warehouse.code} {warehouse.name_zh}",
+    )
+    return warehouse
+
+
+@router.patch("/warehouses/{warehouse_id}", response_model=InventoryWarehouseOut)
+async def update_warehouse(
+    warehouse_id: uuid.UUID, body: InventoryWarehouseUpdate, _admin: AdminOnly, db: DB
+) -> InventoryWarehouse:
+    warehouse = await db.get(InventoryWarehouse, warehouse_id)
+    if not warehouse:
+        raise HTTPException(status_code=404, detail="Warehouse not found")
+    update_data = body.model_dump(exclude_unset=True)
+    new_code = update_data.get("code")
+    if new_code:
+        exists = await db.execute(
+            select(InventoryWarehouse.id).where(
+                InventoryWarehouse.code == new_code, InventoryWarehouse.id != warehouse_id
+            )
+        )
+        if exists.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Warehouse code already exists")
+    if "location_id" in update_data:
+        await _assert_centre_exists(db, update_data["location_id"])
+    old_values = {field: getattr(warehouse, field) for field in update_data}
+    for field, value in update_data.items():
+        setattr(warehouse, field, value)
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="Warehouse code already exists")
+    await db.commit()
+    await db.refresh(warehouse)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="inventory_warehouses",
+        record_id=warehouse.id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated warehouse {warehouse.code}",
+    )
+    return warehouse
+
+
+@router.delete("/warehouses/{warehouse_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_warehouse(warehouse_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+    warehouse = await db.get(InventoryWarehouse, warehouse_id)
+    if not warehouse:
+        raise HTTPException(status_code=404, detail="Warehouse not found")
+    if await _warehouse_is_referenced(db, warehouse_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Warehouse is referenced by stock or documents; deactivate it instead",
+        )
+    code = warehouse.code
+    await db.delete(warehouse)
+    await db.commit()
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="DELETE",
+        table_name="inventory_warehouses",
+        record_id=warehouse_id,
+        description=f"Deleted warehouse {code}",
+    )
 
 
 # ---- Categories ----
@@ -167,6 +336,7 @@ async def list_inventory_items(
                 ilike_contains(InventoryItem.name_zh, search),
                 ilike_contains(InventoryItem.name_en, search),
                 ilike_contains(InventoryItem.sku_code, search),
+                ilike_contains(InventoryItem.barcode, search),
             )
         )
     if low_stock:
@@ -271,12 +441,12 @@ async def update_inventory_item(
 async def list_inventory_stocks(
     _admin: AdminOnly,
     db: DB,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     item_id: uuid.UUID | None = None,
 ) -> list[InventoryStock]:
     q = select(InventoryStock)
-    if location_id is not None:
-        q = q.where(InventoryStock.location_id == location_id)
+    if warehouse_id is not None:
+        q = q.where(InventoryStock.warehouse_id == warehouse_id)
     if item_id is not None:
         q = q.where(InventoryStock.item_id == item_id)
     result = await db.execute(q.order_by(InventoryStock.updated_at.desc()))
@@ -287,15 +457,15 @@ async def list_inventory_stocks(
 async def list_low_stock(
     _admin: AdminOnly,
     db: DB,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
 ) -> list[InventoryStock]:
     q = (
         select(InventoryStock)
         .join(InventoryItem, InventoryItem.id == InventoryStock.item_id)
         .where(InventoryStock.quantity <= InventoryItem.reorder_level)
     )
-    if location_id is not None:
-        q = q.where(InventoryStock.location_id == location_id)
+    if warehouse_id is not None:
+        q = q.where(InventoryStock.warehouse_id == warehouse_id)
     result = await db.execute(q.order_by(InventoryStock.quantity.asc()))
     return list(result.scalars().all())
 
@@ -308,7 +478,7 @@ async def create_inventory_movement(
     body: InventoryMovementCreate, _admin: AdminOnly, db: DB, response: Response
 ) -> InventoryMovement:
     await _assert_item_active(db, body.item_id)
-    await _assert_location_exists(db, body.location_id)
+    await _assert_warehouse_exists(db, body.warehouse_id)
 
     if body.reference:
         existing = (
@@ -320,7 +490,7 @@ async def create_inventory_movement(
             # Idempotent repeat — return the recorded movement as 200, no audit.
             if (
                 existing.item_id != body.item_id
-                or existing.location_id != body.location_id
+                or existing.warehouse_id != body.warehouse_id
                 or existing.type != body.type
             ):
                 raise HTTPException(
@@ -332,7 +502,7 @@ async def create_inventory_movement(
     movement = await inventory_svc.apply_movement(
         db,
         item_id=body.item_id,
-        location_id=body.location_id,
+        warehouse_id=body.warehouse_id,
         type=body.type,
         quantity=body.quantity,
         reason=body.reason,
@@ -350,7 +520,7 @@ async def create_inventory_movement(
         record_id=movement.id,
         new_values={
             "item_id": body.item_id,
-            "location_id": body.location_id,
+            "warehouse_id": body.warehouse_id,
             "type": body.type,
             "quantity": body.quantity,
             "quantity_delta": movement.quantity_delta,
@@ -370,7 +540,7 @@ async def list_inventory_movements(
     db: DB,
     response: Response,
     item_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     type: str | None = None,
     reason_code: str | None = None,
     date_from: date | None = None,
@@ -381,17 +551,17 @@ async def list_inventory_movements(
     clauses = []
     if item_id is not None:
         clauses.append(InventoryMovement.item_id == item_id)
-    if location_id is not None:
-        clauses.append(InventoryMovement.location_id == location_id)
+    if warehouse_id is not None:
+        clauses.append(InventoryMovement.warehouse_id == warehouse_id)
     if type is not None:
         clauses.append(InventoryMovement.type == type)
     if reason_code is not None:
         clauses.append(InventoryMovement.reason_code == reason_code)
     if date_from is not None:
-        clauses.append(InventoryMovement.created_at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
+        clauses.append(InventoryMovement.created_at >= datetime.combine(date_from, time.min, tzinfo=ATTENDANCE_TZ))
     if date_to is not None:
         clauses.append(
-            InventoryMovement.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+            InventoryMovement.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=ATTENDANCE_TZ)
         )
 
     count_q = select(func.count()).select_from(InventoryMovement)
@@ -416,14 +586,14 @@ async def create_inventory_transfer(
     body: InventoryTransferCreate, _admin: AdminOnly, db: DB
 ) -> dict:
     await _assert_item_active(db, body.item_id)
-    await _assert_location_exists(db, body.from_location_id)
-    await _assert_location_exists(db, body.to_location_id)
+    await _assert_warehouse_exists(db, body.from_warehouse_id)
+    await _assert_warehouse_exists(db, body.to_warehouse_id)
 
     out_movement, in_movement = await inventory_svc.transfer(
         db,
         item_id=body.item_id,
-        from_location_id=body.from_location_id,
-        to_location_id=body.to_location_id,
+        from_warehouse_id=body.from_warehouse_id,
+        to_warehouse_id=body.to_warehouse_id,
         quantity=body.quantity,
         reason=body.reason,
         user=_admin,
@@ -440,8 +610,8 @@ async def create_inventory_transfer(
         record_id=out_movement.id,
         new_values={
             "item_id": body.item_id,
-            "from_location_id": body.from_location_id,
-            "to_location_id": body.to_location_id,
+            "from_warehouse_id": body.from_warehouse_id,
+            "to_warehouse_id": body.to_warehouse_id,
             "quantity": body.quantity,
             "reason": body.reason,
         },
@@ -480,7 +650,7 @@ def _stocktake_detail(stocktake: InventoryStocktake, lines: list[InventoryStockt
 async def create_inventory_stocktake(
     body: InventoryStocktakeCreate, _admin: AdminOnly, db: DB
 ) -> dict:
-    await _assert_location_exists(db, body.location_id)
+    await _assert_warehouse_exists(db, body.warehouse_id)
 
     items_q = select(InventoryItem).where(InventoryItem.is_active == True)  # noqa: E712
     if body.item_ids:
@@ -493,13 +663,13 @@ async def create_inventory_stocktake(
 
     stocks = (
         await db.execute(
-            select(InventoryStock).where(InventoryStock.location_id == body.location_id)
+            select(InventoryStock).where(InventoryStock.warehouse_id == body.warehouse_id)
         )
     ).scalars().all()
     qty_by_item = {s.item_id: s.quantity for s in stocks}
 
     stocktake = InventoryStocktake(
-        location_id=body.location_id, note=body.note, created_by=_admin.id
+        warehouse_id=body.warehouse_id, note=body.note, created_by=_admin.id
     )
     db.add(stocktake)
     lines = [
@@ -520,7 +690,7 @@ async def create_inventory_stocktake(
         table_name="inventory_stocktakes",
         record_id=stocktake.id,
         new_values={
-            "location_id": body.location_id,
+            "warehouse_id": body.warehouse_id,
             "item_count": len(lines),
             "note": body.note,
         },
@@ -543,14 +713,14 @@ async def list_inventory_stocktakes(
     _admin: AdminOnly,
     db: DB,
     response: Response,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[InventoryStocktake]:
     clauses = []
-    if location_id is not None:
-        clauses.append(InventoryStocktake.location_id == location_id)
+    if warehouse_id is not None:
+        clauses.append(InventoryStocktake.warehouse_id == warehouse_id)
     if status is not None:
         clauses.append(InventoryStocktake.status == status)
 
@@ -658,7 +828,10 @@ async def apply_inventory_stocktake(
     ).scalars().all()
     applied_movements = 0
     for line in lines:
-        if line.counted_qty is None or line.counted_qty == line.system_qty:
+        if line.counted_qty is None:
+            continue
+        delta = line.counted_qty - line.system_qty
+        if delta == 0:
             continue
         reference = f"STK:{stocktake_id}:{line.item_id}"
         existing = await db.execute(
@@ -667,12 +840,11 @@ async def apply_inventory_stocktake(
         if existing.scalar_one_or_none():
             continue
         await _assert_item_active(db, line.item_id)
-        await inventory_svc.apply_movement(
+        await inventory_svc.adjust_by(
             db,
             item_id=line.item_id,
-            location_id=stocktake.location_id,
-            type="adjust",
-            quantity=line.counted_qty,
+            warehouse_id=stocktake.warehouse_id,
+            delta=delta,
             reason=stocktake.note or "stocktake",
             reference=reference,
             user=_admin,
@@ -752,7 +924,9 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> Response:
             item.name_en or "",
             cat_name.get(item.category_id, ""),
             item.unit_of_measure or "",
+            item.barcode or "",
             item.cost_price if item.cost_price is not None else "",
+            item.other_cost if item.other_cost is not None else "",
             item.sale_price if item.sale_price is not None else "",
             item.reorder_level,
             item.is_active,
@@ -767,7 +941,9 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> Response:
             "name_en",
             "category",
             "unit_of_measure",
+            "barcode",
             "cost_price",
+            "other_cost",
             "sale_price",
             "reorder_level",
             "is_active",
@@ -780,16 +956,16 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> Response:
 async def export_inventory_stocks(
     _admin: AdminOnly,
     db: DB,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
 ) -> Response:
     q = (
-        select(InventoryStock, InventoryItem, Location)
+        select(InventoryStock, InventoryItem, InventoryWarehouse)
         .join(InventoryItem, InventoryItem.id == InventoryStock.item_id)
-        .join(Location, Location.id == InventoryStock.location_id)
+        .join(InventoryWarehouse, InventoryWarehouse.id == InventoryStock.warehouse_id)
     )
-    if location_id is not None:
-        q = q.where(InventoryStock.location_id == location_id)
-    q = q.order_by(Location.name_en, InventoryItem.sku_code)
+    if warehouse_id is not None:
+        q = q.where(InventoryStock.warehouse_id == warehouse_id)
+    q = q.order_by(InventoryWarehouse.code, InventoryItem.sku_code)
     rows_raw = (await db.execute(q)).all()
 
     rows = [
@@ -798,7 +974,7 @@ async def export_inventory_stocks(
             item.name_zh,
             item.name_en or "",
             location.code or "",
-            location.name_en,
+            location.name_en or location.name_zh,
             stock.quantity,
             stock.reserved,
             stock.quantity - stock.reserved,
@@ -811,8 +987,8 @@ async def export_inventory_stocks(
             "sku_code",
             "name_zh",
             "name_en",
-            "location_code",
-            "location",
+            "warehouse_code",
+            "warehouse",
             "quantity",
             "reserved",
             "available",
@@ -843,9 +1019,12 @@ def _parse_decimal(value: str | None) -> Decimal | None:
     if not value:
         return None
     try:
-        return Decimal(value)
+        parsed = Decimal(value)
     except InvalidOperation:
         raise ValueError(f"invalid number: {value}")
+    if not parsed.is_finite():
+        raise ValueError(f"invalid number: {value}")
+    return parsed
 
 
 def _parse_int(value: str | None) -> int | None:
@@ -884,14 +1063,20 @@ async def import_inventory_items(
             continue
         try:
             cost_price = _parse_decimal(row.get("cost_price"))
+            other_cost = _parse_decimal(row.get("other_cost"))
             sale_price = _parse_decimal(row.get("sale_price"))
             reorder_level = _parse_int(row.get("reorder_level"))
             if cost_price is not None and cost_price < 0:
                 raise ValueError("cost_price must be >= 0")
+            if other_cost is not None and other_cost < 0:
+                raise ValueError("other_cost must be >= 0")
             if sale_price is not None and sale_price < 0:
                 raise ValueError("sale_price must be >= 0")
             if reorder_level is not None and reorder_level < 0:
                 raise ValueError("reorder_level must be >= 0")
+            barcode = (row.get("barcode") or "").strip() or None
+            if barcode is not None and len(barcode) > 100:
+                raise ValueError("barcode must be <= 100 characters")
             parsed.append(
                 {
                     "row": idx,
@@ -900,7 +1085,11 @@ async def import_inventory_items(
                     "name_en": (row.get("name_en") or "").strip() or None,
                     "category": (row.get("category") or "").strip() or None,
                     "unit_of_measure": (row.get("unit_of_measure") or "").strip() or None,
+                    "has_barcode": "barcode" in row,
+                    "has_other_cost": "other_cost" in row,
+                    "barcode": barcode,
                     "cost_price": cost_price,
+                    "other_cost": other_cost,
                     "sale_price": sale_price,
                     "reorder_level": reorder_level if reorder_level is not None else 0,
                 }
@@ -932,7 +1121,9 @@ async def import_inventory_items(
                 name_en=row["name_en"],
                 category_id=category_id,
                 unit_of_measure=row["unit_of_measure"],
+                barcode=row["barcode"],
                 cost_price=row["cost_price"],
+                other_cost=row["other_cost"],
                 sale_price=row["sale_price"],
                 reorder_level=row["reorder_level"],
             )
@@ -943,7 +1134,11 @@ async def import_inventory_items(
             item.name_en = row["name_en"]
             item.category_id = category_id
             item.unit_of_measure = row["unit_of_measure"]
+            if row["has_barcode"]:
+                item.barcode = row["barcode"]
             item.cost_price = row["cost_price"]
+            if row["has_other_cost"]:
+                item.other_cost = row["other_cost"]
             item.sale_price = row["sale_price"]
             item.reorder_level = row["reorder_level"]
             updated += 1
@@ -967,8 +1162,8 @@ async def import_opening_stock(
 
     items = (await db.execute(select(InventoryItem))).scalars().all()
     item_by_sku = {i.sku_code: i for i in items}
-    locations = (await db.execute(select(Location))).scalars().all()
-    loc_by_key: dict[str, Location] = {}
+    locations = (await db.execute(select(InventoryWarehouse))).scalars().all()
+    loc_by_key: dict[str, InventoryWarehouse] = {}
     for loc in locations:
         loc_by_key[str(loc.id)] = loc
         if loc.code:
@@ -979,7 +1174,10 @@ async def import_opening_stock(
     for idx, row in enumerate(rows, start=2):
         sku = (row.get("sku_code") or "").strip()
         loc_key = (
-            (row.get("location") or row.get("location_code") or row.get("location_id") or "").strip()
+            (
+                row.get("warehouse") or row.get("warehouse_code") or row.get("warehouse_id")
+                or row.get("location") or row.get("location_code") or ""
+            ).strip()
         )
         try:
             quantity = _parse_int(row.get("quantity"))
@@ -990,7 +1188,7 @@ async def import_opening_stock(
             errors.append({"row": idx, "error": f"unknown sku_code: {sku}"})
             continue
         if loc_key not in loc_by_key:
-            errors.append({"row": idx, "error": f"unknown location: {loc_key}"})
+            errors.append({"row": idx, "error": f"unknown warehouse: {loc_key}"})
             continue
         if quantity is None or quantity < 0:
             errors.append({"row": idx, "error": "quantity must be a non-negative integer"})
@@ -1026,7 +1224,7 @@ async def import_opening_stock(
         await inventory_svc.apply_movement(
             db,
             item_id=item.id,
-            location_id=location.id,
+            warehouse_id=location.id,
             type="in",
             quantity=row["quantity"],
             reason="opening stock import",

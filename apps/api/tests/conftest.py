@@ -103,6 +103,36 @@ async def admin_token(client: AsyncClient) -> str:
     return resp.json()["access_token"]
 
 
+async def mirror_warehouse(location: dict) -> None:
+    """Insert an inventory warehouse that reuses a centre id.
+
+    Inventory tests still pass ``sample_location['id']`` as the warehouse id.
+    Migration 052 does the same for existing stock, so document numbers and
+    foreign keys keep working without rewriting every fixture call.
+    """
+    from app.models.inventory import InventoryWarehouse
+
+    loc_id = location["id"] if isinstance(location["id"], uuid.UUID) else uuid.UUID(str(location["id"]))
+    raw_code = (location.get("code") or str(loc_id).replace("-", "")[:8]).strip()
+    code = raw_code[:20] or str(loc_id).replace("-", "")[:8]
+    async with TestSessionLocal() as session:
+        if await session.get(InventoryWarehouse, loc_id):
+            return
+        session.add(
+            InventoryWarehouse(
+                id=loc_id,
+                code=code,
+                name_zh=location.get("name_zh") or location.get("name_en") or "Warehouse",
+                name_en=location.get("name_en"),
+                address=location.get("address"),
+                phone=location.get("phone"),
+                location_id=loc_id,
+                is_active=bool(location.get("is_active", True)),
+            )
+        )
+        await session.commit()
+
+
 @pytest_asyncio.fixture
 async def sample_location(client: AsyncClient, admin_token: str) -> dict:
     resp = await client.post(
@@ -111,7 +141,9 @@ async def sample_location(client: AsyncClient, admin_token: str) -> dict:
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 201
-    return resp.json()
+    location = resp.json()
+    await mirror_warehouse(location)
+    return location
 
 
 @pytest_asyncio.fixture
@@ -122,7 +154,9 @@ async def sample_location_b(client: AsyncClient, admin_token: str) -> dict:
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 201
-    return resp.json()
+    location = resp.json()
+    await mirror_warehouse(location)
+    return location
 
 
 @pytest_asyncio.fixture

@@ -3,12 +3,15 @@ import {
   type InventoryItem,
   type InventoryMovement,
   type InventoryMovementTypeOut,
+  type InventoryWarehouse,
   listInventoryItems,
   listInventoryMovements,
+  listWarehouses,
   reasonCodeLabel,
 } from '@/api/attendance/inventory'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
+import { formatAttendanceDateTime } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useLatestRequest } from '@/composables/useLatestRequest'
@@ -22,7 +25,7 @@ const loadError = ref('')
 
 useAutoClearAlerts(loadError)
 
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 const items = ref<InventoryItem[]>([])
 const movements = ref<InventoryMovement[]>([])
 const total = ref(0)
@@ -32,14 +35,14 @@ const pageSize = ref(20)
 const listReq = useLatestRequest()
 
 const itemFilter = ref<string | null>(null)
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 const typeFilter = ref<InventoryMovementTypeOut | null>(null)
 const reasonCodeFilter = ref<string | null>(null)
 const dateFrom = ref('')
 const dateTo = ref('')
 
 const itemById = computed(() => new Map(items.value.map(i => [i.id, i])))
-const locationById = computed(() => new Map(locations.value.map(l => [l.id, l])))
+const warehouseById = computed(() => new Map(warehouses.value.map(l => [l.id, l])))
 
 const itemOptions = computed(() =>
   items.value.map(i => ({
@@ -48,8 +51,8 @@ const itemOptions = computed(() =>
   })),
 )
 
-const locationOptions = computed(() =>
-  locations.value.map(l => ({
+const warehouseOptions = computed(() =>
+  warehouses.value.map(l => ({
     value: l.id,
     title: [l.name_en, l.name_zh].filter(Boolean).join(' · '),
   })),
@@ -83,12 +86,12 @@ onMounted(async () => {
     return
   loading.value = true
   try {
-    const [locationList, itemList] = await Promise.all([
-      listLocations({ is_active: true }),
+    const [warehouseList, itemList] = await Promise.all([
+      listWarehouses({ is_active: true }),
       listInventoryItems(),
     ])
 
-    locations.value = locationList
+    warehouses.value = warehouseList
     items.value = itemList
     await loadMovements()
   }
@@ -108,7 +111,7 @@ async function loadMovements() {
   try {
     const result = await listInventoryMovements({
       item_id: itemFilter.value ?? undefined,
-      location_id: locationFilter.value ?? undefined,
+      warehouse_id: warehouseFilter.value ?? undefined,
       type: typeFilter.value ?? undefined,
       reason_code: reasonCodeFilter.value ?? undefined,
       date_from: dateFrom.value || undefined,
@@ -140,18 +143,14 @@ function itemLabel(id: string): string {
   return item ? `${item.sku_code} · ${item.name_zh}` : id
 }
 
-function locationLabel(id: string): string {
-  const location = locationById.value.get(id)
+function warehouseLabel(id: string): string {
+  const location = warehouseById.value.get(id)
 
   return location ? (location.name_en || location.name_zh || id) : id
 }
 
 function typeLabel(type: string): string {
   return typeOptions.find(t => t.value === type)?.title ?? type
-}
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString()
 }
 </script>
 
@@ -206,9 +205,9 @@ function formatDateTime(value: string): string {
           @update:model-value="onFiltersChange"
         />
         <VSelect
-          v-model="locationFilter"
-          :items="locationOptions"
-          label="Location"
+          v-model="warehouseFilter"
+          :items="warehouseOptions"
+          label="Warehouse 倉庫"
           density="comfortable"
           style="max-width: 240px"
           hide-details
@@ -260,7 +259,7 @@ function formatDateTime(value: string): string {
             <tr>
               <th>Time</th>
               <th>Item</th>
-              <th>Location</th>
+              <th>Warehouse</th>
               <th>Type</th>
               <th class="text-end">
                 Delta
@@ -277,9 +276,9 @@ function formatDateTime(value: string): string {
               v-for="movement in movements"
               :key="movement.id"
             >
-              <td>{{ formatDateTime(movement.created_at) }}</td>
+              <td>{{ formatAttendanceDateTime(movement.created_at) }}</td>
               <td>{{ itemLabel(movement.item_id) }}</td>
-              <td>{{ locationLabel(movement.location_id) }}</td>
+              <td>{{ warehouseLabel(movement.warehouse_id) }}</td>
               <td>
                 <VChip
                   :color="movement.type === 'in' ? 'success' : movement.type === 'out' ? 'error' : 'info'"
@@ -300,11 +299,11 @@ function formatDateTime(value: string): string {
               <td>{{ movement.reference || '—' }}</td>
             </tr>
             <tr v-if="movements.length === 0 && !loading">
-              <td
-                colspan="9"
-                class="text-center text-medium-emphasis py-8"
-              >
-                No movements match these filters — record stock on the Stock Overview page.
+              <td colspan="9">
+                <InventoryEmptyState
+                  icon="ri-arrow-left-right-line"
+                  text="No movements match these filters. Record stock on the Stock Overview page."
+                />
               </td>
             </tr>
           </tbody>

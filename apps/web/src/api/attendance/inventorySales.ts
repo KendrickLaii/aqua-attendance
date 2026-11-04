@@ -79,7 +79,7 @@ export interface SalesOrder {
   so_no: string
   customer_id: string
   buyer_name: string
-  location_id: string
+  warehouse_id: string
   order_date: string
   status: SalesOrderStatus
   discount_amount: number
@@ -94,7 +94,7 @@ export interface SalesOrder {
   lines: SalesOrderLine[]
   customer_name: string | null
   customer_code: string | null
-  location_name: string | null
+  warehouse_name: string | null
 }
 
 export interface SalesOrderLinePayload {
@@ -106,7 +106,7 @@ export interface SalesOrderLinePayload {
 
 export interface SalesOrderPayload {
   customer_id: string
-  location_id: string
+  warehouse_id: string
   order_date: string
   discount_amount?: number
   notes?: string | null
@@ -119,11 +119,11 @@ export interface ProformaDoc {
   issued_at: string
   valid_until: string | null
   order_date: string
-  location_name_zh: string | null
-  location_name_en: string | null
-  location_address: string | null
-  location_phone: string | null
-  location_email: string | null
+  warehouse_name_zh: string | null
+  warehouse_name_en: string | null
+  warehouse_address: string | null
+  warehouse_phone: string | null
+  warehouse_email: string | null
   customer_name: string
   customer_code: string | null
   customer_contact: string | null
@@ -139,10 +139,11 @@ export interface ProformaDoc {
 
 export async function listSalesOrders(params?: {
   customer_id?: string
-  location_id?: string
+  warehouse_id?: string
   status?: SalesOrderStatus
   date_from?: string
   date_to?: string
+  search?: string
   page?: number
   page_size?: number
 }) {
@@ -207,7 +208,7 @@ export interface DeliveryOrder {
   invoice_no: string | null
   so_id: string
   customer_id: string
-  location_id: string
+  warehouse_id: string
   delivery_date: string
   status: DeliveryOrderStatus
   notes: string | null
@@ -217,7 +218,7 @@ export interface DeliveryOrder {
   lines: DeliveryOrderLine[]
   so_no_ref: string | null
   customer_name: string | null
-  location_name: string | null
+  warehouse_name: string | null
 }
 
 export interface DeliveryOrderLinePayload {
@@ -235,7 +236,7 @@ export interface DeliveryOrderPayload {
 
 export async function listDeliveryOrders(params?: {
   customer_id?: string
-  location_id?: string
+  warehouse_id?: string
   so_id?: string
   invoice_id?: string
   status?: DeliveryOrderStatus

@@ -118,7 +118,7 @@ interface FlowStep {
 
 const steps: FlowStep[] = [
   { en: 'Create items — set up categories and items with sale/cost price and reorder level (Items).', zh: '建立品項 — 在 Items 設定分類、售價／成本價與補貨點。' },
-  { en: 'Load opening stock — record opening balances per location, or import them via CSV (Stock Overview).', zh: '輸入期初庫存 — 在各分校登記期初數量，或用 CSV 匯入（Stock Overview）。' },
+  { en: 'Load opening stock — record opening balances per warehouse, or import them via CSV (Stock Overview).', zh: '輸入期初庫存 — 在各倉庫登記期初數量，或用 CSV 匯入（Stock Overview）。' },
   { en: 'Create a purchase order — pick a supplier and order quantities (Purchase Orders).', zh: '建立採購單 — 選擇供應商與採購數量（Purchase Orders）。' },
   { en: 'Order the PO — move it from draft to ordered (Confirm on the PO).', zh: '送出採購單 — 將草稿 PO 確認為已下單。' },
   { en: 'Receive goods — create a Goods Receipt from the PO and confirm it; stock increases and avg cost updates (Goods Receipts).', zh: '收貨 — 由 PO 建立收貨單（GRN）並確認，庫存增加並更新平均成本（Goods Receipts）。' },
@@ -128,7 +128,7 @@ const steps: FlowStep[] = [
   { en: 'Deliver — create Delivery Orders under the issued invoice; they record what was physically delivered, no stock effect (Delivery Orders).', zh: '送貨 — 在已開立的發票下建立出貨單，只記錄實際送貨，不影響庫存（Delivery Orders）。' },
   { en: 'Collect — record a Receipt when the customer pays (Receipts).', zh: '收款 — 客戶付款時登記收據（Receipts）。' },
   { en: 'Handle returns — issue a Credit Note against the invoice; choose whether goods are restocked (Credit Notes).', zh: '處理退貨 — 對發票開立折讓單，可選擇是否回補庫存（Credit Notes）。' },
-  { en: 'Reconcile — run stocktakes per location, check Movements for the audit trail, and watch the Dashboard alerts.', zh: '對帳 — 定期盤點、在 Movements 查閱異動流水，並留意 Dashboard 警示。' },
+  { en: 'Reconcile — run stocktakes per warehouse, check Movements for the audit trail, and watch the Dashboard alerts.', zh: '對帳 — 按倉庫定期盤點、在 Movements 查閱異動流水，並留意 Dashboard 警示。' },
 ]
 </script>
 

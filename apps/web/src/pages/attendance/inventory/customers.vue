@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventoryCustomer,
   type InventoryCustomerPayload,
@@ -10,23 +11,25 @@ import {
 } from '@/api/attendance/inventorySales'
 import { type Unit, listUnits } from '@/api/attendance/units'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
+const display = useDisplay()
+
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const saving = ref(false)
 const loadError = ref('')
 const saveError = ref('')
-const saveSuccess = ref('')
 
 useAutoClearAlerts(loadError)
 useAutoClearAlerts(saveError)
-useAutoClearAlerts(saveSuccess)
 
 const customers = ref<InventoryCustomer[]>([])
 const total = ref(0)
@@ -148,17 +151,18 @@ function openEdit(customer: InventoryCustomer) {
 
 async function submit() {
   saveError.value = ''
-  saveSuccess.value = ''
   saving.value = true
   try {
     const payload = { ...form }
+
+    const wasEditing = !!editing.value
 
     if (editing.value)
       await updateCustomer(editing.value.id, payload)
     else
       await createCustomer(payload)
 
-    saveSuccess.value = editing.value ? 'Customer updated.' : 'Customer created.'
+    toast.show(`Customer ${payload.code || payload.name_zh} ${wasEditing ? 'updated' : 'created'}`)
     dialogOpen.value = false
     await loadCustomers()
   }
@@ -198,12 +202,11 @@ async function submitFromStudent() {
   if (!selectedStudentId.value)
     return
   saveError.value = ''
-  saveSuccess.value = ''
   saving.value = true
   try {
     const customer = await createCustomerFromStudent(selectedStudentId.value)
 
-    saveSuccess.value = `Customer ${customer.code} created from unit.`
+    toast.show(`Customer ${customer.code} created from unit.`)
     studentDialogOpen.value = false
     await loadCustomers()
   }
@@ -277,16 +280,6 @@ async function submitFromStudent() {
       @click:close="loadError = ''"
     >
       {{ loadError }}
-    </VAlert>
-    <VAlert
-      v-if="saveSuccess"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="saveSuccess = ''"
-    >
-      {{ saveSuccess }}
     </VAlert>
 
     <VCard>
@@ -372,11 +365,13 @@ async function submitFromStudent() {
               </td>
             </tr>
             <tr v-if="customers.length === 0 && !loading">
-              <td
-                colspan="7"
-                class="text-center text-medium-emphasis py-8"
-              >
-                還沒有客戶 — 按「New customer」或「From Unit」（從單位名單建立）新增。
+              <td colspan="7">
+                <InventoryEmptyState
+                  icon="ri-user-line"
+                  text="還沒有客戶 — 新增客戶，或按「From Unit」從單位名單建立。"
+                  action-label="New customer"
+                  @action="openCreate"
+                />
               </td>
             </tr>
           </tbody>
@@ -394,6 +389,8 @@ async function submitFromStudent() {
     <VDialog
       v-model="dialogOpen"
       max-width="560"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard :title="editing ? `Edit ${editing.code}` : 'New customer'">
         <VCardText>
@@ -406,56 +403,101 @@ async function submitFromStudent() {
           >
             {{ saveError }}
           </VAlert>
-          <VTextField
-            v-model="form.code"
-            label="Code"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.name_zh"
-            label="Name (zh)"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.name_en"
-            label="Name (en)"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VSelect
-            v-model="form.type"
-            :items="typeOptions"
-            label="Type"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.contact_name"
-            label="Contact"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.phone"
-            label="Phone"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.email"
-            label="Email"
-            type="email"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.address"
-            label="Address"
-            density="comfortable"
-            class="mb-3"
-          />
+          <div class="text-overline text-medium-emphasis mb-2">
+            Identification
+          </div>
+          <VRow>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.code"
+                label="Code"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VSelect
+                v-model="form.type"
+                :items="typeOptions"
+                label="Type"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.name_zh"
+                label="Name (zh)"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.name_en"
+                label="Name (en)"
+                density="comfortable"
+              />
+            </VCol>
+          </VRow>
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">
+            Contact
+          </div>
+          <VRow>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.contact_name"
+                label="Contact"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.phone"
+                label="Phone"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.email"
+                label="Email"
+                type="email"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.address"
+                label="Address"
+                density="comfortable"
+              />
+            </VCol>
+          </VRow>
+          <div class="text-overline text-medium-emphasis mb-1 mt-4">
+            Status
+          </div>
           <VCheckbox
             v-model="form.is_active"
             label="Active"
@@ -463,6 +505,7 @@ async function submitFromStudent() {
             hide-details
           />
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn
@@ -485,7 +528,9 @@ async function submitFromStudent() {
 
     <VDialog
       v-model="studentDialogOpen"
-      max-width="520"
+      max-width="560"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard title="Create Customer from Unit">
         <VCardText>
@@ -514,6 +559,7 @@ async function submitFromStudent() {
             density="comfortable"
           />
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn

@@ -30,8 +30,8 @@ class InventoryInvoice(Base):
         ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     buyer_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     issue_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(
@@ -53,7 +53,7 @@ class InventoryInvoice(Base):
 
     so = relationship("SalesOrder")
     customer = relationship("Customer")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     lines = relationship("InventoryInvoiceLine", back_populates="invoice", cascade="all, delete-orphan")
 
 
@@ -95,8 +95,8 @@ class InventoryReceipt(Base):
     customer_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     paid_by: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -118,7 +118,7 @@ class InventoryReceipt(Base):
 
     invoice = relationship("InventoryInvoice")
     customer = relationship("Customer")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
 
 
 class InventoryCreditNote(Base):
@@ -132,8 +132,8 @@ class InventoryCreditNote(Base):
     customer_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     credit_date: Mapped[date] = mapped_column(Date, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
@@ -153,7 +153,7 @@ class InventoryCreditNote(Base):
 
     invoice = relationship("InventoryInvoice")
     customer = relationship("Customer")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     lines = relationship("InventoryCreditNoteLine", back_populates="scn", cascade="all, delete-orphan")
 
 

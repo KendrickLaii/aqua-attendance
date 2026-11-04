@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventoryCategory,
   type InventoryCategoryPayload,
@@ -17,6 +18,8 @@ const emit = defineEmits<{
   saved: []
 }>()
 
+const display = useDisplay()
+const toast = useToast()
 const saving = ref(false)
 const saveError = ref('')
 
@@ -56,6 +59,7 @@ async function save() {
       await createInventoryCategory(payload)
     emit('update:modelValue', false)
     emit('saved')
+    toast.show(`Category ${payload.name_zh} saved`)
   }
   catch (e) {
     saveError.value = formatApiError(e, 'Could not save category.')
@@ -69,7 +73,9 @@ async function save() {
 <template>
   <VDialog
     :model-value="modelValue"
-    max-width="480"
+    max-width="560"
+    :fullscreen="display.xs.value"
+    scrollable
     @update:model-value="emit('update:modelValue', $event)"
   >
     <VCard :title="editingCategory ? 'Edit category' : 'Add category'">
@@ -107,6 +113,7 @@ async function save() {
           hide-details
         />
       </VCardText>
+      <VDivider />
       <VCardActions>
         <VSpacer />
         <VBtn

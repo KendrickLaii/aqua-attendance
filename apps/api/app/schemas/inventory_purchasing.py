@@ -74,7 +74,7 @@ class PurchaseOrderLineOut(BaseModel):
 
 class PurchaseOrderCreate(BaseModel):
     supplier_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     order_date: date
     expected_date: date | None = None
     discount_amount: float = Field(default=0, ge=0)
@@ -84,7 +84,7 @@ class PurchaseOrderCreate(BaseModel):
 
 class PurchaseOrderUpdate(BaseModel):
     supplier_id: uuid.UUID | None = None
-    location_id: uuid.UUID | None = None
+    warehouse_id: uuid.UUID | None = None
     order_date: date | None = None
     expected_date: date | None = None
     discount_amount: float | None = Field(default=None, ge=0)
@@ -96,7 +96,7 @@ class PurchaseOrderOut(BaseModel):
     id: uuid.UUID
     po_no: str
     supplier_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     order_date: date
     expected_date: date | None = None
     status: PoStatus
@@ -109,7 +109,7 @@ class PurchaseOrderOut(BaseModel):
     lines: list[PurchaseOrderLineOut] = Field(default_factory=list)
 
     supplier_name: str | None = None
-    location_name: str | None = None
+    warehouse_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -136,7 +136,7 @@ class GoodsReceiptLineOut(BaseModel):
 class GoodsReceiptCreate(BaseModel):
     po_id: uuid.UUID | None = None
     supplier_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     receipt_date: date
     notes: str | None = Field(default=None, max_length=500)
     allow_over_receipt: bool = False
@@ -161,7 +161,7 @@ class GoodsReceiptOut(BaseModel):
     grn_no: str
     po_id: uuid.UUID | None = None
     supplier_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     receipt_date: date
     status: ReceiptStatus
     notes: str | None = None
@@ -171,7 +171,7 @@ class GoodsReceiptOut(BaseModel):
     lines: list[GoodsReceiptLineOut] = Field(default_factory=list)
 
     supplier_name: str | None = None
-    location_name: str | None = None
+    warehouse_name: str | None = None
     po_no: str | None = None
 
     model_config = {"from_attributes": True}
@@ -196,7 +196,7 @@ class PurchaseReturnLineOut(BaseModel):
 
 class PurchaseReturnCreate(BaseModel):
     supplier_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     grn_id: uuid.UUID | None = None
     return_date: date
     notes: str | None = Field(default=None, max_length=500)
@@ -214,7 +214,7 @@ class PurchaseReturnOut(BaseModel):
     id: uuid.UUID
     prt_no: str
     supplier_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     grn_id: uuid.UUID | None = None
     return_date: date
     status: ReceiptStatus
@@ -225,7 +225,7 @@ class PurchaseReturnOut(BaseModel):
     lines: list[PurchaseReturnLineOut] = Field(default_factory=list)
 
     supplier_name: str | None = None
-    location_name: str | None = None
+    warehouse_name: str | None = None
     grn_no: str | None = None
 
     model_config = {"from_attributes": True}

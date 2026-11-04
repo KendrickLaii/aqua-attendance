@@ -5,7 +5,6 @@ import { listLocations } from '@/api/attendance/locations'
 import type { LocationItem } from '@/api/attendance/locations'
 import UnitQrDialogs from '@/components/attendance/UnitQrDialogs.vue'
 import UnitFormDialog from '@/components/attendance/units/UnitFormDialog.vue'
-import AppToastStack from '@/components/AppToastStack.vue'
 import { formatLastAttendance } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -213,7 +212,6 @@ function openEdit(p: Unit) {
   editingUnit.value = p
   dialogOpen.value = true
 }
-
 
 function openDeleteConfirm(p: Unit) {
   deleteError.value = ''
@@ -682,7 +680,6 @@ function rowStatusChip(p: Unit) {
       @saved="loadUnits(true)"
     />
 
-
     <AttendanceConfirmDialog
       v-model="deleteConfirmOpen"
       :title="`Delete ${deleteTarget?.full_name}?`"
@@ -697,8 +694,6 @@ function rowStatusChip(p: Unit) {
       People with attendance, enrollments, invoices, or payroll cannot be deleted — set them inactive instead.
       This action cannot be undone.
     </AttendanceConfirmDialog>
-
-    <AppToastStack />
 
     <UnitQrDialogs
       ref="qrDialogsRef"

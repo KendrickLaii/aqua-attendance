@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
+import { type InventoryWarehouse, listWarehouses } from '@/api/attendance/inventory'
+
 import {
   type InventoryInvoice,
   type InventoryInvoicePrintDoc,
@@ -13,13 +16,13 @@ import {
   voidInvoice,
 } from '@/api/attendance/inventoryInvoicing'
 import {
+  type DeliveryOrder,
   type InventoryCustomer,
   type SalesOrder,
   getSalesOrder,
   listCustomers,
   listSalesOrders,
 } from '@/api/attendance/inventorySales'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryCreateDeliveryDialog from '@/components/attendance/inventory/InventoryCreateDeliveryDialog.vue'
@@ -27,8 +30,10 @@ import InventoryDocChain, { type DocChainStep } from '@/components/attendance/in
 import InventoryInvoicePrintDialog from '@/components/attendance/inventory/InventoryInvoicePrintDialog.vue'
 import InventoryRecordPaymentDialog from '@/components/attendance/inventory/InventoryRecordPaymentDialog.vue'
 import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
 import { useDirtyGuard } from '@/composables/useDirtyGuard'
@@ -37,19 +42,17 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
+const display = useDisplay()
 
 const loading = ref(true)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
 const customers = ref<InventoryCustomer[]>([])
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 
 const invoices = ref<InventoryInvoice[]>([])
 const total = ref(0)
@@ -69,7 +72,7 @@ const paymentFilter = ref<InventoryPaymentStatus | null>(
 )
 
 const customerFilter = ref<string | null>(null)
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 const search = ref('')
 
 const selected = ref<InventoryInvoice | null>(null)
@@ -105,6 +108,7 @@ const createLines = ref<{ so_line_id: string; label: string; remaining: number; 
 const createDiscount = ref<number | null>(null)
 const soOptions = ref<SalesOrder[]>([])
 const soLoading = ref(false)
+const createError = ref('')
 let soSearchTimer: ReturnType<typeof setTimeout> | undefined
 
 watch([createSoId, createNotes, createLines, createDiscount], () => {
@@ -112,9 +116,20 @@ watch([createSoId, createNotes, createLines, createDiscount], () => {
     dirty.dirty.value = true
 })
 
+function soTitle(so: SalesOrder): string {
+  return `${so.so_no} · ${so.buyer_name ?? ''} · ${so.order_date}`
+}
+
+function withSelectedSo(options: SalesOrder[]): SalesOrder[] {
+  const selectedSo = createSo.value
+
+  return selectedSo && !options.some(o => o.id === selectedSo.id) ? [selectedSo, ...options] : options
+}
+
 watch(createSoId, async id => {
   createSo.value = null
   createLines.value = []
+  createError.value = ''
   if (!id)
     return
   soLoading.value = true
@@ -122,6 +137,7 @@ watch(createSoId, async id => {
     const so = await getSalesOrder(id)
 
     createSo.value = so
+    soOptions.value = withSelectedSo(soOptions.value)
     createLines.value = so.lines
       .map(l => ({
         so_line_id: l.id,
@@ -132,7 +148,7 @@ watch(createSoId, async id => {
       .filter(l => l.remaining > 0)
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    createError.value = formatApiError(e, 'Operation failed.')
   }
   finally {
     soLoading.value = false
@@ -209,7 +225,7 @@ const docMore = computed<InventoryDocMoreItem[]>(() => {
   if (inv.invoice_no)
     items.push({ label: 'Print', sub: '列印發票', icon: 'ri-printer-line', onClick: onPrint })
   if (inv.status === 'issued')
-    items.push({ label: 'Create Credit Note', sub: '為這張發票開折讓單', icon: 'ri-refund-2-line', onClick: () => router.push({ path: '/attendance/inventory/credit-notes', query: { invoice_id: inv.id } }) })
+    items.push({ label: 'Create Credit Note', sub: inv.balance > 0 ? '為這張發票開折讓單' : '已全數收款，請先作廢收據才能開折讓單', icon: 'ri-refund-2-line', disabled: inv.balance <= 0, onClick: () => router.push({ path: '/attendance/inventory/credit-notes', query: { invoice_id: inv.id } }) })
   if (inv.status === 'draft')
     items.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
   if (inv.status === 'issued')
@@ -226,7 +242,7 @@ async function load() {
   try {
     const res = await listInvoices({
       customer_id: customerFilter.value || undefined,
-      location_id: locationFilter.value || undefined,
+      warehouse_id: warehouseFilter.value || undefined,
       status: statusFilter.value || undefined,
       payment_status: paymentFilter.value || undefined,
       search: search.value || undefined,
@@ -254,30 +270,36 @@ function onRowClick(_e: Event, row: { item: InventoryInvoice }) {
   selected.value = row.item
 }
 
-function openCreate(soId?: string) {
-  createSoId.value = soId ?? null
+async function openCreate(soId?: unknown) {
+  const preselected = typeof soId === 'string' ? soId : null
+
+  createError.value = ''
+  createSoId.value = null
   createNotes.value = ''
   createDiscount.value = null
   dirty.markClean()
   createOpen.value = true
   loadSos('')
+  if (preselected) {
+    await nextTick()
+    createSoId.value = preselected
+  }
 }
 
 async function loadSos(term: string) {
   soLoading.value = true
   try {
+    const needle = (term ?? '').trim() || undefined
+
     const [confirmed, partial] = await Promise.all([
-      listSalesOrders({ status: 'confirmed', page_size: 50 }),
-      listSalesOrders({ status: 'partial', page_size: 50 }),
+      listSalesOrders({ status: 'confirmed', search: needle, page_size: 50 }),
+      listSalesOrders({ status: 'partial', search: needle, page_size: 50 }),
     ])
 
-    const needle = (term || '').toLowerCase()
-
-    soOptions.value = [...confirmed.items, ...partial.items]
-      .filter(so => !needle || so.so_no.toLowerCase().includes(needle) || (so.buyer_name || '').toLowerCase().includes(needle))
+    soOptions.value = withSelectedSo([...confirmed.items, ...partial.items])
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    createError.value = formatApiError(e, 'Operation failed.')
   }
   finally {
     soLoading.value = false
@@ -285,6 +307,8 @@ async function loadSos(term: string) {
 }
 
 function onSoSearch(term: string) {
+  if (createSo.value && term === soTitle(createSo.value))
+    return
   clearTimeout(soSearchTimer)
   soSearchTimer = setTimeout(() => loadSos(term), 300)
 }
@@ -298,7 +322,7 @@ async function submitCreate() {
   if (!createValid.value || !createSo.value)
     return
   saving.value = true
-  actionError.value = ''
+  createError.value = ''
   try {
     const inv = await createInvoice({
       so_id: createSo.value.id,
@@ -311,12 +335,12 @@ async function submitCreate() {
 
     dirty.markClean()
     createOpen.value = false
-    actionSuccess.value = `Invoice draft created for ${inv.so_no}`
+    toast.show(`Invoice draft created for ${inv.so_no}`)
     await load()
     selected.value = inv
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    createError.value = formatApiError(e, 'Operation failed.')
   }
   finally {
     saving.value = false
@@ -328,7 +352,7 @@ function askIssue() {
     return
   confirm.ask(
     `Issue ${selected.value.invoice_no || 'draft invoice'}?`,
-    `開立後會編配發票號碼、庫存正式扣減，向客戶收取 ${fmtMoney(selected.value.total)}。`,
+    `開立後會編配發票號碼、庫存正式扣減，向客戶收取 ${formatMoney(selected.value.total)}。`,
     { label: 'Issue', tone: 'info', details: ['庫存會正式扣減', '開始計算應收款項', '只能透過作廢取消'] },
     performIssue,
   )
@@ -338,14 +362,13 @@ async function performIssue() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
     selected.value = await issueInvoice(selected.value.id)
-    actionSuccess.value = `Invoice ${selected.value.invoice_no} issued`
+    toast.show(`Invoice ${selected.value.invoice_no} issued`)
     await load()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -367,14 +390,13 @@ async function performVoid() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
     selected.value = await voidInvoice(selected.value.id)
-    actionSuccess.value = 'Invoice voided'
+    toast.show(`Invoice ${selected.value.invoice_no} voided`)
     await load()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -396,15 +418,14 @@ async function performDelete() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
     await deleteInvoice(selected.value.id)
-    actionSuccess.value = 'Draft invoice deleted'
+    toast.show('Draft invoice deleted')
     selected.value = null
     await load()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -418,14 +439,13 @@ function openPay() {
 }
 
 async function onPaymentSaved() {
-  actionSuccess.value = 'Receipt posted'
   if (selected.value)
     selected.value = await getInvoice(selected.value.id)
   await load()
 }
 
-async function onDeliveryCreated() {
-  actionSuccess.value = 'Delivery order created'
+async function onDeliveryCreated(dor: DeliveryOrder) {
+  toast.show(`Delivery order ${dor.do_no} created`)
   if (selected.value)
     selected.value = await getInvoice(selected.value.id)
   await load()
@@ -439,15 +459,11 @@ async function onPrint() {
     printOpen.value = true
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
 }
 
-function fmtMoney(value: number | null | undefined): string {
-  return (value ?? 0).toFixed(2)
-}
-
-watch([statusFilter, paymentFilter, customerFilter, locationFilter], () => {
+watch([statusFilter, paymentFilter, customerFilter, warehouseFilter], () => {
   page.value = 1
   load()
 })
@@ -458,11 +474,11 @@ onMounted(async () => {
   try {
     const [custs, locs] = await Promise.all([
       listCustomers({ is_active: true, page_size: 200 }),
-      listLocations(),
+      listWarehouses(),
     ])
 
     customers.value = custs.items
-    locations.value = locs
+    warehouses.value = locs
   }
   catch {
     // filters still work without dropdown data
@@ -525,10 +541,10 @@ onMounted(async () => {
           style="max-width: 180px"
         />
         <VSelect
-          v-model="locationFilter"
-          :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
+          v-model="warehouseFilter"
+          :items="warehouses.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
           density="compact"
-          label="Location"
+          label="Warehouse 倉庫"
           clearable
           hide-details
           style="max-width: 160px"
@@ -551,7 +567,7 @@ onMounted(async () => {
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
-          @click="openCreate"
+          @click="() => openCreate()"
         >
           New Invoice
         </VBtn>
@@ -568,45 +584,36 @@ onMounted(async () => {
         >
           {{ loadError }}
         </VAlert>
-        <VAlert
-          v-if="actionError"
-          type="error"
-          variant="tonal"
-          class="mb-4"
-        >
-          {{ actionError }}
-        </VAlert>
-        <VAlert
-          v-if="actionSuccess"
-          type="success"
-          variant="tonal"
-          class="mb-4"
-        >
-          {{ actionSuccess }}
-        </VAlert>
 
         <VDataTable
           :headers="headers"
           :items="invoices"
           :loading="loading"
           density="compact"
-          no-data-text="還沒有發票 — 按「New Invoice」從已確認的銷售單建立。"
           @click:row="onRowClick"
         >
           <template #item.invoice_no="{ item }">
             <span class="font-weight-medium">{{ item.invoice_no || '(draft)' }}</span>
           </template>
           <template #item.total="{ item }">
-            <span class="tabular-nums">{{ fmtMoney(item.total) }}</span>
+            <span class="tabular-nums">{{ formatMoney(item.total) }}</span>
           </template>
           <template #item.balance="{ item }">
-            <span class="tabular-nums">{{ fmtMoney(item.balance) }}</span>
+            <span class="tabular-nums">{{ formatMoney(item.balance) }}</span>
           </template>
           <template #item.status="{ item }">
             <InventoryStatusChip :status="item.status" />
           </template>
           <template #item.payment_status="{ item }">
             <InventoryStatusChip :status="item.payment_status" />
+          </template>
+          <template #no-data>
+            <InventoryEmptyState
+              icon="ri-bill-line"
+              text="No invoices yet."
+              action-label="New Invoice"
+              @action="() => openCreate()"
+            />
           </template>
         </VDataTable>
         <AttendancePaginationBar
@@ -621,7 +628,9 @@ onMounted(async () => {
 
     <VDialog
       :model-value="!!selected"
-      max-width="760"
+      max-width="900"
+      :fullscreen="display.xs.value"
+      scrollable
       @update:model-value="v => { if (!v) selected = null }"
     >
       <VCard v-if="selected">
@@ -681,10 +690,10 @@ onMounted(async () => {
                     {{ line.qty }}
                   </td>
                   <td class="text-end tabular-nums">
-                    {{ fmtMoney(line.unit_price) }}
+                    {{ formatMoney(line.unit_price) }}
                   </td>
                   <td class="text-end tabular-nums">
-                    {{ fmtMoney(line.amount) }}
+                    {{ formatMoney(line.amount) }}
                   </td>
                   <td class="text-end tabular-nums">
                     {{ line.delivered_qty }}
@@ -701,17 +710,17 @@ onMounted(async () => {
           </div>
           <div class="d-flex justify-end mt-3 text-body-2">
             <div>
-              <div>Subtotal: {{ fmtMoney(selected.subtotal) }}</div>
-              <div>Discount: -{{ fmtMoney(selected.discount_amount) }}</div>
+              <div>Subtotal: {{ formatMoney(selected.subtotal) }}</div>
+              <div>Discount: -{{ formatMoney(selected.discount_amount) }}</div>
               <div class="font-weight-bold">
-                Total: {{ fmtMoney(selected.total) }}
+                Total: {{ formatMoney(selected.total) }}
               </div>
-              <div>Paid: {{ fmtMoney(selected.paid_total) }}</div>
+              <div>Paid: {{ formatMoney(selected.paid_total) }}</div>
               <div v-if="selected.credited_total">
-                Credited: {{ fmtMoney(selected.credited_total) }}
+                Credited: {{ formatMoney(selected.credited_total) }}
               </div>
               <div class="font-weight-bold">
-                Balance: {{ fmtMoney(selected.balance) }}
+                Balance: {{ formatMoney(selected.balance) }}
               </div>
             </div>
           </div>
@@ -770,7 +779,7 @@ onMounted(async () => {
                 <RouterLink to="/attendance/inventory/receipts">
                   {{ r.receipt_no }}
                 </RouterLink>
-                · {{ fmtMoney(r.amount) }} · {{ r.paid_by }} · {{ r.status }}
+                · {{ formatMoney(r.amount) }} · {{ r.paid_by }} · {{ r.status }}
               </div>
             </div>
             <div
@@ -795,7 +804,7 @@ onMounted(async () => {
                 <RouterLink to="/attendance/inventory/credit-notes">
                   {{ s.scn_no }}
                 </RouterLink>
-                · {{ fmtMoney(s.total) }} · {{ s.status }}
+                · {{ formatMoney(s.total) }} · {{ s.status }}
               </div>
             </div>
             <div
@@ -806,6 +815,7 @@ onMounted(async () => {
             </div>
           </div>
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <InventoryDocActions
@@ -820,17 +830,31 @@ onMounted(async () => {
 
     <VDialog
       v-model="createOpen"
-      max-width="440"
+      max-width="900"
       :persistent="dirty.dirty.value"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard>
         <VCardTitle>New Invoice from Sales Order</VCardTitle>
         <VCardText>
+          <VAlert
+            v-if="createError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ createError }}
+          </VAlert>
+          <div class="text-overline text-medium-emphasis mb-2">
+            Sales order
+          </div>
           <VAutocomplete
             v-model="createSoId"
             :items="soOptions"
             item-value="id"
-            :item-props="s => ({ title: `${s.so_no} · ${s.buyer_name ?? ''} · ${s.order_date}`, subtitle: s.status })"
+            :item-props="(s: SalesOrder) => ({ title: soTitle(s), subtitle: s.status })"
             :loading="soLoading"
             no-filter
             label="銷售單 Sales Order *"
@@ -838,9 +862,15 @@ onMounted(async () => {
             persistent-hint
             @update:search="onSoSearch"
           />
+          <div
+            v-if="createLines.length"
+            class="text-overline text-medium-emphasis mb-2 mt-4"
+          >
+            Lines
+          </div>
           <VTable
             v-if="createLines.length"
-            class="inv-line-table mt-3"
+            class="inv-line-table"
             density="compact"
           >
             <thead>
@@ -887,19 +917,34 @@ onMounted(async () => {
           >
             這張銷售單已全數開票。
           </VAlert>
-          <VTextField
-            v-model.number="createDiscount"
-            type="number"
-            min="0"
-            label="Discount (留空按比例)"
-            class="mt-3"
-          />
-          <VTextField
-            v-model="createNotes"
-            label="Notes"
-            class="mt-3"
-          />
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">
+            Adjustments &amp; notes
+          </div>
+          <VRow>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model.number="createDiscount"
+                type="number"
+                min="0"
+                prefix="HK$"
+                label="Discount (留空按比例)"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="createNotes"
+                label="Notes"
+              />
+            </VCol>
+          </VRow>
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn

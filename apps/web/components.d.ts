@@ -389,6 +389,7 @@ declare module 'vue' {
     InventoryCreditNotePrintDialog: typeof import('./src/components/attendance/inventory/InventoryCreditNotePrintDialog.vue')['default']
     InventoryDocActions: typeof import('./src/components/attendance/inventory/InventoryDocActions.vue')['default']
     InventoryDocChain: typeof import('./src/components/attendance/inventory/InventoryDocChain.vue')['default']
+    InventoryEmptyState: typeof import('./src/components/attendance/inventory/InventoryEmptyState.vue')['default']
     InventoryInvoicePrintDialog: typeof import('./src/components/attendance/inventory/InventoryInvoicePrintDialog.vue')['default']
     InventoryItemDialog: typeof import('./src/components/attendance/inventory/InventoryItemDialog.vue')['default']
     InventoryItemImage: typeof import('./src/components/attendance/inventory/InventoryItemImage.vue')['default']
@@ -449,6 +450,7 @@ declare module 'vue' {
     UnitQrDialogs: typeof import('./src/components/attendance/UnitQrDialogs.vue')['default']
     UserInfoEditDialog: typeof import('./src/components/dialogs/UserInfoEditDialog.vue')['default']
     UserUpgradePlanDialog: typeof import('./src/components/dialogs/UserUpgradePlanDialog.vue')['default']
+    VueApexCharts: typeof import('vue3-apexcharts')['default']
     WorkingSectionDialog: typeof import('./src/components/dialogs/tax/WorkingSectionDialog.vue')['default']
   }
 }

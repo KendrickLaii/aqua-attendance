@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { type InventoryWarehouse, listWarehouses } from '@/api/attendance/inventory'
+
 import {
   type InventoryReceipt,
   type InventoryReceiptPrintDoc,
@@ -10,13 +12,14 @@ import {
   voidReceipt,
 } from '@/api/attendance/inventoryInvoicing'
 import { type InventoryCustomer, listCustomers } from '@/api/attendance/inventorySales'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryReceiptPrintDialog from '@/components/attendance/inventory/InventoryReceiptPrintDialog.vue'
 import InventoryRecordPaymentDialog, { type PaymentInvoiceOption } from '@/components/attendance/inventory/InventoryRecordPaymentDialog.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
 import { useLatestRequest } from '@/composables/useLatestRequest'
@@ -24,19 +27,16 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
 const customers = ref<InventoryCustomer[]>([])
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 
 const receipts = ref<InventoryReceipt[]>([])
 const total = ref(0)
@@ -45,7 +45,7 @@ const pageSize = ref(20)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const statusFilter = ref<InventoryReceiptStatus | null>(null)
 const customerFilter = ref<string | null>(null)
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 const search = ref('')
 
 const listReq = useLatestRequest()
@@ -59,8 +59,6 @@ const payOpen = ref(false)
 const payInvoiceOptions = ref<PaymentInvoiceOption[]>([])
 const payInvoicesLoading = ref(false)
 
-const moneyFmt = new Intl.NumberFormat('en-HK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
 async function openPay() {
   payOpen.value = true
   payInvoicesLoading.value = true
@@ -71,12 +69,12 @@ async function openPay() {
       .filter(inv => inv.balance > 0)
       .map(inv => ({
         value: inv.id,
-        title: `${inv.invoice_no} · ${inv.buyer_name || '—'} · 餘額 ${moneyFmt.format(inv.balance)}`,
+        title: `${inv.invoice_no} · ${inv.buyer_name || '—'} · 餘額 ${formatMoney(inv.balance)}`,
         invoice: { id: inv.id, invoice_no: inv.invoice_no ?? '', buyer_name: inv.buyer_name, balance: inv.balance },
       }))
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
   finally {
     payInvoicesLoading.value = false
@@ -84,7 +82,6 @@ async function openPay() {
 }
 
 async function onPaymentSaved() {
-  actionSuccess.value = 'Receipt posted'
   await load()
 }
 
@@ -106,7 +103,7 @@ const headers = [
 ]
 
 function paidByLabel(value: string): string {
-  return RECEIPT_PAID_BY_OPTIONS.find(o => o.value === value)?.label ?? value
+  return RECEIPT_PAID_BY_OPTIONS.find(o => o.value === value)?.title ?? value
 }
 
 async function load() {
@@ -117,7 +114,7 @@ async function load() {
   try {
     const res = await listReceipts({
       customer_id: customerFilter.value || undefined,
-      location_id: locationFilter.value || undefined,
+      warehouse_id: warehouseFilter.value || undefined,
       status: statusFilter.value || undefined,
       search: search.value || undefined,
       page: page.value,
@@ -143,18 +140,17 @@ async function load() {
 function askVoid(rc: InventoryReceipt) {
   confirm.ask(
     `Void ${rc.receipt_no}?`,
-    `作廢會把 ${fmtMoney(rc.amount)} 收款從發票餘額中移除。`,
+    `作廢會把 ${formatMoney(rc.amount)} 收款從發票餘額中移除。`,
     { label: 'Void', details: ['發票變回未收齊狀態', '不能復原'] },
     async () => {
       saving.value = true
-      actionError.value = ''
       try {
         await voidReceipt(rc.id)
-        actionSuccess.value = `Receipt ${rc.receipt_no} voided`
+        toast.show(`Receipt ${rc.receipt_no} voided`)
         await load()
       }
       catch (e) {
-        actionError.value = formatApiError(e, 'Operation failed.')
+        toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
       }
       finally {
         saving.value = false
@@ -169,15 +165,11 @@ async function onPrint(rc: InventoryReceipt) {
     printOpen.value = true
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
 }
 
-function fmtMoney(value: number | null | undefined): string {
-  return (value ?? 0).toFixed(2)
-}
-
-watch([statusFilter, customerFilter, locationFilter], () => {
+watch([statusFilter, customerFilter, warehouseFilter], () => {
   page.value = 1
   load()
 })
@@ -188,11 +180,11 @@ onMounted(async () => {
   try {
     const [custs, locs] = await Promise.all([
       listCustomers({ is_active: true, page_size: 200 }),
-      listLocations(),
+      listWarehouses(),
     ])
 
     customers.value = custs.items
-    locations.value = locs
+    warehouses.value = locs
   }
   catch {
     // filters still work without dropdown data
@@ -235,10 +227,10 @@ onMounted(async () => {
           style="max-width: 180px"
         />
         <VSelect
-          v-model="locationFilter"
-          :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
+          v-model="warehouseFilter"
+          :items="warehouses.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
           density="compact"
-          label="Location"
+          label="Warehouse 倉庫"
           clearable
           hide-details
           style="max-width: 160px"
@@ -278,35 +270,18 @@ onMounted(async () => {
         >
           {{ loadError }}
         </VAlert>
-        <VAlert
-          v-if="actionError"
-          type="error"
-          variant="tonal"
-          class="mb-4"
-        >
-          {{ actionError }}
-        </VAlert>
-        <VAlert
-          v-if="actionSuccess"
-          type="success"
-          variant="tonal"
-          class="mb-4"
-        >
-          {{ actionSuccess }}
-        </VAlert>
 
         <VDataTable
           :headers="headers"
           :items="receipts"
           :loading="loading"
           density="compact"
-          no-data-text="還沒有收據 — 按右上 Record Payment 為一張未收齊的發票記錄收款。"
         >
           <template #item.receipt_no="{ item }">
             <span class="font-weight-medium">{{ item.receipt_no }}</span>
           </template>
           <template #item.amount="{ item }">
-            <span class="tabular-nums">{{ fmtMoney(item.amount) }}</span>
+            <span class="tabular-nums">{{ formatMoney(item.amount) }}</span>
           </template>
           <template #item.paid_by="{ item }">
             {{ paidByLabel(item.paid_by) }}
@@ -332,6 +307,14 @@ onMounted(async () => {
             >
               Void
             </VBtn>
+          </template>
+          <template #no-data>
+            <InventoryEmptyState
+              icon="ri-receipt-line"
+              text="No receipts yet."
+              action-label="Record Payment"
+              @action="openPay"
+            />
           </template>
         </VDataTable>
         <AttendancePaginationBar

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { RouteLocationRaw } from 'vue-router'
+import { type InventoryWarehouse, listWarehouses } from '@/api/attendance/inventory'
 import {
   type InventoryAlerts,
   type InventoryDashboard,
@@ -8,39 +9,30 @@ import {
   sendInventoryAlerts,
 } from '@/api/attendance/inventoryReports'
 import { listSalesOrders } from '@/api/attendance/inventorySales'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
-const locations = ref<LocationItem[]>([])
-const locationFilter = ref<string | null>(null)
+const warehouses = ref<InventoryWarehouse[]>([])
+const warehouseFilter = ref<string | null>(null)
 const dashboard = ref<InventoryDashboard | null>(null)
 const alerts = ref<InventoryAlerts | null>(null)
 
 const draftSoCount = ref(0)
 const awaitingInvoiceCount = ref(0)
 
-const locParam = () => locationFilter.value ? { location_id: locationFilter.value } : {}
-
-const moneyFmt = new Intl.NumberFormat('en-HK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-function fmtMoney(value: number | null | undefined): string {
-  return moneyFmt.format(value ?? 0)
-}
+const locParam = () => warehouseFilter.value ? { warehouse_id: warehouseFilter.value } : {}
 
 interface KpiCard {
   zh: string
@@ -81,7 +73,7 @@ const kpiGroups = computed<{ title: string; cards: KpiCard[] }[]>(() => {
         {
           zh: '庫存總值',
           en: 'Stock value',
-          value: `$${fmtMoney(d.stock_value)}`,
+          value: `${formatMoney(d.stock_value)}`,
           caption: '以平均成本估算',
           to: { path: '/attendance/inventory/reports', query: { tab: 'valuation' } },
           icon: 'ri-money-dollar-circle-line',
@@ -124,7 +116,7 @@ const kpiGroups = computed<{ title: string; cards: KpiCard[] }[]>(() => {
         {
           zh: '未收款發票',
           en: 'Unpaid',
-          value: `$${fmtMoney(d.receivable_balance)}`,
+          value: `${formatMoney(d.receivable_balance)}`,
           caption: `${d.unpaid_invoice_count} 張未收齊`,
           to: { path: '/attendance/inventory/invoices', query: { payment_status: 'unpaid' } },
           icon: 'ri-bill-line',
@@ -132,8 +124,8 @@ const kpiGroups = computed<{ title: string; cards: KpiCard[] }[]>(() => {
         {
           zh: '逾期應收',
           en: 'Overdue',
-          value: `$${fmtMoney(d.overdue_receivable_balance)}`,
-          caption: d.overdue_receivable_balance > 0 ? '超過 30 天未收，建議跟進' : '沒有逾期款項',
+          value: `${formatMoney(d.overdue_receivable_balance)}`,
+          caption: d.overdue_receivable_balance > 0 ? `超過 ${d.overdue_days} 天未收，建議跟進` : '沒有逾期款項',
           captionColor: d.overdue_receivable_balance > 0 ? 'error' : undefined,
           to: { path: '/attendance/inventory/reports', query: { tab: 'receivables' } },
           icon: 'ri-alarm-warning-line',
@@ -158,7 +150,7 @@ const nextSteps = computed<NextStep[]>(() => {
   const steps: NextStep[] = []
 
   if (d.overdue_receivable_balance > 0)
-    steps.push({ title: '跟進逾期發票', count: d.unpaid_invoice_count, detail: `逾期 ${fmtMoney(d.overdue_receivable_balance)}，聯絡客戶收款`, to: { path: '/attendance/inventory/invoices', query: { payment_status: 'unpaid' } }, color: 'error' })
+    steps.push({ title: '跟進逾期發票', count: d.unpaid_invoice_count, detail: `逾期 ${formatMoney(d.overdue_receivable_balance)}，聯絡客戶收款`, to: { path: '/attendance/inventory/invoices', query: { payment_status: 'unpaid' } }, color: 'error' })
   if (d.overdue_purchase_orders > 0)
     steps.push({ title: '追問逾期採購單', count: d.overdue_purchase_orders, detail: '預計到貨日已過，聯絡供應商', to: { path: '/attendance/inventory/purchase-orders', query: { status: 'ordered' } }, color: 'warning' })
   if (d.low_stock_count > 0)
@@ -177,7 +169,7 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const params = locationFilter.value ? { location_id: locationFilter.value } : undefined
+    const params = warehouseFilter.value ? { warehouse_id: warehouseFilter.value } : undefined
 
     const [d, a, draftSos, confirmedSos, partialSos] = await Promise.all([
       getInventoryDashboard(params),
@@ -202,15 +194,14 @@ async function load() {
 
 async function sendNow() {
   saving.value = true
-  actionError.value = ''
   try {
-    const params = locationFilter.value ? { location_id: locationFilter.value } : undefined
+    const params = warehouseFilter.value ? { warehouse_id: warehouseFilter.value } : undefined
     const result = await sendInventoryAlerts(params)
 
-    actionSuccess.value = `已送出 ${result.created} 則通知（略過 ${result.skipped} 則重複的）。`
+    toast.show(`已送出 ${result.created} 則通知（略過 ${result.skipped} 則重複的）。`)
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to send notifications.')
+    toast.show(formatApiError(e, 'Failed to send notifications.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -240,7 +231,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
       title: '低庫存',
       count: a.low_stock.length,
       items: a.low_stock.map(x => ({
-        id: `${x.item_id}-${x.location_id}`,
+        id: `${x.item_id}-${x.warehouse_id}`,
         label: `${x.sku_code} ${x.name_zh}`,
         detail: `剩 ${x.quantity}（安全庫存 ${x.reorder_level}）`,
         to: '/attendance/inventory',
@@ -264,7 +255,7 @@ const alertGroups = computed<AlertGroup[]>(() => {
       items: a.overdue_invoices.map(x => ({
         id: x.id,
         label: x.invoice_no,
-        detail: `${x.buyer_name} · 未收 $${fmtMoney(x.balance)} · ${x.issue_date || ''}`,
+        detail: `${x.buyer_name} · 未收 ${formatMoney(x.balance)} · ${x.issue_date || ''}`,
         to: '/attendance/inventory/invoices',
       })),
     },
@@ -295,13 +286,13 @@ const quickActions = [
   { label: 'Start Stocktake', icon: 'ri-survey-line', to: { path: '/attendance/inventory/stocktakes', query: { action: 'new' } } },
 ]
 
-watch(locationFilter, load)
+watch(warehouseFilter, load)
 
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
   try {
-    locations.value = await listLocations()
+    warehouses.value = await listWarehouses()
   }
   catch {
     // optional
@@ -325,9 +316,9 @@ onMounted(async () => {
           </div>
           <VSpacer />
           <VSelect
-            v-model="locationFilter"
-            :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
-            label="Location"
+            v-model="warehouseFilter"
+            :items="warehouses.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
+            label="Warehouse 倉庫"
             density="comfortable"
             style="max-width: 280px"
             hide-details
@@ -357,22 +348,6 @@ onMounted(async () => {
       class="mb-4"
     >
       {{ loadError }}
-    </VAlert>
-    <VAlert
-      v-if="actionError"
-      type="error"
-      variant="tonal"
-      class="mb-4"
-    >
-      {{ actionError }}
-    </VAlert>
-    <VAlert
-      v-if="actionSuccess"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-    >
-      {{ actionSuccess }}
     </VAlert>
 
     <VProgressCircular
@@ -441,9 +416,9 @@ onMounted(async () => {
                 銷售 Sales
               </div>
               <div class="text-body-2">
-                開票 <span class="tabular-nums font-weight-medium">{{ fmtMoney(dashboard.month_invoiced) }}</span>
-                · 折讓 <span class="tabular-nums font-weight-medium text-error">-{{ fmtMoney(dashboard.month_credited) }}</span>
-                · 淨額 <span class="tabular-nums font-weight-bold">{{ fmtMoney(dashboard.month_sales) }}</span>
+                開票 <span class="tabular-nums font-weight-medium">{{ formatMoney(dashboard.month_invoiced) }}</span>
+                · 折讓 <span class="tabular-nums font-weight-medium text-error">-{{ formatMoney(dashboard.month_credited) }}</span>
+                · 淨額 <span class="tabular-nums font-weight-bold">{{ formatMoney(dashboard.month_sales) }}</span>
               </div>
             </VCol>
             <VCol
@@ -454,9 +429,9 @@ onMounted(async () => {
                 進貨 Purchases
               </div>
               <div class="text-body-2">
-                收貨 <span class="tabular-nums font-weight-medium">{{ fmtMoney(dashboard.month_purchases_gross) }}</span>
-                · 退貨 <span class="tabular-nums font-weight-medium text-error">-{{ fmtMoney(dashboard.month_purchase_returns) }}</span>
-                · 淨額 <span class="tabular-nums font-weight-bold">{{ fmtMoney(dashboard.month_purchases) }}</span>
+                收貨 <span class="tabular-nums font-weight-medium">{{ formatMoney(dashboard.month_purchases_gross) }}</span>
+                · 退貨 <span class="tabular-nums font-weight-medium text-error">-{{ formatMoney(dashboard.month_purchase_returns) }}</span>
+                · 淨額 <span class="tabular-nums font-weight-bold">{{ formatMoney(dashboard.month_purchases) }}</span>
               </div>
             </VCol>
           </VRow>

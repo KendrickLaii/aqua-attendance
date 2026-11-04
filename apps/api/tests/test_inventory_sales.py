@@ -31,13 +31,13 @@ async def _create_so(
     client: AsyncClient,
     token: str,
     customer_id: str,
-    location_id: str,
+    warehouse_id: str,
     lines: list[dict],
     **overrides,
 ) -> dict:
     body = {
         "customer_id": customer_id,
-        "location_id": location_id,
+        "warehouse_id": warehouse_id,
         "order_date": "2026-10-16",
         "lines": lines,
         **overrides,
@@ -63,12 +63,12 @@ async def _create_do(client: AsyncClient, token: str, body: dict, expected: int 
     return resp.json()
 
 
-async def _move(client, token, item_id, location_id, type, quantity, **extra) -> dict:
+async def _move(client, token, item_id, warehouse_id, type, quantity, **extra) -> dict:
     resp = await client.post(
         "/api/inventory/movements",
         json={
             "item_id": item_id,
-            "location_id": location_id,
+            "warehouse_id": warehouse_id,
             "type": type,
             "quantity": quantity,
             **extra,
@@ -79,17 +79,17 @@ async def _move(client, token, item_id, location_id, type, quantity, **extra) ->
     return resp.json()
 
 
-async def _stock(client: AsyncClient, token: str, item_id: str, location_id: str) -> dict | None:
+async def _stock(client: AsyncClient, token: str, item_id: str, warehouse_id: str) -> dict | None:
     resp = await client.get(
-        f"/api/inventory/stocks?item_id={item_id}&location_id={location_id}",
+        f"/api/inventory/stocks?item_id={item_id}&warehouse_id={warehouse_id}",
         headers=_h(token),
     )
     stocks = resp.json()
     return stocks[0] if stocks else None
 
 
-async def _confirmed_so(client, token, customer_id, location_id, lines) -> dict:
-    so = await _create_so(client, token, customer_id, location_id, lines)
+async def _confirmed_so(client, token, customer_id, warehouse_id, lines) -> dict:
+    so = await _create_so(client, token, customer_id, warehouse_id, lines)
     resp = await client.post(
         f"/api/inventory/sales-orders/{so['id']}/confirm", headers=_h(token)
     )
@@ -727,3 +727,22 @@ async def test_do_list_search_and_invoice_filter(
     )
     assert resp.status_code == 200
     assert [d["id"] for d in resp.json()] == [do["id"]]
+
+
+async def test_so_list_search_by_so_no_and_buyer(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token, name_zh="搜尋客戶XYZ")
+    other = await _create_customer(client, admin_token, name_zh="別人")
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 10)
+    so = await _confirmed_so(client, admin_token, customer["id"], loc, [_so_line(item["id"], 1)])
+    other_so = await _confirmed_so(client, admin_token, other["id"], loc, [_so_line(item["id"], 1)])
+
+    by_buyer = await client.get("/api/inventory/sales-orders?search=XYZ", headers=_h(admin_token))
+    assert [s["id"] for s in by_buyer.json()] == [so["id"]]
+    by_no = await client.get(
+        f"/api/inventory/sales-orders?search={other_so['so_no']}", headers=_h(admin_token)
+    )
+    assert [s["id"] for s in by_no.json()] == [other_so["id"]]

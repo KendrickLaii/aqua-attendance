@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventoryItem,
   type InventoryMovementType,
@@ -8,7 +9,7 @@ import { formatApiError } from '@/utils/formatApiDetail'
 
 const props = defineProps<{
   modelValue: boolean
-  locationId: string | null
+  warehouseId: string | null
   items: InventoryItem[]
   initialType?: InventoryMovementType
 }>()
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   saved: []
 }>()
 
+const display = useDisplay()
+const toast = useToast()
 const saving = ref(false)
 const saveError = ref('')
 
@@ -68,6 +71,8 @@ const noteRequired = computed(
   () => !!form.reason_code && REASON_CODES_REQUIRING_NOTE.has(form.reason_code),
 )
 
+const itemLabel = computed(() => props.items.find(i => i.id === form.item_id)?.sku_code ?? '')
+
 const itemOptions = computed(() =>
   props.items
     .filter(i => i.is_active)
@@ -90,7 +95,7 @@ const quantityHint = computed(() =>
 const canSave = computed(
   () =>
     !!(
-      props.locationId
+      props.warehouseId
       && form.item_id
       && form.quantity !== null
       && form.quantity >= 0
@@ -116,14 +121,14 @@ watch(() => form.type, () => {
 })
 
 async function save() {
-  if (!canSave.value || !props.locationId || !form.item_id || form.quantity === null)
+  if (!canSave.value || !props.warehouseId || !form.item_id || form.quantity === null)
     return
   saving.value = true
   saveError.value = ''
   try {
     await createInventoryMovement({
       item_id: form.item_id,
-      location_id: props.locationId,
+      warehouse_id: props.warehouseId,
       type: form.type,
       quantity: form.quantity,
       reason: form.reason.trim() || null,
@@ -132,6 +137,7 @@ async function save() {
     })
     emit('update:modelValue', false)
     emit('saved')
+    toast.show(`Stock ${form.type} recorded: ${form.quantity} × ${itemLabel.value}`)
   }
   catch (e) {
     saveError.value = formatApiError(e, 'Could not record movement.')
@@ -145,7 +151,9 @@ async function save() {
 <template>
   <VDialog
     :model-value="modelValue"
-    max-width="520"
+    max-width="560"
+    :fullscreen="display.xs.value"
+    scrollable
     @update:model-value="emit('update:modelValue', $event)"
   >
     <VCard title="Record stock movement">
@@ -212,6 +220,7 @@ async function save() {
           density="comfortable"
         />
       </VCardText>
+      <VDivider />
       <VCardActions>
         <VSpacer />
         <VBtn

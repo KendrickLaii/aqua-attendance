@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
+import { type InventoryWarehouse, listWarehouses } from '@/api/attendance/inventory'
+
 import {
   type InventoryCreditNote,
   type InventoryCreditNotePrintDoc,
@@ -15,14 +18,15 @@ import {
   voidCreditNote,
 } from '@/api/attendance/inventoryInvoicing'
 import { type InventoryCustomer, listCustomers } from '@/api/attendance/inventorySales'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryCreditNotePrintDialog from '@/components/attendance/inventory/InventoryCreditNotePrintDialog.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
 import { useDirtyGuard } from '@/composables/useDirtyGuard'
@@ -31,19 +35,18 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
+const display = useDisplay()
 
 const loading = ref(true)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
+const dialogError = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
 const customers = ref<InventoryCustomer[]>([])
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 
 const notes = ref<InventoryCreditNote[]>([])
 const total = ref(0)
@@ -51,7 +54,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const statusFilter = ref<InventoryCreditNoteStatus | null>(null)
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 const search = ref('')
 
 const listReq = useLatestRequest()
@@ -139,7 +142,7 @@ async function load() {
   const token = listReq.next()
   try {
     const res = await listCreditNotes({
-      location_id: locationFilter.value || undefined,
+      warehouse_id: warehouseFilter.value || undefined,
       status: statusFilter.value || undefined,
       search: search.value || undefined,
       page: page.value,
@@ -167,7 +170,7 @@ async function openDetail(scn: InventoryCreditNote) {
     selected.value = await getCreditNote(scn.id)
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
 }
 
@@ -183,6 +186,7 @@ async function openCreate() {
   createReason.value = ''
   createDate.value = ''
   createLines.value = []
+  dialogError.value = ''
   createOpen.value = true
   dirty.markClean()
   nextTick(() => {
@@ -194,7 +198,7 @@ async function openCreate() {
     issuedInvoices.value = res.items
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    dialogError.value = formatApiError(e, 'Operation failed.')
   }
 }
 
@@ -218,14 +222,14 @@ async function onPickInvoice() {
     }))
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    dialogError.value = formatApiError(e, 'Operation failed.')
   }
 }
 
 async function submitCreate() {
   if (createInvalid.value) {
     showErrors.value = true
-    actionError.value = '請檢查紅色標示的欄位，修正後再建立。'
+    dialogError.value = '請檢查紅色標示的欄位，修正後再建立。'
     await nextTick()
     document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
@@ -237,7 +241,7 @@ async function submitCreate() {
     .map(l => ({ invoice_line_id: l.invoice_line_id, qty: l.qty, restock: l.restock }))
 
   saving.value = true
-  actionError.value = ''
+  dialogError.value = ''
   try {
     const scn = await createCreditNote({
       invoice_id: createInvoiceId.value ?? '',
@@ -248,12 +252,12 @@ async function submitCreate() {
 
     createOpen.value = false
     dirty.markClean()
-    actionSuccess.value = `Credit note ${scn.scn_no} created`
+    toast.show(`Credit note ${scn.scn_no} created`)
     await load()
     selected.value = scn
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    dialogError.value = formatApiError(e, 'Operation failed.')
   }
   finally {
     saving.value = false
@@ -289,7 +293,7 @@ function askConfirm() {
 
   confirm.ask(
     `Confirm ${scn.scn_no}?`,
-    `確認後會對發票 ${scn.invoice_no} 折讓 ${fmtMoney(scn.total)}${restocking ? `，並把 ${restocking} 件加回庫存` : ''}。`,
+    `確認後會對發票 ${scn.invoice_no} 折讓 ${formatMoney(scn.total)}${restocking ? `，並把 ${restocking} 件加回庫存` : ''}。`,
     { label: 'Confirm', tone: 'info', details: ['發票應收減少', '勾選退回庫存的品項會加回庫存'] },
     performConfirm,
   )
@@ -299,14 +303,13 @@ async function performConfirm() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
     selected.value = await confirmCreditNote(selected.value.id)
-    actionSuccess.value = `Credit note ${selected.value.scn_no} confirmed`
+    toast.show(`Credit note ${selected.value.scn_no} confirmed`)
     await load()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -319,7 +322,7 @@ function askVoid() {
     return
   confirm.ask(
     `Void ${scn.scn_no}?`,
-    `作廢會把 ${fmtMoney(scn.total)} 折讓還原到發票 ${scn.invoice_no}。`,
+    `作廢會把 ${formatMoney(scn.total)} 折讓還原到發票 ${scn.invoice_no}。`,
     { label: 'Void', details: ['發票應收回復', '已回補的庫存會再扣減', '不能復原'] },
     performVoid,
   )
@@ -329,14 +332,13 @@ async function performVoid() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
     selected.value = await voidCreditNote(selected.value.id)
-    actionSuccess.value = 'Credit note voided'
+    toast.show(`Credit note ${selected.value.scn_no} voided`)
     await load()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -358,15 +360,14 @@ async function performDelete() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
     await deleteCreditNote(selected.value.id)
-    actionSuccess.value = 'Draft credit note deleted'
+    toast.show('Draft credit note deleted')
     selected.value = null
     await load()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -381,15 +382,11 @@ async function onPrint() {
     printOpen.value = true
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Operation failed.')
+    toast.show(formatApiError(e, 'Operation failed.'), 'error', 6000)
   }
 }
 
-function fmtMoney(value: number | null | undefined): string {
-  return (value ?? 0).toFixed(2)
-}
-
-watch([statusFilter, locationFilter], () => {
+watch([statusFilter, warehouseFilter], () => {
   page.value = 1
   load()
 })
@@ -400,11 +397,11 @@ onMounted(async () => {
   try {
     const [custs, locs] = await Promise.all([
       listCustomers({ is_active: true, page_size: 200 }),
-      listLocations(),
+      listWarehouses(),
     ])
 
     customers.value = custs.items
-    locations.value = locs
+    warehouses.value = locs
   }
   catch {
     // filters still work without dropdown data
@@ -438,10 +435,10 @@ onMounted(async () => {
           style="max-width: 140px"
         />
         <VSelect
-          v-model="locationFilter"
-          :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
+          v-model="warehouseFilter"
+          :items="warehouses.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
           density="compact"
-          label="Location"
+          label="Warehouse 倉庫"
           clearable
           hide-details
           style="max-width: 160px"
@@ -481,39 +478,30 @@ onMounted(async () => {
         >
           {{ loadError }}
         </VAlert>
-        <VAlert
-          v-if="actionError"
-          type="error"
-          variant="tonal"
-          class="mb-4"
-        >
-          {{ actionError }}
-        </VAlert>
-        <VAlert
-          v-if="actionSuccess"
-          type="success"
-          variant="tonal"
-          class="mb-4"
-        >
-          {{ actionSuccess }}
-        </VAlert>
 
         <VDataTable
           :headers="headers"
           :items="notes"
           :loading="loading"
           density="compact"
-          no-data-text="No credit notes yet — create one from an issued invoice."
           @click:row="onRowClick"
         >
           <template #item.scn_no="{ item }">
             <span class="font-weight-medium">{{ item.scn_no }}</span>
           </template>
           <template #item.total="{ item }">
-            <span class="tabular-nums">{{ fmtMoney(item.total) }}</span>
+            <span class="tabular-nums">{{ formatMoney(item.total) }}</span>
           </template>
           <template #item.status="{ item }">
             <InventoryStatusChip :status="item.status" />
+          </template>
+          <template #no-data>
+            <InventoryEmptyState
+              icon="ri-refund-2-line"
+              text="No credit notes yet."
+              action-label="New Credit Note"
+              @action="openCreate"
+            />
           </template>
         </VDataTable>
         <AttendancePaginationBar
@@ -528,7 +516,9 @@ onMounted(async () => {
 
     <VDialog
       :model-value="!!selected"
-      max-width="720"
+      max-width="900"
+      :fullscreen="display.xs.value"
+      scrollable
       @update:model-value="v => { if (!v) selected = null }"
     >
       <VCard v-if="selected">
@@ -579,10 +569,10 @@ onMounted(async () => {
                     {{ line.qty }}
                   </td>
                   <td class="text-end tabular-nums">
-                    {{ fmtMoney(line.unit_amount) }}
+                    {{ formatMoney(line.unit_amount) }}
                   </td>
                   <td class="text-end tabular-nums">
-                    {{ fmtMoney(line.amount) }}
+                    {{ formatMoney(line.amount) }}
                   </td>
                   <td class="text-center">
                     {{ line.restock ? 'Yes' : 'No' }}
@@ -592,9 +582,10 @@ onMounted(async () => {
             </VTable>
           </div>
           <div class="text-end mt-3 font-weight-bold">
-            Total: {{ fmtMoney(selected.total) }}
+            Total: {{ formatMoney(selected.total) }}
           </div>
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <InventoryDocActions
@@ -608,14 +599,28 @@ onMounted(async () => {
 
     <VDialog
       v-model="createOpen"
-      max-width="720"
+      max-width="900"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard>
         <VCardTitle>New Credit Note</VCardTitle>
         <VCardText>
+          <VAlert
+            v-if="dialogError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ dialogError }}
+          </VAlert>
+          <div class="text-overline text-medium-emphasis mb-2">
+            Document
+          </div>
           <VSelect
             v-model="createInvoiceId"
-            :items="issuedInvoices.map(i => ({ value: i.id, title: `${i.invoice_no} · ${i.buyer_name} · ${fmtMoney(i.total)}` }))"
+            :items="issuedInvoices.map(i => ({ value: i.id, title: `${i.invoice_no} · ${i.buyer_name} · ${formatMoney(i.total)}` }))"
             label="Issued invoice *"
             :error="showErrors && !createInvoiceId"
             @update:model-value="onPickInvoice"
@@ -636,8 +641,11 @@ onMounted(async () => {
           />
           <div
             v-if="createLines.length"
-            class="mt-3"
+            class="mt-4"
           >
+            <div class="text-overline text-medium-emphasis mb-2">
+              Lines
+            </div>
             <VTable
               density="compact"
               class="inv-line-table"
@@ -706,6 +714,7 @@ onMounted(async () => {
             </VTable>
           </div>
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn

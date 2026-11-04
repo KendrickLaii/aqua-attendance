@@ -81,7 +81,7 @@ class InventoryInvoiceOut(BaseModel):
     customer_id: uuid.UUID
     customer_name: str | None
     buyer_name: str
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     issue_date: date | None
     status: str
     discount_amount: float
@@ -114,10 +114,10 @@ class InventoryInvoicePrint(BaseModel):
     customer_phone: str | None
     customer_email: str | None
     customer_address: str | None
-    location_name_zh: str | None
-    location_name_en: str | None
-    location_address: str | None
-    location_phone: str | None
+    warehouse_name_zh: str | None
+    warehouse_name_en: str | None
+    warehouse_address: str | None
+    warehouse_phone: str | None
     so_no: str
     lines: list[InventoryInvoiceLineOut]
     discount_amount: float
@@ -146,7 +146,7 @@ class InventoryReceiptOut(BaseModel):
     invoice_no: str | None
     customer_id: uuid.UUID
     customer_name: str | None
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     amount: float
     paid_by: str
     reference_no: str | None
@@ -170,10 +170,10 @@ class InventoryReceiptPrint(BaseModel):
     customer_code: str
     customer_name_zh: str | None
     customer_name_en: str | None
-    location_name_zh: str | None
-    location_name_en: str | None
-    location_address: str | None
-    location_phone: str | None
+    warehouse_name_zh: str | None
+    warehouse_name_en: str | None
+    warehouse_address: str | None
+    warehouse_phone: str | None
     amount: float
     paid_by: str
     reference_no: str | None
@@ -220,7 +220,7 @@ class InventoryCreditNoteOut(BaseModel):
     invoice_no: str | None
     customer_id: uuid.UUID
     customer_name: str | None
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     credit_date: date
     reason: str
     status: str
@@ -240,10 +240,10 @@ class InventoryCreditNotePrint(BaseModel):
     customer_code: str
     customer_name_zh: str | None
     customer_name_en: str | None
-    location_name_zh: str | None
-    location_name_en: str | None
-    location_address: str | None
-    location_phone: str | None
+    warehouse_name_zh: str | None
+    warehouse_name_en: str | None
+    warehouse_address: str | None
+    warehouse_phone: str | None
     reason: str
     lines: list[InventoryCreditNoteLineOut]
     total: float

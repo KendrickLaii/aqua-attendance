@@ -1,21 +1,25 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventoryItem,
   type InventoryStocktake,
   type InventoryStocktakeDetail,
   type InventoryStocktakeStatus,
+  type InventoryWarehouse,
   applyInventoryStocktake,
   cancelInventoryStocktake,
   createInventoryStocktake,
   getInventoryStocktake,
   listInventoryItems,
   listInventoryStocktakes,
+  listWarehouses,
   updateInventoryStocktakeLines,
 } from '@/api/attendance/inventory'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
+import { formatAttendanceDateTime } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
@@ -25,15 +29,15 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
+const display = useDisplay()
 
 const loading = ref(true)
 const loadError = ref('')
-const actionError = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
 
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 const items = ref<InventoryItem[]>([])
 const stocktakes = ref<InventoryStocktake[]>([])
 
@@ -44,14 +48,16 @@ const dirty = useDirtyGuard('未儲存的盤點數量會消失。')
 const lineSearch = ref('')
 const lineView = ref<'all' | 'unfilled' | 'diff'>('all')
 const reviewOpen = ref(false)
+const reviewError = ref('')
+const createError = ref('')
 const countInputRefs = new Map<string, { focus: () => void }>()
 let suppressDirty = false
 
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 const statusFilter = ref<InventoryStocktakeStatus | null>(null)
 
 const createDialogOpen = ref(false)
-const createForm = reactive({ location_id: null as string | null, note: '' })
+const createForm = reactive({ warehouse_id: null as string | null, note: '' })
 const creating = ref(false)
 
 const selected = ref<InventoryStocktakeDetail | null>(null)
@@ -68,15 +74,15 @@ const statusOptions = [
 const route = useRoute()
 const router = useRouter()
 
-const locationOptions = computed(() =>
-  locations.value.map(l => ({
+const warehouseOptions = computed(() =>
+  warehouses.value.map(l => ({
     value: l.id,
     title: [l.name_en, l.name_zh].filter(Boolean).join(' · '),
   })),
 )
 
 const itemById = computed(() => new Map(items.value.map(i => [i.id, i])))
-const locationById = computed(() => new Map(locations.value.map(l => [l.id, l])))
+const warehouseById = computed(() => new Map(warehouses.value.map(l => [l.id, l])))
 
 const isDraft = computed(() => selected.value?.status === 'draft')
 
@@ -169,12 +175,12 @@ onMounted(async () => {
     return
   loading.value = true
   try {
-    const [locationList, itemList] = await Promise.all([
-      listLocations({ is_active: true }),
+    const [warehouseList, itemList] = await Promise.all([
+      listWarehouses({ is_active: true }),
       listInventoryItems(),
     ])
 
-    locations.value = locationList
+    warehouses.value = warehouseList
     items.value = itemList
     await loadList()
 
@@ -220,7 +226,7 @@ const docPrimary = computed<InventoryDocAction | null>(() =>
 
 const docSecondary = computed<InventoryDocAction | null>(() =>
   isDraft.value
-    ? { label: `Save Progress${changedLines.value ? ` (${changedLines.value})` : ''}`, tooltip: '先儲存已填的數量，之後再繼續盤點', disabled: changedLines.value === 0, onClick: saveCounts }
+    ? { label: `Save Progress${changedLines.value ? ` (${changedLines.value})` : ''}`, tooltip: '先儲存已填的數量，之後再繼續盤點', disabled: changedLines.value === 0, onClick: () => { saveCounts() } }
     : null,
 )
 
@@ -234,7 +240,7 @@ async function loadList() {
   const token = listReq.next()
 
   const result = await listInventoryStocktakes({
-    location_id: locationFilter.value ?? undefined,
+    warehouse_id: warehouseFilter.value ?? undefined,
     status: statusFilter.value ?? undefined,
   })
 
@@ -253,18 +259,14 @@ function itemLabel(id: string): string {
   return item ? `${item.sku_code} · ${item.name_zh}` : id
 }
 
-function locationLabel(id: string): string {
-  const location = locationById.value.get(id)
+function warehouseLabel(id: string): string {
+  const location = warehouseById.value.get(id)
 
   return location ? [location.name_en, location.name_zh].filter(Boolean).join(' · ') : id
 }
 
 function statusColor(status: string): string {
   return { draft: 'warning', applied: 'success', cancelled: 'default' }[status] ?? 'default'
-}
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString()
 }
 
 const detailAnchor = ref<{ $el: HTMLElement } | null>(null)
@@ -282,7 +284,6 @@ async function selectStocktake(take: InventoryStocktake) {
   if (isDraft.value && dirty.dirty.value && !(await dirty.confirmDiscard()))
     return
   detailLoading.value = true
-  actionError.value = ''
   try {
     const detail = await getInventoryStocktake(take.id)
 
@@ -296,18 +297,25 @@ async function selectStocktake(take: InventoryStocktake) {
     await scrollToDetail()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to load stocktake.')
+    toast.show(formatApiError(e, 'Failed to load stocktake.'), 'error', 6000)
   }
   finally {
     detailLoading.value = false
   }
 }
 
-async function saveCounts(): Promise<boolean> {
+function reportCountError(message: string, inDialog: boolean) {
+  if (inDialog)
+    reviewError.value = message
+  else
+    toast.show(message, 'error', 6000)
+}
+
+async function saveCounts(inDialog = false): Promise<boolean> {
   if (!selected.value)
     return false
   if (hasCountErrors.value) {
-    actionError.value = 'Counts must be whole numbers ≥ 0.'
+    reportCountError('Counts must be whole numbers ≥ 0.', inDialog)
 
     return false
   }
@@ -327,10 +335,13 @@ async function saveCounts(): Promise<boolean> {
       suppressDirty = false
     })
 
+    if (!inDialog)
+      toast.show('Counts saved')
+
     return true
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to save counts.')
+    reportCountError(formatApiError(e, 'Failed to save counts.'), inDialog)
 
     return false
   }
@@ -339,6 +350,7 @@ async function saveCounts(): Promise<boolean> {
 function askApply() {
   if (!selected.value)
     return
+  reviewError.value = ''
   reviewOpen.value = true
 }
 
@@ -378,17 +390,21 @@ async function performApply() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
-    if (!(await saveCounts()))
+    reviewError.value = ''
+
+    const adjustments = reviewSummary.value.changed.length
+
+    if (!(await saveCounts(true)))
       return
     selected.value = await applyInventoryStocktake(selected.value.id)
     dirty.markClean()
     reviewOpen.value = false
+    toast.show(`Stocktake applied · ${adjustments} adjustment${adjustments === 1 ? '' : 's'}`)
     await loadList()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to apply stocktake.')
+    reviewError.value = formatApiError(e, 'Failed to apply stocktake.')
   }
   finally {
     saving.value = false
@@ -410,14 +426,14 @@ async function performCancel() {
   if (!selected.value)
     return
   saving.value = true
-  actionError.value = ''
   try {
     await cancelInventoryStocktake(selected.value.id)
     selected.value = { ...selected.value, status: 'cancelled' }
+    toast.show('Stocktake cancelled')
     await loadList()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to cancel stocktake.')
+    toast.show(formatApiError(e, 'Failed to cancel stocktake.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -425,24 +441,25 @@ async function performCancel() {
 }
 
 function openCreate() {
-  createForm.location_id = locationFilter.value
+  createForm.warehouse_id = warehouseFilter.value
   createForm.note = ''
-  actionError.value = ''
+  createError.value = ''
   createDialogOpen.value = true
 }
 
 async function submitCreate() {
-  if (!createForm.location_id)
+  if (!createForm.warehouse_id)
     return
   creating.value = true
-  actionError.value = ''
+  createError.value = ''
   try {
     const detail = await createInventoryStocktake({
-      location_id: createForm.location_id,
+      warehouse_id: createForm.warehouse_id,
       note: createForm.note.trim() || null,
     })
 
     createDialogOpen.value = false
+    toast.show('Stocktake created')
     await loadList()
     await selectStocktake(detail as InventoryStocktake)
     nextTick(() => {
@@ -453,7 +470,7 @@ async function submitCreate() {
     })
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to create stocktake.')
+    createError.value = formatApiError(e, 'Failed to create stocktake.')
   }
   finally {
     creating.value = false
@@ -515,16 +532,6 @@ async function submitCreate() {
     >
       {{ loadError }}
     </VAlert>
-    <VAlert
-      v-if="actionError"
-      type="error"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionError = ''"
-    >
-      {{ actionError }}
-    </VAlert>
 
     <VRow v-if="loading">
       <VCol
@@ -544,9 +551,9 @@ async function submitCreate() {
         <VCard>
           <VCardText class="d-flex flex-wrap gap-3">
             <VSelect
-              v-model="locationFilter"
-              :items="locationOptions"
-              label="Location"
+              v-model="warehouseFilter"
+              :items="warehouseOptions"
+              label="Warehouse 倉庫"
               density="comfortable"
               hide-details
               clearable
@@ -569,9 +576,9 @@ async function submitCreate() {
               :active="selected?.id === take.id"
               @click="selectStocktake(take)"
             >
-              <VListItemTitle>{{ locationLabel(take.location_id) }}</VListItemTitle>
+              <VListItemTitle>{{ warehouseLabel(take.warehouse_id) }}</VListItemTitle>
               <VListItemSubtitle>
-                {{ formatDateTime(take.created_at) }}<template v-if="take.note">
+                {{ formatAttendanceDateTime(take.created_at) }}<template v-if="take.note">
                   · {{ take.note }}
                 </template>
               </VListItemSubtitle>
@@ -585,11 +592,13 @@ async function submitCreate() {
                 </VChip>
               </template>
             </VListItem>
-            <VListItem v-if="stocktakes.length === 0">
-              <VListItemTitle class="text-medium-emphasis">
-                No stocktakes yet — click "New Stocktake" to count a location.
-              </VListItemTitle>
-            </VListItem>
+            <InventoryEmptyState
+              v-if="stocktakes.length === 0"
+              icon="ri-clipboard-line"
+              text="No stocktakes yet."
+              action-label="New Stocktake"
+              @action="openCreate"
+            />
           </VList>
         </VCard>
       </VCol>
@@ -609,7 +618,7 @@ async function submitCreate() {
         </VCard>
         <VCard v-else-if="selected">
           <VCardTitle class="d-flex align-center gap-3">
-            <span>{{ locationLabel(selected.location_id) }}</span>
+            <span>{{ warehouseLabel(selected.warehouse_id) }}</span>
             <VChip
               :color="statusColor(selected.status)"
               size="small"
@@ -626,9 +635,9 @@ async function submitCreate() {
             />
           </VCardTitle>
           <VCardSubtitle>
-            Created {{ formatDateTime(selected.created_at) }}
+            Created {{ formatAttendanceDateTime(selected.created_at) }}
             <template v-if="selected.applied_at">
-              · Applied {{ formatDateTime(selected.applied_at) }}
+              · Applied {{ formatAttendanceDateTime(selected.applied_at) }}
             </template>
             <template v-if="selected.note">
               · {{ selected.note }}
@@ -807,10 +816,21 @@ async function submitCreate() {
 
     <VDialog
       v-model="createDialogOpen"
-      max-width="480"
+      max-width="560"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard title="New stocktake">
         <VCardText>
+          <VAlert
+            v-if="createError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ createError }}
+          </VAlert>
           <VAlert
             type="info"
             variant="tonal"
@@ -820,12 +840,12 @@ async function submitCreate() {
             選擇要盤點的分校。系統會列出這個分校所有啟用中的品項，和現在的系統數量。
           </VAlert>
           <VSelect
-            v-model="createForm.location_id"
-            :items="locationOptions"
-            label="Location *"
+            v-model="createForm.warehouse_id"
+            :items="warehouseOptions"
+            label="Warehouse 倉庫 *"
             density="comfortable"
             class="mb-3"
-            :error="!createForm.location_id"
+            :error="!createForm.warehouse_id"
           />
           <VTextField
             v-model="createForm.note"
@@ -835,6 +855,7 @@ async function submitCreate() {
             density="comfortable"
           />
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn
@@ -846,7 +867,7 @@ async function submitCreate() {
           <VBtn
             color="primary"
             :loading="creating"
-            :disabled="!createForm.location_id"
+            :disabled="!createForm.warehouse_id"
             @click="submitCreate"
           >
             Create
@@ -857,7 +878,9 @@ async function submitCreate() {
 
     <VDialog
       v-model="reviewOpen"
-      max-width="560"
+      max-width="900"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard>
         <VCardTitle class="d-flex align-center gap-3 py-4">
@@ -872,6 +895,15 @@ async function submitCreate() {
         </VCardTitle>
         <VDivider />
         <VCardText class="pa-4">
+          <VAlert
+            v-if="reviewError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ reviewError }}
+          </VAlert>
           <div class="d-flex flex-wrap gap-4 mb-3">
             <VChip
               color="success"

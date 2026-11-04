@@ -17,9 +17,9 @@ import {
 } from '@/api/attendance/inventoryReports'
 import { type InventoryCustomer, listCustomers } from '@/api/attendance/inventorySales'
 import { type InventorySupplier, listSuppliers } from '@/api/attendance/inventoryPurchasing'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
-import { reasonCodeLabel } from '@/api/attendance/inventory'
+import { type InventoryWarehouse, listWarehouses, reasonCodeLabel } from '@/api/attendance/inventory'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useLatestRequest } from '@/composables/useLatestRequest'
 import { hexToRgb } from '@core/utils/colorConverter'
@@ -27,6 +27,7 @@ import { hexToRgb } from '@core/utils/colorConverter'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const vuetifyTheme = useTheme()
@@ -46,16 +47,14 @@ type TabKey = typeof tabs[number]['key']
 const activeTab = ref<TabKey>((route.query.tab as TabKey) || 'valuation')
 const loading = ref(false)
 const loadError = ref('')
-const actionError = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
 
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 const customers = ref<InventoryCustomer[]>([])
 const suppliers = ref<InventorySupplier[]>([])
 
-const locationFilter = ref<string | null>((route.query.location_id as string) || null)
+const warehouseFilter = ref<string | null>((route.query.warehouse_id as string) || null)
 const customerFilter = ref<string | null>((route.query.customer_id as string) || null)
 const supplierFilter = ref<string | null>((route.query.supplier_id as string) || null)
 const dateFrom = ref((route.query.date_from as string) || '')
@@ -109,7 +108,7 @@ watch(datePreset, p => {
 
 function params() {
   return {
-    location_id: locationFilter.value || undefined,
+    warehouse_id: warehouseFilter.value || undefined,
     customer_id: customerFilter.value || undefined,
     supplier_id: supplierFilter.value || undefined,
     date_from: dateFrom.value || undefined,
@@ -175,7 +174,6 @@ const csvPaths: Record<TabKey, string> = {
 }
 
 async function exportCsv() {
-  actionError.value = ''
   try {
     const blob = await exportReportCSV(csvPaths[activeTab.value], params())
     const url = URL.createObjectURL(blob)
@@ -187,14 +185,8 @@ async function exportCsv() {
     URL.revokeObjectURL(url)
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Export failed.')
+    toast.show(formatApiError(e, 'Export failed.'), 'error', 6000)
   }
-}
-
-const moneyFmt = new Intl.NumberFormat('en-HK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-function fmtMoney(value: number | null | undefined): string {
-  return moneyFmt.format(value ?? 0)
 }
 
 function reasonsText(reasons: Record<string, number>): string {
@@ -211,7 +203,7 @@ const kpis = computed<Kpi[]>(() => {
     return [
       { label: '品項數', value: String(rows.length) },
       { label: '總數量', value: String(rows.reduce((s, r) => s + r.quantity, 0)) },
-      { label: '總價值', value: `$${fmtMoney(valuation.value.grand_total)}` },
+      { label: '總價值', value: `${formatMoney(valuation.value.grand_total)}` },
     ]
   }
   if (activeTab.value === 'movements' && movements.value) {
@@ -228,8 +220,8 @@ const kpis = computed<Kpi[]>(() => {
     const overdue = purchases.value.open_orders.filter(o => o.overdue).length
 
     return [
-      { label: '收貨金額', value: `$${fmtMoney(purchases.value.rows.reduce((s, r) => s + r.value_received, 0))}` },
-      { label: '退貨金額', value: `$${fmtMoney(purchases.value.rows.reduce((s, r) => s + r.value_returned, 0))}` },
+      { label: '收貨金額', value: `${formatMoney(purchases.value.rows.reduce((s, r) => s + r.value_received, 0))}` },
+      { label: '退貨金額', value: `${formatMoney(purchases.value.rows.reduce((s, r) => s + r.value_returned, 0))}` },
       { label: '未收齊採購單', value: `${purchases.value.open_orders.length}（逾期 ${overdue}）` },
     ]
   }
@@ -237,10 +229,10 @@ const kpis = computed<Kpi[]>(() => {
     const t = sales.value.totals
 
     return [
-      { label: '開票金額', value: `$${fmtMoney(t.invoiced)}` },
-      { label: '折讓金額', value: `$${fmtMoney(t.credited)}` },
-      { label: '已收', value: `$${fmtMoney(t.payments)}` },
-      { label: '未收', value: `$${fmtMoney(Math.max(0, (t.net_sales ?? 0) - (t.payments ?? 0)))}` },
+      { label: '開票金額', value: `${formatMoney(t.invoiced)}` },
+      { label: '折讓金額', value: `${formatMoney(t.credited)}` },
+      { label: '已收', value: `${formatMoney(t.payments)}` },
+      { label: '未收', value: `${formatMoney(Math.max(0, (t.net_sales ?? 0) - (t.payments ?? 0)))}` },
     ]
   }
   if (activeTab.value === 'receivables' && receivables.value) {
@@ -249,15 +241,15 @@ const kpis = computed<Kpi[]>(() => {
       .reduce((s, [, v]) => s + v, 0)
 
     return [
-      { label: '總應收', value: `$${fmtMoney(receivables.value.grand_total)}` },
-      { label: '逾期（超過 30 天）', value: `$${fmtMoney(overdue)}` },
+      { label: '總應收', value: `${formatMoney(receivables.value.grand_total)}` },
+      { label: '逾期（31 天以上）', value: `${formatMoney(overdue)}` },
       { label: '客戶數', value: String(receivables.value.customer_totals.length) },
     ]
   }
   if (activeTab.value === 'writeoffs' && writeoffs.value) {
     return [
       { label: '總數量', value: String(writeoffs.value.totals.qty) },
-      { label: '總成本', value: `$${fmtMoney(writeoffs.value.totals.cost)}` },
+      { label: '總成本', value: `${formatMoney(writeoffs.value.totals.cost)}` },
     ]
   }
 
@@ -299,7 +291,7 @@ const valuationChart = computed(() => {
       colors: [themeColors.value.primary],
       plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '60%' } },
       xaxis: { ...baseChart.value.xaxis, categories: top.map(r => r.sku_code) },
-      tooltip: { y: { formatter: (v: number) => `$${fmtMoney(v)}` } },
+      tooltip: { y: { formatter: (v: number) => `${formatMoney(v)}` } },
     },
     series: [{ name: '價值', data: top.map(r => r.value) }],
   }
@@ -346,7 +338,7 @@ const purchasesChart = computed(() => {
       colors: [themeColors.value.primary],
       plotOptions: { bar: { borderRadius: 4, columnWidth: '45%' } },
       xaxis: { ...baseChart.value.xaxis, categories: entries.map(e => e[0]) },
-      tooltip: { y: { formatter: (v: number) => `$${fmtMoney(v)}` } },
+      tooltip: { y: { formatter: (v: number) => `${formatMoney(v)}` } },
     },
     series: [{ name: '淨採購額', data: entries.map(e => e[1]) }],
   }
@@ -364,7 +356,7 @@ const salesChart = computed(() => {
       plotOptions: { bar: { borderRadius: 4, columnWidth: '40%', distributed: true } },
       xaxis: { ...baseChart.value.xaxis, categories: ['開票', '折讓', '已收'] },
       legend: { ...baseChart.value.legend, show: false },
-      tooltip: { y: { formatter: (v: number) => `$${fmtMoney(v)}` } },
+      tooltip: { y: { formatter: (v: number) => `${formatMoney(v)}` } },
     },
     series: [{ name: '金額', data: [t.invoiced ?? 0, t.credited ?? 0, t.payments ?? 0] }],
   }
@@ -401,7 +393,7 @@ const writeoffsChart = computed(() => {
       labels: [...byReason.keys()],
       colors: [themeColors.value.error, themeColors.value.warning, themeColors.value.info, themeColors.value.secondary, themeColors.value.primary],
       stroke: { width: 1, colors: [themeColors.value.surface] },
-      tooltip: { y: { formatter: (v: number) => `$${fmtMoney(v)}` } },
+      tooltip: { y: { formatter: (v: number) => `${formatMoney(v)}` } },
     },
     series: [...byReason.values()],
   }
@@ -426,7 +418,7 @@ const chartType = computed(() =>
 const headersValuation = [
   { title: 'SKU', key: 'sku_code' },
   { title: 'Item', key: 'name_zh' },
-  { title: 'Location', key: 'location_name' },
+  { title: 'Warehouse', key: 'warehouse_name' },
   { title: 'Qty', key: 'quantity', align: 'end' as const },
   { title: 'Reserved', key: 'reserved', align: 'end' as const },
   { title: 'Available', key: 'available', align: 'end' as const },
@@ -493,15 +485,15 @@ const emptyText = computed(() => `${tabDesc.value.split('。')[0]} — 目前沒
 
 // Single watcher: several ref changes in one tick trigger load() only once.
 watch(
-  [activeTab, locationFilter, customerFilter, supplierFilter, dateFrom, dateTo, asOf],
+  [activeTab, warehouseFilter, customerFilter, supplierFilter, dateFrom, dateTo, asOf],
   () => {
     tableSearch.value = ''
     load()
 
     const query: Record<string, string> = { tab: activeTab.value }
 
-    if (locationFilter.value)
-      query.location_id = locationFilter.value
+    if (warehouseFilter.value)
+      query.warehouse_id = warehouseFilter.value
     if (customerFilter.value)
       query.customer_id = customerFilter.value
     if (supplierFilter.value)
@@ -523,12 +515,12 @@ onMounted(async () => {
     return
   try {
     const [locs, custs, sups] = await Promise.all([
-      listLocations(),
+      listWarehouses(),
       listCustomers({ is_active: true, page_size: 200 }),
       listSuppliers({ is_active: true, page_size: 200 }),
     ])
 
-    locations.value = locs
+    warehouses.value = locs
     customers.value = custs.items
     suppliers.value = sups.items
   }
@@ -546,10 +538,10 @@ onMounted(async () => {
         <span>Inventory Reports 庫存報表</span>
         <VSpacer />
         <VSelect
-          v-model="locationFilter"
-          :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
+          v-model="warehouseFilter"
+          :items="warehouses.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.code }))"
           density="compact"
-          label="Location"
+          label="Warehouse 倉庫"
           clearable
           hide-details
           style="max-width: 180px"
@@ -659,14 +651,6 @@ onMounted(async () => {
         >
           {{ loadError }}
         </VAlert>
-        <VAlert
-          v-if="actionError"
-          type="error"
-          variant="tonal"
-          class="mb-4"
-        >
-          {{ actionError }}
-        </VAlert>
 
         <VTabs
           v-model="activeTab"
@@ -765,10 +749,10 @@ onMounted(async () => {
               <span class="tabular-nums">{{ item.available }}</span>
             </template>
             <template #item.avg_cost="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.avg_cost) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.avg_cost) }}</span>
             </template>
             <template #item.value="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.value) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.value) }}</span>
             </template>
           </VDataTable>
           <div
@@ -776,13 +760,13 @@ onMounted(async () => {
             class="mt-3 text-body-2"
           >
             <div
-              v-for="lt in valuation.location_totals"
-              :key="lt.location_id"
+              v-for="lt in valuation.warehouse_totals"
+              :key="lt.warehouse_id"
             >
-              {{ lt.location_name || lt.location_id }}: {{ fmtMoney(lt.value) }}
+              {{ lt.warehouse_name || lt.warehouse_id }}: {{ formatMoney(lt.value) }}
             </div>
             <div class="font-weight-bold">
-              Grand total: {{ fmtMoney(valuation.grand_total) }}
+              Grand total: {{ formatMoney(valuation.grand_total) }}
             </div>
           </div>
         </template>
@@ -824,20 +808,20 @@ onMounted(async () => {
             :no-data-text="emptyText"
           >
             <template #item.value_received="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.value_received) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.value_received) }}</span>
             </template>
             <template #item.value_returned="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.value_returned) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.value_returned) }}</span>
             </template>
             <template #item.net_value="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.net_value) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.net_value) }}</span>
             </template>
           </VDataTable>
           <div
             v-if="purchases"
             class="mt-3 text-body-2 font-weight-bold"
           >
-            Net purchases: {{ fmtMoney(purchases.totals.net_value) }}
+            Net purchases: {{ formatMoney(purchases.totals.net_value) }}
           </div>
           <template v-if="purchases?.open_orders.length">
             <div class="text-subtitle-2 mt-4 mb-2">
@@ -868,7 +852,7 @@ onMounted(async () => {
                 </VChip>
               </template>
               <template #item.outstanding_value="{ item }">
-                <span class="tabular-nums">{{ fmtMoney(item.outstanding_value) }}</span>
+                <span class="tabular-nums">{{ formatMoney(item.outstanding_value) }}</span>
               </template>
             </VDataTable>
           </template>
@@ -887,18 +871,18 @@ onMounted(async () => {
             :no-data-text="emptyText"
           >
             <template #item.amount="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.amount) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.amount) }}</span>
             </template>
           </VDataTable>
           <div
             v-if="sales"
             class="mt-3 text-body-2"
           >
-            Invoiced: {{ fmtMoney(sales.totals.invoiced) }} ·
-            Header discounts: -{{ fmtMoney(sales.totals.header_discounts) }} ·
-            Credited: {{ fmtMoney(sales.totals.credited) }} ·
-            <span class="font-weight-bold">Net sales: {{ fmtMoney(sales.totals.net_sales) }}</span> ·
-            Payments: {{ fmtMoney(sales.totals.payments) }}
+            Invoiced: {{ formatMoney(sales.totals.invoiced) }} ·
+            Header discounts: -{{ formatMoney(sales.totals.header_discounts) }} ·
+            Credited: {{ formatMoney(sales.totals.credited) }} ·
+            <span class="font-weight-bold">Net sales: {{ formatMoney(sales.totals.net_sales) }}</span> ·
+            Payments: {{ formatMoney(sales.totals.payments) }}
           </div>
         </template>
 
@@ -918,16 +902,16 @@ onMounted(async () => {
               {{ item.issue_date || '—' }}
             </template>
             <template #item.total="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.total) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.total) }}</span>
             </template>
             <template #item.paid="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.paid) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.paid) }}</span>
             </template>
             <template #item.credited="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.credited) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.credited) }}</span>
             </template>
             <template #item.balance="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.balance) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.balance) }}</span>
             </template>
           </VDataTable>
           <div
@@ -938,17 +922,17 @@ onMounted(async () => {
               v-for="ct in receivables.customer_totals"
               :key="ct.customer_id"
             >
-              {{ ct.customer_name }}: {{ fmtMoney(ct.balance) }} ({{ ct.count }} invoice{{ ct.count === 1 ? '' : 's' }})
+              {{ ct.customer_name }}: {{ formatMoney(ct.balance) }} ({{ ct.count }} invoice{{ ct.count === 1 ? '' : 's' }})
             </div>
             <div class="mt-1">
               <span
                 v-for="(v, k) in receivables.buckets"
                 :key="k"
                 class="me-4"
-              >{{ k }}: {{ fmtMoney(v) }}</span>
+              >{{ k }}: {{ formatMoney(v) }}</span>
             </div>
             <div class="font-weight-bold mt-1">
-              Grand total: {{ fmtMoney(receivables.grand_total) }}
+              Grand total: {{ formatMoney(receivables.grand_total) }}
             </div>
           </div>
         </template>
@@ -969,14 +953,14 @@ onMounted(async () => {
               {{ reasonCodeLabel(item.reason_code) }}
             </template>
             <template #item.cost="{ item }">
-              <span class="tabular-nums">{{ fmtMoney(item.cost) }}</span>
+              <span class="tabular-nums">{{ formatMoney(item.cost) }}</span>
             </template>
           </VDataTable>
           <div
             v-if="writeoffs"
             class="mt-3 text-body-2 font-weight-bold"
           >
-            Total: {{ writeoffs.totals.qty }} units · {{ fmtMoney(writeoffs.totals.cost) }}
+            Total: {{ writeoffs.totals.qty }} units · {{ formatMoney(writeoffs.totals.cost) }}
           </div>
         </template>
       </VCardText>

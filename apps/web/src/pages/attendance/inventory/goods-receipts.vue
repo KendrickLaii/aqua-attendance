@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type GoodsReceipt,
   type GoodsReceiptLinePayload,
@@ -14,14 +15,16 @@ import {
   listSuppliers,
   voidGoodsReceipt,
 } from '@/api/attendance/inventoryPurchasing'
-import { type InventoryItem, listInventoryItems } from '@/api/attendance/inventory'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import { type InventoryItem, type InventoryWarehouse, listInventoryItems, listWarehouses } from '@/api/attendance/inventory'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
+import { useInventoryLinePicker } from '@/composables/useInventoryLinePicker'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
 import { useDirtyGuard } from '@/composables/useDirtyGuard'
@@ -30,20 +33,19 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
+const display = useDisplay()
 
 const loading = ref(true)
 const detailLoading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
+const dialogError = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
 const suppliers = ref<InventorySupplier[]>([])
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 const items = ref<InventoryItem[]>([])
 const openOrders = ref<PurchaseOrder[]>([])
 
@@ -56,7 +58,7 @@ const confirm = useConfirmAction()
 const dirty = useDirtyGuard('Discard the goods receipt being drafted?')
 
 const statusFilter = ref<InventoryDocStatus | null>(null)
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 
 const selected = ref<GoodsReceipt | null>(null)
 
@@ -113,7 +115,7 @@ const confirmAllowOverReceipt = ref(false)
 const createForm = reactive({
   po_id: null as string | null,
   supplier_id: null as string | null,
-  location_id: null as string | null,
+  warehouse_id: null as string | null,
   receipt_date: new Date().toISOString().slice(0, 10),
   notes: '',
   allow_over_receipt: false,
@@ -149,7 +151,7 @@ const createInvalid = computed(() =>
   createFromPo.value
     ? !createForm.receipt_date
     : (!createForm.supplier_id
-      || !createForm.location_id
+      || !createForm.warehouse_id
       || !createForm.receipt_date
       || manualLines.value.length === 0
       || manualLineErrors.value.some(Boolean)),
@@ -165,15 +167,15 @@ onMounted(async () => {
     return
   loading.value = true
   try {
-    const [supplierResult, locationList, itemList, poList] = await Promise.all([
+    const [supplierResult, warehouseList, itemList, poList] = await Promise.all([
       listSuppliers({ is_active: true, page_size: 200 }),
-      listLocations({ is_active: true }),
+      listWarehouses({ is_active: true }),
       listInventoryItems(),
       fetchAllOpenOrders(),
     ])
 
     suppliers.value = supplierResult.items
-    locations.value = locationList
+    warehouses.value = warehouseList
     items.value = itemList
     openOrders.value = poList
     await loadReceipts()
@@ -200,7 +202,7 @@ async function loadReceipts() {
   try {
     const result = await listGoodsReceipts({
       status: statusFilter.value ?? undefined,
-      location_id: locationFilter.value ?? undefined,
+      warehouse_id: warehouseFilter.value ?? undefined,
       page: page.value,
       page_size: pageSize.value,
     })
@@ -238,7 +240,7 @@ async function selectReceipt(grn: GoodsReceipt) {
     await scrollToDetail()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to load goods receipt.')
+    toast.show(formatApiError(e, 'Failed to load goods receipt.'), 'error', 6000)
   }
   finally {
     detailLoading.value = false
@@ -250,11 +252,12 @@ function openCreate() {
   showErrors.value = false
   createForm.po_id = null
   createForm.supplier_id = null
-  createForm.location_id = null
+  createForm.warehouse_id = null
   createForm.receipt_date = new Date().toISOString().slice(0, 10)
   createForm.notes = ''
   createForm.allow_over_receipt = false
   manualLines.value = []
+  dialogError.value = ''
   createDialogOpen.value = true
   dirty.markClean()
   nextTick(() => {
@@ -266,35 +269,46 @@ function addManualLine() {
   manualLines.value.push({ item_id: '', qty: 1, unit_cost: 0 })
 }
 
+const { onPickItem } = useInventoryLinePicker({
+  lines: manualLines,
+  itemById: id => items.value.find(i => i.id === id),
+  qtyKey: 'qty',
+  priceKeys: ['unit_cost'],
+})
+
+const manualSubtotal = computed(() =>
+  manualLines.value.reduce((s, l) => s + (l.qty || 0) * (l.unit_cost || 0), 0),
+)
+
 function removeManualLine(index: number) {
   manualLines.value.splice(index, 1)
 }
 
 async function submitCreate() {
-  actionError.value = ''
   if (createInvalid.value) {
     showErrors.value = true
-    actionError.value = '請檢查紅色標示的欄位，修正後再建立。'
+    dialogError.value = '請檢查紅色標示的欄位，修正後再建立。'
     await nextTick()
     document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
     return
   }
   saving.value = true
+  dialogError.value = ''
   try {
     const po = createForm.po_id ? poById.value.get(createForm.po_id) : null
     const supplierId = po ? po.supplier_id : createForm.supplier_id
-    const locationId = po ? po.location_id : createForm.location_id
+    const warehouseId = po ? po.warehouse_id : createForm.warehouse_id
 
-    if (!supplierId || !locationId) {
-      actionError.value = 'Supplier and location are required.'
+    if (!supplierId || !warehouseId) {
+      dialogError.value = 'Supplier and location are required.'
 
       return
     }
 
     const payload = {
       supplier_id: supplierId,
-      location_id: locationId,
+      warehouse_id: warehouseId,
       receipt_date: createForm.receipt_date,
       notes: createForm.notes || null,
       allow_over_receipt: createForm.allow_over_receipt,
@@ -306,14 +320,14 @@ async function submitCreate() {
 
     const grn = await createGoodsReceipt(payload)
 
-    actionSuccess.value = `Created goods receipt ${grn.grn_no}.`
+    toast.show(`Created goods receipt ${grn.grn_no}.`)
     createDialogOpen.value = false
     dirty.markClean()
     await loadReceipts()
     await selectReceipt(grn)
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to create goods receipt.')
+    dialogError.value = formatApiError(e, 'Failed to create goods receipt.')
   }
   finally {
     saving.value = false
@@ -338,16 +352,15 @@ function askConfirm() {
 async function performConfirm() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await confirmGoodsReceipt(selected.value.id, confirmAllowOverReceipt.value)
-    actionSuccess.value = `Confirmed ${selected.value.grn_no}.`
+    toast.show(`Confirmed ${selected.value.grn_no}.`)
     await loadReceipts()
     openOrders.value = await fetchAllOpenOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to confirm.')
+    toast.show(formatApiError(e, 'Failed to confirm.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -371,16 +384,15 @@ function askVoid() {
 async function performVoid() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await voidGoodsReceipt(selected.value.id)
-    actionSuccess.value = `Voided ${selected.value.grn_no}.`
+    toast.show(`Voided ${selected.value.grn_no}.`)
     await loadReceipts()
     openOrders.value = await fetchAllOpenOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to void.')
+    toast.show(formatApiError(e, 'Failed to void.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -401,26 +413,21 @@ function askDelete() {
 async function performDelete() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     const no = selected.value.grn_no
 
     await deleteGoodsReceipt(selected.value.id)
-    actionSuccess.value = `Deleted draft ${no}.`
+    toast.show(`Deleted draft ${no}.`)
     selected.value = null
     await loadReceipts()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to delete.')
+    toast.show(formatApiError(e, 'Failed to delete.'), 'error', 6000)
   }
   finally {
     saving.value = false
   }
-}
-
-function fmtMoney(value: number | null | undefined): string {
-  return (value ?? 0).toFixed(2)
 }
 </script>
 
@@ -476,26 +483,6 @@ function fmtMoney(value: number | null | undefined): string {
     >
       {{ loadError }}
     </VAlert>
-    <VAlert
-      v-if="actionError"
-      type="error"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionError = ''"
-    >
-      {{ actionError }}
-    </VAlert>
-    <VAlert
-      v-if="actionSuccess"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionSuccess = ''"
-    >
-      {{ actionSuccess }}
-    </VAlert>
 
     <VRow>
       <VCol cols="12">
@@ -511,9 +498,9 @@ function fmtMoney(value: number | null | undefined): string {
               @update:model-value="onFiltersChange"
             />
             <VSelect
-              v-model="locationFilter"
-              :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.id }))"
-              label="Location"
+              v-model="warehouseFilter"
+              :items="warehouses.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.id }))"
+              label="Warehouse 倉庫"
               density="comfortable"
               hide-details
               clearable
@@ -541,11 +528,13 @@ function fmtMoney(value: number | null | undefined): string {
                 <InventoryStatusChip :status="grn.status" />
               </template>
             </VListItem>
-            <VListItem v-if="receipts.length === 0 && !loading">
-              <VListItemTitle class="text-medium-emphasis">
-                No goods receipts yet — order a purchase order, then use "New receipt".
-              </VListItemTitle>
-            </VListItem>
+            <InventoryEmptyState
+              v-if="receipts.length === 0 && !loading"
+              icon="ri-inbox-archive-line"
+              text="No goods receipts yet."
+              action-label="New Goods Receipt"
+              @action="openCreate"
+            />
           </VList>
           <AttendancePaginationBar
             v-model:page="page"
@@ -582,7 +571,7 @@ function fmtMoney(value: number | null | undefined): string {
             />
           </VCardTitle>
           <VCardSubtitle>
-            {{ selected.supplier_name || '—' }} · {{ selected.location_name || '—' }} ·
+            {{ selected.supplier_name || '—' }} · {{ selected.warehouse_name || '—' }} ·
             {{ selected.receipt_date }}
             <template v-if="selected.po_no">
               · PO {{ selected.po_no }}
@@ -619,10 +608,10 @@ function fmtMoney(value: number | null | undefined): string {
                       {{ line.qty }}
                     </td>
                     <td class="text-end tabular-nums">
-                      {{ fmtMoney(line.unit_cost) }}
+                      {{ formatMoney(line.unit_cost) }}
                     </td>
                     <td class="text-end font-weight-medium tabular-nums">
-                      {{ fmtMoney(line.qty * line.unit_cost) }}
+                      {{ formatMoney(line.qty * line.unit_cost) }}
                     </td>
                   </tr>
                 </tbody>
@@ -649,10 +638,24 @@ function fmtMoney(value: number | null | undefined): string {
 
     <VDialog
       v-model="createDialogOpen"
-      max-width="640"
+      max-width="900"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard title="New goods receipt">
         <VCardText>
+          <VAlert
+            v-if="dialogError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ dialogError }}
+          </VAlert>
+          <div class="text-overline text-medium-emphasis mb-2">
+            Document
+          </div>
           <VAlert
             type="info"
             variant="tonal"
@@ -680,12 +683,12 @@ function fmtMoney(value: number | null | undefined): string {
               @blur="showErrors = true"
             />
             <VSelect
-              v-model="createForm.location_id"
-              :items="locations.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.id }))"
-              label="Location *"
+              v-model="createForm.warehouse_id"
+              :items="warehouses.map(l => ({ value: l.id, title: l.name_en || l.name_zh || l.id }))"
+              label="Warehouse 倉庫 *"
               density="comfortable"
               class="mb-3"
-              :error="showErrors && !createForm.location_id"
+              :error="showErrors && !createForm.warehouse_id"
               @blur="showErrors = true"
             />
           </template>
@@ -709,11 +712,12 @@ function fmtMoney(value: number | null | undefined): string {
             label="Allow over-receipt"
             density="comfortable"
             hide-details
-            class="mb-3"
           />
 
           <template v-if="!createFromPo">
-            <VDivider class="my-3" />
+            <div class="text-overline text-medium-emphasis mb-2 mt-4">
+              Lines
+            </div>
             <VTable
               density="compact"
               class="inv-line-table"
@@ -728,6 +732,9 @@ function fmtMoney(value: number | null | undefined): string {
                   </th>
                   <th class="inv-col-price text-end">
                     Unit cost
+                  </th>
+                  <th class="text-end">
+                    Line total
                   </th>
                   <th class="inv-col-remove" />
                 </tr>
@@ -747,6 +754,7 @@ function fmtMoney(value: number | null | undefined): string {
                         variant="outlined"
                         placeholder="Search item…"
                         :error="showErrors && manualLineErrors[index]?.field === 'item'"
+                        @update:model-value="onPickItem(index)"
                         @blur="showErrors = true"
                       />
                     </td>
@@ -778,6 +786,9 @@ function fmtMoney(value: number | null | undefined): string {
                         @blur="showErrors = true"
                       />
                     </td>
+                    <td class="text-end tabular-nums">
+                      {{ formatMoney((line.qty || 0) * (line.unit_cost || 0)) }}
+                    </td>
                     <td class="inv-col-remove">
                       <VBtn
                         icon="ri-close-line"
@@ -794,7 +805,7 @@ function fmtMoney(value: number | null | undefined): string {
                     class="inv-line-error"
                   >
                     <td
-                      colspan="4"
+                      colspan="5"
                       class="text-caption text-error"
                     >
                       {{ manualLineErrors[index]!.msg }}
@@ -802,6 +813,20 @@ function fmtMoney(value: number | null | undefined): string {
                   </tr>
                 </template>
               </tbody>
+              <tfoot v-if="manualLines.length">
+                <tr>
+                  <td
+                    colspan="3"
+                    class="text-end text-medium-emphasis"
+                  >
+                    Subtotal
+                  </td>
+                  <td class="text-end tabular-nums font-weight-bold">
+                    {{ formatMoney(manualSubtotal) }}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
             </VTable>
             <VBtn
               variant="text"
@@ -814,6 +839,7 @@ function fmtMoney(value: number | null | undefined): string {
             </VBtn>
           </template>
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn

@@ -53,7 +53,7 @@ export interface InventoryInvoice {
   customer_id: string
   customer_name: string | null
   buyer_name: string
-  location_id: string
+  warehouse_id: string
   issue_date: string | null
   status: InventoryInvoiceStatus
   discount_amount: number
@@ -99,10 +99,10 @@ export interface InventoryInvoicePrintDoc {
   customer_phone: string | null
   customer_email: string | null
   customer_address: string | null
-  location_name_zh: string | null
-  location_name_en: string | null
-  location_address: string | null
-  location_phone: string | null
+  warehouse_name_zh: string | null
+  warehouse_name_en: string | null
+  warehouse_address: string | null
+  warehouse_phone: string | null
   so_no: string
   lines: InventoryInvoiceLine[]
   discount_amount: number
@@ -117,7 +117,7 @@ export interface InventoryInvoicePrintDoc {
 
 export async function listInvoices(params?: {
   customer_id?: string
-  location_id?: string
+  warehouse_id?: string
   status?: InventoryInvoiceStatus
   payment_status?: InventoryPaymentStatus
   date_from?: string
@@ -165,12 +165,12 @@ export async function getInvoicePrint(id: string): Promise<InventoryInvoicePrint
 export type InventoryReceiptPaidBy = 'cash' | 'cheque' | 'bank_transfer' | 'card' | 'other'
 export type InventoryReceiptStatus = 'posted' | 'void'
 
-export const RECEIPT_PAID_BY_OPTIONS: { value: InventoryReceiptPaidBy; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'cheque', label: 'Cheque' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'card', label: 'Card' },
-  { value: 'other', label: 'Other' },
+export const RECEIPT_PAID_BY_OPTIONS: { value: InventoryReceiptPaidBy; title: string }[] = [
+  { value: 'cash', title: 'Cash' },
+  { value: 'cheque', title: 'Cheque' },
+  { value: 'bank_transfer', title: 'Bank Transfer' },
+  { value: 'card', title: 'Card' },
+  { value: 'other', title: 'Other' },
 ]
 
 export interface InventoryReceipt {
@@ -180,7 +180,7 @@ export interface InventoryReceipt {
   invoice_no: string | null
   customer_id: string
   customer_name: string | null
-  location_id: string
+  warehouse_id: string
   amount: number
   paid_by: InventoryReceiptPaidBy
   reference_no: string | null
@@ -213,10 +213,10 @@ export interface InventoryReceiptPrintDoc {
   customer_code: string
   customer_name_zh: string | null
   customer_name_en: string | null
-  location_name_zh: string | null
-  location_name_en: string | null
-  location_address: string | null
-  location_phone: string | null
+  warehouse_name_zh: string | null
+  warehouse_name_en: string | null
+  warehouse_address: string | null
+  warehouse_phone: string | null
   amount: number
   paid_by: string
   reference_no: string | null
@@ -226,7 +226,7 @@ export interface InventoryReceiptPrintDoc {
 export async function listReceipts(params?: {
   invoice_id?: string
   customer_id?: string
-  location_id?: string
+  warehouse_id?: string
   status?: InventoryReceiptStatus
   date_from?: string
   date_to?: string
@@ -276,7 +276,7 @@ export interface InventoryCreditNote {
   invoice_no: string | null
   customer_id: string
   customer_name: string | null
-  location_id: string
+  warehouse_id: string
   credit_date: string
   reason: string
   status: InventoryCreditNoteStatus
@@ -309,10 +309,10 @@ export interface InventoryCreditNotePrintDoc {
   customer_code: string
   customer_name_zh: string | null
   customer_name_en: string | null
-  location_name_zh: string | null
-  location_name_en: string | null
-  location_address: string | null
-  location_phone: string | null
+  warehouse_name_zh: string | null
+  warehouse_name_en: string | null
+  warehouse_address: string | null
+  warehouse_phone: string | null
   reason: string
   lines: InventoryCreditNoteLine[]
   total: number
@@ -321,7 +321,7 @@ export interface InventoryCreditNotePrintDoc {
 export async function listCreditNotes(params?: {
   invoice_id?: string
   customer_id?: string
-  location_id?: string
+  warehouse_id?: string
   status?: InventoryCreditNoteStatus
   date_from?: string
   date_to?: string

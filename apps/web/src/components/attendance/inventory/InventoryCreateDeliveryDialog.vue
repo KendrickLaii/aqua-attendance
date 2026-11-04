@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type DeliveryOrder,
   createDeliveryOrder,
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 const open = defineModel<boolean>({ required: true })
 
 const loading = ref(false)
+const display = useDisplay()
 const saving = ref(false)
 const error = ref('')
 const deliveryDate = ref(new Date().toISOString().slice(0, 10))
@@ -162,7 +164,9 @@ async function doCreate() {
 <template>
   <VDialog
     v-model="open"
-    max-width="720"
+    max-width="900"
+    :fullscreen="display.xs.value"
+    scrollable
   >
     <VCard>
       <VCardTitle>New Delivery Order</VCardTitle>
@@ -260,6 +264,7 @@ async function doCreate() {
           {{ error }}
         </VAlert>
       </VCardText>
+      <VDivider />
       <VCardActions>
         <VSpacer />
         <VBtn

@@ -17,16 +17,16 @@ REASON_CODES_REQUIRING_NOTE = {"damage", "loss", "gift"}
 VALID_TYPES = {"in", "out", "adjust", "transfer_in", "transfer_out"}
 
 
-async def _locked_stock(db: AsyncSession, item_id: uuid.UUID, location_id: uuid.UUID) -> InventoryStock:
+async def _locked_stock(db: AsyncSession, item_id: uuid.UUID, warehouse_id: uuid.UUID) -> InventoryStock:
     result = await db.execute(
         select(InventoryStock)
-        .where(InventoryStock.item_id == item_id, InventoryStock.location_id == location_id)
+        .where(InventoryStock.item_id == item_id, InventoryStock.warehouse_id == warehouse_id)
         .with_for_update()
     )
     stock = result.scalar_one_or_none()
     if stock:
         return stock
-    stock = InventoryStock(item_id=item_id, location_id=location_id, quantity=0)
+    stock = InventoryStock(item_id=item_id, warehouse_id=warehouse_id, quantity=0)
     try:
         async with db.begin_nested():
             db.add(stock)
@@ -34,7 +34,7 @@ async def _locked_stock(db: AsyncSession, item_id: uuid.UUID, location_id: uuid.
     except IntegrityError:
         result = await db.execute(
             select(InventoryStock)
-            .where(InventoryStock.item_id == item_id, InventoryStock.location_id == location_id)
+            .where(InventoryStock.item_id == item_id, InventoryStock.warehouse_id == warehouse_id)
             .with_for_update()
         )
         stock = result.scalar_one()
@@ -61,7 +61,7 @@ async def apply_movement(
     db: AsyncSession,
     *,
     item_id: uuid.UUID,
-    location_id: uuid.UUID,
+    warehouse_id: uuid.UUID,
     type: str,
     quantity: int,
     reason: str | None,
@@ -91,14 +91,14 @@ async def apply_movement(
         )
         movement = existing.scalar_one_or_none()
         if movement:
-            if movement.item_id != item_id or movement.location_id != location_id or movement.type != type:
+            if movement.item_id != item_id or movement.warehouse_id != warehouse_id or movement.type != type:
                 raise HTTPException(
                     status_code=409,
                     detail="reference already used by a different movement",
                 )
             return movement
 
-    stock = await _locked_stock(db, item_id, location_id)
+    stock = await _locked_stock(db, item_id, warehouse_id)
 
     if type in ("in", "transfer_in"):
         delta = quantity
@@ -137,7 +137,7 @@ async def apply_movement(
     stock.quantity = balance_after
     movement = InventoryMovement(
         item_id=item_id,
-        location_id=location_id,
+        warehouse_id=warehouse_id,
         type=type,
         quantity_delta=delta,
         balance_after=balance_after,
@@ -167,11 +167,36 @@ async def apply_movement(
     return movement
 
 
+async def adjust_by(
+    db: AsyncSession,
+    *,
+    item_id: uuid.UUID,
+    warehouse_id: uuid.UUID,
+    delta: int,
+    reason: str | None,
+    reference: str | None,
+    user: User | None,
+) -> InventoryMovement:
+    """Relative 'adjust': new on-hand = locked live balance + ``delta``.
+    Caller commits."""
+    stock = await _locked_stock(db, item_id, warehouse_id)
+    return await apply_movement(
+        db,
+        item_id=item_id,
+        warehouse_id=warehouse_id,
+        type="adjust",
+        quantity=stock.quantity + delta,
+        reason=reason,
+        reference=reference,
+        user=user,
+    )
+
+
 async def reserve(
-    db: AsyncSession, *, item_id: uuid.UUID, location_id: uuid.UUID, quantity: int
+    db: AsyncSession, *, item_id: uuid.UUID, warehouse_id: uuid.UUID, quantity: int
 ) -> InventoryStock:
     """Reserve ``quantity`` units (e.g. confirmed sales order). Caller commits."""
-    stock = await _locked_stock(db, item_id, location_id)
+    stock = await _locked_stock(db, item_id, warehouse_id)
     if stock.reserved + quantity > stock.quantity:
         raise HTTPException(
             status_code=422,
@@ -183,10 +208,10 @@ async def reserve(
 
 
 async def release(
-    db: AsyncSession, *, item_id: uuid.UUID, location_id: uuid.UUID, quantity: int
+    db: AsyncSession, *, item_id: uuid.UUID, warehouse_id: uuid.UUID, quantity: int
 ) -> InventoryStock:
     """Release previously reserved units. Caller commits."""
-    stock = await _locked_stock(db, item_id, location_id)
+    stock = await _locked_stock(db, item_id, warehouse_id)
     if quantity > stock.reserved:
         raise HTTPException(
             status_code=422,
@@ -201,26 +226,26 @@ async def transfer(
     db: AsyncSession,
     *,
     item_id: uuid.UUID,
-    from_location_id: uuid.UUID,
-    to_location_id: uuid.UUID,
+    from_warehouse_id: uuid.UUID,
+    to_warehouse_id: uuid.UUID,
     quantity: int,
     reason: str | None,
     user: User | None,
 ) -> tuple[InventoryMovement, InventoryMovement]:
-    """Move stock between locations: transfer_out + transfer_in in one call
-    (one transaction — the caller commits). Same location is rejected.
+    """Move stock between warehouses: transfer_out + transfer_in in one call
+    (one transaction — the caller commits). Same warehouse is rejected.
     """
-    if from_location_id == to_location_id:
-        raise HTTPException(status_code=422, detail="from and to locations must differ")
+    if from_warehouse_id == to_warehouse_id:
+        raise HTTPException(status_code=422, detail="from and to warehouses must differ")
 
-    for loc_id in sorted((from_location_id, to_location_id), key=str):
+    for loc_id in sorted((from_warehouse_id, to_warehouse_id), key=str):
         await _locked_stock(db, item_id, loc_id)
 
     transfer_id = uuid.uuid4()
     out_movement = await apply_movement(
         db,
         item_id=item_id,
-        location_id=from_location_id,
+        warehouse_id=from_warehouse_id,
         type="transfer_out",
         quantity=quantity,
         reason=reason,
@@ -230,7 +255,7 @@ async def transfer(
     in_movement = await apply_movement(
         db,
         item_id=item_id,
-        location_id=to_location_id,
+        warehouse_id=to_warehouse_id,
         type="transfer_in",
         quantity=quantity,
         reason=reason,

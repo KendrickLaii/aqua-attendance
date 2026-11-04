@@ -52,7 +52,7 @@ async def _invoice_balance_map(db, invoice_ids: list[uuid.UUID]) -> dict[uuid.UU
     return {row.id: max(float(row.total) - float(row[2]) - float(row[3]), 0.0) for row in rows}
 
 
-async def compute_alerts(db, location_id: uuid.UUID | None = None) -> dict:
+async def compute_alerts(db, warehouse_id: uuid.UUID | None = None) -> dict:
     """Live-computed inventory alerts; no persistence."""
     today = date.today()
 
@@ -65,12 +65,12 @@ async def compute_alerts(db, location_id: uuid.UUID | None = None) -> dict:
             InventoryStock.quantity <= InventoryItem.reorder_level,
         )
     )
-    if location_id:
-        stock_q = stock_q.where(InventoryStock.location_id == location_id)
+    if warehouse_id:
+        stock_q = stock_q.where(InventoryStock.warehouse_id == warehouse_id)
     low_stock = [
         {
             "item_id": str(stock.item_id),
-            "location_id": str(stock.location_id),
+            "warehouse_id": str(stock.warehouse_id),
             "sku_code": item.sku_code,
             "name_zh": item.name_zh,
             "quantity": stock.quantity,
@@ -84,8 +84,8 @@ async def compute_alerts(db, location_id: uuid.UUID | None = None) -> dict:
         PurchaseOrder.expected_date.is_not(None),
         PurchaseOrder.expected_date < today,
     )
-    if location_id:
-        po_q = po_q.where(PurchaseOrder.location_id == location_id)
+    if warehouse_id:
+        po_q = po_q.where(PurchaseOrder.warehouse_id == warehouse_id)
     overdue_purchase_orders = [
         {
             "id": str(po.id),
@@ -102,8 +102,8 @@ async def compute_alerts(db, location_id: uuid.UUID | None = None) -> dict:
         InventoryInvoice.issue_date.is_not(None),
         InventoryInvoice.issue_date < cutoff,
     )
-    if location_id:
-        inv_q = inv_q.where(InventoryInvoice.location_id == location_id)
+    if warehouse_id:
+        inv_q = inv_q.where(InventoryInvoice.warehouse_id == warehouse_id)
     overdue_invs = (await db.execute(inv_q)).scalars().all()
     balances = await _invoice_balance_map(db, [inv.id for inv in overdue_invs])
     overdue_invoices = [
@@ -124,8 +124,8 @@ async def compute_alerts(db, location_id: uuid.UUID | None = None) -> dict:
         SalesOrder.pf_valid_until.is_not(None),
         SalesOrder.pf_valid_until < today,
     )
-    if location_id:
-        pf_q = pf_q.where(SalesOrder.location_id == location_id)
+    if warehouse_id:
+        pf_q = pf_q.where(SalesOrder.warehouse_id == warehouse_id)
     expiring_proformas = [
         {
             "id": str(so.id),
@@ -177,7 +177,7 @@ _ADVISORY_LOCK_KEY = 727401
 DEDUPE_WINDOW_DAYS = 7
 
 
-async def notify_alerts(db, location_id: uuid.UUID | None = None) -> dict:
+async def notify_alerts(db, warehouse_id: uuid.UUID | None = None) -> dict:
     """Create one notification per alert item per active admin user.
 
     Deduped on extra_data {"inventory_alert": kind, "ref": ref}: skipped when
@@ -195,7 +195,7 @@ async def notify_alerts(db, location_id: uuid.UUID | None = None) -> dict:
         if not acquired:
             return {"created": 0, "skipped": 0, "locked": True}
 
-    alerts = await compute_alerts(db, location_id=location_id)
+    alerts = await compute_alerts(db, warehouse_id=warehouse_id)
     users = (
         await db.execute(
             select(User).where(User.is_active.is_(True), User.role.in_(["admin", "superadmin"]))
@@ -227,7 +227,7 @@ async def notify_alerts(db, location_id: uuid.UUID | None = None) -> dict:
         title = _TITLES[kind]
         for item in items:
             _ref, message = _describe(kind, item)
-            ref = str(item.get("id") or f"{item.get('item_id')}:{item.get('location_id')}")
+            ref = str(item.get("id") or f"{item.get('item_id')}:{item.get('warehouse_id')}")
             for user in users:
                 if (user.id, kind, ref) in seen:
                     skipped += 1

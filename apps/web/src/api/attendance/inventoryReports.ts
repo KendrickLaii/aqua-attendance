@@ -4,8 +4,8 @@ export interface StockValuationRow {
   item_id: string
   sku_code: string
   name_zh: string
-  location_id: string
-  location_name: string | null
+  warehouse_id: string
+  warehouse_name: string | null
   quantity: number
   reserved: number
   available: number
@@ -15,7 +15,7 @@ export interface StockValuationRow {
 
 export interface StockValuationReport {
   rows: StockValuationRow[]
-  location_totals: { location_id: string; location_name: string | null; value: number }[]
+  warehouse_totals: { warehouse_id: string; warehouse_name: string | null; value: number }[]
   grand_total: number
 }
 
@@ -56,7 +56,7 @@ export interface OpenOrderRow {
   po_no: string
   supplier_id: string
   supplier_name: string | null
-  location_id: string
+  warehouse_id: string
   order_date: string | null
   expected_date: string | null
   status: string
@@ -93,7 +93,7 @@ export interface ReceivableRow {
   invoice_no: string
   customer_id: string
   customer_name: string | null
-  location_id: string
+  warehouse_id: string
   issue_date: string | null
   total: number
   paid: number
@@ -138,6 +138,7 @@ export interface InventoryDashboard {
   unpaid_invoice_count: number
   receivable_balance: number
   overdue_receivable_balance: number
+  overdue_days: number
   month_sales: number
   month_purchases: number
   month_invoiced: number
@@ -148,7 +149,7 @@ export interface InventoryDashboard {
 
 export interface LowStockAlert {
   item_id: string
-  location_id: string
+  warehouse_id: string
   sku_code: string
   name_zh: string
   quantity: number
@@ -190,7 +191,7 @@ export interface NotifyResult {
 }
 
 interface ReportParams {
-  location_id?: string
+  warehouse_id?: string
   customer_id?: string
   supplier_id?: string
   item_id?: string
@@ -234,15 +235,15 @@ export async function exportReportCSV(path: string, params?: ReportParams): Prom
   })
 }
 
-export async function getInventoryDashboard(params?: { location_id?: string }): Promise<InventoryDashboard> {
+export async function getInventoryDashboard(params?: { warehouse_id?: string }): Promise<InventoryDashboard> {
   return await $attendanceApi<InventoryDashboard>('/inventory/dashboard', { params })
 }
 
-export async function getInventoryAlerts(params?: { location_id?: string }): Promise<InventoryAlerts> {
+export async function getInventoryAlerts(params?: { warehouse_id?: string }): Promise<InventoryAlerts> {
   return await $attendanceApi<InventoryAlerts>('/inventory/alerts', { params })
 }
 
-export async function sendInventoryAlerts(params?: { location_id?: string }): Promise<NotifyResult> {
+export async function sendInventoryAlerts(params?: { warehouse_id?: string }): Promise<NotifyResult> {
   return await $attendanceApi<NotifyResult>('/inventory/alerts/notify', {
     method: 'POST',
     params,

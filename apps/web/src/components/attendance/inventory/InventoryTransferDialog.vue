@@ -1,16 +1,17 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventoryItem,
+  type InventoryWarehouse,
   createInventoryTransfer,
 } from '@/api/attendance/inventory'
-import { type LocationItem } from '@/api/attendance/locations'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 const props = defineProps<{
   modelValue: boolean
-  locations: LocationItem[]
+  warehouses: InventoryWarehouse[]
   items: InventoryItem[]
-  fromLocationId: string | null
+  fromWarehouseId: string | null
 }>()
 
 const emit = defineEmits<{
@@ -18,23 +19,27 @@ const emit = defineEmits<{
   saved: []
 }>()
 
+const display = useDisplay()
+const toast = useToast()
 const saving = ref(false)
 const saveError = ref('')
 
 const form = reactive({
   item_id: null as string | null,
-  from_location_id: null as string | null,
-  to_location_id: null as string | null,
+  from_warehouse_id: null as string | null,
+  to_warehouse_id: null as string | null,
   quantity: null as number | null,
   reason: '',
 })
 
-const locationOptions = computed(() =>
-  props.locations.map(l => ({
+const warehouseOptions = computed(() =>
+  props.warehouses.map(l => ({
     value: l.id,
     title: [l.name_en, l.name_zh].filter(Boolean).join(' · '),
   })),
 )
+
+const itemLabel = computed(() => props.items.find(i => i.id === form.item_id)?.sku_code ?? '')
 
 const itemOptions = computed(() =>
   props.items
@@ -49,9 +54,9 @@ const canSave = computed(
   () =>
     !!(
       form.item_id
-      && form.from_location_id
-      && form.to_location_id
-      && form.from_location_id !== form.to_location_id
+      && form.from_warehouse_id
+      && form.to_warehouse_id
+      && form.from_warehouse_id !== form.to_warehouse_id
       && form.quantity !== null
       && form.quantity > 0
     ),
@@ -62,27 +67,28 @@ watch(() => props.modelValue, open => {
     return
   saveError.value = ''
   form.item_id = null
-  form.from_location_id = props.fromLocationId
-  form.to_location_id = null
+  form.from_warehouse_id = props.fromWarehouseId
+  form.to_warehouse_id = null
   form.quantity = null
   form.reason = ''
 })
 
 async function save() {
-  if (!canSave.value || !form.item_id || !form.from_location_id || !form.to_location_id || form.quantity === null)
+  if (!canSave.value || !form.item_id || !form.from_warehouse_id || !form.to_warehouse_id || form.quantity === null)
     return
   saving.value = true
   saveError.value = ''
   try {
     await createInventoryTransfer({
       item_id: form.item_id,
-      from_location_id: form.from_location_id,
-      to_location_id: form.to_location_id,
+      from_warehouse_id: form.from_warehouse_id,
+      to_warehouse_id: form.to_warehouse_id,
       quantity: form.quantity,
       reason: form.reason.trim() || null,
     })
     emit('update:modelValue', false)
     emit('saved')
+    toast.show(`Transferred ${form.quantity} × ${itemLabel.value}`)
   }
   catch (e) {
     saveError.value = formatApiError(e, 'Could not create transfer.')
@@ -96,7 +102,9 @@ async function save() {
 <template>
   <VDialog
     :model-value="modelValue"
-    max-width="520"
+    max-width="560"
+    :fullscreen="display.xs.value"
+    scrollable
     @update:model-value="emit('update:modelValue', $event)"
   >
     <VCard title="Transfer stock 調撥">
@@ -120,17 +128,17 @@ async function save() {
           class="mb-3"
         />
         <VSelect
-          v-model="form.from_location_id"
-          :items="locationOptions"
-          label="From location"
+          v-model="form.from_warehouse_id"
+          :items="warehouseOptions"
+          label="From warehouse 倉庫"
           density="comfortable"
           class="mb-3"
         />
         <VSelect
-          v-model="form.to_location_id"
-          :items="locationOptions"
-          label="To location"
-          hint="Must differ from the source location."
+          v-model="form.to_warehouse_id"
+          :items="warehouseOptions"
+          label="To warehouse 倉庫"
+          hint="Must differ from the source warehouse."
           persistent-hint
           density="comfortable"
           class="mb-3"
@@ -153,6 +161,7 @@ async function save() {
           density="comfortable"
         />
       </VCardText>
+      <VDivider />
       <VCardActions>
         <VSpacer />
         <VBtn

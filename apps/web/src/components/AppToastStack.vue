@@ -87,7 +87,7 @@ onBeforeUnmount(() => {
         >
           <div class="toast-main">
             <VIcon
-              :icon="toast.color === 'error' ? 'ri-close-circle-line' : 'ri-checkbox-circle-line'"
+              :icon="toast.color === 'error' ? 'ri-close-circle-line' : toast.color === 'warning' ? 'ri-error-warning-line' : toast.color === 'info' ? 'ri-information-line' : 'ri-checkbox-circle-line'"
               size="small"
               class="mr-2"
             />

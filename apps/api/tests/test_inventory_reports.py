@@ -5,6 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.config import settings
 from app.models.notification import Notification
 from tests.conftest import TestSessionLocal, _insert_test_user
 
@@ -38,12 +39,12 @@ async def _create_supplier(client: AsyncClient, token: str, **overrides) -> dict
     return resp.json()
 
 
-async def _move(client, token, item_id, location_id, type, quantity, **extra) -> dict:
+async def _move(client, token, item_id, warehouse_id, type, quantity, **extra) -> dict:
     resp = await client.post(
         "/api/inventory/movements",
         json={
             "item_id": item_id,
-            "location_id": location_id,
+            "warehouse_id": warehouse_id,
             "type": type,
             "quantity": quantity,
             **extra,
@@ -55,24 +56,25 @@ async def _move(client, token, item_id, location_id, type, quantity, **extra) ->
 
 
 async def _create_location(client: AsyncClient, token: str) -> dict:
+    code = f"W{uuid.uuid4().hex[:6]}"
     resp = await client.post(
-        "/api/locations",
-        json={"name_en": f"Loc-{uuid.uuid4().hex[:6]}", "code": f"L{uuid.uuid4().hex[:4]}"},
+        "/api/inventory/warehouses",
+        json={"code": code, "name_zh": f"倉{code}", "name_en": code},
         headers=_h(token),
     )
-    assert resp.status_code in (200, 201), resp.text
+    assert resp.status_code == 201, resp.text
     return resp.json()
 
 
 async def _quick_invoice(
-    client, token, customer_id, location_id, item_id, qty, price, issue_date, **so_extra
+    client, token, customer_id, warehouse_id, item_id, qty, price, issue_date, **so_extra
 ) -> dict:
     """SO confirm → invoice → issue, in the given issue_date."""
     resp = await client.post(
         "/api/inventory/sales-orders",
         json={
             "customer_id": customer_id,
-            "location_id": location_id,
+            "warehouse_id": warehouse_id,
             "order_date": issue_date,
             "lines": [{"item_id": item_id, "qty": qty, "unit_price": price, **so_extra}],
         },
@@ -108,7 +110,7 @@ async def test_stock_valuation_math_and_location_filter(
     po = await client.post(
         "/api/inventory/purchase-orders",
         json={
-            "supplier_id": supplier["id"], "location_id": loc,
+            "supplier_id": supplier["id"], "warehouse_id": loc,
             "order_date": "2026-10-01",
             "lines": [{"item_id": item["id"], "ordered_qty": 5, "unit_cost": 10.0}],
         },
@@ -118,7 +120,7 @@ async def test_stock_valuation_math_and_location_filter(
     await client.post(f"/api/inventory/purchase-orders/{po['id']}/order", headers=_h(admin_token))
     grn = await client.post(
         "/api/inventory/goods-receipts",
-        json={"supplier_id": supplier["id"], "location_id": loc, "receipt_date": "2026-10-02", "po_id": po["id"]},
+        json={"supplier_id": supplier["id"], "warehouse_id": loc, "receipt_date": "2026-10-02", "po_id": po["id"]},
         headers=_h(admin_token),
     )
     grn = grn.json()
@@ -130,15 +132,15 @@ async def test_stock_valuation_math_and_location_filter(
     data = resp.json()
     our = [r for r in data["rows"] if r["item_id"] == item["id"]]
     assert len(our) == 2  # two locations
-    row_loc = next(r for r in our if r["location_id"] == loc)
+    row_loc = next(r for r in our if r["warehouse_id"] == loc)
     assert row_loc["quantity"] == 5
     assert row_loc["avg_cost"] == pytest.approx(10.0)
     assert row_loc["value"] == pytest.approx(50.0)
-    row_loc2 = next(r for r in our if r["location_id"] == loc2["id"])
+    row_loc2 = next(r for r in our if r["warehouse_id"] == loc2["id"])
     assert row_loc2["value"] == pytest.approx(30.0)
 
     resp = await client.get(
-        f"/api/inventory/reports/stock-valuation?location_id={loc2['id']}", headers=_h(admin_token)
+        f"/api/inventory/reports/stock-valuation?warehouse_id={loc2['id']}", headers=_h(admin_token)
     )
     ours = [r for r in resp.json()["rows"] if r["item_id"] == item["id"]]
     assert len(ours) == 1 and ours[0]["quantity"] == 3
@@ -212,7 +214,7 @@ async def test_purchases_net_of_returns_and_open_orders(
     po = await client.post(
         "/api/inventory/purchase-orders",
         json={
-            "supplier_id": supplier["id"], "location_id": loc,
+            "supplier_id": supplier["id"], "warehouse_id": loc,
             "order_date": today, "expected_date": "2020-01-01",
             "lines": [{"item_id": item["id"], "ordered_qty": 10, "unit_cost": 20.0}],
         },
@@ -225,7 +227,7 @@ async def test_purchases_net_of_returns_and_open_orders(
     grn = await client.post(
         "/api/inventory/goods-receipts",
         json={
-            "supplier_id": supplier["id"], "location_id": loc, "receipt_date": today,
+            "supplier_id": supplier["id"], "warehouse_id": loc, "receipt_date": today,
             "po_id": po["id"],
             "lines": [{"po_line_id": po["lines"][0]["id"], "item_id": item["id"], "qty": 6, "unit_cost": 20.0}],
         },
@@ -238,7 +240,7 @@ async def test_purchases_net_of_returns_and_open_orders(
     prt = await client.post(
         "/api/inventory/purchase-returns",
         json={
-            "supplier_id": supplier["id"], "location_id": loc, "return_date": today,
+            "supplier_id": supplier["id"], "warehouse_id": loc, "return_date": today,
             "grn_id": grn["id"],
             "lines": [{"item_id": item["id"], "qty": 2, "unit_cost": 20.0}],
         },
@@ -402,7 +404,7 @@ async def test_write_offs_reason_filter_cost_and_missing(
     po = await client.post(
         "/api/inventory/purchase-orders",
         json={
-            "supplier_id": supplier["id"], "location_id": loc,
+            "supplier_id": supplier["id"], "warehouse_id": loc,
             "order_date": "2026-10-01",
             "lines": [{"item_id": item["id"], "ordered_qty": 6, "unit_cost": 8.0}],
         },
@@ -412,7 +414,7 @@ async def test_write_offs_reason_filter_cost_and_missing(
     await client.post(f"/api/inventory/purchase-orders/{po['id']}/order", headers=_h(admin_token))
     grn = await client.post(
         "/api/inventory/goods-receipts",
-        json={"supplier_id": supplier["id"], "location_id": loc, "receipt_date": "2026-10-02", "po_id": po["id"]},
+        json={"supplier_id": supplier["id"], "warehouse_id": loc, "receipt_date": "2026-10-02", "po_id": po["id"]},
         headers=_h(admin_token),
     )
     await client.post(f"/api/inventory/goods-receipts/{grn.json()['id']}/confirm", headers=_h(admin_token))
@@ -424,7 +426,7 @@ async def test_write_offs_reason_filter_cost_and_missing(
     await _move(client, admin_token, item["id"], loc, "out", 1, reason_code="internal_use")
 
     resp = await client.get(
-        f"/api/inventory/reports/write-offs?location_id={loc}", headers=_h(admin_token)
+        f"/api/inventory/reports/write-offs?warehouse_id={loc}", headers=_h(admin_token)
     )
     assert resp.status_code == 200, resp.text
     rows = [r for r in resp.json()["rows"] if r["item_id"] == item["id"]]
@@ -449,7 +451,7 @@ async def test_dashboard_numbers(
     inv = await _quick_invoice(client, admin_token, customer["id"], loc, item["id"], 2, 50.0, TODAY.isoformat())
 
     resp = await client.get(
-        f"/api/inventory/dashboard?location_id={loc}", headers=_h(admin_token)
+        f"/api/inventory/dashboard?warehouse_id={loc}", headers=_h(admin_token)
     )
     assert resp.status_code == 200, resp.text
     d = resp.json()
@@ -459,6 +461,7 @@ async def test_dashboard_numbers(
     assert d["receivable_balance"] >= 100.0
     assert d["month_sales"] >= 100.0
     assert d["month_invoiced"] >= 100.0
+    assert d["overdue_days"] == settings.INVENTORY_INVOICE_OVERDUE_DAYS
     assert d["month_credited"] >= 0.0
     assert d["month_purchases_gross"] >= 0.0
     assert d["month_purchase_returns"] >= 0.0
@@ -484,7 +487,7 @@ async def test_dashboard_uninvoiced_and_undelivered(
     resp = await client.post(
         "/api/inventory/sales-orders",
         json={
-            "customer_id": customer["id"], "location_id": loc, "order_date": today,
+            "customer_id": customer["id"], "warehouse_id": loc, "order_date": today,
             "lines": [{"item_id": item["id"], "qty": 5, "unit_price": 10.0}],
         },
         headers=_h(admin_token),
@@ -492,12 +495,12 @@ async def test_dashboard_uninvoiced_and_undelivered(
     so = resp.json()
     await client.post(f"/api/inventory/sales-orders/{so['id']}/confirm", headers=_h(admin_token))
 
-    resp = await client.get(f"/api/inventory/dashboard?location_id={loc}", headers=_h(admin_token))
+    resp = await client.get(f"/api/inventory/dashboard?warehouse_id={loc}", headers=_h(admin_token))
     assert resp.json()["uninvoiced_qty"] >= 5
 
     # invoice+issue all 5 → uninvoiced back down, undelivered_qty += 5
     inv = await _quick_invoice(client, admin_token, customer["id"], loc, item["id"], 5, 10.0, today)
-    resp = await client.get(f"/api/inventory/dashboard?location_id={loc}", headers=_h(admin_token))
+    resp = await client.get(f"/api/inventory/dashboard?warehouse_id={loc}", headers=_h(admin_token))
     d = resp.json()
     assert d["undelivered_invoice_count"] >= 1
     assert d["undelivered_qty"] >= 5
@@ -513,7 +516,7 @@ async def test_dashboard_uninvoiced_and_undelivered(
     )
     do = resp.json()
     await client.post(f"/api/inventory/delivery-orders/{do['id']}/confirm", headers=_h(admin_token))
-    resp = await client.get(f"/api/inventory/dashboard?location_id={loc}", headers=_h(admin_token))
+    resp = await client.get(f"/api/inventory/dashboard?warehouse_id={loc}", headers=_h(admin_token))
     d2 = resp.json()
     assert d2["undelivered_qty"] == d["undelivered_qty"] - 2
     assert d2["undelivered_invoice_count"] >= 1  # still 3 left on this invoice

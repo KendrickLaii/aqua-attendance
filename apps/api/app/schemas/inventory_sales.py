@@ -77,7 +77,7 @@ class SalesOrderLineOut(BaseModel):
 
 class SalesOrderCreate(BaseModel):
     customer_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     order_date: date
     discount_amount: float = Field(default=0, ge=0)
     notes: str | None = Field(default=None, max_length=500)
@@ -86,7 +86,7 @@ class SalesOrderCreate(BaseModel):
 
 class SalesOrderUpdate(BaseModel):
     customer_id: uuid.UUID | None = None
-    location_id: uuid.UUID | None = None
+    warehouse_id: uuid.UUID | None = None
     order_date: date | None = None
     discount_amount: float | None = Field(default=None, ge=0)
     notes: str | None = Field(default=None, max_length=500)
@@ -98,7 +98,7 @@ class SalesOrderOut(BaseModel):
     so_no: str
     customer_id: uuid.UUID
     buyer_name: str
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     order_date: date
     status: SoStatus
     discount_amount: float
@@ -114,7 +114,7 @@ class SalesOrderOut(BaseModel):
 
     customer_name: str | None = None
     customer_code: str | None = None
-    location_name: str | None = None
+    warehouse_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -130,11 +130,11 @@ class ProformaDoc(BaseModel):
     valid_until: date | None = None
     order_date: date
 
-    location_name_zh: str | None = None
-    location_name_en: str | None = None
-    location_address: str | None = None
-    location_phone: str | None = None
-    location_email: str | None = None
+    warehouse_name_zh: str | None = None
+    warehouse_name_en: str | None = None
+    warehouse_address: str | None = None
+    warehouse_phone: str | None = None
+    warehouse_email: str | None = None
 
     customer_name: str
     customer_code: str | None = None
@@ -185,7 +185,7 @@ class DeliveryOrderOut(BaseModel):
     invoice_id: uuid.UUID
     so_id: uuid.UUID
     customer_id: uuid.UUID
-    location_id: uuid.UUID
+    warehouse_id: uuid.UUID
     delivery_date: date
     status: DoStatus
     notes: str | None = None
@@ -197,6 +197,6 @@ class DeliveryOrderOut(BaseModel):
     invoice_no: str | None = None
     so_no_ref: str | None = None
     customer_name: str | None = None
-    location_name: str | None = None
+    warehouse_name: str | None = None
 
     model_config = {"from_attributes": True}

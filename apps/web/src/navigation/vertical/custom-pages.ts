@@ -51,6 +51,7 @@ export default [
         children: [
           { title: 'Stock Overview', to: 'attendance-inventory' },
           { title: 'Items', to: 'attendance-inventory-items' },
+          { title: 'Warehouses', to: 'attendance-inventory-warehouses' },
           { title: 'Stocktakes', to: 'attendance-inventory-stocktakes' },
           { title: 'Movements', to: 'attendance-inventory-movements' },
         ],

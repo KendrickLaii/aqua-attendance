@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventoryCustomer,
   type ProformaDoc,
@@ -19,10 +20,11 @@ import {
 import {
   type InventoryItem,
   type InventoryStock,
+  type InventoryWarehouse,
   listInventoryItems,
   listInventoryStocks,
+  listWarehouses,
 } from '@/api/attendance/inventory'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import {
   type InventoryReceiptPaidBy,
   RECEIPT_PAID_BY_OPTIONS,
@@ -32,9 +34,12 @@ import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDi
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import ProformaPrintDialog from '@/components/attendance/inventory/ProformaPrintDialog.vue'
+import { useInventoryLinePicker } from '@/composables/useInventoryLinePicker'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
 import { useDirtyGuard } from '@/composables/useDirtyGuard'
@@ -43,20 +48,19 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
+const display = useDisplay()
 
 const loading = ref(true)
 const detailLoading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
+const dialogError = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
 const customers = ref<InventoryCustomer[]>([])
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 const items = ref<InventoryItem[]>([])
 const stocks = ref<InventoryStock[]>([])
 
@@ -72,7 +76,7 @@ const confirm = useConfirmAction()
 const dirty = useDirtyGuard('You have unsaved edits on this sales order. Discard them?')
 
 const customerFilter = ref<string | null>(null)
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 
 const statusFilter = ref<SalesOrderStatus | null>(
   (route.query.status as SalesOrderStatus | undefined) ?? null,
@@ -92,8 +96,8 @@ const customerOptions = computed(() =>
   customers.value.map(c => ({ value: c.id, title: `${c.code} · ${c.name_zh}` })),
 )
 
-const locationOptions = computed(() =>
-  locations.value.map(l => ({
+const warehouseOptions = computed(() =>
+  warehouses.value.map(l => ({
     value: l.id,
     title: [l.name_en, l.name_zh].filter(Boolean).join(' · '),
   })),
@@ -145,7 +149,7 @@ const editLines = ref<EditLine[]>([])
 
 const editForm = reactive({
   customer_id: null as string | null,
-  location_id: null as string | null,
+  warehouse_id: null as string | null,
   order_date: '',
   discount_amount: 0,
   notes: '',
@@ -190,7 +194,7 @@ const lineErrors = computed(() => editLines.value.map(lineError))
 const formInvalid = computed(() =>
   isEditable.value
   && (!editForm.customer_id
-    || !editForm.location_id
+    || !editForm.warehouse_id
     || !editForm.order_date
     || editLines.value.length === 0
     || lineErrors.value.some(Boolean)
@@ -258,14 +262,14 @@ onMounted(async () => {
     return
   loading.value = true
   try {
-    const [customerResult, locationList, itemList] = await Promise.all([
+    const [customerResult, warehouseList, itemList] = await Promise.all([
       listCustomers({ is_active: true, page_size: 200 }),
-      listLocations({ is_active: true }),
+      listWarehouses({ is_active: true }),
       listInventoryItems(),
     ])
 
     customers.value = customerResult.items
-    locations.value = locationList
+    warehouses.value = warehouseList
     items.value = itemList
     await loadOrders()
 
@@ -293,7 +297,7 @@ async function loadOrders() {
   try {
     const result = await listSalesOrders({
       customer_id: customerFilter.value ?? undefined,
-      location_id: locationFilter.value ?? undefined,
+      warehouse_id: warehouseFilter.value ?? undefined,
       status: statusFilter.value ?? undefined,
       page: page.value,
       page_size: pageSize.value,
@@ -315,12 +319,12 @@ function onFiltersChange() {
 }
 
 async function refreshStocks() {
-  if (!editForm.location_id) {
+  if (!editForm.warehouse_id) {
     stocks.value = []
 
     return
   }
-  stocks.value = await listInventoryStocks({ location_id: editForm.location_id })
+  stocks.value = await listInventoryStocks({ warehouse_id: editForm.warehouse_id })
 }
 
 const detailAnchor = ref<{ $el: HTMLElement } | null>(null)
@@ -347,7 +351,7 @@ async function selectOrder(so: SalesOrder) {
     await scrollToDetail()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to load sales order.')
+    toast.show(formatApiError(e, 'Failed to load sales order.'), 'error', 6000)
   }
   finally {
     detailLoading.value = false
@@ -360,7 +364,7 @@ function resetEditor(so: SalesOrder | null) {
     return
   suppressDirty = true
   editForm.customer_id = so.customer_id
-  editForm.location_id = so.location_id
+  editForm.warehouse_id = so.warehouse_id
   editForm.order_date = so.order_date
   editForm.discount_amount = so.discount_amount
   editForm.notes = so.notes ?? ''
@@ -385,7 +389,7 @@ async function newOrder() {
   showErrors.value = false
   selected.value = null
   editForm.customer_id = null
-  editForm.location_id = null
+  editForm.warehouse_id = null
   editForm.order_date = new Date().toISOString().slice(0, 10)
   editForm.discount_amount = 0
   editForm.notes = ''
@@ -406,19 +410,27 @@ function removeLine(index: number) {
   editLines.value.splice(index, 1)
 }
 
-function onItemPicked(line: EditLine) {
+const { onPickItem } = useInventoryLinePicker({
+  lines: editLines,
+  itemById: id => itemById.value.get(id),
+  qtyKey: 'qty',
+  priceKeys: ['unit_price'],
+})
+
+function onItemPicked(line: EditLine, index: number) {
   const item = line.item_id ? itemById.value.get(line.item_id) : null
 
   if (item && !line.unit_price)
     line.unit_price = item.sale_price ?? 0
+  if (item?.is_active && (stockByItem.value.get(item.id)?.available ?? 0) <= 0)
+    toast.show(`No available stock for ${item.sku_code} at this warehouse`, 'warning', 4000)
+  onPickItem(index)
 }
 
 async function saveOrder() {
-  actionError.value = ''
-  actionSuccess.value = ''
   if (formInvalid.value) {
     showErrors.value = true
-    actionError.value = '請檢查紅色標示的欄位，修正後再儲存。'
+    toast.show('請檢查紅色標示的欄位，修正後再儲存。', 'error', 6000)
     await nextTick()
     document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
@@ -438,7 +450,7 @@ async function saveOrder() {
   try {
     const payload = {
       customer_id: editForm.customer_id ?? '',
-      location_id: editForm.location_id ?? '',
+      warehouse_id: editForm.warehouse_id ?? '',
       order_date: editForm.order_date,
       discount_amount: editForm.discount_amount || 0,
       notes: editForm.notes || null,
@@ -451,11 +463,11 @@ async function saveOrder() {
 
     selected.value = saved
     resetEditor(saved)
-    actionSuccess.value = `Saved ${saved.so_no}.`
+    toast.show(`Saved ${saved.so_no}.`)
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to save sales order.')
+    toast.show(formatApiError(e, 'Failed to save sales order.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -476,16 +488,15 @@ function askConfirm() {
 async function performConfirm() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await confirmSalesOrder(selected.value.id)
-    actionSuccess.value = `${selected.value.so_no} confirmed — stock reserved.`
+    toast.show(`${selected.value.so_no} confirmed — stock reserved.`)
     await loadOrders()
     await refreshStocks()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to confirm.')
+    toast.show(formatApiError(e, 'Failed to confirm.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -506,16 +517,15 @@ function askCancel() {
 async function performCancel() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await cancelSalesOrder(selected.value.id)
-    actionSuccess.value = `${selected.value.so_no} cancelled.`
+    toast.show(`${selected.value.so_no} cancelled.`)
     await loadOrders()
     await refreshStocks()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to cancel.')
+    toast.show(formatApiError(e, 'Failed to cancel.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -536,18 +546,17 @@ function askDelete() {
 async function performDelete() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     const no = selected.value.so_no
 
     await deleteSalesOrder(selected.value.id)
-    actionSuccess.value = `Deleted draft ${no}.`
+    toast.show(`Deleted draft ${no}.`)
     selected.value = null
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to delete.')
+    toast.show(formatApiError(e, 'Failed to delete.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -557,7 +566,6 @@ async function performDelete() {
 async function openProforma() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await issueProforma(selected.value.id)
@@ -566,7 +574,7 @@ async function openProforma() {
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to issue proforma.')
+    toast.show(formatApiError(e, 'Failed to issue proforma.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -577,10 +585,6 @@ function goCreateInvoice() {
   if (!selected.value)
     return
   router.push({ path: '/attendance/inventory/invoices', query: { so_id: selected.value.id } })
-}
-
-function fmtMoney(value: number | null | undefined): string {
-  return (value ?? 0).toFixed(2)
 }
 
 const quickFulfillOpen = ref(false)
@@ -598,14 +602,15 @@ function openQuickFulfill() {
   qfAmount.value = selected.value.total
   qfMethod.value = 'cash'
   qfReference.value = ''
+  dialogError.value = ''
   quickFulfillOpen.value = true
 }
 
 async function doQuickFulfill() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
+  dialogError.value = ''
   try {
     const result = await quickFulfill(selected.value.id, {
       deliver_now: qfDeliver.value,
@@ -619,11 +624,11 @@ async function doQuickFulfill() {
 
     const doPart = result.delivery_order ? `, DO ${result.delivery_order.do_no}` : ''
 
-    actionSuccess.value = `Fulfilled ${result.so.so_no}: invoice ${result.invoice.invoice_no}${doPart}${result.receipt ? `, receipt ${result.receipt.receipt_no}` : ''}.`
+    toast.show(`Fulfilled ${result.so.so_no}: invoice ${result.invoice.invoice_no}${doPart}${result.receipt ? `, receipt ${result.receipt.receipt_no}` : ''}.`)
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to quick-fulfill.')
+    dialogError.value = formatApiError(e, 'Failed to quick-fulfill.')
   }
   finally {
     saving.value = false
@@ -683,26 +688,6 @@ async function doQuickFulfill() {
     >
       {{ loadError }}
     </VAlert>
-    <VAlert
-      v-if="actionError"
-      type="error"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionError = ''"
-    >
-      {{ actionError }}
-    </VAlert>
-    <VAlert
-      v-if="actionSuccess"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionSuccess = ''"
-    >
-      {{ actionSuccess }}
-    </VAlert>
 
     <VRow>
       <VCol cols="12">
@@ -718,9 +703,9 @@ async function doQuickFulfill() {
               @update:model-value="onFiltersChange"
             />
             <VSelect
-              v-model="locationFilter"
-              :items="locationOptions"
-              label="Location"
+              v-model="warehouseFilter"
+              :items="warehouseOptions"
+              label="Warehouse 倉庫"
               density="comfortable"
               hide-details
               clearable
@@ -748,7 +733,7 @@ async function doQuickFulfill() {
             >
               <VListItemTitle>{{ so.so_no }}</VListItemTitle>
               <VListItemSubtitle>
-                {{ so.customer_name || '—' }} · {{ so.order_date }} · {{ fmtMoney(so.total) }}
+                {{ so.customer_name || '—' }} · {{ so.order_date }} · {{ formatMoney(so.total) }}
                 <template v-if="so.pf_no">
                   · {{ so.pf_no }}
                 </template>
@@ -757,11 +742,13 @@ async function doQuickFulfill() {
                 <InventoryStatusChip :status="so.status" />
               </template>
             </VListItem>
-            <VListItem v-if="orders.length === 0 && !loading">
-              <VListItemTitle class="text-medium-emphasis">
-                No sales orders yet — click "New order" to start a sale.
-              </VListItemTitle>
-            </VListItem>
+            <InventoryEmptyState
+              v-if="orders.length === 0 && !loading"
+              icon="ri-file-list-3-line"
+              text="No sales orders yet."
+              action-label="New Sales Order"
+              @action="newOrder"
+            />
           </VList>
           <AttendancePaginationBar
             v-model:page="page"
@@ -827,12 +814,12 @@ async function doQuickFulfill() {
                 md="6"
               >
                 <VSelect
-                  v-model="editForm.location_id"
-                  :items="locationOptions"
-                  label="Location *"
+                  v-model="editForm.warehouse_id"
+                  :items="warehouseOptions"
+                  label="Warehouse 倉庫 *"
                   density="comfortable"
                   :readonly="!isEditable"
-                  :error="showErrors && !editForm.location_id"
+                  :error="showErrors && !editForm.warehouse_id"
                   @update:model-value="refreshStocks"
                   @blur="showErrors = true"
                 />
@@ -907,7 +894,7 @@ async function doQuickFulfill() {
                         variant="outlined"
                         placeholder="Search item…"
                         :error="showErrors && lineErrors[index]?.field === 'item'"
-                        @update:model-value="onItemPicked(line)"
+                        @update:model-value="onItemPicked(line, index)"
                         @blur="showErrors = true"
                       />
                       <template v-else>
@@ -948,7 +935,7 @@ async function doQuickFulfill() {
                         @blur="showErrors = true"
                       />
                       <template v-else>
-                        {{ fmtMoney(line.unit_price) }}
+                        {{ formatMoney(line.unit_price) }}
                       </template>
                     </td>
                     <td class="text-end">
@@ -966,11 +953,11 @@ async function doQuickFulfill() {
                         @blur="showErrors = true"
                       />
                       <template v-else>
-                        {{ fmtMoney(line.discount_amount) }}
+                        {{ formatMoney(line.discount_amount) }}
                       </template>
                     </td>
                     <td class="inv-col-amount font-weight-medium">
-                      {{ fmtMoney(Math.max(0, (line.qty || 0) * (line.unit_price || 0) - (line.discount_amount || 0))) }}
+                      {{ formatMoney(Math.max(0, (line.qty || 0) * (line.unit_price || 0) - (line.discount_amount || 0))) }}
                     </td>
                     <td
                       v-if="isEditable"
@@ -1023,7 +1010,7 @@ async function doQuickFulfill() {
                   Subtotal
                 </div>
                 <div class="text-end">
-                  {{ fmtMoney(linesSubtotal) }}
+                  {{ formatMoney(linesSubtotal) }}
                 </div>
               </div>
               <div style="width: 140px">
@@ -1044,7 +1031,7 @@ async function doQuickFulfill() {
                   Total
                 </div>
                 <div class="text-end text-h6">
-                  {{ fmtMoney(editTotal) }}
+                  {{ formatMoney(editTotal) }}
                 </div>
               </div>
             </div>
@@ -1069,13 +1056,27 @@ async function doQuickFulfill() {
 
     <VDialog
       v-model="quickFulfillOpen"
-      max-width="440"
+      max-width="560"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard>
         <VCardTitle>Quick Fulfill & Invoice</VCardTitle>
         <VCardText>
+          <VAlert
+            v-if="dialogError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ dialogError }}
+          </VAlert>
           <div class="text-body-2 mb-3">
             一次完成：確認訂單（如還是草稿）→ 開立發票並扣庫存 → 可選擇同時建出貨單和收據。
+          </div>
+          <div class="text-overline text-medium-emphasis mb-1">
+            Fulfillment
           </div>
           <VCheckbox
             v-model="qfDeliver"
@@ -1083,32 +1084,49 @@ async function doQuickFulfill() {
             density="compact"
             hide-details
           />
+          <div class="text-overline text-medium-emphasis mb-1 mt-4">
+            Payment
+          </div>
           <VCheckbox
             v-model="qfWithPay"
             label="Record a payment receipt"
             density="compact"
             hide-details
           />
-          <template v-if="qfWithPay">
-            <VTextField
-              v-model.number="qfAmount"
-              type="number"
-              label="Amount"
-              class="mt-3"
-            />
-            <VSelect
-              v-model="qfMethod"
-              :items="RECEIPT_PAID_BY_OPTIONS"
-              label="Paid by"
-              class="mt-3"
-            />
-            <VTextField
-              v-model="qfReference"
-              label="Reference no."
-              class="mt-3"
-            />
-          </template>
+          <VRow
+            v-if="qfWithPay"
+            class="mt-1"
+          >
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model.number="qfAmount"
+                type="number"
+                label="Amount"
+                prefix="HK$"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VSelect
+                v-model="qfMethod"
+                :items="RECEIPT_PAID_BY_OPTIONS"
+                label="Paid by"
+              />
+            </VCol>
+            <VCol cols="12">
+              <VTextField
+                v-model="qfReference"
+                label="Reference no."
+              />
+            </VCol>
+          </VRow>
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn
@@ -1120,6 +1138,7 @@ async function doQuickFulfill() {
           <VBtn
             color="primary"
             :loading="saving"
+            :disabled="qfWithPay && !qfAmount"
             @click="doQuickFulfill"
           >
             Fulfill

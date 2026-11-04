@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -7,7 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminOnly, DB
-from app.models.inventory import InventoryItem, InventoryStock
+from app.models.inventory import InventoryItem, InventoryStock, InventoryWarehouse
 from app.models.inventory_invoicing import InventoryInvoice, InventoryInvoiceLine
 from app.models.inventory_sales import (
     Customer,
@@ -16,7 +17,6 @@ from app.models.inventory_sales import (
     SalesOrder,
     SalesOrderLine,
 )
-from app.models.location import Location
 from app.models.unit import Unit
 from app.schemas.inventory_sales import (
     CustomerCreate,
@@ -43,13 +43,13 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 ALLOW_RESERVE_SHORTFALL = False
 
 
-async def _assert_location_exists(db: DB, location_id: uuid.UUID) -> None:
-    result = await db.execute(select(Location).where(Location.id == location_id))
+async def _assert_warehouse_exists(db: DB, warehouse_id: uuid.UUID) -> None:
+    result = await db.execute(select(InventoryWarehouse).where(InventoryWarehouse.id == warehouse_id))
     location = result.scalar_one_or_none()
     if not location:
-        raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+        raise HTTPException(status_code=422, detail="warehouse_id does not reference an existing warehouse")
     if not location.is_active:
-        raise HTTPException(status_code=422, detail=f"location {location.name_en or location_id} is inactive")
+        raise HTTPException(status_code=422, detail=f"warehouse {location.name_en or location.name_zh} is inactive")
 
 
 async def _get_customer_or_422(db: DB, customer_id: uuid.UUID) -> Customer:
@@ -129,50 +129,91 @@ async def _items_map(db: DB, lines) -> dict[uuid.UUID, InventoryItem]:
     return {item.id: item for item in result.scalars().all()}
 
 
+async def _rows_by_id(db: DB, model, ids) -> dict:
+    wanted = {i for i in ids if i is not None}
+    if not wanted:
+        return {}
+    result = await db.execute(select(model).where(model.id.in_(wanted)))
+    return {row.id: row for row in result.scalars().all()}
+
+
+async def _lines_grouped(db: DB, line_model, fk_column, parent_ids) -> dict[uuid.UUID, list]:
+    grouped: dict[uuid.UUID, list] = defaultdict(list)
+    if not parent_ids:
+        return grouped
+    result = await db.execute(
+        select(line_model).where(fk_column.in_(parent_ids)).order_by(line_model.id)
+    )
+    for line in result.scalars().all():
+        grouped[getattr(line, fk_column.key)].append(line)
+    return grouped
+
+
+async def _so_details_batch(db: DB, sos: list[SalesOrder]) -> list[dict]:
+    """Detail dicts for many SOs in a constant number of queries."""
+    lines_by_so = await _lines_grouped(db, SalesOrderLine, SalesOrderLine.so_id, [s.id for s in sos])
+    customers = await _rows_by_id(db, Customer, [s.customer_id for s in sos])
+    locations = await _rows_by_id(db, InventoryWarehouse, [s.warehouse_id for s in sos])
+    outs = []
+    for so in sos:
+        customer = customers.get(so.customer_id)
+        location = locations.get(so.warehouse_id)
+        out = {
+            f: getattr(so, f)
+            for f in SalesOrderOut.model_fields
+            if f not in ("lines", "customer_name", "customer_code", "warehouse_name")
+        }
+        out["lines"] = lines_by_so.get(so.id, [])
+        out["customer_name"] = customer.name_zh if customer else None
+        out["customer_code"] = customer.code if customer else None
+        out["warehouse_name"] = (location.name_en or location.name_zh) if location else None
+        outs.append(out)
+    return outs
+
+
 async def _so_detail(db: DB, so: SalesOrder) -> dict:
-    lines = await _so_lines(db, so.id)
-    customer = await db.get(Customer, so.customer_id)
-    location = await db.get(Location, so.location_id)
-    out = {
-        f: getattr(so, f)
-        for f in SalesOrderOut.model_fields
-        if f not in ("lines", "customer_name", "customer_code", "location_name")
-    }
-    out["lines"] = lines
-    out["customer_name"] = customer.name_zh if customer else None
-    out["customer_code"] = customer.code if customer else None
-    out["location_name"] = location.name_en if location else None
-    return out
+    return (await _so_details_batch(db, [so]))[0]
+
+
+async def _do_details_batch(db: DB, dos: list[DeliveryOrder]) -> list[dict]:
+    lines_by_do = await _lines_grouped(db, DeliveryOrderLine, DeliveryOrderLine.do_id, [d.id for d in dos])
+    items = await _items_map(db, [line for lines in lines_by_do.values() for line in lines])
+    invoices = await _rows_by_id(db, InventoryInvoice, [d.invoice_id for d in dos])
+    sos = await _rows_by_id(db, SalesOrder, [d.so_id for d in dos])
+    customers = await _rows_by_id(db, Customer, [d.customer_id for d in dos])
+    locations = await _rows_by_id(db, InventoryWarehouse, [d.warehouse_id for d in dos])
+    outs = []
+    for do in dos:
+        invoice = invoices.get(do.invoice_id)
+        so = sos.get(do.so_id)
+        customer = customers.get(do.customer_id)
+        location = locations.get(do.warehouse_id)
+        out = {
+            f: getattr(do, f)
+            for f in DeliveryOrderOut.model_fields
+            if f not in ("lines", "invoice_no", "so_no_ref", "customer_name", "warehouse_name")
+        }
+        out["lines"] = [
+            {
+                "id": line.id,
+                "invoice_line_id": line.invoice_line_id,
+                "item_id": line.item_id,
+                "qty": line.qty,
+                "sku_code": items[line.item_id].sku_code if line.item_id in items else None,
+                "name_zh": items[line.item_id].name_zh if line.item_id in items else None,
+            }
+            for line in lines_by_do.get(do.id, [])
+        ]
+        out["invoice_no"] = invoice.invoice_no if invoice else None
+        out["so_no_ref"] = so.so_no if so else None
+        out["customer_name"] = customer.name_zh if customer else None
+        out["warehouse_name"] = (location.name_en or location.name_zh) if location else None
+        outs.append(out)
+    return outs
 
 
 async def _do_detail(db: DB, do: DeliveryOrder) -> dict:
-    lines = await _do_lines(db, do.id)
-    items = await _items_map(db, lines)
-    invoice = await db.get(InventoryInvoice, do.invoice_id)
-    so = await db.get(SalesOrder, do.so_id)
-    customer = await db.get(Customer, do.customer_id)
-    location = await db.get(Location, do.location_id)
-    out = {
-        f: getattr(do, f)
-        for f in DeliveryOrderOut.model_fields
-        if f not in ("lines", "invoice_no", "so_no_ref", "customer_name", "location_name")
-    }
-    out["lines"] = [
-        {
-            "id": line.id,
-            "invoice_line_id": line.invoice_line_id,
-            "item_id": line.item_id,
-            "qty": line.qty,
-            "sku_code": items[line.item_id].sku_code if line.item_id in items else None,
-            "name_zh": items[line.item_id].name_zh if line.item_id in items else None,
-        }
-        for line in lines
-    ]
-    out["invoice_no"] = invoice.invoice_no if invoice else None
-    out["so_no_ref"] = so.so_no if so else None
-    out["customer_name"] = customer.name_zh if customer else None
-    out["location_name"] = location.name_en if location else None
-    return out
+    return (await _do_details_batch(db, [do]))[0]
 
 
 def _so_line_amount(qty: int, unit_price: float, discount_amount: float) -> Decimal:
@@ -402,20 +443,28 @@ async def list_sales_orders(
     db: DB,
     response: Response,
     customer_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     status: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[dict]:
     clauses = []
     if customer_id is not None:
         clauses.append(SalesOrder.customer_id == customer_id)
-    if location_id is not None:
-        clauses.append(SalesOrder.location_id == location_id)
+    if warehouse_id is not None:
+        clauses.append(SalesOrder.warehouse_id == warehouse_id)
     if status is not None:
         clauses.append(SalesOrder.status == status)
+    if search:
+        clauses.append(
+            or_(
+                ilike_contains(SalesOrder.so_no, search),
+                ilike_contains(SalesOrder.buyer_name, search),
+            )
+        )
     if date_from is not None:
         clauses.append(SalesOrder.order_date >= date_from)
     if date_to is not None:
@@ -432,20 +481,20 @@ async def list_sales_orders(
     q = q.order_by(SalesOrder.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return [await _so_detail(db, so) for so in result.scalars().all()]
+    return await _so_details_batch(db, list(result.scalars().all()))
 
 
 @router.post("/sales-orders", response_model=SalesOrderOut, status_code=status.HTTP_201_CREATED)
 async def create_sales_order(body: SalesOrderCreate, _admin: AdminOnly, db: DB) -> dict:
     customer = await _get_customer_or_422(db, body.customer_id)
-    await _assert_location_exists(db, body.location_id)
+    await _assert_warehouse_exists(db, body.warehouse_id)
 
-    so_no = await doc_numbers_svc.allocate_doc_no(db, location_id=body.location_id, doc_type="SO")
+    so_no = await doc_numbers_svc.allocate_doc_no(db, warehouse_id=body.warehouse_id, doc_type="SO")
     so = SalesOrder(
         so_no=so_no,
         customer_id=body.customer_id,
         buyer_name=customer.name_zh,
-        location_id=body.location_id,
+        warehouse_id=body.warehouse_id,
         order_date=body.order_date,
         discount_amount=body.discount_amount,
         notes=body.notes,
@@ -491,9 +540,9 @@ async def update_sales_order(
     if "customer_id" in update_data:
         customer = await _get_customer_or_422(db, update_data["customer_id"])
         update_data["buyer_name"] = customer.name_zh
-    if "location_id" in update_data:
-        await _assert_location_exists(db, update_data["location_id"])
-    for field in ("customer_id", "location_id", "order_date", "discount_amount", "notes"):
+    if "warehouse_id" in update_data:
+        await _assert_warehouse_exists(db, update_data["warehouse_id"])
+    for field in ("customer_id", "warehouse_id", "order_date", "discount_amount", "notes"):
         if field in update_data:
             old_values[field] = getattr(so, field)
             setattr(so, field, update_data[field])
@@ -558,17 +607,17 @@ async def confirm_so_tx(db: DB, so: SalesOrder) -> None:
                 await db.execute(
                     select(InventoryStock).where(
                         InventoryStock.item_id == line.item_id,
-                        InventoryStock.location_id == so.location_id,
+                        InventoryStock.warehouse_id == so.warehouse_id,
                     )
                 )
             ).scalar_one_or_none()
             if stock and stock.quantity - stock.reserved >= line.qty:
                 await inventory_svc.reserve(
-                    db, item_id=line.item_id, location_id=so.location_id, quantity=line.qty
+                    db, item_id=line.item_id, warehouse_id=so.warehouse_id, quantity=line.qty
                 )
         else:
             await inventory_svc.reserve(
-                db, item_id=line.item_id, location_id=so.location_id, quantity=line.qty
+                db, item_id=line.item_id, warehouse_id=so.warehouse_id, quantity=line.qty
             )
     so.status = "confirmed"
     await db.flush()
@@ -613,8 +662,18 @@ async def cancel_sales_order(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
             remaining = line.qty - line.invoiced_qty
             if remaining > 0:
                 await inventory_svc.release(
-                    db, item_id=line.item_id, location_id=so.location_id, quantity=remaining
+                    db, item_id=line.item_id, warehouse_id=so.warehouse_id, quantity=remaining
                 )
+
+    draft_invoices = (
+        await db.execute(
+            select(InventoryInvoice).where(
+                InventoryInvoice.so_id == so_id, InventoryInvoice.status == "draft"
+            )
+        )
+    ).scalars().all()
+    for draft in draft_invoices:
+        await db.delete(draft)
 
     old_status = so.status
     so.status = "cancelled"
@@ -656,7 +715,7 @@ async def issue_proforma(
     if so.status not in ("draft", "confirmed"):
         raise HTTPException(status_code=409, detail=f"sales order is {so.status}; cannot issue proforma")
 
-    so.pf_no = await doc_numbers_svc.allocate_doc_no(db, location_id=so.location_id, doc_type="PF")
+    so.pf_no = await doc_numbers_svc.allocate_doc_no(db, warehouse_id=so.warehouse_id, doc_type="PF")
     so.pf_issued_at = datetime.now(timezone.utc)
     so.pf_valid_until = body.pf_valid_until
     await db.commit()
@@ -682,18 +741,18 @@ async def get_proforma(so_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict:
 
     lines = await _so_lines(db, so_id)
     customer = await db.get(Customer, so.customer_id)
-    location = await db.get(Location, so.location_id)
+    location = await db.get(InventoryWarehouse, so.warehouse_id)
     return {
         "pf_no": so.pf_no,
         "so_no": so.so_no,
         "issued_at": so.pf_issued_at,
         "valid_until": so.pf_valid_until,
         "order_date": so.order_date,
-        "location_name_zh": location.name_zh if location else None,
-        "location_name_en": location.name_en if location else None,
-        "location_address": location.address if location else None,
-        "location_phone": location.phone if location else None,
-        "location_email": location.email if location else None,
+        "warehouse_name_zh": location.name_zh if location else None,
+        "warehouse_name_en": (location.name_en or location.name_zh) if location else None,
+        "warehouse_address": location.address if location else None,
+        "warehouse_phone": location.phone if location else None,
+        "warehouse_email": None,
         "customer_name": so.buyer_name,
         "customer_code": customer.code if customer else None,
         "customer_contact": customer.contact_name if customer else None,
@@ -717,7 +776,7 @@ async def list_delivery_orders(
     db: DB,
     response: Response,
     customer_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     so_id: uuid.UUID | None = None,
     invoice_id: uuid.UUID | None = None,
     status: str | None = None,
@@ -728,8 +787,8 @@ async def list_delivery_orders(
     clauses = []
     if customer_id is not None:
         clauses.append(DeliveryOrder.customer_id == customer_id)
-    if location_id is not None:
-        clauses.append(DeliveryOrder.location_id == location_id)
+    if warehouse_id is not None:
+        clauses.append(DeliveryOrder.warehouse_id == warehouse_id)
     if so_id is not None:
         clauses.append(DeliveryOrder.so_id == so_id)
     if invoice_id is not None:
@@ -758,7 +817,7 @@ async def list_delivery_orders(
     q = q.order_by(DeliveryOrder.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return [await _do_detail(db, do) for do in result.scalars().all()]
+    return await _do_details_batch(db, list(result.scalars().all()))
 
 
 async def _invoice_lines_map(db: DB, invoice_id: uuid.UUID) -> dict[uuid.UUID, InventoryInvoiceLine]:
@@ -766,6 +825,7 @@ async def _invoice_lines_map(db: DB, invoice_id: uuid.UUID) -> dict[uuid.UUID, I
         select(InventoryInvoiceLine)
         .where(InventoryInvoiceLine.invoice_id == invoice_id)
         .order_by(InventoryInvoiceLine.id)
+        .with_for_update()
     )
     return {line.id: line for line in result.scalars().all()}
 
@@ -844,13 +904,13 @@ async def create_do_tx(
                 ),
             )
 
-    do_no = await doc_numbers_svc.allocate_doc_no(db, location_id=inv.location_id, doc_type="DO")
+    do_no = await doc_numbers_svc.allocate_doc_no(db, warehouse_id=inv.warehouse_id, doc_type="DO")
     do = DeliveryOrder(
         do_no=do_no,
         invoice_id=inv.id,
         so_id=inv.so_id,
         customer_id=inv.customer_id,
-        location_id=inv.location_id,
+        warehouse_id=inv.warehouse_id,
         delivery_date=delivery_date,
         notes=notes,
         created_by=user.id,

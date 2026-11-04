@@ -7,8 +7,8 @@ class StockValuationRow(BaseModel):
     item_id: str
     sku_code: str
     name_zh: str
-    location_id: str
-    location_name: str | None
+    warehouse_id: str
+    warehouse_name: str | None
     quantity: int
     reserved: int
     available: int
@@ -18,7 +18,7 @@ class StockValuationRow(BaseModel):
 
 class StockValuationReport(BaseModel):
     rows: list[StockValuationRow]
-    location_totals: list[dict]
+    warehouse_totals: list[dict]
     grand_total: float
 
 
@@ -59,7 +59,7 @@ class OpenOrderRow(BaseModel):
     po_no: str
     supplier_id: str
     supplier_name: str | None
-    location_id: str
+    warehouse_id: str
     order_date: date | None
     expected_date: date | None
     status: str
@@ -96,7 +96,7 @@ class ReceivableRow(BaseModel):
     invoice_no: str
     customer_id: str
     customer_name: str | None
-    location_id: str
+    warehouse_id: str
     issue_date: date | None
     total: float
     paid: float
@@ -141,6 +141,7 @@ class InventoryDashboard(BaseModel):
     unpaid_invoice_count: int
     receivable_balance: float
     overdue_receivable_balance: float
+    overdue_days: int
     month_sales: float
     month_purchases: float
     month_invoiced: float

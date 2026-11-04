@@ -11,16 +11,15 @@ class InventoryCounter(Base):
     """Per-location, per-document-type number counter (PO / GRN / PRT / …)."""
 
     __tablename__ = "inventory_counters"
-    __table_args__ = (UniqueConstraint("location_id", "doc_type", name="uq_inventory_counters_loc_type"),)
+    __table_args__ = (UniqueConstraint("warehouse_id", "doc_type", name="uq_inventory_counters_wh_type"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("locations.id", ondelete="CASCADE"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("inventory_warehouses.id", ondelete="CASCADE"), nullable=False, index=True
     )
     doc_type: Mapped[str] = mapped_column(String(10), nullable=False)
     next_no: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
 
 
 class Supplier(Base):
@@ -52,8 +51,8 @@ class PurchaseOrder(Base):
     supplier_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
     expected_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -74,7 +73,7 @@ class PurchaseOrder(Base):
     )
 
     supplier = relationship("Supplier")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     lines = relationship("PurchaseOrderLine", back_populates="po", cascade="all, delete-orphan")
 
 
@@ -111,8 +110,8 @@ class GoodsReceipt(Base):
     supplier_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     receipt_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(
@@ -131,7 +130,7 @@ class GoodsReceipt(Base):
 
     po = relationship("PurchaseOrder")
     supplier = relationship("Supplier")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     lines = relationship("GoodsReceiptLine", back_populates="grn", cascade="all, delete-orphan")
 
 
@@ -164,8 +163,8 @@ class PurchaseReturn(Base):
     supplier_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     grn_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("goods_receipts.id", ondelete="SET NULL"), nullable=True, index=True
@@ -186,7 +185,7 @@ class PurchaseReturn(Base):
     )
 
     supplier = relationship("Supplier")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     grn = relationship("GoodsReceipt")
     lines = relationship("PurchaseReturnLine", back_populates="prt", cascade="all, delete-orphan")
 

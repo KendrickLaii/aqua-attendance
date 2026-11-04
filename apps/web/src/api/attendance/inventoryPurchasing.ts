@@ -71,7 +71,7 @@ export interface PurchaseOrder {
   id: string
   po_no: string
   supplier_id: string
-  location_id: string
+  warehouse_id: string
   order_date: string
   expected_date: string | null
   status: PurchaseOrderStatus
@@ -83,7 +83,7 @@ export interface PurchaseOrder {
   updated_at: string
   lines: PurchaseOrderLine[]
   supplier_name: string | null
-  location_name: string | null
+  warehouse_name: string | null
 }
 
 export interface PurchaseOrderLinePayload {
@@ -95,7 +95,7 @@ export interface PurchaseOrderLinePayload {
 
 export interface PurchaseOrderPayload {
   supplier_id: string
-  location_id: string
+  warehouse_id: string
   order_date: string
   expected_date?: string | null
   discount_amount?: number
@@ -105,7 +105,7 @@ export interface PurchaseOrderPayload {
 
 export async function listPurchaseOrders(params?: {
   supplier_id?: string
-  location_id?: string
+  warehouse_id?: string
   status?: PurchaseOrderStatus
   date_from?: string
   date_to?: string
@@ -159,7 +159,7 @@ export interface GoodsReceipt {
   grn_no: string
   po_id: string | null
   supplier_id: string
-  location_id: string
+  warehouse_id: string
   receipt_date: string
   status: InventoryDocStatus
   notes: string | null
@@ -168,7 +168,7 @@ export interface GoodsReceipt {
   updated_at: string
   lines: GoodsReceiptLine[]
   supplier_name: string | null
-  location_name: string | null
+  warehouse_name: string | null
   po_no: string | null
 }
 
@@ -182,7 +182,7 @@ export interface GoodsReceiptLinePayload {
 export interface GoodsReceiptPayload {
   po_id?: string | null
   supplier_id: string
-  location_id: string
+  warehouse_id: string
   receipt_date: string
   notes?: string | null
   allow_over_receipt?: boolean
@@ -191,7 +191,7 @@ export interface GoodsReceiptPayload {
 
 export async function listGoodsReceipts(params?: {
   supplier_id?: string
-  location_id?: string
+  warehouse_id?: string
   po_id?: string
   status?: InventoryDocStatus
   date_from?: string
@@ -247,7 +247,7 @@ export interface PurchaseReturn {
   id: string
   prt_no: string
   supplier_id: string
-  location_id: string
+  warehouse_id: string
   grn_id: string | null
   return_date: string
   status: InventoryDocStatus
@@ -257,7 +257,7 @@ export interface PurchaseReturn {
   updated_at: string
   lines: PurchaseReturnLine[]
   supplier_name: string | null
-  location_name: string | null
+  warehouse_name: string | null
   grn_no: string | null
 }
 
@@ -269,7 +269,7 @@ export interface PurchaseReturnLinePayload {
 
 export interface PurchaseReturnPayload {
   supplier_id: string
-  location_id: string
+  warehouse_id: string
   grn_id?: string | null
   return_date: string
   notes?: string | null
@@ -278,7 +278,7 @@ export interface PurchaseReturnPayload {
 
 export async function listPurchaseReturns(params?: {
   supplier_id?: string
-  location_id?: string
+  warehouse_id?: string
   grn_id?: string
   status?: InventoryDocStatus
   page?: number

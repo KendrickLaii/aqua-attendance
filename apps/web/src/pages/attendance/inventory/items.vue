@@ -7,15 +7,18 @@ import {
   listInventoryCategories,
   listInventoryItems,
 } from '@/api/attendance/inventory'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryCategoryDialog from '@/components/attendance/inventory/InventoryCategoryDialog.vue'
 import InventoryItemDialog from '@/components/attendance/inventory/InventoryItemDialog.vue'
 import InventoryItemImage from '@/components/attendance/inventory/InventoryItemImage.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const loadError = ref('')
@@ -35,7 +38,6 @@ const categoryDialogOpen = ref(false)
 const editingCategory = ref<InventoryCategory | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
-const importResult = ref('')
 
 const categoryById = computed(() => new Map(categories.value.map(c => [c.id, c])))
 
@@ -56,7 +58,7 @@ const filteredItems = computed(() => {
 
     return !(
       term
-      && ![item.sku_code, item.name_zh, item.name_en ?? '']
+      && ![item.sku_code, item.name_zh, item.name_en ?? '', item.barcode ?? '']
         .some(v => v.toLowerCase().includes(term))
     )
   })
@@ -135,7 +137,7 @@ async function exportItems() {
     URL.revokeObjectURL(url)
   }
   catch (e) {
-    loadError.value = formatApiError(e, 'Export failed.')
+    toast.show(formatApiError(e, 'Export failed.'), 'error', 6000)
   }
 }
 
@@ -151,15 +153,14 @@ async function onImportFile(event: Event) {
   if (!file)
     return
   importing.value = true
-  importResult.value = ''
   try {
     const result = await importInventoryItemsCSV(file)
 
-    importResult.value = `Imported: ${result.created} created, ${result.updated} updated.`
+    toast.show(`Imported: ${result.created} created, ${result.updated} updated${result.skipped ? `, ${result.skipped} skipped` : ''}`)
     await loadAll()
   }
   catch (e) {
-    loadError.value = formatApiError(e, 'Items import failed.')
+    toast.show(formatApiError(e, 'Items import failed.'), 'error', 6000)
   }
   finally {
     importing.value = false
@@ -172,10 +173,6 @@ function categoryLabel(categoryId: string | null): string {
   const category = categoryById.value.get(categoryId)
 
   return category ? [category.name_zh, category.name_en].filter(Boolean).join(' · ') : '—'
-}
-
-function money(value: number | null): string {
-  return value === null ? '—' : `HK$${value.toFixed(2)}`
 }
 </script>
 
@@ -248,17 +245,6 @@ function money(value: number | null): string {
       @click:close="loadError = ''"
     >
       {{ loadError }}
-    </VAlert>
-
-    <VAlert
-      v-if="importResult"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="importResult = ''"
-    >
-      {{ importResult }}
     </VAlert>
 
     <VRow v-if="loading">
@@ -340,7 +326,10 @@ function money(value: number | null): string {
                 <th>Category</th>
                 <th>Unit</th>
                 <th class="text-end">
-                  Cost
+                  Purchase price
+                </th>
+                <th class="text-end">
+                  Other cost
                 </th>
                 <th class="text-end">
                   Sale
@@ -367,10 +356,13 @@ function money(value: number | null): string {
                 <td>{{ categoryLabel(item.category_id) }}</td>
                 <td>{{ item.unit_of_measure || '—' }}</td>
                 <td class="text-end tabular-nums">
-                  {{ money(item.cost_price) }}
+                  {{ formatMoney(item.cost_price) }}
                 </td>
                 <td class="text-end tabular-nums">
-                  {{ money(item.sale_price) }}
+                  {{ formatMoney(item.other_cost) }}
+                </td>
+                <td class="text-end tabular-nums">
+                  {{ formatMoney(item.sale_price) }}
                 </td>
                 <td class="text-end tabular-nums">
                   {{ item.reorder_level }}
@@ -395,11 +387,13 @@ function money(value: number | null): string {
                 </td>
               </tr>
               <tr v-if="filteredItems.length === 0">
-                <td
-                  colspan="10"
-                  class="text-center text-medium-emphasis py-8"
-                >
-                  No items match. Use “Add Item” to create one.
+                <td colspan="11">
+                  <InventoryEmptyState
+                    icon="ri-archive-line"
+                    :text="items.length ? 'No items match the current filters.' : 'No items yet.'"
+                    :action-label="items.length ? undefined : 'Add Item'"
+                    @action="openCreateItem"
+                  />
                 </td>
               </tr>
             </tbody>

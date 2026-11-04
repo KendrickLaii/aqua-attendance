@@ -51,8 +51,8 @@ class SalesOrder(Base):
         ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     buyer_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(
@@ -75,7 +75,7 @@ class SalesOrder(Base):
     )
 
     customer = relationship("Customer")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     lines = relationship("SalesOrderLine", back_populates="so", cascade="all, delete-orphan")
 
 
@@ -115,8 +115,8 @@ class DeliveryOrder(Base):
     customer_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     delivery_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(
@@ -136,7 +136,7 @@ class DeliveryOrder(Base):
     invoice = relationship("InventoryInvoice")
     so = relationship("SalesOrder")
     customer = relationship("Customer")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     lines = relationship("DeliveryOrderLine", back_populates="do", cascade="all, delete-orphan")
 
 

@@ -16,15 +16,19 @@ import {
 } from '@/api/attendance/inventoryPurchasing'
 import {
   type InventoryItem,
+  type InventoryWarehouse,
   listInventoryItems,
+  listWarehouses,
 } from '@/api/attendance/inventory'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
+import { useInventoryLinePicker } from '@/composables/useInventoryLinePicker'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { formatMoney } from '@/utils/inventoryDisplay'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
 import { useDirtyGuard } from '@/composables/useDirtyGuard'
@@ -33,20 +37,17 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const detailLoading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
 const suppliers = ref<InventorySupplier[]>([])
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 const items = ref<InventoryItem[]>([])
 
 const orders = ref<PurchaseOrder[]>([])
@@ -61,7 +62,7 @@ const confirm = useConfirmAction()
 const dirty = useDirtyGuard('You have unsaved edits on this purchase order. Discard them?')
 
 const supplierFilter = ref<string | null>(null)
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 
 const statusFilter = ref<PurchaseOrderStatus | null>(
   (route.query.status as PurchaseOrderStatus | undefined) ?? null,
@@ -81,8 +82,8 @@ const supplierOptions = computed(() =>
   suppliers.value.map(s => ({ value: s.id, title: `${s.code} · ${s.name_zh}` })),
 )
 
-const locationOptions = computed(() =>
-  locations.value.map(l => ({
+const warehouseOptions = computed(() =>
+  warehouses.value.map(l => ({
     value: l.id,
     title: [l.name_en, l.name_zh].filter(Boolean).join(' · '),
   })),
@@ -113,7 +114,7 @@ const editLines = ref<EditLine[]>([])
 
 const editForm = reactive({
   supplier_id: null as string | null,
-  location_id: null as string | null,
+  warehouse_id: null as string | null,
   order_date: '',
   expected_date: '',
   discount_amount: 0,
@@ -157,7 +158,7 @@ const lineErrors = computed(() => editLines.value.map(lineError))
 const formInvalid = computed(() =>
   isEditable.value
   && (!editForm.supplier_id
-    || !editForm.location_id
+    || !editForm.warehouse_id
     || !editForm.order_date
     || editLines.value.length === 0
     || lineErrors.value.some(Boolean)
@@ -208,14 +209,14 @@ onMounted(async () => {
     return
   loading.value = true
   try {
-    const [supplierResult, locationList, itemList] = await Promise.all([
+    const [supplierResult, warehouseList, itemList] = await Promise.all([
       listSuppliers({ is_active: true, page_size: 200 }),
-      listLocations({ is_active: true }),
+      listWarehouses({ is_active: true }),
       listInventoryItems(),
     ])
 
     suppliers.value = supplierResult.items
-    locations.value = locationList
+    warehouses.value = warehouseList
     items.value = itemList
     await loadOrders()
 
@@ -243,7 +244,7 @@ async function loadOrders() {
   try {
     const result = await listPurchaseOrders({
       supplier_id: supplierFilter.value ?? undefined,
-      location_id: locationFilter.value ?? undefined,
+      warehouse_id: warehouseFilter.value ?? undefined,
       status: statusFilter.value ?? undefined,
       page: page.value,
       page_size: pageSize.value,
@@ -287,7 +288,7 @@ async function selectOrder(po: PurchaseOrder) {
     await scrollToDetail()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to load purchase order.')
+    toast.show(formatApiError(e, 'Failed to load purchase order.'), 'error', 6000)
   }
   finally {
     detailLoading.value = false
@@ -303,7 +304,7 @@ function resetEditor(po: PurchaseOrder | null) {
   }
   suppressDirty = true
   editForm.supplier_id = po.supplier_id
-  editForm.location_id = po.location_id
+  editForm.warehouse_id = po.warehouse_id
   editForm.order_date = po.order_date
   editForm.expected_date = po.expected_date ?? ''
   editForm.discount_amount = po.discount_amount
@@ -329,7 +330,7 @@ async function newOrder() {
   showErrors.value = false
   selected.value = null
   editForm.supplier_id = null
-  editForm.location_id = null
+  editForm.warehouse_id = null
   editForm.order_date = new Date().toISOString().slice(0, 10)
   editForm.expected_date = ''
   editForm.discount_amount = 0
@@ -351,20 +352,25 @@ function removeLine(index: number) {
   editLines.value.splice(index, 1)
 }
 
-function onItemPicked(line: EditLine) {
+const { onPickItem } = useInventoryLinePicker({
+  lines: editLines,
+  itemById: id => itemById.value.get(id),
+  qtyKey: 'ordered_qty',
+  priceKeys: ['unit_cost'],
+})
+
+function onItemPicked(line: EditLine, index: number) {
   const item = line.item_id ? itemById.value.get(line.item_id) : null
 
   if (item && !line.unit_cost)
     line.unit_cost = item.cost_price ?? 0
+  onPickItem(index)
 }
 
 async function saveOrder() {
-  actionError.value = ''
-  actionSuccess.value = ''
-
   if (formInvalid.value) {
     showErrors.value = true
-    actionError.value = '請檢查紅色標示的欄位，修正後再儲存。'
+    toast.show('請檢查紅色標示的欄位，修正後再儲存。', 'error', 6000)
     await nextTick()
     document.querySelector<HTMLElement>('.v-input--error input, .v-input--error textarea')?.focus()
 
@@ -384,7 +390,7 @@ async function saveOrder() {
   try {
     const payload = {
       supplier_id: editForm.supplier_id ?? '',
-      location_id: editForm.location_id ?? '',
+      warehouse_id: editForm.warehouse_id ?? '',
       order_date: editForm.order_date,
       expected_date: editForm.expected_date || null,
       discount_amount: editForm.discount_amount || 0,
@@ -398,11 +404,11 @@ async function saveOrder() {
 
     selected.value = saved
     resetEditor(saved)
-    actionSuccess.value = `Saved ${saved.po_no}.`
+    toast.show(`Saved ${saved.po_no}.`)
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to save purchase order.')
+    toast.show(formatApiError(e, 'Failed to save purchase order.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -423,15 +429,14 @@ function askOrder() {
 async function performOrder() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await orderPurchaseOrder(selected.value.id)
-    actionSuccess.value = `${selected.value.po_no} ordered.`
+    toast.show(`${selected.value.po_no} ordered.`)
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to order.')
+    toast.show(formatApiError(e, 'Failed to order.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -452,15 +457,14 @@ function askCancel() {
 async function performCancel() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await cancelPurchaseOrder(selected.value.id)
-    actionSuccess.value = `${selected.value.po_no} cancelled.`
+    toast.show(`${selected.value.po_no} cancelled.`)
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to cancel.')
+    toast.show(formatApiError(e, 'Failed to cancel.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -481,18 +485,17 @@ function askDelete() {
 async function performDelete() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     const no = selected.value.po_no
 
     await deletePurchaseOrder(selected.value.id)
-    actionSuccess.value = `Deleted draft ${no}.`
+    toast.show(`Deleted draft ${no}.`)
     selected.value = null
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to delete.')
+    toast.show(formatApiError(e, 'Failed to delete.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -502,30 +505,25 @@ async function performDelete() {
 async function receiveGoods() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     const grn = await createGoodsReceipt({
       po_id: selected.value.id,
       supplier_id: selected.value.supplier_id,
-      location_id: selected.value.location_id,
+      warehouse_id: selected.value.warehouse_id,
       receipt_date: new Date().toISOString().slice(0, 10),
     })
 
-    actionSuccess.value = `Created goods receipt ${grn.grn_no} from ${selected.value.po_no}.`
+    toast.show(`Created goods receipt ${grn.grn_no} from ${selected.value.po_no}.`)
     selected.value = await getPurchaseOrder(selected.value.id)
     await loadOrders()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to create goods receipt.')
+    toast.show(formatApiError(e, 'Failed to create goods receipt.'), 'error', 6000)
   }
   finally {
     saving.value = false
   }
-}
-
-function fmtMoney(value: number | null | undefined): string {
-  return (value ?? 0).toFixed(2)
 }
 </script>
 
@@ -581,26 +579,6 @@ function fmtMoney(value: number | null | undefined): string {
     >
       {{ loadError }}
     </VAlert>
-    <VAlert
-      v-if="actionError"
-      type="error"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionError = ''"
-    >
-      {{ actionError }}
-    </VAlert>
-    <VAlert
-      v-if="actionSuccess"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionSuccess = ''"
-    >
-      {{ actionSuccess }}
-    </VAlert>
 
     <VRow>
       <VCol cols="12">
@@ -616,9 +594,9 @@ function fmtMoney(value: number | null | undefined): string {
               @update:model-value="onFiltersChange"
             />
             <VSelect
-              v-model="locationFilter"
-              :items="locationOptions"
-              label="Location"
+              v-model="warehouseFilter"
+              :items="warehouseOptions"
+              label="Warehouse 倉庫"
               density="comfortable"
               hide-details
               clearable
@@ -646,17 +624,19 @@ function fmtMoney(value: number | null | undefined): string {
             >
               <VListItemTitle>{{ po.po_no }}</VListItemTitle>
               <VListItemSubtitle>
-                {{ po.supplier_name || '—' }} · {{ po.order_date }} · {{ fmtMoney(po.total) }}
+                {{ po.supplier_name || '—' }} · {{ po.order_date }} · {{ formatMoney(po.total) }}
               </VListItemSubtitle>
               <template #append>
                 <InventoryStatusChip :status="po.status" />
               </template>
             </VListItem>
-            <VListItem v-if="orders.length === 0 && !loading">
-              <VListItemTitle class="text-medium-emphasis">
-                No purchase orders yet — click "New order" to buy stock.
-              </VListItemTitle>
-            </VListItem>
+            <InventoryEmptyState
+              v-if="orders.length === 0 && !loading"
+              icon="ri-shopping-cart-line"
+              text="No purchase orders yet."
+              action-label="New Purchase Order"
+              @action="newOrder"
+            />
           </VList>
           <AttendancePaginationBar
             v-model:page="page"
@@ -721,12 +701,12 @@ function fmtMoney(value: number | null | undefined): string {
                 md="6"
               >
                 <VSelect
-                  v-model="editForm.location_id"
-                  :items="locationOptions"
-                  label="Location *"
+                  v-model="editForm.warehouse_id"
+                  :items="warehouseOptions"
+                  label="Warehouse 倉庫 *"
                   density="comfortable"
                   :readonly="!isEditable"
-                  :error="showErrors && !editForm.location_id"
+                  :error="showErrors && !editForm.warehouse_id"
                   @blur="showErrors = true"
                 />
               </VCol>
@@ -809,7 +789,7 @@ function fmtMoney(value: number | null | undefined): string {
                         variant="outlined"
                         placeholder="Search item…"
                         :error="showErrors && lineErrors[index]?.field === 'item'"
-                        @update:model-value="onItemPicked(line)"
+                        @update:model-value="onItemPicked(line, index)"
                         @blur="showErrors = true"
                       />
                       <template v-else>
@@ -850,7 +830,7 @@ function fmtMoney(value: number | null | undefined): string {
                         @blur="showErrors = true"
                       />
                       <template v-else>
-                        {{ fmtMoney(line.unit_cost) }}
+                        {{ formatMoney(line.unit_cost) }}
                       </template>
                     </td>
                     <td class="text-end">
@@ -868,11 +848,11 @@ function fmtMoney(value: number | null | undefined): string {
                         @blur="showErrors = true"
                       />
                       <template v-else>
-                        {{ fmtMoney(line.discount_amount) }}
+                        {{ formatMoney(line.discount_amount) }}
                       </template>
                     </td>
                     <td class="inv-col-amount font-weight-medium">
-                      {{ fmtMoney(Math.max(0, (line.ordered_qty || 0) * (line.unit_cost || 0) - (line.discount_amount || 0))) }}
+                      {{ formatMoney(Math.max(0, (line.ordered_qty || 0) * (line.unit_cost || 0) - (line.discount_amount || 0))) }}
                     </td>
                     <td
                       v-if="isEditable"
@@ -925,7 +905,7 @@ function fmtMoney(value: number | null | undefined): string {
                   Subtotal
                 </div>
                 <div class="text-end">
-                  {{ fmtMoney(linesSubtotal) }}
+                  {{ formatMoney(linesSubtotal) }}
                 </div>
               </div>
               <div style="width: 140px">
@@ -946,7 +926,7 @@ function fmtMoney(value: number | null | undefined): string {
                   Total
                 </div>
                 <div class="text-end text-h6">
-                  {{ fmtMoney(editTotal) }}
+                  {{ formatMoney(editTotal) }}
                 </div>
               </div>
             </div>

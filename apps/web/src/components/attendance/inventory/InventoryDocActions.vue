@@ -11,6 +11,7 @@ export interface InventoryDocMoreItem {
   sub?: string
   icon: string
   danger?: boolean
+  disabled?: boolean
   onClick: () => void
 }
 </script>
@@ -95,6 +96,7 @@ const menuOpen = ref(false)
           <VDivider v-if="item.danger && (i === 0 || !more[i - 1].danger)" />
           <VListItem
             :class="{ 'text-error': item.danger }"
+            :disabled="item.disabled"
             @click="menuOpen = false; item.onClick()"
           >
             <template #prepend>

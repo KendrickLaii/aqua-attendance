@@ -3,7 +3,6 @@ import type { AmountList } from '../TaxComputation.vue'
 import AmountInput from './AmountInput.vue'
 import type { GroupedDataItem } from './DPL.vue'
 import TaxConfirmDialog from '@/components/dialogs/tax/TaxConfirmDialog.vue'
-import AppToastStack from '@/components/AppToastStack.vue'
 import { useToast } from '@/composables/useToast'
 import type { Content } from '@/types/client'
 import type { BasicInformationData } from '@/types/working-section'
@@ -1384,8 +1383,6 @@ function onPost(item: DataContentItem) {
     confirm-button-color="error"
     @confirm="confirmDeleteBreakdown"
   />
-
-  <AppToastStack />
 </template>
 
 <style lang="scss" scoped>

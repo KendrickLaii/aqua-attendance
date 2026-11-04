@@ -27,11 +27,11 @@ async def _create_item(client: AsyncClient, token: str, **overrides) -> dict:
 
 
 async def _move(
-    client: AsyncClient, token: str, item_id: str, location_id: str, type: str, quantity: int, **extra
+    client: AsyncClient, token: str, item_id: str, warehouse_id: str, type: str, quantity: int, **extra
 ) -> dict:
     resp = await client.post(
         "/api/inventory/movements",
-        json={"item_id": item_id, "location_id": location_id, "type": type, "quantity": quantity, **extra},
+        json={"item_id": item_id, "warehouse_id": warehouse_id, "type": type, "quantity": quantity, **extra},
         headers=_h(token),
     )
     assert resp.status_code == 201, resp.text
@@ -92,6 +92,38 @@ async def test_item_crud_and_search(client: AsyncClient, admin_token: str):
 
     missing = await client.get(f"/api/inventory/items/{uuid.uuid4()}", headers=_h(admin_token))
     assert missing.status_code == 404
+
+
+async def test_item_barcode_and_other_cost(client: AsyncClient, admin_token: str):
+    item = await _create_item(
+        client,
+        admin_token,
+        barcode="  4891234567890  ",
+        other_cost=2.5,
+    )
+    assert item["barcode"] == "4891234567890"
+    assert float(item["other_cost"]) == 2.5
+
+    fetched = await client.get(f"/api/inventory/items/{item['id']}", headers=_h(admin_token))
+    assert fetched.status_code == 200
+    assert fetched.json()["barcode"] == "4891234567890"
+    assert float(fetched.json()["other_cost"]) == 2.5
+
+    patched = await client.patch(
+        f"/api/inventory/items/{item['id']}",
+        json={"barcode": "", "other_cost": 7.25},
+        headers=_h(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["barcode"] is None
+    assert float(patched.json()["other_cost"]) == 7.25
+
+    negative = await client.patch(
+        f"/api/inventory/items/{item['id']}",
+        json={"other_cost": -1},
+        headers=_h(admin_token),
+    )
+    assert negative.status_code == 422
 
 
 async def test_item_image_url(client: AsyncClient, admin_token: str):
@@ -192,7 +224,7 @@ async def test_movement_in_out_and_balance_after(
     assert m2["quantity_delta"] == -3
     assert m2["balance_after"] == 7
 
-    stocks = await client.get(f"/api/inventory/stocks?location_id={loc}", headers=_h(admin_token))
+    stocks = await client.get(f"/api/inventory/stocks?warehouse_id={loc}", headers=_h(admin_token))
     assert stocks.status_code == 200
     stock = next(s for s in stocks.json() if s["item_id"] == item["id"])
     assert stock["quantity"] == 7
@@ -207,12 +239,12 @@ async def test_movement_negative_stock_blocked(
 
     resp = await client.post(
         "/api/inventory/movements",
-        json={"item_id": item["id"], "location_id": loc, "type": "out", "quantity": 5},
+        json={"item_id": item["id"], "warehouse_id": loc, "type": "out", "quantity": 5},
         headers=_h(admin_token),
     )
     assert resp.status_code == 422
 
-    stocks = await client.get(f"/api/inventory/stocks?location_id={loc}", headers=_h(admin_token))
+    stocks = await client.get(f"/api/inventory/stocks?warehouse_id={loc}", headers=_h(admin_token))
     stock = next(s for s in stocks.json() if s["item_id"] == item["id"])
     assert stock["quantity"] == 4
 
@@ -228,7 +260,7 @@ async def test_adjust_sets_absolute_count(
     assert m["quantity_delta"] == -4
     assert m["balance_after"] == 6
 
-    stocks = await client.get(f"/api/inventory/stocks?location_id={loc}", headers=_h(admin_token))
+    stocks = await client.get(f"/api/inventory/stocks?warehouse_id={loc}", headers=_h(admin_token))
     stock = next(s for s in stocks.json() if s["item_id"] == item["id"])
     assert stock["quantity"] == 6
 
@@ -240,7 +272,7 @@ async def test_movement_reference_idempotent(
     loc = sample_location["id"]
     body = {
         "item_id": item["id"],
-        "location_id": loc,
+        "warehouse_id": loc,
         "type": "in",
         "quantity": 5,
         "reference": f"TEST-{uuid.uuid4().hex[:8]}",
@@ -251,7 +283,7 @@ async def test_movement_reference_idempotent(
     assert second.status_code == 200, second.text  # idempotent repeat → 200
     assert second.json()["id"] == first.json()["id"]
 
-    stocks = await client.get(f"/api/inventory/stocks?location_id={loc}", headers=_h(admin_token))
+    stocks = await client.get(f"/api/inventory/stocks?warehouse_id={loc}", headers=_h(admin_token))
     stock = next(s for s in stocks.json() if s["item_id"] == item["id"])
     assert stock["quantity"] == 5
 
@@ -279,9 +311,9 @@ async def test_movements_list_filters(
     assert by_item.headers.get("x-total-count") == "1"
 
     by_location = await client.get(
-        f"/api/inventory/movements?location_id={sample_location_b['id']}", headers=_h(admin_token)
+        f"/api/inventory/movements?warehouse_id={sample_location_b['id']}", headers=_h(admin_token)
     )
-    assert all(m["location_id"] == sample_location_b["id"] for m in by_location.json())
+    assert all(m["warehouse_id"] == sample_location_b["id"] for m in by_location.json())
 
 
 async def test_low_stock_endpoint(client: AsyncClient, admin_token: str, sample_location: dict):
@@ -320,7 +352,7 @@ async def test_non_admin_forbidden(client: AsyncClient, admin_token: str, sample
         (
             "POST",
             "/api/inventory/movements",
-            {"json": {"item_id": str(uuid.uuid4()), "location_id": sample_location["id"], "type": "in", "quantity": 1}},
+            {"json": {"item_id": str(uuid.uuid4()), "warehouse_id": sample_location["id"], "type": "in", "quantity": 1}},
         ),
     ):
         resp = await client.request(method, url, headers=staff_headers, **kwargs)
@@ -334,7 +366,7 @@ async def test_movement_unknown_item_404(
         "/api/inventory/movements",
         json={
             "item_id": str(uuid.uuid4()),
-            "location_id": sample_location["id"],
+            "warehouse_id": sample_location["id"],
             "type": "in",
             "quantity": 1,
         },
@@ -371,3 +403,84 @@ async def test_writes_are_audited(
     assert {r["action"] for r in item_rows} == {"CREATE", "UPDATE"}
     movement_rows = [r for r in await logs("inventory_movements") if r["record_id"] == movement["id"]]
     assert any(r["action"] == "CREATE" for r in movement_rows)
+
+
+async def test_warehouse_crud_duplicate_and_referenced_delete(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    created = await client.post(
+        "/api/inventory/warehouses",
+        json={
+            "code": "MK",
+            "name_zh": "旺角倉",
+            "name_en": "Mong Kok",
+            "location_id": sample_location["id"],
+        },
+        headers=_h(admin_token),
+    )
+    assert created.status_code == 201, created.text
+    warehouse = created.json()
+    assert warehouse["code"] == "MK"
+    assert warehouse["location_id"] == sample_location["id"]
+
+    duplicate = await client.post(
+        "/api/inventory/warehouses",
+        json={"code": "MK", "name_zh": "另一個"},
+        headers=_h(admin_token),
+    )
+    assert duplicate.status_code == 409
+
+    missing_centre = await client.post(
+        "/api/inventory/warehouses",
+        json={"code": "ZZ9", "name_zh": "無中心", "location_id": str(uuid.uuid4())},
+        headers=_h(admin_token),
+    )
+    assert missing_centre.status_code == 422
+
+    listed = await client.get("/api/inventory/warehouses?search=旺角", headers=_h(admin_token))
+    assert listed.status_code == 200
+    assert any(row["id"] == warehouse["id"] for row in listed.json())
+
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], warehouse["id"], "in", 2)
+    blocked = await client.delete(f"/api/inventory/warehouses/{warehouse['id']}", headers=_h(admin_token))
+    assert blocked.status_code == 409
+    assert "deactivate" in blocked.json()["detail"].lower()
+
+    spare = await client.post(
+        "/api/inventory/warehouses",
+        json={"code": "SPARE", "name_zh": "後備倉"},
+        headers=_h(admin_token),
+    )
+    assert spare.status_code == 201, spare.text
+    removed = await client.delete(
+        f"/api/inventory/warehouses/{spare.json()['id']}", headers=_h(admin_token)
+    )
+    assert removed.status_code == 204
+
+
+async def test_doc_no_uses_warehouse_code(client: AsyncClient, admin_token: str):
+    warehouse = await client.post(
+        "/api/inventory/warehouses",
+        json={"code": "MK", "name_zh": "旺角倉"},
+        headers=_h(admin_token),
+    )
+    assert warehouse.status_code == 201, warehouse.text
+    supplier = await client.post(
+        "/api/inventory/suppliers",
+        json={"code": f"S{uuid.uuid4().hex[:6]}", "name_zh": "供應商"},
+        headers=_h(admin_token),
+    )
+    assert supplier.status_code == 201, supplier.text
+    po = await client.post(
+        "/api/inventory/purchase-orders",
+        json={
+            "supplier_id": supplier.json()["id"],
+            "warehouse_id": warehouse.json()["id"],
+            "order_date": "2026-11-04",
+            "lines": [],
+        },
+        headers=_h(admin_token),
+    )
+    assert po.status_code == 201, po.text
+    assert po.json()["po_no"].startswith("PO-MK-")

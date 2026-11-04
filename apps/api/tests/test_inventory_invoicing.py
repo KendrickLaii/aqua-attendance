@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.models.audit_log import AuditLog
+from app.models.inventory_sales import SalesOrder
 from tests.conftest import TestSessionLocal, _insert_test_user
 
 pytestmark = pytest.mark.asyncio
@@ -28,12 +29,12 @@ async def _create_customer(client: AsyncClient, token: str, **overrides) -> dict
     return resp.json()
 
 
-async def _move(client, token, item_id, location_id, type, quantity, **extra) -> dict:
+async def _move(client, token, item_id, warehouse_id, type, quantity, **extra) -> dict:
     resp = await client.post(
         "/api/inventory/movements",
         json={
             "item_id": item_id,
-            "location_id": location_id,
+            "warehouse_id": warehouse_id,
             "type": type,
             "quantity": quantity,
             **extra,
@@ -44,19 +45,19 @@ async def _move(client, token, item_id, location_id, type, quantity, **extra) ->
     return resp.json()
 
 
-async def _stock(client: AsyncClient, token: str, item_id: str, location_id: str) -> dict | None:
+async def _stock(client: AsyncClient, token: str, item_id: str, warehouse_id: str) -> dict | None:
     resp = await client.get(
-        f"/api/inventory/stocks?item_id={item_id}&location_id={location_id}",
+        f"/api/inventory/stocks?item_id={item_id}&warehouse_id={warehouse_id}",
         headers=_h(token),
     )
     stocks = resp.json()
     return stocks[0] if stocks else None
 
 
-async def _confirmed_so(client, token, customer_id, location_id, lines, **so_extra) -> dict:
+async def _confirmed_so(client, token, customer_id, warehouse_id, lines, **so_extra) -> dict:
     body = {
         "customer_id": customer_id,
-        "location_id": location_id,
+        "warehouse_id": warehouse_id,
         "order_date": "2026-10-16",
         "lines": lines,
         **so_extra,
@@ -162,7 +163,7 @@ async def test_invoice_only_on_confirmed_so(
     resp = await client.post(
         "/api/inventory/sales-orders",
         json={
-            "customer_id": customer["id"], "location_id": loc,
+            "customer_id": customer["id"], "warehouse_id": loc,
             "order_date": "2026-10-16", "lines": [_so_line(item["id"], 2)],
         },
         headers=_h(admin_token),
@@ -277,7 +278,7 @@ async def test_invoice_issue_shortfall_is_atomic(
             await session.execute(
                 select(InventoryStock).where(
                     InventoryStock.item_id == uuid.UUID(item2["id"]),
-                    InventoryStock.location_id == uuid.UUID(loc),
+                    InventoryStock.warehouse_id == uuid.UUID(loc),
                 )
             )
         ).scalar_one()
@@ -1047,7 +1048,7 @@ async def test_quick_fulfill_success_with_delivery_and_payment(
         "/api/inventory/sales-orders",
         json={
             "customer_id": customer["id"],
-            "location_id": loc,
+            "warehouse_id": loc,
             "order_date": "2026-10-16",
             "lines": [_so_line(item["id"], 3, 100.0)],
         },
@@ -1111,7 +1112,7 @@ async def test_quick_fulfill_atomic_on_shortfall(
         "/api/inventory/sales-orders",
         json={
             "customer_id": customer["id"],
-            "location_id": loc,
+            "warehouse_id": loc,
             "order_date": "2026-10-16",
             "lines": [_so_line(item["id"], 5)],
         },
@@ -1344,3 +1345,93 @@ async def test_invoice_void_on_cancelled_so_no_rereserve(
     stock = await _stock(client, admin_token, item["id"], loc)
     assert stock["quantity"] == 10
     assert stock["reserved"] == 0  # SO cancelled — nothing re-reserved
+
+
+async def test_so_cancel_deletes_draft_invoices(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 10)
+    so = await _confirmed_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 5)]
+    )
+    draft = await _create_invoice(client, admin_token, {"so_id": so["id"]})
+    assert draft["status"] == "draft"
+
+    resp = await client.post(
+        f"/api/inventory/sales-orders/{so['id']}/cancel", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    resp = await client.get(f"/api/inventory/invoices/{draft['id']}", headers=_h(admin_token))
+    assert resp.status_code == 404
+    stock = await _stock(client, admin_token, item["id"], loc)
+    assert stock["quantity"] == 10 and stock["reserved"] == 0
+
+
+async def test_invoice_issue_rejected_when_so_cancelled(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item = await _create_item(client, admin_token)
+    await _move(client, admin_token, item["id"], loc, "in", 10)
+    so = await _confirmed_so(
+        client, admin_token, customer["id"], loc, [_so_line(item["id"], 5)]
+    )
+    draft = await _create_invoice(client, admin_token, {"so_id": so["id"]})
+
+    async with TestSessionLocal() as db:
+        row = (
+            await db.execute(select(SalesOrder).where(SalesOrder.id == uuid.UUID(so["id"])))
+        ).scalar_one()
+        row.status = "cancelled"
+        await db.commit()
+
+    resp = await client.post(
+        f"/api/inventory/invoices/{draft['id']}/issue", headers=_h(admin_token)
+    )
+    assert resp.status_code == 409, resp.text
+    assert "cancelled" in resp.json()["detail"]
+    stock = await _stock(client, admin_token, item["id"], loc)
+    assert stock["quantity"] == 10
+
+
+async def test_credit_note_apportions_header_discount(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    loc = sample_location["id"]
+    customer = await _create_customer(client, admin_token)
+    item_a = await _create_item(client, admin_token)
+    item_b = await _create_item(client, admin_token)
+    await _move(client, admin_token, item_a["id"], loc, "in", 5)
+    await _move(client, admin_token, item_b["id"], loc, "in", 5)
+    so = await _confirmed_so(
+        client,
+        admin_token,
+        customer["id"],
+        loc,
+        [_so_line(item_a["id"], 1, 100.0), _so_line(item_b["id"], 1, 50.0)],
+    )
+    inv = await _issue_invoice(client, admin_token, so["id"], discount_amount=15)
+    assert inv["total"] == 135
+
+    resp = await client.post(
+        "/api/inventory/credit-notes",
+        json={
+            "invoice_id": inv["id"],
+            "reason": "full return",
+            "lines": [{"invoice_line_id": line["id"], "qty": 1} for line in inv["lines"]],
+        },
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    scn = resp.json()
+    assert scn["total"] == 135
+
+    resp = await client.post(
+        f"/api/inventory/credit-notes/{scn['id']}/confirm", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    assert (await _get_invoice(client, admin_token, inv["id"]))["balance"] == 0

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventoryItem,
   type InventoryItemPayload,
@@ -19,6 +20,8 @@ const emit = defineEmits<{
   saved: []
 }>()
 
+const display = useDisplay()
+const toast = useToast()
 const saving = ref(false)
 const saveError = ref('')
 
@@ -28,7 +31,9 @@ const form = reactive({
   name_en: '',
   category_id: null as string | null,
   unit_of_measure: '',
+  barcode: '',
   cost_price: null as number | null,
+  other_cost: null as number | null,
   sale_price: null as number | null,
   reorder_level: 0,
   is_active: true,
@@ -51,7 +56,9 @@ function resetForm(item: InventoryItem | null) {
       name_en: item.name_en ?? '',
       category_id: item.category_id,
       unit_of_measure: item.unit_of_measure ?? '',
+      barcode: item.barcode ?? '',
       cost_price: item.cost_price,
+      other_cost: item.other_cost,
       sale_price: item.sale_price,
       reorder_level: item.reorder_level,
       is_active: item.is_active,
@@ -71,7 +78,9 @@ function resetForm(item: InventoryItem | null) {
     name_en: '',
     category_id: null,
     unit_of_measure: '',
+    barcode: '',
     cost_price: null,
+    other_cost: null,
     sale_price: null,
     reorder_level: 0,
     is_active: true,
@@ -103,7 +112,9 @@ async function save() {
     name_en: form.name_en.trim() || null,
     category_id: form.category_id,
     unit_of_measure: form.unit_of_measure.trim() || null,
+    barcode: form.barcode.trim() || null,
     cost_price: form.cost_price,
+    other_cost: form.other_cost,
     sale_price: form.sale_price,
     reorder_level: form.reorder_level ?? 0,
     is_active: form.is_active,
@@ -118,6 +129,7 @@ async function save() {
       await createInventoryItem(payload)
     emit('update:modelValue', false)
     emit('saved')
+    toast.show(`Item ${payload.sku_code} saved`)
   }
   catch (e) {
     saveError.value = formatApiError(e, 'Could not save item.')
@@ -131,8 +143,9 @@ async function save() {
 <template>
   <VDialog
     :model-value="modelValue"
-    max-width="640"
+    max-width="720"
     scrollable
+    :fullscreen="display.xs.value"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <VCard :title="editingItem ? 'Edit item' : 'Add item'">
@@ -147,6 +160,9 @@ async function save() {
           {{ saveError }}
         </VAlert>
 
+        <div class="text-overline text-medium-emphasis mb-2">
+          Identification
+        </div>
         <VRow>
           <VCol
             cols="12"
@@ -165,6 +181,19 @@ async function save() {
             cols="12"
             sm="6"
           >
+            <VTextField
+              v-model="form.barcode"
+              label="Barcode"
+              prepend-inner-icon="ri-barcode-line"
+              hint="Optional. Scan or type."
+              persistent-hint
+              density="comfortable"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
             <VSelect
               v-model="form.category_id"
               :items="categoryOptions"
@@ -175,6 +204,25 @@ async function save() {
               clearable
             />
           </VCol>
+          <VCol
+            cols="12"
+            sm="6"
+          >
+            <VTextField
+              v-model="form.unit_of_measure"
+              label="Unit of measure"
+              placeholder="pcs / box / set"
+              hint="Optional."
+              persistent-hint
+              density="comfortable"
+            />
+          </VCol>
+        </VRow>
+
+        <div class="text-overline text-medium-emphasis mb-2 mt-4">
+          Names
+        </div>
+        <VRow>
           <VCol cols="12">
             <VTextField
               v-model="form.name_zh"
@@ -193,40 +241,19 @@ async function save() {
               density="comfortable"
             />
           </VCol>
+        </VRow>
+
+        <div class="text-overline text-medium-emphasis mb-2 mt-4">
+          Pricing &amp; stock
+        </div>
+        <VRow>
           <VCol
             cols="12"
-            sm="6"
-          >
-            <VTextField
-              v-model="form.unit_of_measure"
-              label="Unit of measure"
-              placeholder="pcs / box / set"
-              hint="Optional."
-              persistent-hint
-              density="comfortable"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
-          >
-            <VTextField
-              v-model.number="form.reorder_level"
-              label="Reorder level"
-              type="number"
-              min="0"
-              hint="Stock at or below this is flagged as low."
-              persistent-hint
-              density="comfortable"
-            />
-          </VCol>
-          <VCol
-            cols="12"
-            sm="6"
+            sm="4"
           >
             <VTextField
               v-model.number="form.cost_price"
-              label="Cost price"
+              label="Purchase price"
               type="number"
               min="0"
               step="0.01"
@@ -238,7 +265,23 @@ async function save() {
           </VCol>
           <VCol
             cols="12"
-            sm="6"
+            sm="4"
+          >
+            <VTextField
+              v-model.number="form.other_cost"
+              label="Other cost"
+              type="number"
+              min="0"
+              step="0.01"
+              prefix="HK$"
+              hint="Optional."
+              persistent-hint
+              density="comfortable"
+            />
+          </VCol>
+          <VCol
+            cols="12"
+            sm="4"
           >
             <VTextField
               v-model.number="form.sale_price"
@@ -252,6 +295,26 @@ async function save() {
               density="comfortable"
             />
           </VCol>
+          <VCol
+            cols="12"
+            sm="4"
+          >
+            <VTextField
+              v-model.number="form.reorder_level"
+              label="Reorder level"
+              type="number"
+              min="0"
+              hint="Stock at or below this is flagged as low."
+              persistent-hint
+              density="comfortable"
+            />
+          </VCol>
+        </VRow>
+
+        <div class="text-overline text-medium-emphasis mb-2 mt-4">
+          Images
+        </div>
+        <VRow>
           <VCol cols="12">
             <LocationPhotoSlot
               v-model:url="form.image_url"
@@ -285,6 +348,12 @@ async function save() {
               :preview-max-height="140"
             />
           </VCol>
+        </VRow>
+
+        <div class="text-overline text-medium-emphasis mb-2 mt-4">
+          Status
+        </div>
+        <VRow>
           <VCol cols="12">
             <VSwitch
               v-model="form.is_active"
@@ -297,6 +366,7 @@ async function save() {
           </VCol>
         </VRow>
       </VCardText>
+      <VDivider />
       <VCardActions>
         <VSpacer />
         <VBtn

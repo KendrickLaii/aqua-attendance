@@ -7,6 +7,29 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+class InventoryWarehouse(Base):
+    """A stock-holding site, independent of attendance centres (``locations``)."""
+
+    __tablename__ = "inventory_warehouses"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    name_zh: Mapped[str] = mapped_column(String(255), nullable=False)
+    name_en: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 class InventoryCategory(Base):
     """Grouping for inventory items, e.g. 教材 / 文具."""
 
@@ -27,7 +50,7 @@ class InventoryCategory(Base):
 
 
 class InventoryItem(Base):
-    """A sellable/stockable physical item (教材, 文具, …). Stock is tracked per location."""
+    """A sellable/stockable physical item (教材, 文具, …). Stock is tracked per warehouse."""
 
     __tablename__ = "inventory_items"
 
@@ -39,7 +62,9 @@ class InventoryItem(Base):
         ForeignKey("inventory_categories.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     unit_of_measure: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    barcode: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     cost_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    other_cost: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     sale_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     reorder_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     avg_cost: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
@@ -59,17 +84,17 @@ class InventoryItem(Base):
 
 
 class InventoryStock(Base):
-    """Current on-hand quantity of one item at one location."""
+    """Current on-hand quantity of one item at one warehouse."""
 
     __tablename__ = "inventory_stocks"
-    __table_args__ = (UniqueConstraint("item_id", "location_id", name="uq_inventory_stocks_item_location"),)
+    __table_args__ = (UniqueConstraint("item_id", "warehouse_id", name="uq_inventory_stocks_item_warehouse"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     item_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("inventory_items.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
@@ -80,7 +105,7 @@ class InventoryStock(Base):
     )
 
     item = relationship("InventoryItem", back_populates="stocks")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
 
     @property
     def available(self) -> int:
@@ -95,15 +120,15 @@ class InventoryMovement(Base):
 
     __tablename__ = "inventory_movements"
     __table_args__ = (
-        Index("ix_inventory_movements_item_loc_created", "item_id", "location_id", "created_at"),
+        Index("ix_inventory_movements_item_wh_created", "item_id", "warehouse_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     item_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("inventory_items.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -118,11 +143,11 @@ class InventoryMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     item = relationship("InventoryItem", back_populates="movements")
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
 
 
 class InventoryStocktake(Base):
-    """A stocktake (盤點) session for one location.
+    """A stocktake (盤點) session for one warehouse.
 
     draft → applied (adjust movements written) or cancelled.
     """
@@ -130,8 +155,8 @@ class InventoryStocktake(Base):
     __tablename__ = "inventory_stocktakes"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    location_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", server_default="draft")
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -140,8 +165,7 @@ class InventoryStocktake(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    location = relationship("Location")
+    warehouse = relationship("InventoryWarehouse")
     lines = relationship("InventoryStocktakeLine", back_populates="stocktake", cascade="all, delete-orphan")
 
 

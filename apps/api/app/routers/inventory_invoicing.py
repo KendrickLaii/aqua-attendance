@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 
 from app.deps import AdminOnly, DB
-from app.models.inventory import InventoryItem
+from app.models.inventory import InventoryItem, InventoryWarehouse
 from app.models.inventory_invoicing import (
     InventoryCreditNote,
     InventoryCreditNoteLine,
@@ -20,7 +20,6 @@ from app.models.inventory_sales import (
     SalesOrder,
     SalesOrderLine,
 )
-from app.models.location import Location
 from app.routers.inventory_sales import (
     _do_detail,
     _invoice_lines_map,
@@ -239,7 +238,7 @@ async def _inv_detail(db: DB, inv: InventoryInvoice) -> dict:
         "customer_id": inv.customer_id,
         "customer_name": customer.name_zh or customer.name_en,
         "buyer_name": inv.buyer_name,
-        "location_id": inv.location_id,
+        "warehouse_id": inv.warehouse_id,
         "issue_date": inv.issue_date,
         "status": inv.status,
         "discount_amount": _money(inv.discount_amount),
@@ -272,7 +271,7 @@ async def _rc_out(db: DB, rc: InventoryReceipt) -> dict:
         "invoice_no": inv.invoice_no,
         "customer_id": rc.customer_id,
         "customer_name": customer.name_zh or customer.name_en,
-        "location_id": rc.location_id,
+        "warehouse_id": rc.warehouse_id,
         "amount": _to_float(rc.amount),
         "paid_by": rc.paid_by,
         "reference_no": rc.reference_no,
@@ -307,7 +306,7 @@ async def _scn_out(db: DB, scn: InventoryCreditNote) -> dict:
         "invoice_no": inv.invoice_no,
         "customer_id": scn.customer_id,
         "customer_name": customer.name_zh or customer.name_en,
-        "location_id": scn.location_id,
+        "warehouse_id": scn.warehouse_id,
         "credit_date": scn.credit_date,
         "reason": scn.reason,
         "status": scn.status,
@@ -437,7 +436,7 @@ async def _inv_details_batch(db: DB, rows: list[InventoryInvoice]) -> list[dict]
                 "customer_id": inv.customer_id,
                 "customer_name": (customer.name_zh or customer.name_en) if customer else None,
                 "buyer_name": inv.buyer_name,
-                "location_id": inv.location_id,
+                "warehouse_id": inv.warehouse_id,
                 "issue_date": inv.issue_date,
                 "status": inv.status,
                 "discount_amount": _money(inv.discount_amount),
@@ -521,7 +520,7 @@ async def _rc_outs_batch(db: DB, rows: list[InventoryReceipt]) -> list[dict]:
                 if rc.customer_id in custs
                 else None
             ),
-            "location_id": rc.location_id,
+            "warehouse_id": rc.warehouse_id,
             "amount": _to_float(rc.amount),
             "paid_by": rc.paid_by,
             "reference_no": rc.reference_no,
@@ -596,7 +595,7 @@ async def _scn_outs_batch(db: DB, rows: list[InventoryCreditNote]) -> list[dict]
                 "invoice_no": inv.invoice_no if inv else None,
                 "customer_id": scn.customer_id,
                 "customer_name": (customer.name_zh or customer.name_en) if customer else None,
-                "location_id": scn.location_id,
+                "warehouse_id": scn.warehouse_id,
                 "credit_date": scn.credit_date,
                 "reason": scn.reason,
                 "status": scn.status,
@@ -619,7 +618,7 @@ async def list_invoices(
     db: DB,
     response: Response,
     customer_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     payment_status: str | None = None,
     date_from: date | None = None,
@@ -663,9 +662,9 @@ async def list_invoices(
     if customer_id:
         q = q.where(InventoryInvoice.customer_id == customer_id)
         count_q = count_q.where(InventoryInvoice.customer_id == customer_id)
-    if location_id:
-        q = q.where(InventoryInvoice.location_id == location_id)
-        count_q = count_q.where(InventoryInvoice.location_id == location_id)
+    if warehouse_id:
+        q = q.where(InventoryInvoice.warehouse_id == warehouse_id)
+        count_q = count_q.where(InventoryInvoice.warehouse_id == warehouse_id)
     if status_filter:
         q = q.where(InventoryInvoice.status == status_filter)
         count_q = count_q.where(InventoryInvoice.status == status_filter)
@@ -798,7 +797,7 @@ async def _create_invoice_tx(
         so_id=so.id,
         customer_id=so.customer_id,
         buyer_name=so.buyer_name,
-        location_id=so.location_id,
+        warehouse_id=so.warehouse_id,
         issue_date=issue_date,
         discount_amount=header_discount,
         total=total,
@@ -826,6 +825,10 @@ async def _issue_invoice_tx(
         raise HTTPException(status_code=422, detail="invoice has no lines")
 
     so = await _lock_or_404(db, SalesOrder, inv.so_id, "Sales order")
+    if so.status == "cancelled":
+        raise HTTPException(
+            status_code=409, detail=f"SO {so.so_no} is cancelled; cannot issue its invoice"
+        )
     so_lines = {
         line.id: line
         for line in (
@@ -860,12 +863,12 @@ async def _issue_invoice_tx(
             to_release = min(line.qty, so_line.qty - so_line.invoiced_qty)
             if to_release > 0:
                 await inventory_svc.release(
-                    db, item_id=line.item_id, location_id=inv.location_id, quantity=to_release
+                    db, item_id=line.item_id, warehouse_id=inv.warehouse_id, quantity=to_release
                 )
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
-            location_id=inv.location_id,
+            warehouse_id=inv.warehouse_id,
             type="out",
             quantity=line.qty,
             reason=f"sales invoice {inv.invoice_no or inv.id}",
@@ -878,7 +881,7 @@ async def _issue_invoice_tx(
 
     if not inv.invoice_no:
         inv.invoice_no = await doc_numbers_svc.allocate_doc_no(
-            db, location_id=inv.location_id, doc_type="SI"
+            db, warehouse_id=inv.warehouse_id, doc_type="SI"
         )
     inv.status = "issued"
     inv.issue_date = issue_date or inv.issue_date or date.today()
@@ -1068,7 +1071,7 @@ async def void_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict
         await inventory_svc.apply_movement(
             db,
             item_id=line.item_id,
-            location_id=inv.location_id,
+            warehouse_id=inv.warehouse_id,
             type="in",
             quantity=line.qty,
             reason=f"void invoice {inv.invoice_no}",
@@ -1081,7 +1084,7 @@ async def void_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict
             so_line.invoiced_qty = max(0, so_line.invoiced_qty - line.qty)
         if so.status != "cancelled":
             await inventory_svc.reserve(
-                db, item_id=line.item_id, location_id=inv.location_id, quantity=line.qty
+                db, item_id=line.item_id, warehouse_id=inv.warehouse_id, quantity=line.qty
             )
     await _recompute_so_status(db, so)
 
@@ -1108,7 +1111,7 @@ async def print_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
     detail = await _inv_detail(db, inv)
     cust_result = await db.execute(select(Customer).where(Customer.id == inv.customer_id))
     customer = cust_result.scalar_one()
-    loc_result = await db.execute(select(Location).where(Location.id == inv.location_id))
+    loc_result = await db.execute(select(InventoryWarehouse).where(InventoryWarehouse.id == inv.warehouse_id))
     loc = loc_result.scalar_one()
     return {
         "invoice_no": inv.invoice_no,
@@ -1122,10 +1125,10 @@ async def print_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
         "customer_phone": customer.phone,
         "customer_email": customer.email,
         "customer_address": customer.address,
-        "location_name_zh": loc.name_zh,
-        "location_name_en": loc.name_en,
-        "location_address": loc.address,
-        "location_phone": loc.phone,
+        "warehouse_name_zh": loc.name_zh,
+        "warehouse_name_en": loc.name_en or loc.name_zh,
+        "warehouse_address": loc.address,
+        "warehouse_phone": loc.phone,
         "so_no": detail["so_no"],
         "lines": detail["lines"],
         "discount_amount": detail["discount_amount"],
@@ -1149,7 +1152,7 @@ async def list_receipts(
     response: Response,
     invoice_id: uuid.UUID | None = None,
     customer_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     date_from: date | None = None,
     date_to: date | None = None,
@@ -1165,9 +1168,9 @@ async def list_receipts(
     if customer_id:
         q = q.where(InventoryReceipt.customer_id == customer_id)
         count_q = count_q.where(InventoryReceipt.customer_id == customer_id)
-    if location_id:
-        q = q.where(InventoryReceipt.location_id == location_id)
-        count_q = count_q.where(InventoryReceipt.location_id == location_id)
+    if warehouse_id:
+        q = q.where(InventoryReceipt.warehouse_id == warehouse_id)
+        count_q = count_q.where(InventoryReceipt.warehouse_id == warehouse_id)
     if status_filter:
         q = q.where(InventoryReceipt.status == status_filter)
         count_q = count_q.where(InventoryReceipt.status == status_filter)
@@ -1213,13 +1216,13 @@ async def _create_receipt_tx(
             status_code=422, detail=f"receipt amount {amount} exceeds invoice balance {balance}"
         )
     receipt_no = await doc_numbers_svc.allocate_doc_no(
-        db, location_id=inv.location_id, doc_type="SR"
+        db, warehouse_id=inv.warehouse_id, doc_type="SR"
     )
     rc = InventoryReceipt(
         receipt_no=receipt_no,
         invoice_id=inv.id,
         customer_id=inv.customer_id,
-        location_id=inv.location_id,
+        warehouse_id=inv.warehouse_id,
         amount=amount,
         paid_by=paid_by,
         reference_no=reference_no,
@@ -1295,7 +1298,7 @@ async def print_receipt(receipt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
     credited = await _credited_total(db, inv.id)
     cust_result = await db.execute(select(Customer).where(Customer.id == rc.customer_id))
     customer = cust_result.scalar_one()
-    loc_result = await db.execute(select(Location).where(Location.id == rc.location_id))
+    loc_result = await db.execute(select(InventoryWarehouse).where(InventoryWarehouse.id == rc.warehouse_id))
     loc = loc_result.scalar_one()
     return {
         "receipt_no": rc.receipt_no,
@@ -1309,10 +1312,10 @@ async def print_receipt(receipt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
         "customer_code": customer.code,
         "customer_name_zh": customer.name_zh,
         "customer_name_en": customer.name_en,
-        "location_name_zh": loc.name_zh,
-        "location_name_en": loc.name_en,
-        "location_address": loc.address,
-        "location_phone": loc.phone,
+        "warehouse_name_zh": loc.name_zh,
+        "warehouse_name_en": loc.name_en or loc.name_zh,
+        "warehouse_address": loc.address,
+        "warehouse_phone": loc.phone,
         "amount": _to_float(rc.amount),
         "paid_by": rc.paid_by,
         "reference_no": rc.reference_no,
@@ -1330,7 +1333,7 @@ async def list_credit_notes(
     response: Response,
     invoice_id: uuid.UUID | None = None,
     customer_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     date_from: date | None = None,
     date_to: date | None = None,
@@ -1346,9 +1349,9 @@ async def list_credit_notes(
     if customer_id:
         q = q.where(InventoryCreditNote.customer_id == customer_id)
         count_q = count_q.where(InventoryCreditNote.customer_id == customer_id)
-    if location_id:
-        q = q.where(InventoryCreditNote.location_id == location_id)
-        count_q = count_q.where(InventoryCreditNote.location_id == location_id)
+    if warehouse_id:
+        q = q.where(InventoryCreditNote.warehouse_id == warehouse_id)
+        count_q = count_q.where(InventoryCreditNote.warehouse_id == warehouse_id)
     if status_filter:
         q = q.where(InventoryCreditNote.status == status_filter)
         count_q = count_q.where(InventoryCreditNote.status == status_filter)
@@ -1373,29 +1376,47 @@ async def _build_scn_lines(
     inv: InventoryInvoice,
     line_inputs: list[InventoryCreditNoteLineIn],
 ) -> list[dict]:
+    all_lines = await _inv_lines(db, inv.id)
+    subtotal = sum((_money(line.amount) for line in all_lines), _ZERO)
+    discount_left = min(_money(inv.discount_amount), subtotal)
+    net_full: dict[uuid.UUID, Decimal] = {}
+    for idx, line in enumerate(all_lines):
+        line_amount = _money(line.amount)
+        if idx == len(all_lines) - 1:
+            share = discount_left
+        elif subtotal > 0:
+            share = min(_money(_money(inv.discount_amount) * line_amount / subtotal), discount_left)
+        else:
+            share = _ZERO
+        discount_left -= share
+        net_full[line.id] = line_amount - share
+    lines_by_id = {line.id: line for line in all_lines}
+
     seen: set[uuid.UUID] = set()
     built: list[dict] = []
     for inp in line_inputs:
         if inp.invoice_line_id in seen:
             raise HTTPException(status_code=422, detail="duplicate invoice_line_id")
         seen.add(inp.invoice_line_id)
-        inv_line_result = await db.execute(
-            select(InventoryInvoiceLine).where(InventoryInvoiceLine.id == inp.invoice_line_id)
-        )
-        inv_line = inv_line_result.scalar_one_or_none()
-        if inv_line is None or inv_line.invoice_id != inv.id:
+        inv_line = lines_by_id.get(inp.invoice_line_id)
+        if inv_line is None:
             raise HTTPException(status_code=422, detail="invoice_line_id not on this invoice")
         if inv_line.qty > 0:
-            unit_amount = _money(_money(inv_line.amount) / inv_line.qty)
+            unit_amount = _money(net_full[inv_line.id] / inv_line.qty)
+            if inp.qty == inv_line.qty:
+                amount = net_full[inv_line.id]
+            else:
+                amount = _money(net_full[inv_line.id] * inp.qty / inv_line.qty)
         else:
             unit_amount = _ZERO
+            amount = _ZERO
         built.append(
             {
                 "invoice_line_id": inv_line.id,
                 "item_id": inv_line.item_id,
                 "qty": inp.qty,
                 "unit_amount": unit_amount,
-                "amount": _money(inp.qty * unit_amount),
+                "amount": amount,
                 "restock": inp.restock,
             }
         )
@@ -1408,12 +1429,12 @@ async def create_credit_note(body: InventoryCreditNoteCreate, _admin: AdminOnly,
     if inv.status != "issued":
         raise HTTPException(status_code=422, detail=f"invoice is {inv.status}; cannot credit")
     built = await _build_scn_lines(db, inv, list(body.lines))
-    scn_no = await doc_numbers_svc.allocate_doc_no(db, location_id=inv.location_id, doc_type="SCN")
+    scn_no = await doc_numbers_svc.allocate_doc_no(db, warehouse_id=inv.warehouse_id, doc_type="SCN")
     scn = InventoryCreditNote(
         scn_no=scn_no,
         invoice_id=inv.id,
         customer_id=inv.customer_id,
-        location_id=inv.location_id,
+        warehouse_id=inv.warehouse_id,
         credit_date=body.credit_date or date.today(),
         reason=body.reason,
         total=sum((line["amount"] for line in built), _ZERO),
@@ -1538,7 +1559,7 @@ async def confirm_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> d
             await inventory_svc.apply_movement(
                 db,
                 item_id=line.item_id,
-                location_id=scn.location_id,
+                warehouse_id=scn.warehouse_id,
                 type="in",
                 quantity=line.qty,
                 reason=f"credit note {scn.scn_no}",
@@ -1584,7 +1605,7 @@ async def void_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dict
             await inventory_svc.apply_movement(
                 db,
                 item_id=line.item_id,
-                location_id=scn.location_id,
+                warehouse_id=scn.warehouse_id,
                 type="out",
                 quantity=line.qty,
                 reason=f"void credit note {scn.scn_no}",
@@ -1620,7 +1641,7 @@ async def print_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
     inv = await _get_invoice_or_404(db, scn.invoice_id)
     cust_result = await db.execute(select(Customer).where(Customer.id == scn.customer_id))
     customer = cust_result.scalar_one()
-    loc_result = await db.execute(select(Location).where(Location.id == scn.location_id))
+    loc_result = await db.execute(select(InventoryWarehouse).where(InventoryWarehouse.id == scn.warehouse_id))
     loc = loc_result.scalar_one()
     return {
         "scn_no": scn.scn_no,
@@ -1631,10 +1652,10 @@ async def print_credit_note(scn_id: uuid.UUID, _admin: AdminOnly, db: DB) -> dic
         "customer_code": customer.code,
         "customer_name_zh": customer.name_zh,
         "customer_name_en": customer.name_en,
-        "location_name_zh": loc.name_zh,
-        "location_name_en": loc.name_en,
-        "location_address": loc.address,
-        "location_phone": loc.phone,
+        "warehouse_name_zh": loc.name_zh,
+        "warehouse_name_en": loc.name_en or loc.name_zh,
+        "warehouse_address": loc.address,
+        "warehouse_phone": loc.phone,
         "reason": scn.reason,
         "lines": detail["lines"],
         "total": detail["total"],

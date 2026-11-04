@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { type InventoryWarehouse, listWarehouses } from '@/api/attendance/inventory'
+
 import {
   type DeliveryOrder,
   type DeliveryOrderStatus,
@@ -8,12 +10,12 @@ import {
   listDeliveryOrders,
   voidDeliveryOrder,
 } from '@/api/attendance/inventorySales'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import InventoryCreateDeliveryDialog from '@/components/attendance/inventory/InventoryCreateDeliveryDialog.vue'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryDocChain, { type DocChainStep } from '@/components/attendance/inventory/InventoryDocChain.vue'
 import { type InventoryDocAction, type InventoryDocMoreItem } from '@/components/attendance/inventory/InventoryDocActions.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryStatusChip from '@/components/attendance/inventory/InventoryStatusChip.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -23,19 +25,16 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const detailLoading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
-const actionError = ref('')
-const actionSuccess = ref('')
 
 useAutoClearAlerts(loadError)
-useAutoClearAlerts(actionError)
-useAutoClearAlerts(actionSuccess)
 
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 
 const deliveries = ref<DeliveryOrder[]>([])
 const total = ref(0)
@@ -49,7 +48,7 @@ const statusFilter = ref<DeliveryOrderStatus | null>(
   (route.query.status as DeliveryOrderStatus | undefined) ?? null,
 )
 
-const locationFilter = ref<string | null>(null)
+const warehouseFilter = ref<string | null>(null)
 
 const selected = ref<DeliveryOrder | null>(null)
 
@@ -59,8 +58,8 @@ const statusOptions = [
   { value: 'void' as const, title: 'Void' },
 ]
 
-const locationOptions = computed(() =>
-  locations.value.map(l => ({
+const warehouseOptions = computed(() =>
+  warehouses.value.map(l => ({
     value: l.id,
     title: [l.name_en, l.name_zh].filter(Boolean).join(' · '),
   })),
@@ -106,7 +105,7 @@ const docMore = computed<InventoryDocMoreItem[]>(() => {
 const createOpen = ref(false)
 
 async function onDeliveryCreated(dor: DeliveryOrder) {
-  actionSuccess.value = `Created delivery order ${dor.do_no}.`
+  toast.show(`Created delivery order ${dor.do_no}.`)
   await loadDeliveries()
   await selectDelivery(dor)
 }
@@ -116,7 +115,7 @@ onMounted(async () => {
     return
   loading.value = true
   try {
-    locations.value = await listLocations({ is_active: true })
+    warehouses.value = await listWarehouses({ is_active: true })
     await loadDeliveries()
   }
   catch (e) {
@@ -134,7 +133,7 @@ async function loadDeliveries() {
   try {
     const result = await listDeliveryOrders({
       status: statusFilter.value ?? undefined,
-      location_id: locationFilter.value ?? undefined,
+      warehouse_id: warehouseFilter.value ?? undefined,
       page: page.value,
       page_size: pageSize.value,
     })
@@ -172,7 +171,7 @@ async function selectDelivery(do_: DeliveryOrder) {
     await scrollToDetail()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to load delivery order.')
+    toast.show(formatApiError(e, 'Failed to load delivery order.'), 'error', 6000)
   }
   finally {
     detailLoading.value = false
@@ -193,15 +192,14 @@ function askConfirm() {
 async function performConfirm() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await confirmDeliveryOrder(selected.value.id)
-    actionSuccess.value = `Confirmed ${selected.value.do_no}.`
+    toast.show(`Confirmed ${selected.value.do_no}.`)
     await loadDeliveries()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to confirm.')
+    toast.show(formatApiError(e, 'Failed to confirm.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -225,15 +223,14 @@ function askVoid() {
 async function performVoid() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     selected.value = await voidDeliveryOrder(selected.value.id)
-    actionSuccess.value = `Voided ${selected.value.do_no}.`
+    toast.show(`Voided ${selected.value.do_no}.`)
     await loadDeliveries()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to void.')
+    toast.show(formatApiError(e, 'Failed to void.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -254,18 +251,17 @@ function askDelete() {
 async function performDelete() {
   if (!selected.value)
     return
-  actionError.value = ''
   saving.value = true
   try {
     const no = selected.value.do_no
 
     await deleteDeliveryOrder(selected.value.id)
-    actionSuccess.value = `Deleted draft ${no}.`
+    toast.show(`Deleted draft ${no}.`)
     selected.value = null
     await loadDeliveries()
   }
   catch (e) {
-    actionError.value = formatApiError(e, 'Failed to delete.')
+    toast.show(formatApiError(e, 'Failed to delete.'), 'error', 6000)
   }
   finally {
     saving.value = false
@@ -325,26 +321,6 @@ async function performDelete() {
     >
       {{ loadError }}
     </VAlert>
-    <VAlert
-      v-if="actionError"
-      type="error"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionError = ''"
-    >
-      {{ actionError }}
-    </VAlert>
-    <VAlert
-      v-if="actionSuccess"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="actionSuccess = ''"
-    >
-      {{ actionSuccess }}
-    </VAlert>
 
     <VAlert
       type="info"
@@ -369,9 +345,9 @@ async function performDelete() {
               @update:model-value="onFiltersChange"
             />
             <VSelect
-              v-model="locationFilter"
-              :items="locationOptions"
-              label="Location"
+              v-model="warehouseFilter"
+              :items="warehouseOptions"
+              label="Warehouse 倉庫"
               density="comfortable"
               hide-details
               clearable
@@ -399,11 +375,13 @@ async function performDelete() {
                 <InventoryStatusChip :status="dor.status" />
               </template>
             </VListItem>
-            <VListItem v-if="deliveries.length === 0 && !loading">
-              <VListItemTitle class="text-medium-emphasis">
-                還沒有出貨單 — 先在發票開立貨品，再按「New Delivery Order」建立。
-              </VListItemTitle>
-            </VListItem>
+            <InventoryEmptyState
+              v-if="deliveries.length === 0 && !loading"
+              icon="ri-truck-line"
+              text="No delivery orders yet."
+              action-label="New Delivery Order"
+              @action="createOpen = true"
+            />
           </VList>
           <AttendancePaginationBar
             v-model:page="page"
@@ -440,7 +418,7 @@ async function performDelete() {
             />
           </VCardTitle>
           <VCardSubtitle>
-            {{ selected.customer_name || '—' }} · {{ selected.location_name || '—' }} ·
+            {{ selected.customer_name || '—' }} · {{ selected.warehouse_name || '—' }} ·
             {{ selected.delivery_date }}
             <template v-if="selected.invoice_no">
               · Invoice

@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.deps import AdminOnly, DB
-from app.models.inventory import InventoryItem, InventoryMovement, InventoryStock
+from app.models.inventory import InventoryItem, InventoryMovement, InventoryStock, InventoryWarehouse
 from app.models.inventory_invoicing import (
     InventoryCreditNote,
     InventoryInvoice,
@@ -27,7 +27,6 @@ from app.models.inventory_sales import (
     SalesOrder,
     SalesOrderLine,
 )
-from app.models.location import Location
 from app.schemas.inventory_reports import (
     AlertsOut,
     InventoryDashboard,
@@ -82,22 +81,22 @@ def _bucket(days: int) -> str:
 async def stock_valuation(
     _admin: AdminOnly,
     db: DB,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
     # NOTE: value uses the item's global avg_cost — costs are not tracked
-    # per-location, so every location is valued at the same unit cost.
+    # per-warehouse, so every warehouse is valued at the same unit cost.
     q = (
-        select(InventoryStock, InventoryItem, Location)
+        select(InventoryStock, InventoryItem, InventoryWarehouse)
         .join(InventoryItem, InventoryItem.id == InventoryStock.item_id)
-        .outerjoin(Location, Location.id == InventoryStock.location_id)
+        .outerjoin(InventoryWarehouse, InventoryWarehouse.id == InventoryStock.warehouse_id)
         .where((InventoryStock.quantity > 0) | (InventoryStock.reserved > 0))
     )
-    if location_id:
-        q = q.where(InventoryStock.location_id == location_id)
+    if warehouse_id:
+        q = q.where(InventoryStock.warehouse_id == warehouse_id)
     q = q.order_by(InventoryItem.sku_code)
     rows = []
-    location_totals: dict[str, dict] = {}
+    warehouse_totals: dict[str, dict] = {}
     grand = 0.0
     for stock, item, loc in (await db.execute(q)).all():
         value = _to_float(stock.quantity * (item.avg_cost or 0))
@@ -107,8 +106,8 @@ async def stock_valuation(
                 "item_id": str(item.id),
                 "sku_code": item.sku_code,
                 "name_zh": item.name_zh,
-                "location_id": str(stock.location_id),
-                "location_name": loc_name,
+                "warehouse_id": str(stock.warehouse_id),
+                "warehouse_name": loc_name,
                 "quantity": stock.quantity,
                 "reserved": stock.reserved,
                 "available": stock.quantity - stock.reserved,
@@ -116,24 +115,24 @@ async def stock_valuation(
                 "value": value,
             }
         )
-        lt = location_totals.setdefault(
-            str(stock.location_id), {"location_id": str(stock.location_id), "location_name": loc_name, "value": 0.0}
+        lt = warehouse_totals.setdefault(
+            str(stock.warehouse_id), {"warehouse_id": str(stock.warehouse_id), "warehouse_name": loc_name, "value": 0.0}
         )
         lt["value"] = round(lt["value"] + value, 2)
         grand = round(grand + value, 2)
 
     if format == "csv":
         csv_rows = [
-            [r["sku_code"], r["name_zh"], r["location_name"] or "", r["quantity"], r["reserved"], r["available"], f"{r['avg_cost']:.2f}", f"{r['value']:.2f}"]
+            [r["sku_code"], r["name_zh"], r["warehouse_name"] or "", r["quantity"], r["reserved"], r["available"], f"{r['avg_cost']:.2f}", f"{r['value']:.2f}"]
             for r in rows
         ]
         csv_rows.append(["TOTAL", "", "", "", "", "", "", f"{grand:.2f}"])
         return _csv_response(
             "stock-valuation.csv",
-            ["SKU", "Item", "Location", "Quantity", "Reserved", "Available", "Avg cost", "Value"],
+            ["SKU", "Item", "Warehouse", "Quantity", "Reserved", "Available", "Avg cost", "Value"],
             csv_rows,
         )
-    return {"rows": rows, "location_totals": list(location_totals.values()), "grand_total": grand}
+    return {"rows": rows, "warehouse_totals": list(warehouse_totals.values()), "grand_total": grand}
 
 
 # ---------- movements summary ----------
@@ -145,13 +144,13 @@ async def movements_summary(
     db: DB,
     date_from: date | None = None,
     date_to: date | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     item_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
     clauses = _dt_range(InventoryMovement.created_at, date_from, date_to)
-    if location_id:
-        clauses.append(InventoryMovement.location_id == location_id)
+    if warehouse_id:
+        clauses.append(InventoryMovement.warehouse_id == warehouse_id)
     if item_id:
         clauses.append(InventoryMovement.item_id == item_id)
 
@@ -239,7 +238,7 @@ async def purchases_report(
     date_from: date | None = None,
     date_to: date | None = None,
     supplier_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
     rcv_clauses = [GoodsReceipt.status == "confirmed"]
@@ -249,8 +248,8 @@ async def purchases_report(
         rcv_clauses.append(GoodsReceipt.receipt_date <= date_to)
     if supplier_id:
         rcv_clauses.append(GoodsReceipt.supplier_id == supplier_id)
-    if location_id:
-        rcv_clauses.append(GoodsReceipt.location_id == location_id)
+    if warehouse_id:
+        rcv_clauses.append(GoodsReceipt.warehouse_id == warehouse_id)
 
     receipts = (
         await db.execute(
@@ -273,8 +272,8 @@ async def purchases_report(
         ret_clauses.append(PurchaseReturn.return_date <= date_to)
     if supplier_id:
         ret_clauses.append(PurchaseReturn.supplier_id == supplier_id)
-    if location_id:
-        ret_clauses.append(PurchaseReturn.location_id == location_id)
+    if warehouse_id:
+        ret_clauses.append(PurchaseReturn.warehouse_id == warehouse_id)
 
     returns = (
         await db.execute(
@@ -338,8 +337,8 @@ async def purchases_report(
     po_clauses = [PurchaseOrder.status.in_(["ordered", "partial"])]
     if supplier_id:
         po_clauses.append(PurchaseOrder.supplier_id == supplier_id)
-    if location_id:
-        po_clauses.append(PurchaseOrder.location_id == location_id)
+    if warehouse_id:
+        po_clauses.append(PurchaseOrder.warehouse_id == warehouse_id)
     open_pos = (
         await db.execute(
             select(
@@ -364,7 +363,7 @@ async def purchases_report(
             "po_no": po.po_no,
             "supplier_id": str(po.supplier_id),
             "supplier_name": (po_sup_map[po.supplier_id].name_zh or po_sup_map[po.supplier_id].name_en) if po.supplier_id in po_sup_map else None,
-            "location_id": str(po.location_id),
+            "warehouse_id": str(po.warehouse_id),
             "order_date": po.order_date,
             "expected_date": po.expected_date,
             "status": po.status,
@@ -400,7 +399,7 @@ async def sales_report(
     date_from: date | None = None,
     date_to: date | None = None,
     customer_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
     inv_clauses = [InventoryInvoice.status == "issued"]
@@ -410,8 +409,8 @@ async def sales_report(
         inv_clauses.append(InventoryInvoice.issue_date <= date_to)
     if customer_id:
         inv_clauses.append(InventoryInvoice.customer_id == customer_id)
-    if location_id:
-        inv_clauses.append(InventoryInvoice.location_id == location_id)
+    if warehouse_id:
+        inv_clauses.append(InventoryInvoice.warehouse_id == warehouse_id)
 
     line_rows = (
         await db.execute(
@@ -464,8 +463,8 @@ async def sales_report(
         cn_clauses.append(InventoryCreditNote.credit_date <= date_to)
     if customer_id:
         cn_clauses.append(InventoryCreditNote.customer_id == customer_id)
-    if location_id:
-        cn_clauses.append(InventoryCreditNote.location_id == location_id)
+    if warehouse_id:
+        cn_clauses.append(InventoryCreditNote.warehouse_id == warehouse_id)
     credited_total = _to_float(
         (
             await db.execute(
@@ -481,8 +480,8 @@ async def sales_report(
         rc_clauses.append(InventoryReceipt.receipt_date <= date_to)
     if customer_id:
         rc_clauses.append(InventoryReceipt.customer_id == customer_id)
-    if location_id:
-        rc_clauses.append(InventoryReceipt.location_id == location_id)
+    if warehouse_id:
+        rc_clauses.append(InventoryReceipt.warehouse_id == warehouse_id)
     payments_total = _to_float(
         (
             await db.execute(
@@ -546,7 +545,7 @@ async def receivables_report(
     db: DB,
     as_of: date | None = None,
     customer_id: uuid.UUID | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
     as_of = as_of or date.today()
@@ -580,8 +579,8 @@ async def receivables_report(
     )
     if customer_id:
         q = q.where(InventoryInvoice.customer_id == customer_id)
-    if location_id:
-        q = q.where(InventoryInvoice.location_id == location_id)
+    if warehouse_id:
+        q = q.where(InventoryInvoice.warehouse_id == warehouse_id)
     results = (await db.execute(q)).all()
 
     cust_ids = {r[0].customer_id for r in results}
@@ -606,7 +605,7 @@ async def receivables_report(
                 "invoice_no": inv.invoice_no,
                 "customer_id": str(inv.customer_id),
                 "customer_name": cust_name,
-                "location_id": str(inv.location_id),
+                "warehouse_id": str(inv.warehouse_id),
                 "issue_date": inv.issue_date,
                 "total": _to_float(inv.total),
                 "paid": _to_float(paid),
@@ -652,7 +651,7 @@ async def write_offs_report(
     db: DB,
     date_from: date | None = None,
     date_to: date | None = None,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
     clauses = _dt_range(InventoryMovement.created_at, date_from, date_to)
@@ -660,8 +659,8 @@ async def write_offs_report(
         InventoryMovement.type == "out",
         InventoryMovement.reason_code.in_(WRITE_OFF_REASONS),
     ]
-    if location_id:
-        clauses.append(InventoryMovement.location_id == location_id)
+    if warehouse_id:
+        clauses.append(InventoryMovement.warehouse_id == warehouse_id)
 
     raw = (
         await db.execute(
@@ -736,7 +735,7 @@ def _month_start(today: date) -> date:
 async def inventory_dashboard(
     _admin: AdminOnly,
     db: DB,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
 ):
     today = date.today()
     month_start = _month_start(today)
@@ -755,8 +754,8 @@ async def inventory_dashboard(
             InventoryStock.quantity <= InventoryItem.reorder_level,
         )
     )
-    if location_id:
-        low_q = low_q.where(InventoryStock.location_id == location_id)
+    if warehouse_id:
+        low_q = low_q.where(InventoryStock.warehouse_id == warehouse_id)
     low_stock = (await db.execute(low_q)).scalar_one()
 
     val_q = (
@@ -764,21 +763,21 @@ async def inventory_dashboard(
         .select_from(InventoryStock)
         .join(InventoryItem, InventoryItem.id == InventoryStock.item_id)
     )
-    if location_id:
-        val_q = val_q.where(InventoryStock.location_id == location_id)
+    if warehouse_id:
+        val_q = val_q.where(InventoryStock.warehouse_id == warehouse_id)
     stock_value = _to_float((await db.execute(val_q)).scalar_one())
 
     po_q = select(func.count()).select_from(PurchaseOrder).where(PurchaseOrder.status.in_(["ordered", "partial"]))
     po_overdue_q = po_q.where(PurchaseOrder.expected_date.is_not(None), PurchaseOrder.expected_date < today)
-    if location_id:
-        po_q = po_q.where(PurchaseOrder.location_id == location_id)
-        po_overdue_q = po_overdue_q.where(PurchaseOrder.location_id == location_id)
+    if warehouse_id:
+        po_q = po_q.where(PurchaseOrder.warehouse_id == warehouse_id)
+        po_overdue_q = po_overdue_q.where(PurchaseOrder.warehouse_id == warehouse_id)
     open_pos = (await db.execute(po_q)).scalar_one()
     overdue_pos = (await db.execute(po_overdue_q)).scalar_one()
 
     so_q = select(func.count()).select_from(SalesOrder).where(SalesOrder.status.in_(["confirmed", "partial"]))
-    if location_id:
-        so_q = so_q.where(SalesOrder.location_id == location_id)
+    if warehouse_id:
+        so_q = so_q.where(SalesOrder.warehouse_id == warehouse_id)
     open_sos = (await db.execute(so_q)).scalar_one()
 
     uninvoiced_q = (
@@ -787,8 +786,8 @@ async def inventory_dashboard(
         .join(SalesOrder, SalesOrder.id == SalesOrderLine.so_id)
         .where(SalesOrder.status.in_(["confirmed", "partial"]))
     )
-    if location_id:
-        uninvoiced_q = uninvoiced_q.where(SalesOrder.location_id == location_id)
+    if warehouse_id:
+        uninvoiced_q = uninvoiced_q.where(SalesOrder.warehouse_id == warehouse_id)
     uninvoiced = int((await db.execute(uninvoiced_q)).scalar_one() or 0)
 
     # Issued invoices with something still undelivered (credits count as
@@ -800,8 +799,8 @@ async def inventory_dashboard(
         .join(InventoryInvoice, InventoryInvoice.id == InventoryInvoiceLine.invoice_id)
         .where(InventoryInvoice.status == "issued", undelivered_expr > 0)
     )
-    if location_id:
-        undel_q = undel_q.where(InventoryInvoice.location_id == location_id)
+    if warehouse_id:
+        undel_q = undel_q.where(InventoryInvoice.warehouse_id == warehouse_id)
     undel_count, undel_qty_raw = (await db.execute(undel_q)).one()
     undelivered_invoice_count = int(undel_count or 0)
     undelivered_qty = int(undel_qty_raw or 0)
@@ -826,8 +825,8 @@ async def inventory_dashboard(
         .outerjoin(cred_sq, cred_sq.c.iid == InventoryInvoice.id)
         .where(InventoryInvoice.status == "issued", bal > 0)
     )
-    if location_id:
-        recv_q = recv_q.where(InventoryInvoice.location_id == location_id)
+    if warehouse_id:
+        recv_q = recv_q.where(InventoryInvoice.warehouse_id == warehouse_id)
     unpaid_count, receivable = (await db.execute(recv_q)).one()
 
     cutoff = today - timedelta(days=settings.INVENTORY_INVOICE_OVERDUE_DAYS)
@@ -838,8 +837,8 @@ async def inventory_dashboard(
         .outerjoin(cred_sq, cred_sq.c.iid == InventoryInvoice.id)
         .where(InventoryInvoice.status == "issued", bal > 0, InventoryInvoice.issue_date < cutoff)
     )
-    if location_id:
-        overdue_recv_q = overdue_recv_q.where(InventoryInvoice.location_id == location_id)
+    if warehouse_id:
+        overdue_recv_q = overdue_recv_q.where(InventoryInvoice.warehouse_id == warehouse_id)
     overdue_receivable = _to_float((await db.execute(overdue_recv_q)).scalar_one())
 
     ms_q = select(func.coalesce(func.sum(InventoryInvoice.total), 0)).where(
@@ -860,11 +859,11 @@ async def inventory_dashboard(
         .join(PurchaseReturn, PurchaseReturn.id == PurchaseReturnLine.prt_id)
         .where(PurchaseReturn.status == "confirmed", PurchaseReturn.return_date >= month_start)
     )
-    if location_id:
-        ms_q = ms_q.where(InventoryInvoice.location_id == location_id)
-        mc_q = mc_q.where(InventoryCreditNote.location_id == location_id)
-        mp_q = mp_q.where(GoodsReceipt.location_id == location_id)
-        mr_q = mr_q.where(PurchaseReturn.location_id == location_id)
+    if warehouse_id:
+        ms_q = ms_q.where(InventoryInvoice.warehouse_id == warehouse_id)
+        mc_q = mc_q.where(InventoryCreditNote.warehouse_id == warehouse_id)
+        mp_q = mp_q.where(GoodsReceipt.warehouse_id == warehouse_id)
+        mr_q = mr_q.where(PurchaseReturn.warehouse_id == warehouse_id)
     month_invoiced = _to_float((await db.execute(ms_q)).scalar_one())
     month_credited = _to_float((await db.execute(mc_q)).scalar_one())
     month_purchases_gross = _to_float((await db.execute(mp_q)).scalar_one())
@@ -885,6 +884,7 @@ async def inventory_dashboard(
         "unpaid_invoice_count": int(unpaid_count or 0),
         "receivable_balance": _to_float(receivable),
         "overdue_receivable_balance": overdue_receivable,
+        "overdue_days": settings.INVENTORY_INVOICE_OVERDUE_DAYS,
         "month_sales": round(month_sales, 2),
         "month_purchases": round(month_purchases, 2),
         "month_invoiced": round(month_invoiced, 2),
@@ -901,18 +901,18 @@ async def inventory_dashboard(
 async def get_alerts(
     _admin: AdminOnly,
     db: DB,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
 ):
-    return await alerts_svc.compute_alerts(db, location_id=location_id)
+    return await alerts_svc.compute_alerts(db, warehouse_id=warehouse_id)
 
 
 @router.post("/alerts/notify", response_model=NotifyResult)
 async def notify_alerts_now(
     _admin: AdminOnly,
     db: DB,
-    location_id: uuid.UUID | None = None,
+    warehouse_id: uuid.UUID | None = None,
 ):
-    result = await alerts_svc.notify_alerts(db, location_id=location_id)
+    result = await alerts_svc.notify_alerts(db, warehouse_id=warehouse_id)
     await db.commit()
     await audit_log_svc.log_audit(
         db,

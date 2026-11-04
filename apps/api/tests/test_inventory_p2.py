@@ -1,9 +1,11 @@
 import uuid
+from datetime import timedelta
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.attendance_tz import attendance_today
 from tests.conftest import TestSessionLocal, _insert_test_user
 
 pytestmark = pytest.mark.asyncio
@@ -21,20 +23,20 @@ async def _create_item(client: AsyncClient, token: str, **overrides) -> dict:
 
 
 async def _move(
-    client: AsyncClient, token: str, item_id: str, location_id: str, type: str, quantity: int, **extra
+    client: AsyncClient, token: str, item_id: str, warehouse_id: str, type: str, quantity: int, **extra
 ) -> dict:
     resp = await client.post(
         "/api/inventory/movements",
-        json={"item_id": item_id, "location_id": location_id, "type": type, "quantity": quantity, **extra},
+        json={"item_id": item_id, "warehouse_id": warehouse_id, "type": type, "quantity": quantity, **extra},
         headers=_h(token),
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
 
 
-async def _stock_qty(client: AsyncClient, token: str, item_id: str, location_id: str) -> dict | None:
+async def _stock_qty(client: AsyncClient, token: str, item_id: str, warehouse_id: str) -> dict | None:
     resp = await client.get(
-        f"/api/inventory/stocks?item_id={item_id}&location_id={location_id}", headers=_h(token)
+        f"/api/inventory/stocks?item_id={item_id}&warehouse_id={warehouse_id}", headers=_h(token)
     )
     assert resp.status_code == 200
     stocks = resp.json()
@@ -54,8 +56,8 @@ async def test_transfer_moves_stock_between_locations(
         "/api/inventory/transfers",
         json={
             "item_id": item["id"],
-            "from_location_id": sample_location["id"],
-            "to_location_id": sample_location_b["id"],
+            "from_warehouse_id": sample_location["id"],
+            "to_warehouse_id": sample_location_b["id"],
             "quantity": 4,
             "reason": "rebalance",
         },
@@ -84,8 +86,8 @@ async def test_transfer_insufficient_is_atomic(
         "/api/inventory/transfers",
         json={
             "item_id": item["id"],
-            "from_location_id": sample_location["id"],
-            "to_location_id": sample_location_b["id"],
+            "from_warehouse_id": sample_location["id"],
+            "to_warehouse_id": sample_location_b["id"],
             "quantity": 5,
         },
         headers=_h(admin_token),
@@ -120,8 +122,8 @@ async def test_transfers_both_directions_both_succeed(
             "/api/inventory/transfers",
             json={
                 "item_id": item["id"],
-                "from_location_id": frm,
-                "to_location_id": to,
+                "from_warehouse_id": frm,
+                "to_warehouse_id": to,
                 "quantity": 3,
             },
             headers=_h(admin_token),
@@ -149,8 +151,8 @@ async def test_transfer_same_location_rejected(
         "/api/inventory/transfers",
         json={
             "item_id": item["id"],
-            "from_location_id": sample_location["id"],
-            "to_location_id": sample_location["id"],
+            "from_warehouse_id": sample_location["id"],
+            "to_warehouse_id": sample_location["id"],
             "quantity": 1,
         },
         headers=_h(admin_token),
@@ -176,7 +178,7 @@ async def test_reserve_release_and_out_below_reserved_blocked(
 
     async with TestSessionLocal() as session:
         stock = await inventory_svc.reserve(
-            session, item_id=item_uuid, location_id=loc_uuid, quantity=6
+            session, item_id=item_uuid, warehouse_id=loc_uuid, quantity=6
         )
         await session.commit()
         assert stock.reserved == 6
@@ -185,7 +187,7 @@ async def test_reserve_release_and_out_below_reserved_blocked(
     async with TestSessionLocal() as session:
         try:
             await inventory_svc.reserve(
-                session, item_id=item_uuid, location_id=loc_uuid, quantity=5
+                session, item_id=item_uuid, warehouse_id=loc_uuid, quantity=5
             )
         except Exception as exc:
             over_reserve = exc
@@ -193,21 +195,21 @@ async def test_reserve_release_and_out_below_reserved_blocked(
 
     resp = await client.post(
         "/api/inventory/movements",
-        json={"item_id": item["id"], "location_id": loc, "type": "out", "quantity": 5},
+        json={"item_id": item["id"], "warehouse_id": loc, "type": "out", "quantity": 5},
         headers=_h(admin_token),
     )
     assert resp.status_code == 422
 
     ok = await client.post(
         "/api/inventory/movements",
-        json={"item_id": item["id"], "location_id": loc, "type": "out", "quantity": 4},
+        json={"item_id": item["id"], "warehouse_id": loc, "type": "out", "quantity": 4},
         headers=_h(admin_token),
     )
     assert ok.status_code == 201, ok.text
 
     async with TestSessionLocal() as session:
         stock = await inventory_svc.release(
-            session, item_id=item_uuid, location_id=loc_uuid, quantity=2
+            session, item_id=item_uuid, warehouse_id=loc_uuid, quantity=2
         )
         await session.commit()
         assert stock.reserved == 4
@@ -216,7 +218,7 @@ async def test_reserve_release_and_out_below_reserved_blocked(
     async with TestSessionLocal() as session:
         try:
             await inventory_svc.release(
-                session, item_id=item_uuid, location_id=loc_uuid, quantity=99
+                session, item_id=item_uuid, warehouse_id=loc_uuid, quantity=99
             )
         except Exception as exc:
             too_much_release = exc
@@ -231,7 +233,7 @@ async def test_reserve_release_and_out_below_reserved_blocked(
         found = (
             await session.execute(
                 select(InventoryStock).where(
-                    InventoryStock.item_id == item_uuid, InventoryStock.location_id == loc_uuid
+                    InventoryStock.item_id == item_uuid, InventoryStock.warehouse_id == loc_uuid
                 )
             )
         ).scalar_one()
@@ -279,7 +281,7 @@ async def test_reason_code_validation(
         "/api/inventory/movements",
         json={
             "item_id": item["id"],
-            "location_id": loc,
+            "warehouse_id": loc,
             "type": "in",
             "quantity": 1,
             "reason_code": "damage",
@@ -292,7 +294,7 @@ async def test_reason_code_validation(
         "/api/inventory/movements",
         json={
             "item_id": item["id"],
-            "location_id": loc,
+            "warehouse_id": loc,
             "type": "out",
             "quantity": 1,
             "reason_code": "damage",
@@ -305,7 +307,7 @@ async def test_reason_code_validation(
         "/api/inventory/movements",
         json={
             "item_id": item["id"],
-            "location_id": loc,
+            "warehouse_id": loc,
             "type": "adjust",
             "quantity": 1,
             "reason_code": "other",
@@ -319,7 +321,7 @@ async def test_reason_code_validation(
         "/api/inventory/movements",
         json={
             "item_id": item["id"],
-            "location_id": loc,
+            "warehouse_id": loc,
             "type": "out",
             "quantity": 1,
             "reason_code": "gift",
@@ -338,10 +340,10 @@ async def test_reason_code_validation(
 # ---- Stocktakes ----
 
 
-async def _create_stocktake(client: AsyncClient, token: str, location_id: str, **extra) -> dict:
+async def _create_stocktake(client: AsyncClient, token: str, warehouse_id: str, **extra) -> dict:
     resp = await client.post(
         "/api/inventory/stocktakes",
-        json={"location_id": location_id, **extra},
+        json={"warehouse_id": warehouse_id, **extra},
         headers=_h(token),
     )
     assert resp.status_code == 201, resp.text
@@ -370,7 +372,7 @@ async def test_stocktake_flow(
         f"/api/inventory/stocktakes/{take['id']}/lines",
         json={
             "lines": [
-                {"item_id": item["id"], "counted_qty": 6},
+                {"item_id": item["id"], "counted_qty": 8},
                 {"item_id": other["id"], "counted_qty": 7},
             ]
         },
@@ -417,6 +419,75 @@ async def test_stocktake_flow(
         f"/api/inventory/stocktakes/{take['id']}/cancel", headers=_h(admin_token)
     )
     assert cancel_after.status_code == 409
+
+
+async def test_stocktake_apply_is_relative_to_live_stock(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    item = await _create_item(client, admin_token)
+    loc = sample_location["id"]
+    await _move(client, admin_token, item["id"], loc, "in", 10)
+
+    take = await _create_stocktake(client, admin_token, loc, item_ids=[item["id"]])
+    assert take["lines"][0]["system_qty"] == 10
+
+    await _move(client, admin_token, item["id"], loc, "out", 3)
+
+    await client.patch(
+        f"/api/inventory/stocktakes/{take['id']}/lines",
+        json={"lines": [{"item_id": item["id"], "counted_qty": 8}]},
+        headers=_h(admin_token),
+    )
+    applied = await client.post(
+        f"/api/inventory/stocktakes/{take['id']}/apply", headers=_h(admin_token)
+    )
+    assert applied.status_code == 200, applied.text
+    stock = await _stock_qty(client, admin_token, item["id"], loc)
+    assert stock["quantity"] == 5
+
+
+async def test_stocktake_apply_skips_zero_delta(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    item = await _create_item(client, admin_token)
+    loc = sample_location["id"]
+    await _move(client, admin_token, item["id"], loc, "in", 10)
+    take = await _create_stocktake(client, admin_token, loc, item_ids=[item["id"]])
+    await _move(client, admin_token, item["id"], loc, "out", 3)
+    await client.patch(
+        f"/api/inventory/stocktakes/{take['id']}/lines",
+        json={"lines": [{"item_id": item["id"], "counted_qty": 10}]},
+        headers=_h(admin_token),
+    )
+    applied = await client.post(
+        f"/api/inventory/stocktakes/{take['id']}/apply", headers=_h(admin_token)
+    )
+    assert applied.status_code == 200, applied.text
+    stock = await _stock_qty(client, admin_token, item["id"], loc)
+    assert stock["quantity"] == 7
+
+
+async def test_movements_date_filter_uses_hong_kong_day(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    item = await _create_item(client, admin_token)
+    loc = sample_location["id"]
+    await _move(client, admin_token, item["id"], loc, "in", 1)
+
+    today = attendance_today()
+    base = f"/api/inventory/movements?item_id={item['id']}"
+    inside = await client.get(
+        f"{base}&date_from={today}&date_to={today}", headers=_h(admin_token)
+    )
+    assert len(inside.json()) == 1
+    before = await client.get(
+        f"{base}&date_to={today - timedelta(days=1)}", headers=_h(admin_token)
+    )
+    assert before.json() == []
+    after = await client.get(
+        f"{base}&date_from={today + timedelta(days=1)}", headers=_h(admin_token)
+    )
+    assert after.json() == []
 
 
 async def test_stocktake_cancel_and_subset(
@@ -487,6 +558,64 @@ async def test_items_csv_import_and_export(client: AsyncClient, admin_token: str
     assert exported.headers["content-type"].startswith("text/csv")
 
 
+async def test_items_csv_import_old_format_keeps_barcode_and_other_cost(
+    client: AsyncClient, admin_token: str
+):
+    item = await _create_item(
+        client, admin_token, barcode="4891234567890", other_cost=2.5, cost_price=1
+    )
+    csv_content = (
+        "sku_code,name_zh,name_en,category,unit_of_measure,cost_price,sale_price,reorder_level\n"
+        f"{item['sku_code']},課本二,,,,3,9,1\n"
+    )
+    resp = await client.post(
+        "/api/inventory/import/items", files=_csv_file(csv_content), headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    fetched = (
+        await client.get(f"/api/inventory/items/{item['id']}", headers=_h(admin_token))
+    ).json()
+    assert fetched["barcode"] == "4891234567890"
+    assert float(fetched["other_cost"]) == 2.5
+    assert float(fetched["cost_price"]) == 3
+
+    csv_with_cols = (
+        "sku_code,name_zh,barcode,other_cost\n"
+        f"{item['sku_code']},課本二,,\n"
+    )
+    resp = await client.post(
+        "/api/inventory/import/items", files=_csv_file(csv_with_cols), headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    fetched = (
+        await client.get(f"/api/inventory/items/{item['id']}", headers=_h(admin_token))
+    ).json()
+    assert fetched["barcode"] is None
+    assert fetched["other_cost"] is None
+
+
+@pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity"])
+async def test_items_csv_import_rejects_non_finite_numbers(
+    client: AsyncClient, admin_token: str, bad: str
+):
+    csv_content = (
+        "sku_code,name_zh,cost_price\n"
+        f"BK-NAN-1,壞,{bad}\n"
+    )
+    resp = await client.post(
+        "/api/inventory/import/items", files=_csv_file(csv_content), headers=_h(admin_token)
+    )
+    assert resp.status_code == 422
+    assert len(resp.json()["detail"]["errors"]) == 1
+
+
+async def test_items_search_matches_barcode(client: AsyncClient, admin_token: str):
+    item = await _create_item(client, admin_token, barcode="BC-SEARCH-777")
+    resp = await client.get("/api/inventory/items?search=SEARCH-777", headers=_h(admin_token))
+    assert resp.status_code == 200
+    assert [i["id"] for i in resp.json()] == [item["id"]]
+
+
 async def test_items_csv_import_bad_rows_persist_nothing(
     client: AsyncClient, admin_token: str
 ):
@@ -543,23 +672,24 @@ async def test_opening_stock_import_idempotent(
     assert len(opening) == 1
 
     exported = await client.get(
-        f"/api/inventory/export/stocks.csv?location_id={loc_id}", headers=_h(admin_token)
+        f"/api/inventory/export/stocks.csv?warehouse_id={loc_id}", headers=_h(admin_token)
     )
     assert exported.status_code == 200
     assert item["sku_code"] in exported.text
     assert ",25," in exported.text or exported.text.rstrip().endswith(",25,0,25")
 
 
-async def test_opening_stock_import_by_location_code(
+async def test_opening_stock_import_by_warehouse_code(
     client: AsyncClient, admin_token: str, sample_location: dict
 ):
     item = await _create_item(client, admin_token)
     patch = await client.patch(
-        f"/api/locations/{sample_location['id']}", json={"code": "MK"}, headers=_h(admin_token)
+        f"/api/inventory/warehouses/{sample_location['id']}",
+        json={"code": "MK"},
+        headers=_h(admin_token),
     )
-    if patch.status_code != 200:
-        pytest.skip("location code cannot be set via API")
-    csv_content = f"sku_code,location_code,quantity\n{item['sku_code']},MK,8\n"
+    assert patch.status_code == 200, patch.text
+    csv_content = f"sku_code,warehouse_code,quantity\n{item['sku_code']},MK,8\n"
     resp = await client.post(
         "/api/inventory/import/opening-stock",
         files=_csv_file(csv_content),
@@ -583,8 +713,8 @@ async def test_p2_audit_rows_written(
         "/api/inventory/transfers",
         json={
             "item_id": item["id"],
-            "from_location_id": sample_location["id"],
-            "to_location_id": sample_location_b["id"],
+            "from_warehouse_id": sample_location["id"],
+            "to_warehouse_id": sample_location_b["id"],
             "quantity": 2,
         },
         headers=_h(admin_token),
@@ -618,15 +748,15 @@ async def test_p2_non_admin_forbidden(client: AsyncClient, admin_token: str, sam
     item = await _create_item(client, admin_token)
     for method, url, kwargs in (
         ("GET", "/api/inventory/stocktakes", {}),
-        ("POST", "/api/inventory/stocktakes", {"json": {"location_id": sample_location["id"]}}),
+        ("POST", "/api/inventory/stocktakes", {"json": {"warehouse_id": sample_location["id"]}}),
         (
             "POST",
             "/api/inventory/transfers",
             {
                 "json": {
                     "item_id": item["id"],
-                    "from_location_id": sample_location["id"],
-                    "to_location_id": sample_location["id"],
+                    "from_warehouse_id": sample_location["id"],
+                    "to_warehouse_id": sample_location["id"],
                     "quantity": 1,
                 }
             },
@@ -642,7 +772,7 @@ async def test_p2_non_admin_forbidden(client: AsyncClient, admin_token: str, sam
 
 
 async def _create_customer_and_confirm_so(
-    client: AsyncClient, token: str, item_id: str, location_id: str, qty: int
+    client: AsyncClient, token: str, item_id: str, warehouse_id: str, qty: int
 ) -> dict:
     resp = await client.post(
         "/api/inventory/customers",
@@ -655,7 +785,7 @@ async def _create_customer_and_confirm_so(
         "/api/inventory/sales-orders",
         json={
             "customer_id": customer["id"],
-            "location_id": location_id,
+            "warehouse_id": warehouse_id,
             "order_date": "2026-10-16",
             "lines": [{"item_id": item_id, "qty": qty, "unit_price": 10.0}],
         },
@@ -683,7 +813,7 @@ async def test_adjust_below_reserved_rejected(
     # Manual adjust to below the reserved qty must fail
     resp = await client.post(
         "/api/inventory/movements",
-        json={"item_id": item["id"], "location_id": loc, "type": "adjust", "quantity": 4},
+        json={"item_id": item["id"], "warehouse_id": loc, "type": "adjust", "quantity": 4},
         headers=_h(admin_token),
     )
     assert resp.status_code == 422, resp.text
@@ -728,7 +858,7 @@ async def test_stocktake_apply_below_reserved_is_atomic(
     assert (await _stock_qty(client, admin_token, item["id"], loc))["quantity"] == 10
     assert (await _stock_qty(client, admin_token, other["id"], loc))["quantity"] == 5
     moves = await client.get(
-        f"/api/inventory/movements?type=adjust&location_id={loc}", headers=_h(admin_token)
+        f"/api/inventory/movements?type=adjust&warehouse_id={loc}", headers=_h(admin_token)
     )
     assert not [m for m in moves.json() if (m["reference"] or "").startswith("STK:")]
 

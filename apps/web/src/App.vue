@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTheme } from 'vuetify'
 import ScrollToTop from '@core/components/ScrollToTop.vue'
+import AppToastStack from '@/components/AppToastStack.vue'
 import GlobalConfirmDialog from '@/components/attendance/GlobalConfirmDialog.vue'
 import initCore from '@core/initCore'
 import { initConfigStore, useConfigStore } from '@core/stores/config'
@@ -22,6 +23,7 @@ const configStore = useConfigStore()
       <RouterView />
       <ScrollToTop />
       <GlobalConfirmDialog />
+      <AppToastStack />
     </VApp>
   </VLocaleProvider>
 </template>

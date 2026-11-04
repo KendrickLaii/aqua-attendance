@@ -148,6 +148,7 @@ declare global {
   const eventSourceColor: typeof import('./src/utils/attendanceDisplay')['eventSourceColor']
   const eventSourceLabel: typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']
   const existingEnrollmentHint: typeof import('./src/utils/courseRosterDisplay')['existingEnrollmentHint']
+  const existingEnrollmentStatus: typeof import('./src/utils/courseRosterDisplay')['existingEnrollmentStatus']
   const extendRef: typeof import('@vueuse/core')['extendRef']
   const fetchAllAttendancePages: typeof import('./src/utils/attendanceListApi')['fetchAllAttendancePages']
   const fetchAttendanceListWithTotal: typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']
@@ -176,6 +177,7 @@ declare global {
   const formatInvoiceQty: typeof import('./src/utils/invoiceDisplay')['formatInvoiceQty']
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
+  const formatMoney: typeof import('./src/utils/inventoryDisplay')['formatMoney']
   const formatMonthLabel: typeof import('./src/utils/shiftDisplay')['formatMonthLabel']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
   const formatPayrollChequeNumber: typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']
@@ -235,6 +237,7 @@ declare global {
   const isDefined: typeof import('@vueuse/core')['isDefined']
   const isEmpty: typeof import('./src/@core/utils/helpers')['isEmpty']
   const isEmptyArray: typeof import('./src/@core/utils/helpers')['isEmptyArray']
+  const isFieldPromptReason: typeof import('./src/utils/courseRosterDisplay')['isFieldPromptReason']
   const isMissingCheckIn: typeof import('./src/utils/summaryDisplay')['isMissingCheckIn']
   const isNullOrUndefined: typeof import('./src/@core/utils/helpers')['isNullOrUndefined']
   const isObject: typeof import('./src/@core/utils/helpers')['isObject']
@@ -333,6 +336,7 @@ declare global {
   const provideLocal: typeof import('@vueuse/core')['provideLocal']
   const purchaseSummary: typeof import('./src/utils/courseRosterDisplay')['purchaseSummary']
   const purchaseTooltip: typeof import('./src/utils/courseRosterDisplay')['purchaseTooltip']
+  const purchaseTooltipLines: typeof import('./src/utils/courseRosterDisplay')['purchaseTooltipLines']
   const reactify: typeof import('@vueuse/core')['reactify']
   const reactifyObject: typeof import('@vueuse/core')['reactifyObject']
   const reactive: typeof import('vue')['reactive']
@@ -383,6 +387,7 @@ declare global {
   const skuIdFromRouteQuery: typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']
   const sortHeaderTitle: typeof import('./src/utils/tableSort')['sortHeaderTitle']
   const sortIconFor: typeof import('./src/utils/tableSort')['sortIconFor']
+  const sortedPurchases: typeof import('./src/utils/courseRosterDisplay')['sortedPurchases']
   const staffInitials: typeof import('./src/utils/shiftDisplay')['staffInitials']
   const staffRowsForLocation: typeof import('./src/utils/shiftDisplay')['staffRowsForLocation']
   const storeToRefs: typeof import('pinia')['storeToRefs']
@@ -407,6 +412,7 @@ declare global {
   const toValue: typeof import('vue')['toValue']
   const todayIsoDate: typeof import('./src/utils/courseRosterDisplay')['todayIsoDate']
   const toggleSort: typeof import('./src/utils/tableSort')['toggleSort']
+  const topUpWindowPreview: typeof import('./src/utils/courseRosterDisplay')['topUpWindowPreview']
   const totalMinutes: typeof import('./src/utils/shiftDisplay')['totalMinutes']
   const triggerRef: typeof import('vue')['triggerRef']
   const tryOnBeforeMount: typeof import('@vueuse/core')['tryOnBeforeMount']
@@ -517,6 +523,7 @@ declare global {
   const useIntersectionObserver: typeof import('@vueuse/core')['useIntersectionObserver']
   const useInterval: typeof import('@vueuse/core')['useInterval']
   const useIntervalFn: typeof import('@vueuse/core')['useIntervalFn']
+  const useInventoryLinePicker: typeof import('./src/composables/useInventoryLinePicker')['useInventoryLinePicker']
   const useKeyModifier: typeof import('@vueuse/core')['useKeyModifier']
   const useLastChanged: typeof import('@vueuse/core')['useLastChanged']
   const useLatestRequest: typeof import('./src/composables/useLatestRequest')['useLatestRequest']
@@ -797,7 +804,7 @@ declare module 'vue' {
     readonly entriesOf: UnwrapRef<typeof import('./src/utils/review-format')['entriesOf']>
     readonly eventSourceColor: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceColor']>
     readonly eventSourceLabel: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['eventSourceLabel']>
-    readonly existingEnrollmentHint: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['existingEnrollmentHint']>
+    readonly existingEnrollmentStatus: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['existingEnrollmentStatus']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly fetchAllAttendancePages: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAllAttendancePages']>
     readonly fetchAttendanceListWithTotal: UnwrapRef<typeof import('./src/utils/attendanceListApi')['fetchAttendanceListWithTotal']>
@@ -826,6 +833,7 @@ declare module 'vue' {
     readonly formatInvoiceQty: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['formatInvoiceQty']>
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
+    readonly formatMoney: UnwrapRef<typeof import('./src/utils/inventoryDisplay')['formatMoney']>
     readonly formatMonthLabel: UnwrapRef<typeof import('./src/utils/shiftDisplay')['formatMonthLabel']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
     readonly formatPayrollChequeNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']>
@@ -885,6 +893,7 @@ declare module 'vue' {
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isEmpty: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmpty']>
     readonly isEmptyArray: UnwrapRef<typeof import('./src/@core/utils/helpers')['isEmptyArray']>
+    readonly isFieldPromptReason: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['isFieldPromptReason']>
     readonly isMissingCheckIn: UnwrapRef<typeof import('./src/utils/summaryDisplay')['isMissingCheckIn']>
     readonly isNullOrUndefined: UnwrapRef<typeof import('./src/@core/utils/helpers')['isNullOrUndefined']>
     readonly isObject: UnwrapRef<typeof import('./src/@core/utils/helpers')['isObject']>
@@ -982,7 +991,6 @@ declare module 'vue' {
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
     readonly purchaseSummary: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['purchaseSummary']>
-    readonly purchaseTooltip: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['purchaseTooltip']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
     readonly reactifyObject: UnwrapRef<typeof import('@vueuse/core')['reactifyObject']>
     readonly reactive: UnwrapRef<typeof import('vue')['reactive']>
@@ -1033,6 +1041,7 @@ declare module 'vue' {
     readonly skuIdFromRouteQuery: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']>
     readonly sortHeaderTitle: UnwrapRef<typeof import('./src/utils/tableSort')['sortHeaderTitle']>
     readonly sortIconFor: UnwrapRef<typeof import('./src/utils/tableSort')['sortIconFor']>
+    readonly sortedPurchases: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['sortedPurchases']>
     readonly staffInitials: UnwrapRef<typeof import('./src/utils/shiftDisplay')['staffInitials']>
     readonly staffRowsForLocation: UnwrapRef<typeof import('./src/utils/shiftDisplay')['staffRowsForLocation']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
@@ -1167,6 +1176,7 @@ declare module 'vue' {
     readonly useIntersectionObserver: UnwrapRef<typeof import('@vueuse/core')['useIntersectionObserver']>
     readonly useInterval: UnwrapRef<typeof import('@vueuse/core')['useInterval']>
     readonly useIntervalFn: UnwrapRef<typeof import('@vueuse/core')['useIntervalFn']>
+    readonly useInventoryLinePicker: UnwrapRef<typeof import('./src/composables/useInventoryLinePicker')['useInventoryLinePicker']>
     readonly useKeyModifier: UnwrapRef<typeof import('@vueuse/core')['useKeyModifier']>
     readonly useLastChanged: UnwrapRef<typeof import('@vueuse/core')['useLastChanged']>
     readonly useLatestRequest: UnwrapRef<typeof import('./src/composables/useLatestRequest')['useLatestRequest']>

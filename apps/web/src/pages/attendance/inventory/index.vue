@@ -2,12 +2,14 @@
 import {
   type InventoryItem,
   type InventoryStock,
+  type InventoryWarehouse,
   exportInventoryStocksCSV,
   importOpeningStockCSV,
   listInventoryItems,
   listInventoryStocks,
+  listWarehouses,
 } from '@/api/attendance/inventory'
-import { type LocationItem, listLocations } from '@/api/attendance/locations'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import InventoryMovementDialog from '@/components/attendance/inventory/InventoryMovementDialog.vue'
 import InventoryTransferDialog from '@/components/attendance/inventory/InventoryTransferDialog.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -17,17 +19,18 @@ import { useLatestRequest } from '@/composables/useLatestRequest'
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const loadError = ref('')
 
 useAutoClearAlerts(loadError)
 
-const locations = ref<LocationItem[]>([])
+const warehouses = ref<InventoryWarehouse[]>([])
 const items = ref<InventoryItem[]>([])
 const stocks = ref<InventoryStock[]>([])
 
-const selectedLocationId = ref<string | null>(null)
+const selectedWarehouseId = ref<string | null>(null)
 const search = ref('')
 const movementDialogOpen = ref(false)
 const movementInitialType = ref<'in' | 'out' | 'adjust'>('in')
@@ -54,7 +57,7 @@ const rows = computed(() => {
         return null
       if (
         term
-        && ![item.sku_code, item.name_zh, item.name_en ?? '']
+        && ![item.sku_code, item.name_zh, item.name_en ?? '', item.barcode ?? '']
           .some(v => v.toLowerCase().includes(term))
       )
         return null
@@ -108,15 +111,17 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [locationList, itemList] = await Promise.all([
-      listLocations({ is_active: true }),
+    const [warehouseList, itemList] = await Promise.all([
+      listWarehouses({ is_active: true }),
       listInventoryItems(),
     ])
 
-    locations.value = [...locationList].sort((a, b) => a.name_en.localeCompare(b.name_en))
+    warehouses.value = [...warehouseList].sort((a, b) =>
+      (a.name_en || a.name_zh).localeCompare(b.name_en || b.name_zh),
+    )
     items.value = itemList
-    if (!selectedLocationId.value && locationList.length > 0)
-      selectedLocationId.value = locationList[0].id
+    if (!selectedWarehouseId.value && warehouseList.length > 0)
+      selectedWarehouseId.value = warehouseList[0].id
     await loadStocks()
   }
   catch (e) {
@@ -131,8 +136,8 @@ async function loadAll() {
 async function loadStocks() {
   const token = stockReq.next()
 
-  const result = selectedLocationId.value
-    ? await listInventoryStocks({ location_id: selectedLocationId.value })
+  const result = selectedWarehouseId.value
+    ? await listInventoryStocks({ warehouse_id: selectedWarehouseId.value })
     : await listInventoryStocks()
 
   if (!stockReq.isLatest(token))
@@ -140,7 +145,7 @@ async function loadStocks() {
   stocks.value = result
 }
 
-watch(selectedLocationId, async () => {
+watch(selectedWarehouseId, async () => {
   try {
     await loadStocks()
   }
@@ -152,7 +157,7 @@ watch(selectedLocationId, async () => {
 async function exportStocks() {
   try {
     const blob = await exportInventoryStocksCSV(
-      selectedLocationId.value ? { location_id: selectedLocationId.value } : undefined,
+      selectedWarehouseId.value ? { warehouse_id: selectedWarehouseId.value } : undefined,
     )
 
     const url = URL.createObjectURL(blob)
@@ -164,7 +169,7 @@ async function exportStocks() {
     URL.revokeObjectURL(url)
   }
   catch (e) {
-    loadError.value = formatApiError(e, 'Export failed.')
+    toast.show(formatApiError(e, 'Export failed.'), 'error', 6000)
   }
 }
 
@@ -183,11 +188,13 @@ async function onOpeningStockFile(event: Event) {
   try {
     const result = await importOpeningStockCSV(file)
     if (result.errors.length)
-      loadError.value = result.errors.map(e => `Row ${e.row}: ${e.error}`).join(' ')
+      toast.show(result.errors.map(e => `Row ${e.row}: ${e.error}`).join(' '), 'error', 6000)
+    else
+      toast.show(`Opening stock imported: ${result.created} created, ${result.skipped} skipped`)
     await loadStocks()
   }
   catch (e) {
-    loadError.value = formatApiError(e, 'Opening stock import failed.')
+    toast.show(formatApiError(e, 'Opening stock import failed.'), 'error', 6000)
   }
   finally {
     importing.value = false
@@ -206,7 +213,7 @@ async function onOpeningStockFile(event: Event) {
           Inventory 庫存管理
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          這一頁顯示各分校每個品項的現有數量；紅色代表低於安全庫存。
+          這一頁顯示各倉庫每個品項的現有數量；紅色代表低於安全庫存。
         </div>
       </VCol>
       <VCol
@@ -243,7 +250,7 @@ async function onOpeningStockFile(event: Event) {
           variant="tonal"
           color="primary"
           prepend-icon="ri-swap-line"
-          :disabled="!selectedLocationId"
+          :disabled="!selectedWarehouseId"
           @click="transferDialogOpen = true"
         >
           Transfer
@@ -251,7 +258,7 @@ async function onOpeningStockFile(event: Event) {
         <VBtn
           color="primary"
           prepend-icon="ri-add-line"
-          :disabled="!selectedLocationId"
+          :disabled="!selectedWarehouseId"
           @click="movementDialogOpen = true"
         >
           Record Movement
@@ -290,15 +297,24 @@ async function onOpeningStockFile(event: Event) {
       </VCol>
     </VRow>
 
+    <template v-else-if="warehouses.length === 0">
+      <InventoryEmptyState
+        icon="ri-building-2-line"
+        text="No warehouses yet. Add a warehouse before recording stock."
+        action-label="Warehouses"
+        @action="router.push('/attendance/inventory/warehouses')"
+      />
+    </template>
+
     <template v-else>
       <StatCards :cards="statCards" />
 
       <VCard>
         <VCardText class="d-flex flex-wrap gap-3 align-center">
           <VSelect
-            v-model="selectedLocationId"
-            :items="locations.map(l => ({ value: l.id, title: [l.name_en, l.name_zh].filter(Boolean).join(' · ') }))"
-            label="Location"
+            v-model="selectedWarehouseId"
+            :items="warehouses.map(l => ({ value: l.id, title: [l.name_en, l.name_zh].filter(Boolean).join(' · ') }))"
+            label="Warehouse 倉庫"
             density="comfortable"
             style="max-width: 280px"
             hide-details
@@ -367,11 +383,13 @@ async function onOpeningStockFile(event: Event) {
                 </td>
               </tr>
               <tr v-if="rows.length === 0">
-                <td
-                  colspan="8"
-                  class="text-center text-medium-emphasis py-8"
-                >
-                  No stock records for this location yet. Use “Record Movement” to add stock.
+                <td colspan="8">
+                  <InventoryEmptyState
+                    icon="ri-stack-line"
+                    :text="search ? 'No items match your search.' : 'No stock records for this warehouse yet.'"
+                    :action-label="search ? undefined : 'Record Movement'"
+                    @action="movementDialogOpen = true"
+                  />
                 </td>
               </tr>
             </tbody>
@@ -382,16 +400,16 @@ async function onOpeningStockFile(event: Event) {
 
     <InventoryMovementDialog
       v-model="movementDialogOpen"
-      :location-id="selectedLocationId"
+      :warehouse-id="selectedWarehouseId"
       :items="items"
       :initial-type="movementInitialType"
       @saved="loadStocks"
     />
     <InventoryTransferDialog
       v-model="transferDialogOpen"
-      :locations="locations"
+      :warehouses="warehouses"
       :items="items"
-      :from-location-id="selectedLocationId"
+      :from-warehouse-id="selectedWarehouseId"
       @saved="loadStocks"
     />
   </VContainer>

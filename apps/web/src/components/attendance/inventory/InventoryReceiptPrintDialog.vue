@@ -46,22 +46,22 @@ function print() {
         <div class="receipt-print pa-4">
           <div class="text-center mb-6">
             <div class="text-h5 font-weight-bold">
-              {{ doc.location_name_en || doc.location_name_zh || '' }}
+              {{ doc.warehouse_name_en || doc.warehouse_name_zh || '' }}
             </div>
             <div
-              v-if="doc.location_name_zh"
+              v-if="doc.warehouse_name_zh"
               class="text-body-2"
             >
-              {{ doc.location_name_zh }}
+              {{ doc.warehouse_name_zh }}
             </div>
             <div
-              v-if="doc.location_address"
+              v-if="doc.warehouse_address"
               class="text-body-2 text-medium-emphasis"
             >
-              {{ doc.location_address }}
+              {{ doc.warehouse_address }}
             </div>
             <div class="text-body-2 text-medium-emphasis">
-              {{ doc.location_phone }}
+              {{ doc.warehouse_phone }}
             </div>
             <div class="text-h6 font-weight-bold mt-4">
               RECEIPT 收據

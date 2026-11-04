@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
 import {
   type InventorySupplier,
   type InventorySupplierPayload,
@@ -7,23 +8,25 @@ import {
   updateSupplier,
 } from '@/api/attendance/inventoryPurchasing'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
+import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useLatestRequest } from '@/composables/useLatestRequest'
 
 definePage({ meta: {} })
 
+const display = useDisplay()
+
 const { ensureAccess } = useAttendanceAdminGate()
+const toast = useToast()
 
 const loading = ref(true)
 const saving = ref(false)
 const loadError = ref('')
 const saveError = ref('')
-const saveSuccess = ref('')
 
 useAutoClearAlerts(loadError)
 useAutoClearAlerts(saveError)
-useAutoClearAlerts(saveSuccess)
 
 const suppliers = ref<InventorySupplier[]>([])
 const total = ref(0)
@@ -125,17 +128,18 @@ function openEdit(supplier: InventorySupplier) {
 
 async function submit() {
   saveError.value = ''
-  saveSuccess.value = ''
   saving.value = true
   try {
     const payload = { ...form }
+
+    const wasEditing = !!editing.value
 
     if (editing.value)
       await updateSupplier(editing.value.id, payload)
     else
       await createSupplier(payload)
 
-    saveSuccess.value = editing.value ? 'Supplier updated.' : 'Supplier created.'
+    toast.show(`Supplier ${payload.code || payload.name_zh} ${wasEditing ? 'updated' : 'created'}`)
     dialogOpen.value = false
     await loadSuppliers()
   }
@@ -192,16 +196,6 @@ async function submit() {
       @click:close="loadError = ''"
     >
       {{ loadError }}
-    </VAlert>
-    <VAlert
-      v-if="saveSuccess"
-      type="success"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="saveSuccess = ''"
-    >
-      {{ saveSuccess }}
     </VAlert>
 
     <VCard>
@@ -275,11 +269,13 @@ async function submit() {
               </td>
             </tr>
             <tr v-if="suppliers.length === 0 && !loading">
-              <td
-                colspan="7"
-                class="text-center text-medium-emphasis py-8"
-              >
-                No suppliers yet — click "New supplier" to add one.
+              <td colspan="7">
+                <InventoryEmptyState
+                  icon="ri-truck-line"
+                  :text="search ? 'No suppliers match your search.' : 'No suppliers yet.'"
+                  :action-label="search ? undefined : 'New supplier'"
+                  @action="openCreate"
+                />
               </td>
             </tr>
           </tbody>
@@ -297,6 +293,8 @@ async function submit() {
     <VDialog
       v-model="dialogOpen"
       max-width="560"
+      :fullscreen="display.xs.value"
+      scrollable
     >
       <VCard :title="editing ? `Edit ${editing.code}` : 'New supplier'">
         <VCardText>
@@ -309,57 +307,107 @@ async function submit() {
           >
             {{ saveError }}
           </VAlert>
-          <VTextField
-            v-model="form.code"
-            label="Code"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.name_zh"
-            label="Name (zh)"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.name_en"
-            label="Name (en)"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.contact_name"
-            label="Contact"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.phone"
-            label="Phone"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.email"
-            label="Email"
-            type="email"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.address"
-            label="Address"
-            density="comfortable"
-            class="mb-3"
-          />
-          <VTextField
-            v-model="form.payment_terms"
-            label="Payment terms"
-            hint="e.g. NET30"
-            persistent-hint
-            density="comfortable"
-            class="mb-3"
-          />
+          <div class="text-overline text-medium-emphasis mb-2">
+            Identification
+          </div>
+          <VRow>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.code"
+                label="Code"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.name_zh"
+                label="Name (zh)"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="12"
+            >
+              <VTextField
+                v-model="form.name_en"
+                label="Name (en)"
+                density="comfortable"
+              />
+            </VCol>
+          </VRow>
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">
+            Contact
+          </div>
+          <VRow>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.contact_name"
+                label="Contact"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.phone"
+                label="Phone"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.email"
+                label="Email"
+                type="email"
+                density="comfortable"
+              />
+            </VCol>
+            <VCol
+              cols="12"
+              sm="6"
+            >
+              <VTextField
+                v-model="form.address"
+                label="Address"
+                density="comfortable"
+              />
+            </VCol>
+          </VRow>
+          <div class="text-overline text-medium-emphasis mb-2 mt-4">
+            Terms
+          </div>
+          <VRow>
+            <VCol
+              cols="12"
+              sm="12"
+            >
+              <VTextField
+                v-model="form.payment_terms"
+                label="Payment terms"
+                hint="e.g. NET30"
+                persistent-hint
+                density="comfortable"
+              />
+            </VCol>
+          </VRow>
+          <div class="text-overline text-medium-emphasis mb-1 mt-4">
+            Status
+          </div>
           <VCheckbox
             v-model="form.is_active"
             label="Active"
@@ -367,6 +415,7 @@ async function submit() {
             hide-details
           />
         </VCardText>
+        <VDivider />
         <VCardActions>
           <VSpacer />
           <VBtn

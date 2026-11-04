@@ -31,13 +31,13 @@ async def _create_po(
     client: AsyncClient,
     token: str,
     supplier_id: str,
-    location_id: str,
+    warehouse_id: str,
     lines: list[dict],
     **overrides,
 ) -> dict:
     body = {
         "supplier_id": supplier_id,
-        "location_id": location_id,
+        "warehouse_id": warehouse_id,
         "order_date": "2026-10-16",
         "lines": lines,
         **overrides,
@@ -65,21 +65,21 @@ async def _create_grn(
     return resp.json() if expected == 201 else resp.status_code
 
 
-def _grn_body(supplier_id: str, location_id: str, **extra) -> dict:
+def _grn_body(supplier_id: str, warehouse_id: str, **extra) -> dict:
     return {
         "supplier_id": supplier_id,
-        "location_id": location_id,
+        "warehouse_id": warehouse_id,
         "receipt_date": "2026-10-16",
         **extra,
     }
 
 
-async def _move(client, token, item_id, location_id, type, quantity, **extra) -> dict:
+async def _move(client, token, item_id, warehouse_id, type, quantity, **extra) -> dict:
     resp = await client.post(
         "/api/inventory/movements",
         json={
             "item_id": item_id,
-            "location_id": location_id,
+            "warehouse_id": warehouse_id,
             "type": type,
             "quantity": quantity,
             **extra,
@@ -90,9 +90,9 @@ async def _move(client, token, item_id, location_id, type, quantity, **extra) ->
     return resp.json()
 
 
-async def _stock(client: AsyncClient, token: str, item_id: str, location_id: str) -> dict | None:
+async def _stock(client: AsyncClient, token: str, item_id: str, warehouse_id: str) -> dict | None:
     resp = await client.get(
-        f"/api/inventory/stocks?item_id={item_id}&location_id={location_id}",
+        f"/api/inventory/stocks?item_id={item_id}&warehouse_id={warehouse_id}",
         headers=_h(token),
     )
     stocks = resp.json()
@@ -308,11 +308,11 @@ async def test_doc_numbering_sequential_per_location_and_type(
 
 
 async def _ordered_po_with_item(
-    client, token, supplier_id, location_id, qty: int = 10, cost: float = 10.0
+    client, token, supplier_id, warehouse_id, qty: int = 10, cost: float = 10.0
 ) -> tuple[dict, dict]:
     item = await _create_item(client, token)
     po = await _create_po(
-        client, token, supplier_id, location_id, [_po_line(item["id"], qty, cost)]
+        client, token, supplier_id, warehouse_id, [_po_line(item["id"], qty, cost)]
     )
     resp = await client.post(
         f"/api/inventory/purchase-orders/{po['id']}/order", headers=_h(token)
@@ -358,6 +358,57 @@ async def test_grn_partial_then_full_receipt(
 
     stock = await _stock(client, admin_token, item["id"], sample_location["id"])
     assert stock["quantity"] == 10
+
+
+async def test_grn_patch_lines_resolves_po_line_and_updates_po(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    supplier = await _create_supplier(client, admin_token)
+    po, item = await _ordered_po_with_item(
+        client, admin_token, supplier["id"], sample_location["id"], qty=10
+    )
+    grn = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(supplier["id"], sample_location["id"], po_id=po["id"]),
+    )
+
+    patched = await client.patch(
+        f"/api/inventory/goods-receipts/{grn['id']}",
+        json={"lines": [{"item_id": item["id"], "qty": 4, "unit_cost": 10.0}]},
+        headers=_h(admin_token),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["lines"][0]["po_line_id"] == po["lines"][0]["id"]
+
+    resp = await client.post(
+        f"/api/inventory/goods-receipts/{grn['id']}/confirm", headers=_h(admin_token)
+    )
+    assert resp.status_code == 200, resp.text
+    po_after = await _get_po(client, admin_token, po["id"])
+    assert po_after["lines"][0]["received_qty"] == 4
+    assert po_after["status"] == "partial"
+
+
+async def test_grn_patch_lines_rejects_item_not_on_po(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    supplier = await _create_supplier(client, admin_token)
+    po, _item = await _ordered_po_with_item(
+        client, admin_token, supplier["id"], sample_location["id"], qty=10
+    )
+    other = await _create_item(client, admin_token)
+    grn = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(supplier["id"], sample_location["id"], po_id=po["id"]),
+    )
+    patched = await client.patch(
+        f"/api/inventory/goods-receipts/{grn['id']}",
+        json={"lines": [{"item_id": other["id"], "qty": 1, "unit_cost": 1.0}]},
+        headers=_h(admin_token),
+    )
+    assert patched.status_code == 422
 
 
 async def test_grn_over_receipt_blocked_unless_allowed(
@@ -430,7 +481,7 @@ async def test_grn_confirm_stock_and_ledger_refs(
     assert stock["quantity"] == 3
 
     resp = await client.get(
-        f"/api/inventory/movements?item_id={item['id']}&location_id={sample_location['id']}",
+        f"/api/inventory/movements?item_id={item['id']}&warehouse_id={sample_location['id']}",
         headers=_h(admin_token),
     )
     moves = resp.json()
@@ -444,7 +495,7 @@ async def test_grn_confirm_weighted_avg_cost(
 ):
     supplier = await _create_supplier(client, admin_token)
     item = await _create_item(client, admin_token, cost_price=10.0)
-    # existing stock in two locations: avg_cost becomes 10 on first receipt
+    # existing stock in two warehouses: avg_cost becomes 10 on first receipt
     grn_a = await _create_grn(
         client,
         admin_token,
@@ -610,13 +661,13 @@ async def test_grn_draft_edit_delete_rules(
 
 
 async def _confirmed_grn(
-    client, token, supplier_id, location_id, item_id, qty, cost=10.0
+    client, token, supplier_id, warehouse_id, item_id, qty, cost=10.0
 ) -> dict:
     grn = await _create_grn(
         client,
         token,
         _grn_body(
-            supplier_id, location_id,
+            supplier_id, warehouse_id,
             lines=[{"item_id": item_id, "qty": qty, "unit_cost": cost}],
         ),
     )
@@ -640,7 +691,7 @@ async def test_purchase_return_confirm_and_void(
         "/api/inventory/purchase-returns",
         json={
             "supplier_id": supplier["id"],
-            "location_id": sample_location["id"],
+            "warehouse_id": sample_location["id"],
             "grn_id": grn["id"],
             "return_date": "2026-10-17",
             "lines": [{"item_id": item["id"], "qty": 3, "unit_cost": 10.0}],
@@ -688,7 +739,7 @@ async def test_purchase_return_over_return_blocked(
         "/api/inventory/purchase-returns",
         json={
             "supplier_id": supplier["id"],
-            "location_id": sample_location["id"],
+            "warehouse_id": sample_location["id"],
             "grn_id": grn["id"],
             "return_date": "2026-10-17",
             "lines": [{"item_id": item["id"], "qty": 5, "unit_cost": 10.0}],
@@ -710,7 +761,7 @@ async def test_purchase_return_draft_edit_delete_rules(
         "/api/inventory/purchase-returns",
         json={
             "supplier_id": supplier["id"],
-            "location_id": sample_location["id"],
+            "warehouse_id": sample_location["id"],
             "return_date": "2026-10-17",
             "lines": [{"item_id": item["id"], "qty": 2, "unit_cost": 10.0}],
         },
@@ -780,7 +831,7 @@ async def test_p3_audit_rows_written(
         "/api/inventory/purchase-returns",
         json={
             "supplier_id": supplier["id"],
-            "location_id": sample_location["id"],
+            "warehouse_id": sample_location["id"],
             "return_date": "2026-10-17",
             "lines": [{"item_id": item["id"], "qty": 1, "unit_cost": 10.0}],
         },
@@ -883,7 +934,7 @@ async def test_grn_void_blocked_by_confirmed_return(
         "/api/inventory/purchase-returns",
         json={
             "supplier_id": supplier["id"],
-            "location_id": sample_location["id"],
+            "warehouse_id": sample_location["id"],
             "grn_id": grn["id"],
             "return_date": "2026-10-17",
             "lines": [{"item_id": item["id"], "qty": 1, "unit_cost": 10.0}],
