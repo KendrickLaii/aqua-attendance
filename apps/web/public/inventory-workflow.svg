@@ -18,7 +18,7 @@
   <rect x="30" y="85" width="1200" height="110" rx="12" fill="#e3f2fd" stroke="#90caf9"/>
   <text x="45" y="106" class="h" style="font-size:15px;fill:#1565c0">A. 進貨 Purchasing</text>
   <rect x="30" y="285" width="1200" height="130" rx="12" fill="#e8f5e9" stroke="#a5d6a7"/>
-  <text x="45" y="306" class="h" style="font-size:15px;fill:#2e7d32">B. 庫存 Stock(每個分校各自一份)</text>
+  <text x="45" y="306" class="h" style="font-size:15px;fill:#2e7d32">B. 庫存 Stock(每個倉庫各自一份)</text>
   <rect x="30" y="535" width="1200" height="255" rx="12" fill="#fff3e0" stroke="#ffcc80"/>
   <text x="45" y="556" class="h" style="font-size:15px;fill:#e65100">C. 銷售 Sales</text>
 

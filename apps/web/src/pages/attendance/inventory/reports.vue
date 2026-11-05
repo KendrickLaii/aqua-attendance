@@ -34,7 +34,7 @@ const vuetifyTheme = useTheme()
 const reducedMotion = usePreferredReducedMotion()
 
 const tabs = [
-  { key: 'valuation', title: 'Stock Valuation 庫存估值', desc: '這份報表告訴你每個分校現在的貨值多少錢。' },
+  { key: 'valuation', title: 'Stock Valuation 庫存估值', desc: '這份報表告訴你每個倉庫現在的貨值多少錢。' },
   { key: 'movements', title: 'Movements 異動彙總', desc: '這份報表告訴你一段時間內入庫、出庫和調整各有多少。' },
   { key: 'purchases', title: 'Purchases 採購', desc: '這份報表告訴你跟每個供應商進了多少貨、退了多少，以及還沒收齊的採購單。' },
   { key: 'sales', title: 'Sales 銷售', desc: '這份報表告訴你開了多少發票、折讓了多少、實際收到多少錢。' },
@@ -301,7 +301,7 @@ const movementsChart = computed(() => {
   if (!movements.value)
     return null
   const rows = movements.value.rows
-  const cats = ['入庫', '出庫', '調整', '分校轉入', '分校轉出']
+  const cats = ['入庫', '出庫', '調整', '倉庫轉入', '倉庫轉出']
 
   const data = [
     rows.reduce((s, r) => s + r.qty_in, 0),

@@ -155,7 +155,7 @@ const chainSteps = computed<DocChainStep[]>(() => {
     return []
 
   return [
-    { label: '1 選分校開單', state: 'done' },
+    { label: '1 選倉庫開單', state: 'done' },
     {
       label: '2 逐項點數',
       state: t.status === 'draft' ? 'current' : 'done',
@@ -799,7 +799,7 @@ async function submitCreate() {
         </VCard>
         <VCard v-else>
           <VCardText class="text-center text-medium-emphasis py-12">
-            從上面的列表選一張盤點單，或按下面的按鈕為一個分校開始盤點。
+            從上面的列表選一張盤點單，或按下面的按鈕為一個倉庫開始盤點。
             <div class="mt-3">
               <VBtn
                 color="primary"
@@ -837,7 +837,7 @@ async function submitCreate() {
             density="compact"
             class="mb-3"
           >
-            選擇要盤點的分校。系統會列出這個分校所有啟用中的品項，和現在的系統數量。
+            選擇要盤點的倉庫。系統會列出這個倉庫所有啟用中的品項，和現在的系統數量。
           </VAlert>
           <VSelect
             v-model="createForm.warehouse_id"

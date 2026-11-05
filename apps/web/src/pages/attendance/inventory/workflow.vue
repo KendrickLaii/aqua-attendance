@@ -9,102 +9,123 @@ onMounted(async () => {
   ready.value = await ensureAccess()
 })
 
-interface TaskCard {
-  icon: string
+interface JobLink {
+  label: string
+  to: { name: string; query?: Record<string, string> }
+}
+
+interface SetupStep {
+  title: string
+  detail: string
+  to: JobLink
+}
+
+interface Job {
   titleZh: string
   titleEn: string
   steps: string[]
-  primary: { label: string; to: { name: string; query?: Record<string, string> } }
-  secondary?: { label: string; to: { name: string; query?: Record<string, string> } }
+  primary: JobLink
+  secondary?: JobLink
 }
 
-const tasks: TaskCard[] = [
+const setup: SetupStep[] = [
   {
-    icon: 'ri-flag-line',
-    titleZh: '第一次使用',
-    titleEn: 'First-time setup',
-    steps: [
-      '到 Items 新增品項（名稱、售價、安全庫存）',
-      '到 Stock Overview 登記期初數量（原因選 opening）',
-      '完成，之後就能進貨和賣貨',
-    ],
-    primary: { label: '新增品項', to: { name: 'attendance-inventory-items', query: { action: 'new' } } },
-    secondary: { label: '登記期初庫存', to: { name: 'attendance-inventory', query: { action: 'movement' } } },
+    title: '開一個倉庫',
+    detail: '每個倉庫有自己的編號，單號會用它，例如 PO-MK-000001。',
+    to: { label: '去倉庫', to: { name: 'attendance-inventory-warehouses' } },
   },
   {
-    icon: 'ri-shopping-cart-line',
+    title: '建立品項',
+    detail: '填名稱、售價、進價和安全庫存。沒有品項，後面的單都開不了。',
+    to: { label: '新增品項', to: { name: 'attendance-inventory-items', query: { action: 'new' } } },
+  },
+  {
+    title: '登記期初數量',
+    detail: '在庫存總覽選倉庫，用 Record Movement（原因 Opening）或匯入 CSV。',
+    to: { label: '登記期初', to: { name: 'attendance-inventory', query: { action: 'movement' } } },
+  },
+]
+
+const jobs: Job[] = [
+  {
     titleZh: '進了一批貨',
-    titleEn: 'Got new stock from a supplier',
+    titleEn: 'Goods arrived from a supplier',
     steps: [
-      '建採購單，選供應商和數量',
-      '按 Order 下單',
-      '貨到了按 Receive goods，再 Confirm，庫存自動增加',
+      '建採購單，選倉庫、供應商和數量，再按 Order',
+      '貨到後按 Receive goods，開一張收貨單',
+      'Confirm 之後庫存才增加',
     ],
     primary: { label: '建立採購單', to: { name: 'attendance-inventory-purchase-orders', query: { action: 'new' } } },
+    secondary: { label: '供應商', to: { name: 'attendance-inventory-suppliers' } },
   },
   {
-    icon: 'ri-store-2-line',
     titleZh: '賣東西給客戶',
-    titleEn: 'Sell items',
+    titleEn: 'Sell and collect',
     steps: [
-      '建銷售單，選客戶和品項',
-      '按 Quick Fulfill & Invoice，一次完成開票（扣庫存）、出貨單和收據',
-      '之後在發票頁可再建出貨單記錄送貨、按 Record Payment 收款',
+      '建銷售單，選倉庫、客戶和品項，按 Confirm 保留庫存',
+      '按 Quick Fulfill & Invoice：開立發票並扣庫存',
+      '同一視窗可勾出貨單和收據；不勾就之後再補',
     ],
     primary: { label: '建立銷售單', to: { name: 'attendance-inventory-sales-orders', query: { action: 'new' } } },
+    secondary: { label: '客戶', to: { name: 'attendance-inventory-customers' } },
   },
   {
-    icon: 'ri-error-warning-line',
-    titleZh: '東西壞了、遺失或送人',
-    titleEn: 'Damaged / lost / gift',
+    titleZh: '壞了、遺失或送人',
+    titleEn: 'Damage, loss, or gift',
     steps: [
-      '開 Record Movement',
-      '選出庫和原因（損毀、遺失、贈送需寫備註）',
-      '儲存，庫存扣減並留紀錄',
+      '在庫存總覽按 Record Movement',
+      '選這個倉庫、出庫，以及原因',
+      '損毀、遺失、贈送要寫備註，儲存後數量會扣減',
     ],
     primary: { label: '登記出庫', to: { name: 'attendance-inventory', query: { action: 'movement', type: 'out' } } },
   },
   {
-    icon: 'ri-exchange-line',
-    titleZh: '分校之間搬貨',
-    titleEn: 'Move stock between branches',
+    titleZh: '搬去另一個倉庫',
+    titleEn: 'Move stock between warehouses',
     steps: [
-      '選品項、來源和目的分校',
-      '填數量',
-      '儲存，兩邊同時更新',
+      '按 Transfer，選品項',
+      '選來源倉庫和目的倉庫，填數量',
+      '儲存後兩邊一起更新',
     ],
     primary: { label: '調撥', to: { name: 'attendance-inventory', query: { action: 'transfer' } } },
   },
   {
-    icon: 'ri-survey-line',
     titleZh: '盤點',
-    titleEn: 'Stocktake',
+    titleEn: 'Count what is on the shelf',
     steps: [
-      '建盤點單選分校',
-      '填實際數到的數量',
-      'Save counts 後按 Apply，系統自動調整',
+      '建盤點單，選一個倉庫',
+      '填實際數到的數量，按 Save counts',
+      'Apply 只調整差額，不會蓋掉盤點期間的進出貨',
     ],
     primary: { label: '開始盤點', to: { name: 'attendance-inventory-stocktakes', query: { action: 'new' } } },
   },
   {
-    icon: 'ri-refund-2-line',
     titleZh: '客戶退貨',
     titleEn: 'Customer return',
     steps: [
-      '到 Sales Invoices 找到那張發票',
-      '打開後按 Create Credit Note',
-      '選退貨數量，勾「退回庫存」後 Confirm',
+      '在 Sales Invoices 打開那張發票',
+      '按 Create Credit Note，填退貨數量',
+      '要加回庫存就勾 Restock，再 Confirm。已收齊的發票要先作廢收據',
     ],
     primary: { label: '找發票', to: { name: 'attendance-inventory-invoices' } },
   },
   {
-    icon: 'ri-search-eye-line',
-    titleZh: '看還剩多少、要不要補貨',
-    titleEn: 'Check stock',
+    titleZh: '退貨給供應商',
+    titleEn: 'Return goods to a supplier',
     steps: [
-      'Dashboard 看警示',
-      'Stock Overview 紅色代表低於安全庫存',
-      '需要補就去建採購單',
+      '建採購退貨單，選倉庫和供應商',
+      '填要退的品項和數量',
+      'Confirm Return 之後庫存才扣減',
+    ],
+    primary: { label: '採購退貨', to: { name: 'attendance-inventory-purchase-returns' } },
+  },
+  {
+    titleZh: '看還剩多少',
+    titleEn: 'See what to reorder',
+    steps: [
+      'Dashboard 看低庫存、待開票和未收款',
+      '庫存總覽裡，紅色代表低於安全庫存',
+      '要補貨就去建採購單',
     ],
     primary: { label: 'Dashboard', to: { name: 'attendance-inventory-dashboard' } },
     secondary: { label: '庫存總覽', to: { name: 'attendance-inventory' } },
@@ -117,133 +138,255 @@ interface FlowStep {
 }
 
 const steps: FlowStep[] = [
-  { en: 'Create items — set up categories and items with sale/cost price and reorder level (Items).', zh: '建立品項 — 在 Items 設定分類、售價／成本價與補貨點。' },
-  { en: 'Load opening stock — record opening balances per warehouse, or import them via CSV (Stock Overview).', zh: '輸入期初庫存 — 在各倉庫登記期初數量，或用 CSV 匯入（Stock Overview）。' },
-  { en: 'Create a purchase order — pick a supplier and order quantities (Purchase Orders).', zh: '建立採購單 — 選擇供應商與採購數量（Purchase Orders）。' },
-  { en: 'Order the PO — move it from draft to ordered (Confirm on the PO).', zh: '送出採購單 — 將草稿 PO 確認為已下單。' },
-  { en: 'Receive goods — create a Goods Receipt from the PO and confirm it; stock increases and avg cost updates (Goods Receipts).', zh: '收貨 — 由 PO 建立收貨單（GRN）並確認，庫存增加並更新平均成本（Goods Receipts）。' },
-  { en: 'Create a sales order — pick a customer, items and prices (Sales Orders).', zh: '建立銷售單 — 選擇客戶、品項與價格（Sales Orders）。' },
-  { en: 'Confirm the SO — available stock is reserved for the order.', zh: '確認銷售單 — 系統會為訂單保留可用庫存。' },
-  { en: 'Invoice — create an Inventory Invoice from the SO and issue it; stock is deducted at issue (Invoices).', zh: '開發票 — 由銷售單建立庫存發票，開立（Issue）時庫存正式扣減（Invoices）。' },
-  { en: 'Deliver — create Delivery Orders under the issued invoice; they record what was physically delivered, no stock effect (Delivery Orders).', zh: '送貨 — 在已開立的發票下建立出貨單，只記錄實際送貨，不影響庫存（Delivery Orders）。' },
-  { en: 'Collect — record a Receipt when the customer pays (Receipts).', zh: '收款 — 客戶付款時登記收據（Receipts）。' },
-  { en: 'Handle returns — issue a Credit Note against the invoice; choose whether goods are restocked (Credit Notes).', zh: '處理退貨 — 對發票開立折讓單，可選擇是否回補庫存（Credit Notes）。' },
-  { en: 'Reconcile — run stocktakes per warehouse, check Movements for the audit trail, and watch the Dashboard alerts.', zh: '對帳 — 按倉庫定期盤點、在 Movements 查閱異動流水，並留意 Dashboard 警示。' },
+  { en: 'Create a warehouse. Its code is printed on document numbers.', zh: '先開倉庫。倉庫編號會印在單號上。' },
+  { en: 'Create items with a sale price, purchase price, and reorder level.', zh: '建立品項：售價、進價、安全庫存。' },
+  { en: 'Record opening quantities for that warehouse, or import a CSV.', zh: '在該倉庫登記期初數量，或用 CSV 匯入。' },
+  { en: 'Create a purchase order for a supplier, then mark it ordered.', zh: '向供應商建採購單，再按 Order 下單。' },
+  { en: 'Confirm a goods receipt. Stock and average cost update only then.', zh: '確認收貨單後，庫存和平均成本才更新。' },
+  { en: 'Create a sales order. Confirming it reserves available stock.', zh: '建銷售單。Confirm 會保留可用庫存。' },
+  { en: 'Issue the invoice. Stock is deducted at issue, not when the delivery order is confirmed.', zh: '開立發票時扣庫存。出貨單只記錄送了什麼。' },
+  { en: 'Record a receipt when the customer pays.', zh: '客戶付款時登記收據。' },
+  { en: 'A credit note reduces the balance. Tick Restock only for goods that come back.', zh: '折讓單減少應收。貨退回來才勾 Restock。' },
+  { en: 'A purchase return deducts stock when you confirm it.', zh: '退給供應商的貨，確認退貨單後才扣庫存。' },
+  { en: 'Stocktakes adjust by the difference. Movements keeps the trail.', zh: '盤點按差額調整。異動紀錄留在 Movements。' },
 ]
 </script>
 
 <template>
-  <VContainer v-if="ready">
-    <VRow class="mb-2">
-      <VCol>
-        <div class="text-h5 font-weight-medium">
-          從這裡開始 Start Here
-        </div>
-        <div class="text-body-2 text-medium-emphasis">
-          選你現在要做的事，照 3 個步驟做就好。
-        </div>
-      </VCol>
-    </VRow>
+  <VContainer
+    v-if="ready"
+    class="workflow-sheet"
+  >
+    <header class="sheet-head">
+      <p class="sheet-kicker">
+        Inventory
+      </p>
+      <h1 class="text-h4 font-weight-medium mb-2">
+        從這裡開始
+      </h1>
+      <p class="text-body-1 text-medium-emphasis mb-0">
+        選一件現在要做的事。平常買賣記這句：收貨確認才加庫存，發票開立才扣庫存。出貨單只記錄送貨。
+      </p>
+    </header>
 
-    <VRow>
-      <VCol
-        v-for="task in tasks"
-        :key="task.titleZh"
-        cols="12"
-        md="6"
-        lg="4"
+    <section
+      class="setup"
+      aria-labelledby="setup-heading"
+    >
+      <h2
+        id="setup-heading"
+        class="section-label"
       >
-        <VCard class="h-100 d-flex flex-column">
-          <VCardTitle class="d-flex align-center gap-2">
-            <VIcon
-              :icon="task.icon"
-              color="primary"
-            />
-            <span>
-              {{ task.titleZh }}
-              <div class="text-caption text-medium-emphasis font-weight-regular">
-                {{ task.titleEn }}
-              </div>
-            </span>
-          </VCardTitle>
-          <VCardText class="flex-grow-1">
-            <ol class="ps-5">
+        開始前
+      </h2>
+      <ol class="setup-rail">
+        <li
+          v-for="(item, index) in setup"
+          :key="item.title"
+        >
+          <span
+            class="step-index"
+            aria-hidden="true"
+          >{{ String(index + 1).padStart(2, '0') }}</span>
+          <h3 class="text-subtitle-1 font-weight-medium mt-2 mb-1">
+            {{ item.title }}
+          </h3>
+          <p class="text-body-2 text-medium-emphasis mb-3">
+            {{ item.detail }}
+          </p>
+          <VBtn
+            size="small"
+            variant="tonal"
+            :to="item.to.to"
+          >
+            {{ item.to.label }}
+          </VBtn>
+        </li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="jobs-heading">
+      <h2
+        id="jobs-heading"
+        class="section-label"
+      >
+        要做的事
+      </h2>
+      <ol class="job-list">
+        <li
+          v-for="job in jobs"
+          :key="job.titleZh"
+          class="job"
+        >
+          <div class="job-copy">
+            <h3 class="text-subtitle-1 font-weight-medium mb-0">
+              {{ job.titleZh }}
+            </h3>
+            <p class="text-caption text-medium-emphasis mb-2">
+              {{ job.titleEn }}
+            </p>
+            <ol class="job-steps text-body-2">
               <li
-                v-for="(step, i) in task.steps"
-                :key="i"
-                class="mb-1"
+                v-for="(step, index) in job.steps"
+                :key="index"
               >
                 {{ step }}
               </li>
             </ol>
-          </VCardText>
-          <VCardActions class="px-4 pb-4">
+          </div>
+          <div class="job-actions">
             <VBtn
               color="primary"
-              :to="task.primary.to"
+              size="small"
+              :to="job.primary.to"
             >
-              {{ task.primary.label }}
+              {{ job.primary.label }}
             </VBtn>
             <VBtn
-              v-if="task.secondary"
-              variant="tonal"
-              :to="task.secondary.to"
+              v-if="job.secondary"
+              size="small"
+              variant="text"
+              :to="job.secondary.to"
             >
-              {{ task.secondary.label }}
+              {{ job.secondary.label }}
             </VBtn>
-          </VCardActions>
-        </VCard>
-      </VCol>
-    </VRow>
+          </div>
+        </li>
+      </ol>
+    </section>
 
-    <VAlert
-      type="info"
-      variant="tonal"
-      class="mt-4"
-    >
-      <strong>記住一件事 Key rule：</strong>
-      庫存在「收貨確認」或「發票開立」時才會變動；出貨單只記錄送貨。
-    </VAlert>
-
-    <VExpansionPanels class="mt-4">
-      <VExpansionPanel title="完整流程圖 Full diagram">
+    <VExpansionPanels class="mt-8">
+      <VExpansionPanel title="完整流程圖">
         <VExpansionPanelText>
           <div class="overflow-x-auto">
             <img
               src="/inventory-workflow.svg"
-              alt="Inventory workflow diagram: purchase order → goods receipt → stock → sales order → invoice → receipt, with delivery orders, credit notes and stocktakes branching off."
+              alt="Inventory workflow: purchase order to goods receipt to stock, then sales order to invoice to receipt. Delivery orders, credit notes and stocktakes branch off."
               style="max-width: 100%; height: auto; min-width: 640px"
             >
           </div>
         </VExpansionPanelText>
       </VExpansionPanel>
-      <VExpansionPanel title="完整步驟（進階） Full steps (advanced)">
+      <VExpansionPanel title="完整順序">
         <VExpansionPanelText>
-          <VList lines="three">
-            <VListItem
-              v-for="(step, i) in steps"
-              :key="i"
+          <ol class="advanced-steps">
+            <li
+              v-for="(step, index) in steps"
+              :key="index"
             >
-              <template #prepend>
-                <VAvatar
-                  color="primary"
-                  variant="tonal"
-                  size="32"
-                  class="me-3"
-                >
-                  {{ i + 1 }}
-                </VAvatar>
-              </template>
-              <VListItemTitle class="text-wrap">
-                {{ step.en }}
-              </VListItemTitle>
-              <VListItemSubtitle class="text-wrap">
-                {{ step.zh }}
-              </VListItemSubtitle>
-            </VListItem>
-          </VList>
+              <span class="text-body-2">{{ step.zh }}</span>
+              <span class="text-caption text-medium-emphasis d-block">{{ step.en }}</span>
+            </li>
+          </ol>
         </VExpansionPanelText>
       </VExpansionPanel>
     </VExpansionPanels>
   </VContainer>
 </template>
+
+<style scoped lang="scss">
+.workflow-sheet {
+  max-width: 880px;
+}
+
+.sheet-head {
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.sheet-kicker {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-primary));
+}
+
+.section-label {
+  margin: 2rem 0 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+
+.setup-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-rail > li {
+  padding-top: 0.75rem;
+  border-top: 2px solid rgb(var(--v-theme-primary));
+}
+
+.step-index {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgb(var(--v-theme-primary));
+}
+
+.job-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: job;
+}
+
+.job {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem 1.5rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.job-steps {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.job-steps li + li {
+  margin-top: 0.25rem;
+}
+
+.job-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.advanced-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.advanced-steps li + li {
+  margin-top: 0.85rem;
+}
+
+@media (max-width: 720px) {
+  .setup-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .job {
+    grid-template-columns: 1fr;
+  }
+
+  .job-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+  }
+}
+</style>
