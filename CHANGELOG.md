@@ -2,6 +2,12 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [2026-11-05]（Inventory 開始頁）
+
+### 變更（Inventory）
+
+- **Start Here** 改成倉庫流程：先開倉庫、品項、期初數量，再進貨、銷售、調撥、盤點、客戶退貨和採購退貨。Quick Fulfill 寫明出貨單和收據是可勾選。盤點、異動、估值報表裡的「分校」改為「倉庫」。
+
 ## [2026-11-04]（Inventory 倉庫脫鉤）
 
 ### 新增（Inventory 倉庫）
