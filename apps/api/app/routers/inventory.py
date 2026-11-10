@@ -1173,12 +1173,16 @@ async def list_inventory_movements(
         clauses.append(InventoryMovement.type == type)
     if reason_code is not None:
         clauses.append(InventoryMovement.reason_code == reason_code)
+    created_at_clauses = []
     if date_from is not None:
-        clauses.append(InventoryMovement.created_at >= datetime.combine(date_from, time.min, tzinfo=ATTENDANCE_TZ))
+        created_at_clauses.append(
+            InventoryMovement.created_at >= datetime.combine(date_from, time.min, tzinfo=ATTENDANCE_TZ)
+        )
     if date_to is not None:
-        clauses.append(
+        created_at_clauses.append(
             InventoryMovement.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=ATTENDANCE_TZ)
         )
+    clauses += inventory_svc.movement_date_clause(created_at_clauses, date_from, date_to)
 
     count_q = select(func.count()).select_from(InventoryMovement)
     if clauses:

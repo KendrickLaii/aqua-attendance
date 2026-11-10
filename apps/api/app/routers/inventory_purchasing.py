@@ -942,6 +942,7 @@ async def confirm_goods_receipt(
             reference=f"GRN:{grn.id}:{line.id}",
             user=_admin,
             item=item,
+            effective_date=grn.receipt_date,
         )
         if line.po_line_id and po:
             po_line = await db.get(PurchaseOrderLine, line.po_line_id)

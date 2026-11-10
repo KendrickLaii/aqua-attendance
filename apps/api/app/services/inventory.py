@@ -1,7 +1,8 @@
 import uuid
+from datetime import date
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +58,24 @@ def _validate_reason_code(type: str, reason_code: str | None, reason: str | None
         )
 
 
+def movement_date_clause(created_at_clauses: list, date_from: date | None, date_to: date | None) -> list:
+    """Date filter for movements: ``effective_date`` when set, else the caller's
+    ``created_at`` clauses. Returns an empty list when no bounds are given."""
+    if date_from is None and date_to is None:
+        return []
+    effective = [InventoryMovement.effective_date.is_not(None)]
+    if date_from is not None:
+        effective.append(InventoryMovement.effective_date >= date_from)
+    if date_to is not None:
+        effective.append(InventoryMovement.effective_date <= date_to)
+    return [
+        or_(
+            and_(*effective),
+            and_(InventoryMovement.effective_date.is_(None), *created_at_clauses),
+        )
+    ]
+
+
 async def apply_movement(
     db: AsyncSession,
     *,
@@ -69,6 +88,7 @@ async def apply_movement(
     user: User | None,
     reason_code: str | None = None,
     item: InventoryItem | None = None,
+    effective_date: date | None = None,
 ) -> InventoryMovement:
     """The ONLY entry point that changes stock. Locks the stock row, rejects a
     negative resulting balance, and appends a ledger row with balance_after.
@@ -145,6 +165,7 @@ async def apply_movement(
         reason_code=reason_code,
         unit_cost=unit_cost,
         reference=reference,
+        effective_date=effective_date,
         created_by=user.id if user else None,
     )
     db.add(movement)

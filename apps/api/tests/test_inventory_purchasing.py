@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 import pytest
 from httpx import AsyncClient
@@ -655,6 +656,88 @@ async def test_grn_draft_edit_delete_rules(
         f"/api/inventory/goods-receipts/{grn['id']}", headers=_h(admin_token)
     )
     assert resp.status_code == 409
+
+
+async def test_grn_patch_receipt_date_draft_ok_confirmed_409(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    supplier = await _create_supplier(client, admin_token)
+    item = await _create_item(client, admin_token)
+    grn = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(
+            supplier["id"],
+            sample_location["id"],
+            lines=[{"item_id": item["id"], "qty": 2, "unit_cost": 5.0}],
+        ),
+    )
+    resp = await client.patch(
+        f"/api/inventory/goods-receipts/{grn['id']}",
+        json={"receipt_date": "2026-01-15", "notes": "backdated"},
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["receipt_date"] == "2026-01-15"
+    assert resp.json()["notes"] == "backdated"
+
+    await client.post(f"/api/inventory/goods-receipts/{grn['id']}/confirm", headers=_h(admin_token))
+    resp = await client.patch(
+        f"/api/inventory/goods-receipts/{grn['id']}",
+        json={"receipt_date": "2026-01-16"},
+        headers=_h(admin_token),
+    )
+    assert resp.status_code == 409
+
+
+async def test_grn_confirm_movement_effective_date_filters_and_reports(
+    client: AsyncClient, admin_token: str, sample_location: dict
+):
+    supplier = await _create_supplier(client, admin_token)
+    item = await _create_item(client, admin_token)
+    grn = await _create_grn(
+        client,
+        admin_token,
+        _grn_body(
+            supplier["id"],
+            sample_location["id"],
+            receipt_date="2026-01-15",
+            lines=[{"item_id": item["id"], "qty": 4, "unit_cost": 5.0}],
+        ),
+    )
+    await client.post(f"/api/inventory/goods-receipts/{grn['id']}/confirm", headers=_h(admin_token))
+    manual = await _move(client, admin_token, item["id"], sample_location["id"], "in", 1)
+    assert manual["effective_date"] is None
+
+    today = date.today().isoformat()
+    base = f"/api/inventory/movements?item_id={item['id']}"
+    resp = await client.get(base, headers=_h(admin_token))
+    grn_rows = [m for m in resp.json() if m["reference"] and m["reference"].startswith("GRN:")]
+    assert len(grn_rows) == 1
+    assert grn_rows[0]["effective_date"] == "2026-01-15"
+
+    resp = await client.get(f"{base}&date_from=2026-01-15&date_to=2026-01-15", headers=_h(admin_token))
+    assert [m["id"] for m in resp.json()] == [grn_rows[0]["id"]]
+
+    resp = await client.get(f"{base}&date_from={today}&date_to={today}", headers=_h(admin_token))
+    ids = [m["id"] for m in resp.json()]
+    assert grn_rows[0]["id"] not in ids
+    assert manual["id"] in ids
+
+    summary = "/api/inventory/reports/movements-summary"
+    resp = await client.get(
+        f"{summary}?item_id={item['id']}&date_from=2026-01-15&date_to=2026-01-15",
+        headers=_h(admin_token),
+    )
+    rows = [r for r in resp.json()["rows"] if r["item_id"] == item["id"]]
+    assert len(rows) == 1 and rows[0]["qty_in"] == 4
+
+    resp = await client.get(
+        f"{summary}?item_id={item['id']}&date_from={today}&date_to={today}",
+        headers=_h(admin_token),
+    )
+    rows = [r for r in resp.json()["rows"] if r["item_id"] == item["id"]]
+    assert len(rows) == 1 and rows[0]["qty_in"] == 1
 
 
 # ---- Purchase returns ----

@@ -40,6 +40,7 @@ from app.schemas.inventory_reports import (
 )
 from app.services import audit_log as audit_log_svc
 from app.services import inventory_alerts as alerts_svc
+from app.services.inventory import movement_date_clause
 from app.utils import csv_export
 
 router = APIRouter(prefix="/inventory", tags=["inventory-reports"])
@@ -148,7 +149,7 @@ async def movements_summary(
     item_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
-    clauses = _dt_range(InventoryMovement.created_at, date_from, date_to)
+    clauses = movement_date_clause(_dt_range(InventoryMovement.created_at, date_from, date_to), date_from, date_to)
     if warehouse_id:
         clauses.append(InventoryMovement.warehouse_id == warehouse_id)
     if item_id:
@@ -654,7 +655,7 @@ async def write_offs_report(
     warehouse_id: uuid.UUID | None = None,
     format: str | None = Query(default=None),
 ):
-    clauses = _dt_range(InventoryMovement.created_at, date_from, date_to)
+    clauses = movement_date_clause(_dt_range(InventoryMovement.created_at, date_from, date_to), date_from, date_to)
     clauses += [
         InventoryMovement.type == "out",
         InventoryMovement.reason_code.in_(WRITE_OFF_REASONS),

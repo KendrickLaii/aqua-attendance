@@ -11,7 +11,7 @@ import {
 } from '@/api/attendance/inventory'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
-import { formatAttendanceDateTime } from '@/utils/attendanceDisplay'
+import { ATTENDANCE_TIMEZONE, formatAttendanceDateTime } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useLatestRequest } from '@/composables/useLatestRequest'
@@ -33,6 +33,19 @@ const page = ref(1)
 const pageSize = ref(20)
 
 const listReq = useLatestRequest()
+
+function attendanceDateKey(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: ATTENDANCE_TIMEZONE })
+}
+
+function receivedDateLabel(movement: InventoryMovement): string | null {
+  const effective = movement.effective_date
+  if (!effective || effective === attendanceDateKey(movement.created_at))
+    return null
+  const [year, month, day] = effective.split('-')
+
+  return `${day}/${month}/${year}`
+}
 
 const itemFilter = ref<string | null>(null)
 const warehouseFilter = ref<string | null>(null)
@@ -276,7 +289,23 @@ function typeLabel(type: string): string {
               v-for="movement in movements"
               :key="movement.id"
             >
-              <td>{{ formatAttendanceDateTime(movement.created_at) }}</td>
+              <td>
+                {{ formatAttendanceDateTime(movement.created_at) }}
+                <VTooltip
+                  v-if="receivedDateLabel(movement)"
+                  text="實際收貨日期；上面係入系統時間"
+                  location="bottom"
+                >
+                  <template #activator="{ props }">
+                    <div
+                      v-bind="props"
+                      class="text-caption text-medium-emphasis"
+                    >
+                      Received {{ receivedDateLabel(movement) }}
+                    </div>
+                  </template>
+                </VTooltip>
+              </td>
               <td>{{ itemLabel(movement.item_id) }}</td>
               <td>{{ warehouseLabel(movement.warehouse_id) }}</td>
               <td>

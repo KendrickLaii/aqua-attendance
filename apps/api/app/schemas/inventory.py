@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -497,6 +497,7 @@ class InventoryMovementOut(BaseModel):
     unit_cost: float | None = None
     reference: str | None = None
     created_by: uuid.UUID | None = None
+    effective_date: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

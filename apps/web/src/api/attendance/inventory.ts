@@ -226,6 +226,7 @@ export interface InventoryMovement {
   unit_cost: number | null
   reference: string | null
   created_by: string | null
+  effective_date?: string | null
   created_at: string
 }
 

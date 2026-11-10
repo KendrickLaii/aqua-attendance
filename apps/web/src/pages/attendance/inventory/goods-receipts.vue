@@ -13,6 +13,7 @@ import {
   listGoodsReceipts,
   listPurchaseOrders,
   listSuppliers,
+  updateGoodsReceipt,
   voidGoodsReceipt,
 } from '@/api/attendance/inventoryPurchasing'
 import { type InventoryItem, type InventoryWarehouse, listInventoryItems, listWarehouses } from '@/api/attendance/inventory'
@@ -90,9 +91,11 @@ const docMore = computed<InventoryDocMoreItem[]>(() => {
   const menu: InventoryDocMoreItem[] = []
 
   if (isDraft.value)
+    menu.push({ label: 'Edit date & notes', sub: '改收貨日期同備註', icon: 'ri-edit-line', onClick: openEdit })
+  if (isDraft.value)
     menu.push({ label: 'Delete draft', sub: '刪除草稿,不能復原', icon: 'ri-delete-bin-line', danger: true, onClick: askDelete })
   if (selected.value?.status === 'confirmed')
-    menu.push({ label: 'Void receipt', sub: '作廢收貨單,庫存會扣回去', icon: 'ri-close-circle-line', danger: true, onClick: askVoid })
+    menu.push({ label: 'Void receipt', sub: '作廢收貨單,庫存會扣回去;日期錯咗可以作廢再開過', icon: 'ri-close-circle-line', danger: true, onClick: askVoid })
 
   return menu
 })
@@ -108,6 +111,11 @@ const chainSteps = computed<DocChainStep[]>(() => {
     { label: 'Stock', state: grn.status === 'confirmed' ? 'done' : 'todo', to: '/attendance/inventory' },
   ]
 })
+
+const editDialogOpen = ref(false)
+const editShowErrors = ref(false)
+const editError = ref('')
+const editForm = reactive({ receipt_date: '', notes: '' })
 
 const createDialogOpen = ref(false)
 const confirmAllowOverReceipt = ref(false)
@@ -328,6 +336,44 @@ async function submitCreate() {
   }
   catch (e) {
     dialogError.value = formatApiError(e, 'Failed to create goods receipt.')
+  }
+  finally {
+    saving.value = false
+  }
+}
+
+function openEdit() {
+  if (!selected.value)
+    return
+  editForm.receipt_date = selected.value.receipt_date
+  editForm.notes = selected.value.notes ?? ''
+  editShowErrors.value = false
+  editError.value = ''
+  editDialogOpen.value = true
+}
+
+async function submitEdit() {
+  if (!selected.value)
+    return
+  if (!editForm.receipt_date) {
+    editShowErrors.value = true
+    editError.value = '請填收貨日期。'
+
+    return
+  }
+  saving.value = true
+  editError.value = ''
+  try {
+    selected.value = await updateGoodsReceipt(selected.value.id, {
+      receipt_date: editForm.receipt_date,
+      notes: editForm.notes || null,
+    })
+    editDialogOpen.value = false
+    toast.show(`Updated ${selected.value.grn_no}.`)
+    await loadReceipts()
+  }
+  catch (e) {
+    editError.value = formatApiError(e, 'Failed to update goods receipt.')
   }
   finally {
     saving.value = false
@@ -577,6 +623,12 @@ async function performDelete() {
               · PO {{ selected.po_no }}
             </template>
           </VCardSubtitle>
+          <div
+            v-if="selected.notes"
+            class="text-body-2 text-medium-emphasis px-4 pt-1"
+          >
+            Notes: {{ selected.notes }}
+          </div>
           <VCardText class="pa-0">
             <InventoryDocChain
               :steps="chainSteps"
@@ -698,6 +750,8 @@ async function performDelete() {
             type="date"
             density="comfortable"
             class="mb-3"
+            hint="補舊單請填實際收貨日期"
+            persistent-hint
             :error="showErrors && !createForm.receipt_date"
             @blur="showErrors = true"
           />
@@ -879,5 +933,56 @@ async function performDelete() {
         class="mt-2"
       />
     </AttendanceConfirmDialog>
+
+    <VDialog
+      v-model="editDialogOpen"
+      max-width="480"
+      :fullscreen="display.xs.value"
+    >
+      <VCard title="Edit date & notes">
+        <VCardText>
+          <VAlert
+            v-if="editError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ editError }}
+          </VAlert>
+          <VTextField
+            v-model="editForm.receipt_date"
+            label="Receipt date *"
+            type="date"
+            density="comfortable"
+            class="mb-3"
+            :error="editShowErrors && !editForm.receipt_date"
+            @blur="editShowErrors = true"
+          />
+          <VTextField
+            v-model="editForm.notes"
+            label="Notes"
+            density="comfortable"
+          />
+        </VCardText>
+        <VDivider />
+        <VCardActions>
+          <VSpacer />
+          <VBtn
+            variant="text"
+            @click="editDialogOpen = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="primary"
+            :loading="saving"
+            @click="submitEdit"
+          >
+            Save
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </VContainer>
 </template>
