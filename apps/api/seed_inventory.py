@@ -7,7 +7,9 @@ apps/api/.env itself (never prints credentials) and aborts otherwise.
 Run (PowerShell)::
 
     python seed_inventory.py            # seed (idempotent; exits if demo data exists)
-    python seed_inventory.py --reset-demo   # delete ONLY the rows this script created
+    python seed_inventory.py --catalog      # seed ONLY the brands / sub-categories / products-with-variants
+                                            # catalog (idempotent; skips if DEMO-TSHIRT exists)
+    python seed_inventory.py --reset-demo   # delete ONLY the rows this script created (incl. --catalog data)
 
 All business documents are created by driving the live HTTP API at
 http://localhost:8010 so that ledgers, reservations, document numbers and
@@ -18,6 +20,7 @@ updates afterwards.
 """
 import argparse
 import asyncio
+import itertools
 import os
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -65,9 +68,11 @@ from sqlalchemy import delete, or_, select, update  # noqa: E402
 
 from app.database import async_session_factory  # noqa: E402
 from app.models.inventory import (  # noqa: E402
+    InventoryBrand,
     InventoryCategory,
     InventoryItem,
     InventoryMovement,
+    InventoryProduct,
     InventoryStock,
     InventoryStocktake,
     InventoryStocktakeLine,
@@ -131,6 +136,9 @@ class Api:
 
     async def post(self, path, **kw):
         return await self("POST", path, **kw)
+
+    async def patch(self, path, **kw):
+        return await self("PATCH", path, **kw)
 
     async def aclose(self):
         await self.client.aclose()
@@ -537,6 +545,187 @@ async def seed() -> None:
         await api.aclose()
 
 
+HOUSE = ("自家品牌", "House brand (demo)")
+BRANDS = [
+    ("IKEA", "IKEA (demo)"),
+    ("Nike", "Nike (demo)"),
+    ("Adidas", "Adidas (demo)"),
+    ("Pentel 飛龍", "Pentel (demo)"),
+    ("Muji 無印良品", "Muji (demo)"),
+    ("Casio", "Casio (demo)"),
+    ("Apple", "Apple (demo)"),
+    HOUSE,
+]
+
+# top-level (name_zh, name_en) -> [(sub name_zh, sub name_en)]
+CATALOG_CATEGORIES = [
+    (("校服", "Uniform (demo)"), [("上衣", "Tops (demo)"), ("褲", "Bottoms (demo)"), ("外套", "Jackets (demo)")]),
+    (("文具", "Stationery (demo)"), [("筆", "Pens (demo)"), ("簿", "Notebooks (demo)"), ("計數機", "Calculators (demo)")]),
+    (("家用電器", "Home Appliances (demo)"), [("智能手機", "Smartphones (demo)"), ("平板", "Tablets (demo)")]),
+    (("運動用品", "Sports (demo)"), [("波", "Balls (demo)"), ("運動袋", "Bags (demo)")]),
+]
+
+# code, name_zh, name_en, brand, (top, sub), options, price(attrs), cost(attrs), reorder, barcoded, inactive
+CATALOG_PRODUCTS = [
+    ("DEMO-TSHIRT", "校服 T-shirt", "School T-shirt", "自家品牌", ("校服", "上衣"),
+     {"尺寸": ["S", "M", "L", "XL"]}, lambda a: 85 if a["尺寸"] == "XL" else 80, lambda a: 35, 5, False),
+    ("DEMO-POLO", "校服 Polo", "School Polo", "自家品牌", ("校服", "上衣"),
+     {"尺寸": ["S", "M", "L"], "顏色": ["白", "藍"]}, lambda a: 120, lambda a: 50, 5, False),
+    ("DEMO-PANTS", "校褲", "School Pants", "自家品牌", ("校服", "褲"),
+     {"腰圍": ["26", "28", "30", "32"]}, lambda a: 150, lambda a: 65, 5, False),
+    ("DEMO-JACKET", "運動外套", "Sports Jacket", "Nike", ("校服", "外套"),
+     {"尺寸": ["S", "M", "L", "XL"], "顏色": ["黑", "深藍"]}, lambda a: 380, lambda a: 170, 5, False),
+    ("DEMO-PEN", "啫喱筆 Energel", "Energel Gel Pen", "Pentel 飛龍", ("文具", "筆"),
+     {"顏色": ["黑", "藍", "紅"], "筆嘴": ["0.5", "0.7"]}, lambda a: 12, lambda a: 5, 20, True),
+    ("DEMO-NOTE", "筆記簿", "Notebook", "Muji 無印良品", ("文具", "簿"),
+     {"尺寸": ["A5", "B5"], "款式": ["橫間", "方格", "空白"]}, lambda a: 18, lambda a: 8, 10, False),
+    ("DEMO-IPAD", "iPad", "iPad", "Apple", ("家用電器", "平板"),
+     {"容量": ["64GB", "256GB"], "顏色": ["銀", "太空灰"]},
+     lambda a: 2799 if a["容量"] == "64GB" else 3999, lambda a: 2200 if a["容量"] == "64GB" else 3200, 5, True),
+    ("DEMO-BALL", "籃球", "Basketball", "Adidas", ("運動用品", "波"),
+     {"尺碼": ["5", "6", "7"]}, lambda a: 220, lambda a: 100, 5, False),
+]
+INACTIVE_PRODUCTS = {"DEMO-PANTS"}
+INACTIVE_SKUS = {"DEMO-JACKET-XL-黑"}
+
+# sku, name_zh, name_en, brand, (top, sub|None) | None, uom, sale, cost, reorder
+CATALOG_ITEMS = [
+    ("DEMO-CALC-FX50", "Casio fx-50FH II 計數機", "Casio fx-50FH II Calculator", "Casio", ("文具", "計數機"), "部", 168, 95, 5),
+    ("DEMO-PHONE", "iPhone 16", "iPhone 16", "Apple", ("家用電器", "智能手機"), "部", 6899, 5600, 3),
+    ("DEMO-BAG", "運動袋", "Sports Bag", "Nike", ("運動用品", "運動袋"), "個", 260, 120, 5),
+    ("DEMO-LAMP", "IKEA 枱燈", "IKEA Desk Lamp", "IKEA", ("家用電器", None), "盞", 199, 90, 5),
+    ("DEMO-MISC", "雜項貨品", "Misc Item", None, None, "件", 50, 20, 5),
+]
+
+STOCK_PATTERNS = [(30, 10), (8, 4), (3, 2), (0, 0), (20, 0), (2, 0), (15, 12), (0, 4)]
+
+
+async def seed_catalog() -> None:
+    async with async_session_factory() as db:
+        if (await db.execute(select(InventoryProduct).where(InventoryProduct.code == "DEMO-TSHIRT"))).scalar_one_or_none():
+            print("catalog demo data already present (DEMO-TSHIRT exists)")
+            return
+        created_admin = await ensure_admin(db)
+        wf, ab = await get_locations(db)
+
+    api = Api()
+    try:
+        await api.login(DEMO_ADMIN_USERNAME, DEMO_ADMIN_PASSWORD)
+        inv = "/api/inventory"
+
+        brand_id: dict[str, str] = {b["name_zh"]: b["id"] for b in await api.get(f"{inv}/brands")}
+        for name_zh, name_en in BRANDS:
+            if name_zh not in brand_id:
+                row = await api.post(f"{inv}/brands", json={"name_zh": name_zh, "name_en": name_en})
+                brand_id[name_zh] = row["id"]
+
+        existing = await api.get(f"{inv}/categories")
+        cat_id: dict[tuple[str, str | None], str] = {
+            (c["name_zh"], None): c["id"] for c in existing if not c["parent_id"]
+        }
+        parent_name = {c["id"]: c["name_zh"] for c in existing}
+        for c in existing:
+            if c["parent_id"]:
+                cat_id[(parent_name[c["parent_id"]], c["name_zh"])] = c["id"]
+        for (top_zh, top_en), subs in CATALOG_CATEGORIES:
+            if (top_zh, None) not in cat_id:
+                row = await api.post(f"{inv}/categories", json={"name_zh": top_zh, "name_en": top_en})
+                cat_id[(top_zh, None)] = row["id"]
+            for sub_zh, sub_en in subs:
+                if (top_zh, sub_zh) not in cat_id:
+                    row = await api.post(f"{inv}/categories", json={
+                        "name_zh": sub_zh, "name_en": sub_en, "parent_id": cat_id[(top_zh, None)],
+                    })
+                    cat_id[(top_zh, sub_zh)] = row["id"]
+
+        stock_targets: list[tuple[str, str]] = []  # (item id, sku code)
+        barcode_seq = 4890000000000
+        for code, name_zh, name_en, brand, (top, sub), options, price, cost, reorder, barcoded in CATALOG_PRODUCTS:
+            keys = list(options)
+            skus = []
+            for combo in itertools.product(*(options[k] for k in keys)):
+                attrs = dict(zip(keys, combo))
+                barcode = None
+                if barcoded:
+                    barcode_seq += 1
+                    barcode = str(barcode_seq)
+                skus.append({
+                    "sku_code": f"{code}-{'-'.join(combo)}",
+                    "variant_attrs": attrs,
+                    "sale_price": price(attrs),
+                    "cost_price": cost(attrs),
+                    "barcode": barcode,
+                    "reorder_level": reorder,
+                    "is_active": True,
+                })
+            product = await api.post(f"{inv}/products", json={
+                "code": code, "name_zh": name_zh, "name_en": name_en,
+                "brand_id": brand_id[brand], "category_id": cat_id[(top, sub)],
+                "unit_of_measure": "件", "options": options, "skus": skus,
+            })
+            stock_targets += [(s["id"], s["sku_code"]) for s in product["skus"]]
+
+        for sku, name_zh, name_en, brand, cat, uom, sale, cost, reorder in CATALOG_ITEMS:
+            row = await api.post(f"{inv}/items", json={
+                "sku_code": sku, "name_zh": name_zh, "name_en": name_en,
+                "brand_id": brand_id[brand] if brand else None,
+                "category_id": cat_id[cat] if cat else None,
+                "unit_of_measure": uom, "sale_price": sale, "cost_price": cost, "reorder_level": reorder,
+            })
+            stock_targets.append((row["id"], sku))
+
+        movements = 0
+        for index, (item_id, _sku) in enumerate(stock_targets):
+            for loc, qty in zip((wf, ab), STOCK_PATTERNS[index % len(STOCK_PATTERNS)]):
+                if qty <= 0:
+                    continue
+                await api.post(f"{inv}/movements", json={
+                    "item_id": item_id, "warehouse_id": str(loc.id), "type": "in",
+                    "quantity": qty, "reason_code": "opening",
+                    "reason": f"{DEMO} opening stock {loc.code}",
+                })
+                movements += 1
+
+        # deactivate last: movements are rejected for inactive items
+        products = {p["code"]: p for p in await api.get(f"{inv}/products", params={"page_size": 200})}
+        for code in INACTIVE_PRODUCTS:
+            await api.patch(f"{inv}/products/{products[code]['id']}", json={"is_active": False})
+        for sku in INACTIVE_SKUS:
+            sku_id = next(s["id"] for p in products.values() for s in p["skus"] if s["sku_code"] == sku)
+            await api.patch(f"{inv}/items/{sku_id}", json={"is_active": False})
+
+        print("=== inventory catalog demo seed done ===")
+        print(f"admin login: {DEMO_ADMIN_USERNAME} / {DEMO_ADMIN_PASSWORD} ({'created' if created_admin else 'existing/updated'})")
+        sku_total = sum(len(p["skus"]) for p in products.values() if p["code"].startswith("DEMO-"))
+        print(f"brands: {len(BRANDS)} | categories: {sum(1 + len(s) for _t, s in CATALOG_CATEGORIES)} "
+              f"| products: {len(CATALOG_PRODUCTS)} ({sku_total} SKUs) | standalone items: {len(CATALOG_ITEMS)} "
+              f"| opening-stock movements: {movements}")
+        print(f"inactive: products {sorted(INACTIVE_PRODUCTS)}, SKUs {sorted(INACTIVE_SKUS)}")
+    finally:
+        await api.aclose()
+
+
+async def _reset_catalog(db) -> None:
+    """Remove catalog demo rows. Items/stocks are already removed by the caller."""
+    await db.execute(delete(InventoryProduct).where(InventoryProduct.code.like("DEMO-%")))
+
+    referenced_brands = select(InventoryItem.brand_id).where(InventoryItem.brand_id.is_not(None)).union(
+        select(InventoryProduct.brand_id).where(InventoryProduct.brand_id.is_not(None))
+    )
+    await db.execute(delete(InventoryBrand).where(
+        InventoryBrand.name_en.like("%(demo)%"), InventoryBrand.id.not_in(referenced_brands)))
+
+    # children first; keep categories still used by real items/products or still having real children
+    for children in (True, False):
+        used = select(InventoryItem.category_id).where(InventoryItem.category_id.is_not(None)).union(
+            select(InventoryProduct.category_id).where(InventoryProduct.category_id.is_not(None)),
+            select(InventoryCategory.parent_id).where(InventoryCategory.parent_id.is_not(None)),
+        )
+        cond = InventoryCategory.parent_id.is_not(None) if children else InventoryCategory.parent_id.is_(None)
+        await db.execute(delete(InventoryCategory).where(
+            InventoryCategory.name_en.like("%(demo)%"), cond, InventoryCategory.id.not_in(used)))
+
+
 async def reset_demo() -> None:
     """Delete ONLY rows created by seed(): anything marked with [demo] in
     notes/reason, DEMO- prefixed codes, and rows referencing those documents."""
@@ -638,8 +827,7 @@ async def reset_demo() -> None:
         if demo_items:
             await db.execute(delete(InventoryStock).where(InventoryStock.item_id.in_(demo_items)))
             await db.execute(delete(InventoryItem).where(InventoryItem.id.in_(demo_items)))
-        await db.execute(delete(InventoryCategory).where(
-            InventoryCategory.name_en.like("%(demo)%")))
+        await _reset_catalog(db)
         await db.execute(delete(Supplier).where(Supplier.code.like("DEMO-%")))
         if customer_ids:
             await db.execute(delete(Customer).where(Customer.id.in_(customer_ids)))
@@ -653,9 +841,12 @@ async def reset_demo() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed inventory demo data (attendance_inventory only)")
     parser.add_argument("--reset-demo", action="store_true", help="delete only rows created by this seed")
+    parser.add_argument("--catalog", action="store_true", help="seed only the brands/categories/products catalog data")
     args = parser.parse_args()
     if args.reset_demo:
         asyncio.run(reset_demo())
+    elif args.catalog:
+        asyncio.run(seed_catalog())
     else:
         asyncio.run(seed())
 
