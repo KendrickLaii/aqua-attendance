@@ -4,6 +4,8 @@
 
 ## [2026-11-10]（Inventory 貨品頁改版）
 
+- 庫存異動 **effective date**（Migration **055**）：`inventory_movements.effective_date`（DATE 可空，有索引）。GRN Confirm 寫入 `receipt_date`，補舊收貨單喺異動紀錄同報表（`GET /movements`、`/reports/movements-summary`、`/reports/write-offs` 日期篩選）跟實際收貨日；排序同 `balance_after` 仍用 `created_at`。`InventoryMovementOut` 加 `effective_date`；Postgres 升級時回填舊 GRN 入庫異動；異動頁日期格顯示「Received DD/MM/YYYY」。新增 API 測試。
+
 - 收貨單（GRN）日期更正：Draft 收貨單詳情 ⋮ 選單新增 **Edit date & notes**（用現有 `PATCH /goods-receipts/{id}`），詳情顯示 notes；建立表單 Receipt date 加提示（補舊單填實際日期）；Void 選項說明加「日期錯咗可以作廢再開過」。新增 API 測試：draft 可改 `receipt_date`、已確認 409。
 
 - 貨品彈窗規格編輯器：Option name／Values 會建議其他貨品用過嘅規格同選項（大小寫自動對齊，可「Add all」，仍可輸入新嘅）；純前端，由現有產品 `options` 推算（`utils/inventoryGoods.ts` `buildOptionSuggestions`，附單元測試）。

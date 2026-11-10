@@ -435,6 +435,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 - 折讓單行金額會按行小計比例攤分發票整單折扣（尾差落在最後一行），所以有折扣嘅發票可以全數折讓；折讓總額仍不能超過發票未收餘額，已全數收款嘅發票要先作廢收據（UI 會停用 Create Credit Note）。
 - 庫存移動列表 `date_from`／`date_to` 按香港日曆日計；items 列表搜尋（server 同 web）包含 `barcode`；銷售單列表 API 支援 `search`（so_no／buyer_name）。CSV import 只喺 CSV 有 `barcode`／`other_cost` 欄時先會更新對應欄位；`NaN`／`Infinity` 當錯誤行。
 - GRN 日期更正：只有 **draft** 收貨單可改（`PATCH /goods-receipts/{id}`：`receipt_date`／`notes`／`lines`，非 draft 回 409）；Web 在詳情右上 ⋮ → Edit date & notes。已確認嘅要改日期就 Void 再重開。
+- 庫存異動 effective date（Migration **055**）：`inventory_movements.effective_date`（DATE，可空，NULL＝同 `created_at` 日期）。只有 **GRN Confirm** 會寫入（＝`receipt_date`），GRN void 同其他來源一律 NULL。排序同 `balance_after` 仍然跟 `created_at`，**唔跟** effective date。`GET /movements` 同 `/reports/movements-summary`、`/reports/write-offs` 嘅 `date_from`／`date_to`：有 effective_date 就用佢，否則用 `created_at`（`services/inventory.py::movement_date_clause`）。Web 異動頁日期格如與 `created_at` 本地日期不同會顯示「Received DD/MM/YYYY」。Postgres 升級時會用 `goods_receipts.receipt_date` 回填舊 GRN 入庫異動。
 - Item 欄位（Migration **051**）：`inventory_items` 加 `barcode`（String(100)，可空，有 index、非 unique；API trim 後空白存 NULL）同 `other_cost`（Numeric(10,2)，可空，≥0）。`cost_price` 欄名不變；Item dialog label 改「Purchase price」，Items 表頭「Cost」改「Purchase price」並加「Other cost」欄。Items CSV export／import 加 `barcode`、`other_cost` 兩欄；舊 CSV 冇呢兩欄照樣入到（update 時會清返 NULL，同 `cost_price` 一致）。
 
 #### 倉庫同中心脫鉤（Migration 052）
@@ -1294,7 +1295,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 054）
+# 最新可用版本（目前最新為 055）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -1310,7 +1311,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 054**（inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫同中心脫鉤；051 為 item `barcode`＋`other_cost`；050 為 staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 055**（inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫同中心脫鉤；051 為 item `barcode`＋`other_cost`；050 為 staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1679,7 +1680,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**054**（inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）。
+目前 Alembic head：**055**（inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）→ 庫存異動 effective_date（055）。
 
 ### 10.2 核心 ER 圖
 
@@ -2066,9 +2067,9 @@ erDiagram
     tuition_invoices ||--o{ tuition_receipt_invoices : "paid by"
 ```
 
-### 10.3 Inventory ER 圖（042–054）
+### 10.3 Inventory ER 圖（042–055）
 
-Inventory 相關表全部新增（042–054），與學費／課程 schema 分開。庫存數量同單據指 `inventory_warehouses`；倉庫可以可選掛住打卡中心 `locations`。`customers` 先至指 `units`。唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
+Inventory 相關表全部新增（042–054；055 為 `inventory_movements.effective_date`），與學費／課程 schema 分開。庫存數量同單據指 `inventory_warehouses`；倉庫可以可選掛住打卡中心 `locations`。`customers` 先至指 `units`。唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
 
 ```mermaid
 erDiagram
@@ -2172,6 +2173,7 @@ erDiagram
         numeric unit_cost
         string reference "unique"
         uuid created_by FK
+        date effective_date "nullable, indexed (055); NULL = created_at date"
         datetime created_at
     }
 
@@ -2471,4 +2473,4 @@ erDiagram
     inventory_items ||--o{ inventory_credit_note_lines : "credited"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **054**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **055**）。
