@@ -2,6 +2,27 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [2026-11-10]（Inventory 貨品頁改版）
+
+- 貨品頁、分類與品牌頁、貨品彈窗改為英文介面（提示可附粵語）；`seed_inventory.py` 新增 `--catalog`（品牌／子分類／多規格貨品 demo 資料，`--reset-demo` 會一併清除）。
+
+### 新增（Inventory 品牌、子分類、多規格貨品）
+
+- **品牌同兩層分類**（Migration **054**）：新表 `inventory_brands`（`name_zh`／`name_en`／`is_active`，名稱 trim 後唔分大小寫唔可重複，409）；`inventory_categories` 加 `parent_id`（自我 FK，RESTRICT，有索引，最多兩層）；`inventory_products`、`inventory_items` 加 `brand_id`（FK RESTRICT，可空，有索引）。品牌同分類互相獨立。新 API `GET/POST /api/inventory/brands`、`PATCH /api/inventory/brands/{id}`（Admin，無 DELETE）；分類規則：上層要存在且係頂層、有子分類嘅分類唔可以掛上層、同層重名 409。`GET /items`、`GET /products` 加 `?brand_id=`，`?category_id=` 會包含子分類。
+- **產品（多規格貨品）一次過儲存**：`POST/PATCH /api/inventory/products` 可帶 `skus`（每行有 `id`＝更新、冇 `id`＝新增；編號、規格值、售價、入貨價、其他成本、條碼、安全庫存、啟用）。全部喺同一個 transaction，驗證失敗就乜都唔寫入。SKU 名稱一律由產品名＋規格值計出；產品改名稱／分類／品牌／單位會同步到所有 SKU。加新規格 key 時要喺同一次請求為所有現有 SKU 補值，否則 422。`generate-skus` 端點保留但頁面唔再用。Options 組合數上限 200。
+- **庫存總數 `on_hand`**：`InventoryItemOut` 加 `on_hand`（所有倉庫 `quantity` 總和），列表同產品內嵌 `skus` 都係分組一次查詢，冇 N+1。
+- **CSV**：Items 匯出加 `brand` 欄，`category` 欄子分類輸出為 `上層 > 子分類`；匯入接受路徑或單一名稱（單一名稱撞多個分類時報錯，要用路徑），未知品牌報錯（唔會自動建立）；舊 CSV（冇 brand 欄）照樣入到。
+
+### 變更（Inventory 貨品頁）
+
+- `/attendance/inventory/items` 改版：一行一件貨（多規格貨品可展開睇規格），新增貨品用單一彈窗（可開「多個規格」並喺表格填各規格價錢），搜尋／品牌／分類篩選，顯示售價、庫存同狀態。分類同品牌移到新頁 `/attendance/inventory/categories`，貨品彈窗內亦可即時新增。
+
+## [2026-11-10]（Inventory SPU／SKU）
+
+### 新增（Inventory 產品 SPU）
+
+- **SPU 層**（Migration **053**）：新表 `inventory_products`（`code` unique、名稱、類別、單位、圖、`options` JSON、`is_active`）；`inventory_items` 加 `product_id`（FK `inventory_products.id`，RESTRICT，可空，有索引）同 `variant_attrs`（JSON，可空）。1 個 SPU 對 N 個 SKU，SKU 仍然係 `inventory_items` 嘅真實 row，庫存、流水、單據 FK 不變。新 API `GET/POST /api/inventory/products`、`GET/PATCH /api/inventory/products/{id}`、`POST /api/inventory/products/{id}/generate-skus`（Admin）；`GET /api/inventory/items` 加 `?product_id=`。`skus` 同 `sku_count` 係計出嚟嘅回應欄位，唔入庫。Options 組合數上限 200；已有 SKU 缺新 option key 時產生 SKU 回 409，要先補值。Items 頁加「Add Product (SPU)」、按產品分組顯示 SKU、一鍵產生 SKU 彈窗；Item 彈窗可揀 Product 同規格值。
+
 ## [2026-11-05]（Inventory 開始頁）
 
 ### 變更（Inventory）

@@ -24,7 +24,7 @@
 10. [資料庫](#10-資料庫)
     - [10.1 設計決策](#101-設計決策)
     - [10.2 核心 ER 圖](#102-核心-er-圖)
-    - [10.3 Inventory ER 圖](#103-inventory-er-圖042052)
+    - [10.3 Inventory ER 圖](#103-inventory-er-圖042054)
 
 ---
 
@@ -156,6 +156,8 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `GET /api/features` | 無（feature flags；`{"inventory": bool}`） |
 | `GET/POST/PATCH/DELETE /api/inventory/...` | Admin（`admin`／`superadmin`，同其他 Admin 端點一致）；`INVENTORY_ENABLED=false` 時全部 **404** |
 | `GET/POST /api/inventory/warehouses`、`PATCH/DELETE /api/inventory/warehouses/{id}` | Admin；被引用時 DELETE **409**（改為停用）；code 重複 **409** |
+| `GET/POST /api/inventory/brands`、`PATCH /api/inventory/brands/{id}`、`GET/POST /api/inventory/categories`、`PATCH /api/inventory/categories/{id}` | Admin；品牌名重複 **409**；分類上層不存在／超過兩層／自己做上層／有子分類仲掛上層 **422**；同層重名 **409**；無 DELETE |
+| `GET/POST /api/inventory/products`、`GET/PATCH /api/inventory/products/{id}`、`POST /api/inventory/products/{id}/generate-skus` | Admin；POST／PATCH 可帶 `skus`（一次過寫入，失敗全部唔寫）；code 重複 **409**；PATCH 移走仍被 SKU 使用嘅 option **409**；generate 撞 SKU code **409**（全部唔建立）、冇 options **422**；無 DELETE |
 
 ### 1.7 環境變數
 
@@ -454,6 +456,40 @@ API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
 | DELETE | `/api/inventory/warehouses/{id}` | 有庫存、流水或單據（含編號 counter）→ 409，應改為停用 |
 
 列印 payload 用 `warehouse_name_zh`／`warehouse_name_en`／`warehouse_address`／`warehouse_phone`（顯示名係 name_en，冇就 name_zh）。Web 頁 `/attendance/inventory/warehouses`；庫存各頁選單改 Warehouse，冇倉庫時總覽空狀態連去倉庫頁。
+
+#### SPU／SKU（Migration 053）
+
+喺品項（SKU）上面加一層產品（SPU）：1 個 SPU 對 N 個 SKU。**SKU 仍然係 `inventory_items` 嘅真實 row**，庫存、流水、PO／SO／發票行等所有 FK 照舊指 `inventory_items.id`，冇改。之後 BOM 會引用 SKU id。
+
+- 新表 `inventory_products`：`code` String(100) UNIQUE（有 index）、`name_zh` 必填、`name_en`／`unit_of_measure`／`image_url` 可空、`category_id`（FK `inventory_categories.id` RESTRICT，可空，有 index）、`options` JSON（形狀 `dict[str, list[str]]`，例 `{"尺寸":["S","M","L","XL"]}`）、`is_active`、`created_at`／`updated_at`。
+- `inventory_items` 加 `product_id`（FK `inventory_products.id` RESTRICT，可空，有 index）同 `variant_attrs`（JSON，可空，形狀 `dict[str, str]`，例 `{"尺寸":"S"}`）。
+- API 回應 `InventoryProductOut` 帶 `skus`（`InventoryItemOut` 陣列，按 `sku_code` 排序）同 `sku_count`，兩者**都係計出嚟，唔儲存**；列表用 `selectinload` 一次載入，冇 N+1。
+- `options` 驗證：key trim 後 1–50 字、最多 5 個 key；每個 key 至少 1 個值、最多 50 個值，值 trim 後非空且同 key 內唔重複；各 key 值數量相乘（組合數）**最多 200**，超過 422（`Options produce N combinations; the maximum is 200`），Web 產品彈窗即時顯示組合數並停用 Save；空 dict 存 NULL。
+- 無 DELETE，停用用 `is_active`（同 items／categories 一致）。`code` 重複 409；`category_id` 要存在，否則 422。
+- PATCH `options`：如果移走嘅 key 或值仍然被該產品任何 SKU 嘅 `variant_attrs` 用緊 → **409**；新增 key／值可以（舊 SKU 就冇呢個 key）。
+- `POST /products/{id}/generate-skus`（054 起頁面唔再用，API 保留；body：`sale_price`、`cost_price` 可空 ≥0，`reorder_level` ≥0 預設 0）：按 `options` 嘅 key 次序同值次序做笛卡兒積；已有相同 `variant_attrs` 嘅組合跳過（所以重複執行、加值後再執行都安全）。每個新 SKU：`sku_code = {product.code}-{值以 - 連接}`、`name_zh = {product.name_zh} {值以 / 連接}`（`name_en` 同樣，產品有先填）、複製產品嘅 `category_id`／`unit_of_measure`／`image_url`、寫 `variant_attrs`。已有 SKU 嘅 `variant_attrs`（非空）key 集同 `options` key 集不同（例如已有 SKU 之後先加咗新 option key）→ **409** `SKUs … are missing option(s) …`，要先喺 Item 編輯補返新 key 嘅值先可以產生（`variant_attrs` 為空／null 嘅手動掛靠 SKU 唔計）；Web 產生彈窗會預先警告並停用 Generate；產品冇 `options` → 422；產生嘅 code 超過 100 字 → 422；任何 code 已被其他品項用 → 409 並列出衝突 code，**全部唔建立**。永遠回 200 同最新 `InventoryProductOut`；一次 audit 記錄建立嘅 code。
+- Items 建立／更新：`product_id` 要存在，否則 422；冇 `product_id` 就唔可以有 `variant_attrs`（422）；產品有 `options` 時 `variant_attrs` 嘅 key 要係 option key、值要喺該 key 嘅值內（422）；同一產品其他 SKU 已用相同 `variant_attrs` → 409。PATCH 將 `product_id` 設 null 會同時清走 `variant_attrs`。`GET /items` 加 `?product_id=`。
+- Items CSV 匯入／匯出仍**未**支援產品欄位（`product_code`／`variant_attrs`，見 §5 #L8）；品牌同分類路徑見下面 054。
+- 授權：所有新端點 AdminOnly，受 `INVENTORY_ENABLED` 把關。
+- Web：見下面「貨品頁（054 改版）」。
+
+#### 品牌、兩層分類、貨品一次過儲存（Migration 054）
+
+- 新表 `inventory_brands`：`name_zh` 必填（trim 後唔分大小寫唔可重複，409）、`name_en`、`is_active`、timestamps。無 DELETE，停用用 `is_active`。`GET /brands?is_active=`、`POST /brands`、`PATCH /brands/{id}`。
+- `inventory_categories.parent_id`（自我 FK，ON DELETE RESTRICT，可空，有 index）：最多兩層（分類 › 子分類）。建立／PATCH 規則：`parent_id` 要存在（422）且本身係頂層（422 `Only 2 levels allowed`）；自己唔可以做自己上層（422）；有子分類嘅分類唔可以掛上層（422）；同一上層下 `name_zh` trim 後唔分大小寫唔可重複（409，頂層之間亦然）。`InventoryCategoryOut` 帶 `parent_id`。
+- `inventory_products.brand_id`、`inventory_items.brand_id`：FK `inventory_brands.id` RESTRICT，可空，有 index；`brand_id` 要存在，否則 422。品牌同分類互相獨立，分類可以揀頂層或子分類。
+- 篩選：`GET /items`、`GET /products` 加 `?brand_id=`；`?category_id=` 會包含該分類嘅子分類。
+- **產品 + 規格一次過儲存**：`POST /products`、`PATCH /products/{id}` 的 body 可帶 `skus`（`InventoryProductSkuInput`：`id`、`sku_code`、`variant_attrs`（必填，非空）、`sale_price`、`cost_price`、`other_cost`（≥0）、`barcode`、`reorder_level`（預設 0）、`is_active`（預設 true））。整個請求喺同一個 transaction，任何驗證失敗就 rollback，乜都唔寫入。
+  - POST：`skus` 入面唔可以有 `id`（422）；有 `skus` 就一定要有 `options`（422）。
+  - PATCH：有 `id` ＝更新該 SKU（`id` 必須屬於呢個產品，否則 422）；冇 `id` ＝新增。**冇列出嘅 SKU 保持不變，永不刪除**（有庫存歷史）。
+  - 套用後驗證：每個有 `variant_attrs` 嘅 SKU 嘅 key 集要同 `options` key 集完全一致、值要喺 `options` 內（422 並指出 SKU）；兩個 SKU 唔可以有相同 attrs（409）；`sku_code` 喺請求內同 DB 內唔可重複（409 並列出）。所以**加新規格 key 要喺同一次 PATCH 用 `id` 行為所有現有 SKU 補值**，否則 422，唔會留下「做咗一半」嘅狀態。冇帶 `skus` 嘅 PATCH 維持舊行為（移走仍被使用嘅 option 值 409）。Options 組合數 ≤ 200 規則不變。
+  - SKU `name_zh`／`name_en` 一律由產品名＋規格值（以 ` / ` 連接）計出，client 傳嘅名稱唔採用；冇 attrs 嘅 SKU 只用產品名。產品 PATCH 改咗名稱、分類、品牌或單位，會同步到**所有** SKU（名稱用各自 attrs 重新計）；新 SKU 建立時複製產品 `image_url`，之後改產品圖唔會同步。
+  - 一次請求一條 audit 記錄，列出建立同更新嘅 SKU code。
+  - **停用不變式**：產品 `is_active=false` ⇒ 其所有 SKU 一律 `is_active=false`（POST／PATCH 套用完 `skus` 後強制，無視 payload；audit 記錄 `deactivated_skus`）。重新啟用產品唔會自動啟用 SKU，由 payload 各行決定。`POST／PATCH /items` 將屬於停用產品嘅 SKU 設為 `is_active=true` → **409** `Product is inactive`。
+- `InventoryItemOut` 加 `brand_id`、`on_hand`（所有倉庫 `inventory_stocks.quantity` 總和，冇庫存為 0）。`on_hand` 只喺 `/items`、`/items/{id}`、items POST／PATCH、`/products*` 嘅內嵌 `skus` 填值（分組一次查詢，冇 N+1），其他回傳 item 嘅端點預設 0。
+- Items CSV：匯出加 `brand` 欄（品牌 `name_zh`），`category` 欄子分類輸出 `上層 > 子分類`。匯入：`category` 接受路徑或單一名稱（單一名稱符合多個分類 → 該行報錯，要用路徑；找唔到仍然自動建立，路徑會連上層一齊建立）；`brand` 欄有值但搵唔到品牌 → 報錯（唔會自動建立品牌，整個匯入 422 不寫入）；冇 `brand` 欄嘅舊 CSV 唔會改動品牌。
+- 貨品頁（054 改版）：`/attendance/inventory/items` 一行一件貨（單品或多規格貨品，可展開規格），篩選（搜尋／品牌／分類含子分類／顯示已停用），欄位：貨品、品牌、分類路徑、售價（多規格顯示範圍）、庫存（有規格庫存 ≤ 安全庫存且安全庫存 > 0 時警示）、狀態。新增／編輯用單一「貨品」彈窗（名稱、編號、品牌、分類、單位、圖片；「此貨品有多個規格」開關：關＝單品價錢欄位；開＝規格編輯器＋各規格表格，儲存時 POST／PATCH `/products` 帶 `skus`）。已存在嘅單品唔可以轉做多規格（見 §5 #L10），多規格貨品亦唔可以改返單品；已被 SKU 使用嘅選項值唔可移除。分類同品牌管理喺 `/attendance/inventory/categories`（側欄 Inventory → Stock → Categories & Brands），貨品彈窗內可以用 ＋ 即時新增。
+- Demo 資料：`apps/api/seed_inventory.py --catalog`（只可對 DB `attendance_inventory` 執行，經 API :8010、以 `demo_admin` 登入）只種品牌、兩層分類、8 個多規格貨品同 5 個單品，連期初庫存；已有 `DEMO-TSHIRT` 就跳過。`--reset-demo` 會一併清走（SKU → 產品 → 品牌 → 子分類 → 頂層分類；仍被非 demo 資料使用嘅會保留）。
 
 ---
 
@@ -1124,6 +1160,28 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **問題**：`python seed.py` 預設寫入 summaries。已有 `--summaries` flag（僅 summaries），但無反向的 `--no-summaries` flag。
 - **建議**：加 `--no-summaries` flag。
 
+#### #L8 Items CSV 未支援產品／規格欄位
+
+- **位置**：`apps/api/app/routers/inventory.py` Items CSV export／import
+- **問題**：CSV 已有 `brand` 同分類路徑（054），但冇 `product_code`／`variant_attrs` 欄；匯出會失去產品歸屬，匯入亦無法建立或更新 SKU 嘅產品同規格。
+- **建議**：加 `product_code`（按 `inventory_products.code` 對應）同 `variant_attrs`（JSON 或 `key:value;…`）兩欄，並套用同 API 一樣嘅驗證。
+
+#### #L9 Inventory 未有 BOM（物料清單）
+
+- **位置**：Inventory 模組（`apps/api/app/models/inventory.py`、`apps/api/app/routers/inventory.py`、Items 頁）
+- **問題**：未能定義「一件貨由邊啲 SKU 組成」，例如新生套裝 = 1 × `TSHIRT-M` + 2 × `BOOK-A4` + 1 × `PENCASE`。SPU／SKU（Migration 053）已經落地，BOM 係下一步。
+- **建議**：新表 `inventory_bom_lines`（`parent_item_id`、`component_item_id` 都 FK `inventory_items.id` RESTRICT、`quantity`；unique (`parent_item_id`, `component_item_id`)；禁止自己引用自己同循環）。零件一律引用 SKU id，唔引用 SPU。開工前要同用戶拍板：
+  1. 扣庫存方式：賣套裝時即時扣零件（套裝唔入庫），定係先「組裝」入庫成品再賣；
+  2. 套裝成本點計（零件 `avg_cost` 加總，定手填）；
+  3. 是否容許 BOM 多層（套裝入面再有套裝）；
+  4. 拆裝／退貨時零件點樣還原庫存。
+
+#### #L10 單品暫時唔可以轉做多規格貨品
+
+- **位置**：`apps/api/app/routers/inventory.py`（`PATCH /items/{id}`、`PATCH /products/{id}`）、Items 頁貨品彈窗
+- **問題**：已建立嘅單品（冇 `product_id`）喺貨品彈窗唔可以開「多個規格」；要轉換只可以新建產品再逐個 `PATCH /items/{id}` 掛上 `product_id`＋`variant_attrs`。多規格貨品亦唔可以改返單品。
+- **建議**：加轉換端點（例如 `POST /items/{id}/convert-to-product`），喺同一 transaction 建立產品、將該 item 變成第一個 SKU（保留 `id` 同庫存／單據），再補其他規格。
+
 ### ⚠️ 設計取捨（已知且接受）
 
 | # | 項目 | 說明 |
@@ -1233,7 +1291,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 052）
+# 最新可用版本（目前最新為 054）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -1249,7 +1307,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 052**（inventory 倉庫同中心脫鉤；051 為 item `barcode`＋`other_cost`；050 為 staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 054**（inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫同中心脫鉤；051 為 item `barcode`＋`other_cost`；050 為 staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1618,7 +1676,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**052**（inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）。
+目前 Alembic head：**054**（inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）。
 
 ### 10.2 核心 ER 圖
 
@@ -2005,9 +2063,9 @@ erDiagram
     tuition_invoices ||--o{ tuition_receipt_invoices : "paid by"
 ```
 
-### 10.3 Inventory ER 圖（042–052）
+### 10.3 Inventory ER 圖（042–054）
 
-Inventory 相關表全部新增（042–052），與學費／課程 schema 分開。庫存數量同單據指 `inventory_warehouses`；倉庫可以可選掛住打卡中心 `locations`。`customers` 先至指 `units`。唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
+Inventory 相關表全部新增（042–054），與學費／課程 schema 分開。庫存數量同單據指 `inventory_warehouses`；倉庫可以可選掛住打卡中心 `locations`。`customers` 先至指 `units`。唔指向 `course_*`／`tuition_*`／`attendance_*`。`INVENTORY_ENABLED` 關時表仍然喺 DB 度，只係 API 全部 404。
 
 ```mermaid
 erDiagram
@@ -2035,12 +2093,37 @@ erDiagram
         datetime created_at
     }
 
-    inventory_categories {
+    inventory_brands {
         uuid id PK
         string name_zh
         string name_en
         boolean is_active
         datetime created_at
+        datetime updated_at
+    }
+
+    inventory_categories {
+        uuid id PK
+        uuid parent_id FK "self, nullable, indexed (054)"
+        string name_zh
+        string name_en
+        boolean is_active
+        datetime created_at
+    }
+
+    inventory_products {
+        uuid id PK
+        string code "unique (053)"
+        string name_zh
+        string name_en
+        uuid category_id FK
+        uuid brand_id FK "nullable, indexed (054)"
+        string unit_of_measure
+        string image_url
+        json options "dict[str, list[str]]"
+        boolean is_active
+        datetime created_at
+        datetime updated_at
     }
 
     inventory_items {
@@ -2049,6 +2132,9 @@ erDiagram
         string name_zh
         string name_en
         uuid category_id FK
+        uuid product_id FK "nullable, indexed (053)"
+        uuid brand_id FK "nullable, indexed (054)"
+        json variant_attrs "dict[str, str] (053)"
         string unit_of_measure
         string barcode "indexed, not unique (051)"
         numeric cost_price
@@ -2338,6 +2424,11 @@ erDiagram
     inventory_warehouses ||--o{ inventory_credit_notes : "issued at"
     units ||--o| customers : "links (student_unit_id)"
     inventory_categories ||--o{ inventory_items : "groups"
+    inventory_categories ||--o{ inventory_products : "groups"
+    inventory_categories ||--o{ inventory_categories : "has sub-categories"
+    inventory_brands ||--o{ inventory_items : "brands"
+    inventory_brands ||--o{ inventory_products : "brands"
+    inventory_products ||--o{ inventory_items : "has SKUs"
     inventory_items ||--o{ inventory_stocks : "on-hand"
     inventory_items ||--o{ inventory_movements : "moved"
     inventory_items ||--o{ inventory_stocktake_lines : "counted in"
@@ -2377,4 +2468,4 @@ erDiagram
     inventory_items ||--o{ inventory_credit_note_lines : "credited"
 ```
 
-> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **052**）。
+> **備註**：`device_profiles` 與 `goods_profiles` 為未來擴充表，此處省略。Inventory 相關表見 §10.3。完整 migration 歷史見 `apps/api/alembic/versions/` 同 §10.1（目前 head **054**）。

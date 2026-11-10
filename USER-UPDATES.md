@@ -7,6 +7,25 @@
 
 ---
 
+## 10/11/2026
+
+### 【測試機】Inventory 貨品頁改版：New item、多個規格、Categories & Brands
+
+<http://3.114.114.143/attendance/inventory/items>
+
+<http://3.114.114.143/attendance/inventory/categories>
+
+- 貨品頁改成「一行一件貨」；有多個規格嘅貨品可以撳左邊箭咀展開，睇到每個規格（Variant）嘅 Sale price、Cost price、Barcode 同 Stock
+- 右上角撳 **New item**：填 Name、Code、Brand、Category，就可以儲存一件單品
+- 如果貨品有多個規格（例如校服 T-shirt 有 S／M／L／XL），打開 **「This item has variants」**，填 Option name 同 Values（例如 Size：S, M, L, XL），下面會自動出一行行嘅表格，喺表格直接填每個規格嘅價錢、條碼同 Reorder level，最後撳 **Save** 一次過搞掂
+- 表格上面有 **Apply to all**，價錢相同嘅規格可以一次填晒
+- 之後想加新規格（例如 XXL），打開呢件貨再加 Values，新嘅規格會標示「New」；已經有庫存紀錄嘅選項唔可以刪除，但可以喺表格停用
+- 如果將整件貨停用（Active 關閉），佢所有規格會一齊停用
+- **Categories & Brands** 有獨立頁面（右上角 Categories & Brands 按鈕）：分類最多兩層（例如：家用電器 › 智能手機），Brand（例如 IKEA）係獨立欄位，兩者可以自由配搭；New item 時都可以按旁邊嘅 ＋ 即時新增
+- 貨品頁可以按名稱／編號／條碼、Brand、Category 篩選；揀上層分類會包括佢下面嘅子分類
+- CSV 匯入／匯出（右上角 CSV 掣）多咗 brand 欄，子分類會寫成「上層 > 子分類」；暫時 CSV 未有多規格資料
+- 已經有嘅單品唔受影響；單品暫時唔可以改做多規格
+
 ## 05/11/2026
 
 ### 【測試機】Inventory 開始頁改為倉庫步驟
