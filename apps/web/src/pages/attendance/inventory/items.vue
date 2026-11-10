@@ -19,6 +19,7 @@ import { formatMoney } from '@/utils/inventoryDisplay'
 import {
   type GoodsEditing,
   buildCategoryOptions,
+  buildOptionSuggestions,
   categoryIdsWithChildren,
   categoryPath,
 } from '@/utils/inventoryGoods'
@@ -67,6 +68,7 @@ const editing = ref<GoodsEditing | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
 
+const optionSuggestions = computed(() => buildOptionSuggestions(products.value))
 const brandById = computed(() => new Map(brands.value.map(b => [b.id, b])))
 const categoryOptions = computed(() => buildCategoryOptions(categories.value))
 
@@ -623,6 +625,7 @@ async function onImportFile(event: Event) {
       :editing="editing"
       :categories="categories"
       :brands="brands"
+      :option-suggestions="optionSuggestions"
       @saved="loadAll"
       @lookups-changed="reloadLookups"
     />

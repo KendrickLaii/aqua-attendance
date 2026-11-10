@@ -80,6 +80,7 @@ declare global {
   const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
   const buildCategoryOptions: typeof import('./src/utils/inventoryGoods')['buildCategoryOptions']
   const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
+  const buildOptionSuggestions: typeof import('./src/utils/inventoryGoods')['buildOptionSuggestions']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
   const buildShiftCsv: typeof import('./src/utils/shiftDisplay')['buildShiftCsv']
   const buildShiftPrintHtml: typeof import('./src/utils/printShiftWeek')['buildShiftPrintHtml']
@@ -90,6 +91,8 @@ declare global {
   const canApprovePayroll: typeof import('./src/utils/payrollDisplay')['canApprovePayroll']
   const canEditPayrollAdjustments: typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']
   const canPayPayroll: typeof import('./src/utils/payrollDisplay')['canPayPayroll']
+  const canonicalOption: typeof import('./src/utils/inventoryGoods')['canonicalOption']
+  const canonicalValue: typeof import('./src/utils/inventoryGoods')['canonicalValue']
   const cardCoverUrl: typeof import('./src/utils/locationHours')['cardCoverUrl']
   const categoryIdsWithChildren: typeof import('./src/utils/inventoryGoods')['categoryIdsWithChildren']
   const categoryPath: typeof import('./src/utils/inventoryGoods')['categoryPath']
@@ -741,6 +744,7 @@ declare module 'vue' {
     readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
     readonly buildCategoryOptions: UnwrapRef<typeof import('./src/utils/inventoryGoods')['buildCategoryOptions']>
     readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
+    readonly buildOptionSuggestions: UnwrapRef<typeof import('./src/utils/inventoryGoods')['buildOptionSuggestions']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
     readonly buildShiftCsv: UnwrapRef<typeof import('./src/utils/shiftDisplay')['buildShiftCsv']>
     readonly buildShiftPrintHtml: UnwrapRef<typeof import('./src/utils/printShiftWeek')['buildShiftPrintHtml']>
@@ -751,6 +755,8 @@ declare module 'vue' {
     readonly canApprovePayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canApprovePayroll']>
     readonly canEditPayrollAdjustments: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']>
     readonly canPayPayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canPayPayroll']>
+    readonly canonicalOption: UnwrapRef<typeof import('./src/utils/inventoryGoods')['canonicalOption']>
+    readonly canonicalValue: UnwrapRef<typeof import('./src/utils/inventoryGoods')['canonicalValue']>
     readonly cardCoverUrl: UnwrapRef<typeof import('./src/utils/locationHours')['cardCoverUrl']>
     readonly categoryIdsWithChildren: UnwrapRef<typeof import('./src/utils/inventoryGoods')['categoryIdsWithChildren']>
     readonly categoryPath: UnwrapRef<typeof import('./src/utils/inventoryGoods')['categoryPath']>

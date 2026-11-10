@@ -14,7 +14,14 @@ import InventoryBrandDialog from '@/components/attendance/inventory/InventoryBra
 import InventoryCategoryDialog from '@/components/attendance/inventory/InventoryCategoryDialog.vue'
 import LocationPhotoSlot from '@/components/attendance/locations/LocationPhotoSlot.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { type GoodsEditing, MAX_VARIANT_COMBINATIONS, buildCategoryOptions } from '@/utils/inventoryGoods'
+import {
+  type GoodsEditing,
+  MAX_VARIANT_COMBINATIONS,
+  type OptionSuggestion,
+  buildCategoryOptions,
+  canonicalOption,
+  canonicalValue,
+} from '@/utils/inventoryGoods'
 
 interface OptionRow {
   name: string
@@ -42,6 +49,7 @@ const props = defineProps<{
   editing: GoodsEditing | null
   categories: InventoryCategory[]
   brands: InventoryBrand[]
+  optionSuggestions: OptionSuggestion[]
 }>()
 
 const emit = defineEmits<{
@@ -357,13 +365,53 @@ function removeOptionRow(index: number) {
   optionRows.value.splice(index, 1)
 }
 
+function suggestionFor(row: OptionRow): OptionSuggestion | undefined {
+  const key = row.name.trim().toLowerCase()
+
+  return key ? props.optionSuggestions.find(s => s.name.toLowerCase() === key) : undefined
+}
+
+function nameItems(row: OptionRow): string[] {
+  const used = new Set(optionRows.value.filter(other => other !== row).map(other => other.name.trim().toLowerCase()))
+
+  return props.optionSuggestions.map(s => s.name).filter(name => !used.has(name.toLowerCase()))
+}
+
+function valueItems(row: OptionSuggestion | undefined, selected: string[]): string[] {
+  const picked = new Set(selected.map(v => v.toLowerCase()))
+
+  return (row?.values ?? []).filter(v => !picked.has(v.toLowerCase()))
+}
+
+function missingSuggested(row: OptionRow): string[] {
+  return valueItems(suggestionFor(row), row.values)
+}
+
+function addAllSuggested(row: OptionRow) {
+  onValuesUpdate(row, [...row.values, ...missingSuggested(row)])
+}
+
+function addAllLabel(row: OptionRow): string {
+  const missing = missingSuggested(row)
+
+  return `Add all (${missing.slice(0, 6).join(', ')}${missing.length > 6 ? ', …' : ''})`
+}
+
+function onNameUpdate(row: OptionRow, raw: unknown) {
+  const text = String(raw ?? '')
+  const known = props.optionSuggestions.some(s => s.name.toLowerCase() === text.trim().toLowerCase())
+
+  row.name = known ? canonicalOption(text, props.optionSuggestions) : text
+}
+
 function onValuesUpdate(row: OptionRow, raw: unknown[]) {
+  const suggestion = suggestionFor(row)
   const next: string[] = []
 
   for (const entry of raw) {
-    const value = String(entry).trim()
+    const value = canonicalValue(String(entry), suggestion)
 
-    if (value && !next.includes(value))
+    if (value && !next.some(v => v.toLowerCase() === value.toLowerCase()))
       next.push(value)
   }
   for (const value of lockedValues.value.get(row.name.trim()) ?? []) {
@@ -756,7 +804,7 @@ async function save() {
 
         <template v-else>
           <div class="text-body-2 text-medium-emphasis mt-2 mb-3">
-            e.g. Size → S, M, L, XL. Type a value, then press Enter or comma. 輸入後按 Enter 或逗號。
+            Pick a used option or type a new one. 可以揀用過嘅規格，或者輸入新嘅。
           </div>
           <VRow
             v-for="(row, index) in optionRows"
@@ -767,13 +815,15 @@ async function save() {
               cols="12"
               sm="4"
             >
-              <VTextField
-                v-model="row.name"
+              <VCombobox
+                :model-value="row.name"
+                :items="nameItems(row)"
                 label="Option name"
                 placeholder="Size"
                 density="comfortable"
                 :disabled="rowHasLocked(row)"
                 hide-details
+                @update:model-value="onNameUpdate(row, $event)"
               />
             </VCol>
             <VCol
@@ -782,6 +832,7 @@ async function save() {
             >
               <VCombobox
                 :model-value="row.values"
+                :items="valueItems(suggestionFor(row), row.values)"
                 label="Values"
                 multiple
                 chips
@@ -801,6 +852,15 @@ async function save() {
                   </VChip>
                 </template>
               </VCombobox>
+              <VBtn
+                v-if="missingSuggested(row).length"
+                variant="text"
+                size="x-small"
+                class="mt-1"
+                @click="addAllSuggested(row)"
+              >
+                {{ addAllLabel(row) }}
+              </VBtn>
             </VCol>
             <VCol
               cols="2"

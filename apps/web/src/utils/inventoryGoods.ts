@@ -53,3 +53,77 @@ export function categoryPath(categories: InventoryCategory[], categoryId: string
 export function categoryIdsWithChildren(categories: InventoryCategory[], categoryId: string): Set<string> {
   return new Set([categoryId, ...categories.filter(c => c.parent_id === categoryId).map(c => c.id)])
 }
+
+export interface OptionSuggestion {
+  name: string
+  values: string[]
+}
+
+const normalise = (text: string) => text.trim().toLowerCase()
+
+/** Option names and values already used by products, for dropdown suggestions. */
+export function buildOptionSuggestions(products: InventoryProduct[]): OptionSuggestion[] {
+  const sorted = [...products].sort((a, b) => a.created_at.localeCompare(b.created_at))
+
+  interface Group {
+    spellings: Map<string, { count: number; first: number }>
+    values: string[]
+    seenValues: Set<string>
+    products: number
+  }
+  const groups = new Map<string, Group>()
+  let order = 0
+
+  for (const product of sorted) {
+    for (const [rawName, rawValues] of Object.entries(product.options ?? {})) {
+      const name = rawName.trim()
+      const key = normalise(name)
+
+      if (!key)
+        continue
+
+      const group: Group = groups.get(key) ?? { spellings: new Map(), values: [], seenValues: new Set(), products: 0 }
+
+      groups.set(key, group)
+      group.products += 1
+
+      const spelling = group.spellings.get(name) ?? { count: 0, first: order++ }
+
+      spelling.count += 1
+      group.spellings.set(name, spelling)
+
+      for (const rawValue of rawValues) {
+        const value = rawValue.trim()
+        const valueKey = normalise(value)
+
+        if (value && !group.seenValues.has(valueKey)) {
+          group.seenValues.add(valueKey)
+          group.values.push(value)
+        }
+      }
+    }
+  }
+
+  return [...groups.values()]
+    .map(group => {
+      const [name] = [...group.spellings.entries()].sort(
+        (a, b) => b[1].count - a[1].count || a[1].first - b[1].first,
+      )[0]
+
+      return { name, values: group.values, products: group.products }
+    })
+    .sort((a, b) => b.products - a.products || a.name.localeCompare(b.name))
+    .map(({ name, values }) => ({ name, values }))
+}
+
+export function canonicalOption(name: string, suggestions: OptionSuggestion[]): string {
+  const trimmed = name.trim()
+
+  return suggestions.find(s => normalise(s.name) === normalise(trimmed))?.name ?? trimmed
+}
+
+export function canonicalValue(value: string, suggestion: OptionSuggestion | undefined): string {
+  const trimmed = value.trim()
+
+  return suggestion?.values.find(v => normalise(v) === normalise(trimmed)) ?? trimmed
+}
