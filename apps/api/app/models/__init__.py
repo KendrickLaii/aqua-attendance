@@ -20,9 +20,11 @@ from app.models.shift import Shift, ShiftTemplate
 from app.models.shift_request import ShiftRequest
 from app.models.location_attachment import LocationAttachment
 from app.models.inventory import (
+    InventoryBrand,
     InventoryCategory,
     InventoryItem,
     InventoryMovement,
+    InventoryProduct,
     InventoryStock,
     InventoryStocktake,
     InventoryStocktakeLine,
@@ -59,7 +61,7 @@ __all__ = [
     "CourseSpu", "CourseSku", "CourseEnrollment", "EnrollmentPurchase", "TuitionInvoice", "InvoiceCounter",
     "CreditNoteCounter", "TuitionReceipt", "Shift", "ShiftTemplate", "ShiftRequest",
     "LocationAttachment",
-    "InventoryWarehouse", "InventoryCategory", "InventoryItem", "InventoryStock", "InventoryMovement",
+    "InventoryWarehouse", "InventoryBrand", "InventoryCategory", "InventoryProduct", "InventoryItem", "InventoryStock", "InventoryMovement",
     "InventoryStocktake", "InventoryStocktakeLine",
     "InventoryCounter", "Supplier", "PurchaseOrder", "PurchaseOrderLine",
     "GoodsReceipt", "GoodsReceiptLine", "PurchaseReturn", "PurchaseReturnLine",

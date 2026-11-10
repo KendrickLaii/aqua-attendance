@@ -28,6 +28,7 @@ declare global {
   const LEAVE_CLASS_CONFIRM: typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']
   const LOCATION_DAYS: typeof import('./src/utils/locationHours')['LOCATION_DAYS']
   const MANUAL_CREDIT_HINT: typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']
+  const MAX_VARIANT_COMBINATIONS: typeof import('./src/utils/inventoryGoods')['MAX_VARIANT_COMBINATIONS']
   const ONGOING_END_DATE_HINT: typeof import('./src/utils/billingStaffCopy')['ONGOING_END_DATE_HINT']
   const ONGOING_SET_END_HINT: typeof import('./src/utils/billingStaffCopy')['ONGOING_SET_END_HINT']
   const REMOVE_CANCELLED_INVOICE: typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']
@@ -77,6 +78,7 @@ declare global {
   const billingUnitShortLabel: typeof import('./src/utils/courseEnrollmentDisplay')['billingUnitShortLabel']
   const billingWindowLabel: typeof import('./src/utils/courseRosterDisplay')['billingWindowLabel']
   const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
+  const buildCategoryOptions: typeof import('./src/utils/inventoryGoods')['buildCategoryOptions']
   const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
   const buildShiftCsv: typeof import('./src/utils/shiftDisplay')['buildShiftCsv']
@@ -89,6 +91,8 @@ declare global {
   const canEditPayrollAdjustments: typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']
   const canPayPayroll: typeof import('./src/utils/payrollDisplay')['canPayPayroll']
   const cardCoverUrl: typeof import('./src/utils/locationHours')['cardCoverUrl']
+  const categoryIdsWithChildren: typeof import('./src/utils/inventoryGoods')['categoryIdsWithChildren']
+  const categoryPath: typeof import('./src/utils/inventoryGoods')['categoryPath']
   const cellKey: typeof import('./src/utils/shiftDisplay')['cellKey']
   const classPreview: typeof import('./src/utils/invoiceDisplay')['classPreview']
   const clearAttendanceSessionCookies: typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']
@@ -686,6 +690,7 @@ declare module 'vue' {
     readonly LEAVE_CLASS_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']>
     readonly LOCATION_DAYS: UnwrapRef<typeof import('./src/utils/locationHours')['LOCATION_DAYS']>
     readonly MANUAL_CREDIT_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']>
+    readonly MAX_VARIANT_COMBINATIONS: UnwrapRef<typeof import('./src/utils/inventoryGoods')['MAX_VARIANT_COMBINATIONS']>
     readonly ONGOING_END_DATE_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['ONGOING_END_DATE_HINT']>
     readonly ONGOING_SET_END_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['ONGOING_SET_END_HINT']>
     readonly REMOVE_CANCELLED_INVOICE: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']>
@@ -734,6 +739,7 @@ declare module 'vue' {
     readonly billingUnitShortLabel: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['billingUnitShortLabel']>
     readonly billingWindowLabel: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['billingWindowLabel']>
     readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
+    readonly buildCategoryOptions: UnwrapRef<typeof import('./src/utils/inventoryGoods')['buildCategoryOptions']>
     readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>
     readonly buildShiftCsv: UnwrapRef<typeof import('./src/utils/shiftDisplay')['buildShiftCsv']>
@@ -746,6 +752,8 @@ declare module 'vue' {
     readonly canEditPayrollAdjustments: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canEditPayrollAdjustments']>
     readonly canPayPayroll: UnwrapRef<typeof import('./src/utils/payrollDisplay')['canPayPayroll']>
     readonly cardCoverUrl: UnwrapRef<typeof import('./src/utils/locationHours')['cardCoverUrl']>
+    readonly categoryIdsWithChildren: UnwrapRef<typeof import('./src/utils/inventoryGoods')['categoryIdsWithChildren']>
+    readonly categoryPath: UnwrapRef<typeof import('./src/utils/inventoryGoods')['categoryPath']>
     readonly cellKey: UnwrapRef<typeof import('./src/utils/shiftDisplay')['cellKey']>
     readonly classPreview: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['classPreview']>
     readonly clearAttendanceSessionCookies: UnwrapRef<typeof import('./src/utils/attendanceSession')['clearAttendanceSessionCookies']>

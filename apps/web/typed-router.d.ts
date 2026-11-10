@@ -55,6 +55,7 @@ declare module 'vue-router/auto-routes' {
     'attendance-credit-notes': RouteRecordInfo<'attendance-credit-notes', '/attendance/credit-notes', Record<never, never>, Record<never, never>>,
     'attendance-dashboard': RouteRecordInfo<'attendance-dashboard', '/attendance/dashboard', Record<never, never>, Record<never, never>>,
     'attendance-inventory': RouteRecordInfo<'attendance-inventory', '/attendance/inventory', Record<never, never>, Record<never, never>>,
+    'attendance-inventory-categories': RouteRecordInfo<'attendance-inventory-categories', '/attendance/inventory/categories', Record<never, never>, Record<never, never>>,
     'attendance-inventory-credit-notes': RouteRecordInfo<'attendance-inventory-credit-notes', '/attendance/inventory/credit-notes', Record<never, never>, Record<never, never>>,
     'attendance-inventory-customers': RouteRecordInfo<'attendance-inventory-customers', '/attendance/inventory/customers', Record<never, never>, Record<never, never>>,
     'attendance-inventory-dashboard': RouteRecordInfo<'attendance-inventory-dashboard', '/attendance/inventory/dashboard', Record<never, never>, Record<never, never>>,

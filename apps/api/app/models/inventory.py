@@ -30,10 +30,10 @@ class InventoryWarehouse(Base):
     )
 
 
-class InventoryCategory(Base):
-    """Grouping for inventory items, e.g. 教材 / 文具."""
+class InventoryBrand(Base):
+    """Brand of an item or product, independent of the category tree."""
 
-    __tablename__ = "inventory_categories"
+    __tablename__ = "inventory_brands"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name_zh: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -46,7 +46,60 @@ class InventoryCategory(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+
+class InventoryCategory(Base):
+    """Grouping for inventory items, e.g. 教材 / 文具. Two levels: category > sub-category."""
+
+    __tablename__ = "inventory_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inventory_categories.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    name_zh: Mapped[str] = mapped_column(String(255), nullable=False)
+    name_en: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
     items = relationship("InventoryItem", back_populates="category")
+
+
+class InventoryProduct(Base):
+    """SPU: a product grouping N SKUs (``InventoryItem``) that differ by option values."""
+
+    __tablename__ = "inventory_products"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    name_zh: Mapped[str] = mapped_column(String(255), nullable=False)
+    name_en: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inventory_categories.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inventory_brands.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    unit_of_measure: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    options: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    skus = relationship("InventoryItem", back_populates="product", order_by="InventoryItem.sku_code")
+
+    @property
+    def sku_count(self) -> int:
+        return len(self.skus)
 
 
 class InventoryItem(Base):
@@ -70,6 +123,13 @@ class InventoryItem(Base):
     avg_cost: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     sub_image_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inventory_products.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inventory_brands.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    variant_attrs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
@@ -79,6 +139,7 @@ class InventoryItem(Base):
     )
 
     category = relationship("InventoryCategory", back_populates="items")
+    product = relationship("InventoryProduct", back_populates="skus")
     stocks = relationship("InventoryStock", back_populates="item")
     movements = relationship("InventoryMovement", back_populates="item")
 

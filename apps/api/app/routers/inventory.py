@@ -1,4 +1,5 @@
 import csv
+import itertools
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -7,12 +8,15 @@ from io import StringIO
 from fastapi import APIRouter, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.attendance_tz import ATTENDANCE_TZ
 from app.deps import AdminOnly, DB
 from app.models.inventory import (
+    InventoryBrand,
     InventoryCategory,
     InventoryItem,
+    InventoryProduct,
     InventoryWarehouse,
     InventoryMovement,
     InventoryStock,
@@ -24,15 +28,23 @@ from app.models.inventory_purchasing import GoodsReceipt, InventoryCounter, Purc
 from app.models.inventory_sales import DeliveryOrder, SalesOrder
 from app.models.location import Location
 from app.schemas.inventory import (
+    InventoryBrandCreate,
+    InventoryBrandOut,
+    InventoryBrandUpdate,
     InventoryCategoryCreate,
     InventoryCategoryOut,
     InventoryCategoryUpdate,
+    InventoryGenerateSkusRequest,
     InventoryImportResult,
     InventoryItemCreate,
     InventoryItemOut,
     InventoryItemUpdate,
     InventoryMovementCreate,
     InventoryMovementOut,
+    InventoryProductCreate,
+    InventoryProductOut,
+    InventoryProductSkuInput,
+    InventoryProductUpdate,
     InventoryStockOut,
     InventoryStocktakeCreate,
     InventoryStocktakeDetailOut,
@@ -74,6 +86,96 @@ async def _assert_category_exists(db: DB, category_id: uuid.UUID | None) -> None
     result = await db.execute(select(InventoryCategory.id).where(InventoryCategory.id == category_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=422, detail="category_id does not reference an existing category")
+
+
+async def _load_product(db: DB, product_id: uuid.UUID) -> InventoryProduct | None:
+    result = await db.execute(
+        select(InventoryProduct)
+        .where(InventoryProduct.id == product_id)
+        .options(selectinload(InventoryProduct.skus))
+        .execution_options(populate_existing=True)
+    )
+    product = result.scalar_one_or_none()
+    if product is not None:
+        await _attach_on_hand(db, list(product.skus))
+    return product
+
+
+async def _get_product_or_404(db: DB, product_id: uuid.UUID) -> InventoryProduct:
+    product = await _load_product(db, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+async def _validate_item_variant(
+    db: DB,
+    product_id: uuid.UUID | None,
+    variant_attrs: dict | None,
+    exclude_item_id: uuid.UUID | None = None,
+) -> None:
+    if product_id is None:
+        if variant_attrs:
+            raise HTTPException(status_code=422, detail="variant_attrs requires a product_id")
+        return
+    product = await _load_product(db, product_id)
+    if not product:
+        raise HTTPException(status_code=422, detail="product_id does not reference an existing product")
+    if not variant_attrs:
+        return
+    options = product.options or {}
+    if options:
+        for key, value in variant_attrs.items():
+            if key not in options:
+                raise HTTPException(
+                    status_code=422, detail=f"variant_attrs key '{key}' is not an option of this product"
+                )
+            if value not in options[key]:
+                raise HTTPException(
+                    status_code=422, detail=f"variant_attrs value '{value}' is not allowed for option '{key}'"
+                )
+    for sibling in product.skus:
+        if sibling.id != exclude_item_id and sibling.variant_attrs == variant_attrs:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Another SKU of this product already uses these variant_attrs ({sibling.sku_code})",
+            )
+
+
+async def _assert_brand_exists(db: DB, brand_id: uuid.UUID | None) -> None:
+    if brand_id is None:
+        return
+    result = await db.execute(select(InventoryBrand.id).where(InventoryBrand.id == brand_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=422, detail="brand_id does not reference an existing brand")
+
+
+def _category_ids_with_children(category_id: uuid.UUID):
+    return select(InventoryCategory.id).where(
+        or_(InventoryCategory.id == category_id, InventoryCategory.parent_id == category_id)
+    )
+
+
+async def _attach_on_hand(db: DB, items: list[InventoryItem]) -> None:
+    totals: dict[uuid.UUID, int] = {}
+    ids = [item.id for item in items]
+    for start in range(0, len(ids), 5000):
+        rows = await db.execute(
+            select(InventoryStock.item_id, func.coalesce(func.sum(InventoryStock.quantity), 0))
+            .where(InventoryStock.item_id.in_(ids[start : start + 5000]))
+            .group_by(InventoryStock.item_id)
+        )
+        totals.update({item_id: int(total) for item_id, total in rows.all()})
+    for item in items:
+        item.on_hand = totals.get(item.id, 0)
+
+
+async def _assert_product_active_for_item(db: DB, product_id: uuid.UUID | None, is_active: bool | None) -> None:
+    if product_id is None or not is_active:
+        return
+    product = await db.get(InventoryProduct, product_id)
+    if product is not None and not product.is_active:
+        raise HTTPException(status_code=409, detail="Product is inactive")
 
 
 async def _get_item_or_404(db: DB, item_id: uuid.UUID) -> InventoryItem:
@@ -248,6 +350,40 @@ async def delete_warehouse(warehouse_id: uuid.UUID, _admin: AdminOnly, db: DB) -
 # ---- Categories ----
 
 
+async def _validate_category_tree(
+    db: DB,
+    *,
+    category_id: uuid.UUID | None,
+    parent_id: uuid.UUID | None,
+    name_zh: str,
+    check_parent: bool,
+) -> None:
+    if parent_id is not None and check_parent:
+        if category_id is not None and parent_id == category_id:
+            raise HTTPException(status_code=422, detail="A category cannot be its own parent")
+        parent = await db.get(InventoryCategory, parent_id)
+        if parent is None:
+            raise HTTPException(status_code=422, detail="parent_id does not reference an existing category")
+        if parent.parent_id is not None:
+            raise HTTPException(status_code=422, detail="Only 2 levels allowed")
+        if category_id is not None:
+            has_children = await db.scalar(
+                select(InventoryCategory.id).where(InventoryCategory.parent_id == category_id).limit(1)
+            )
+            if has_children is not None:
+                raise HTTPException(
+                    status_code=422, detail="A category that has sub-categories cannot be given a parent"
+                )
+    dup_q = select(InventoryCategory.id).where(
+        func.lower(func.trim(InventoryCategory.name_zh)) == name_zh.strip().lower(),
+        InventoryCategory.parent_id.is_(None) if parent_id is None else InventoryCategory.parent_id == parent_id,
+    )
+    if category_id is not None:
+        dup_q = dup_q.where(InventoryCategory.id != category_id)
+    if (await db.scalar(dup_q.limit(1))) is not None:
+        raise HTTPException(status_code=409, detail="Category name already exists at this level")
+
+
 @router.get("/categories", response_model=list[InventoryCategoryOut])
 async def list_inventory_categories(
     _admin: AdminOnly,
@@ -266,6 +402,9 @@ async def list_inventory_categories(
 async def create_inventory_category(
     body: InventoryCategoryCreate, _admin: AdminOnly, db: DB
 ) -> InventoryCategory:
+    await _validate_category_tree(
+        db, category_id=None, parent_id=body.parent_id, name_zh=body.name_zh, check_parent=True
+    )
     category = InventoryCategory(**body.model_dump())
     db.add(category)
     await db.commit()
@@ -276,7 +415,7 @@ async def create_inventory_category(
         action="CREATE",
         table_name="inventory_categories",
         record_id=category.id,
-        new_values=body.model_dump(),
+        new_values=body.model_dump(mode="json"),
         description=f"Created inventory category {category.name_zh}",
     )
     return category
@@ -292,6 +431,18 @@ async def update_inventory_category(
         raise HTTPException(status_code=404, detail="Category not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    if update_data.get("name_zh", "") is None:
+        raise HTTPException(status_code=422, detail="name_zh must not be null")
+    if update_data.get("is_active", True) is None:
+        raise HTTPException(status_code=422, detail="is_active must not be null")
+    if "name_zh" in update_data or "parent_id" in update_data:
+        await _validate_category_tree(
+            db,
+            category_id=category_id,
+            parent_id=update_data.get("parent_id", category.parent_id),
+            name_zh=update_data.get("name_zh", category.name_zh),
+            check_parent="parent_id" in update_data,
+        )
     old_values = {field: getattr(category, field) for field in update_data}
     for field, value in update_data.items():
         setattr(category, field, value)
@@ -310,6 +461,441 @@ async def update_inventory_category(
     return category
 
 
+# ---- Brands ----
+
+
+async def _assert_brand_name_free(db: DB, name_zh: str, exclude_id: uuid.UUID | None = None) -> None:
+    q = select(InventoryBrand.id).where(func.lower(func.trim(InventoryBrand.name_zh)) == name_zh.strip().lower())
+    if exclude_id is not None:
+        q = q.where(InventoryBrand.id != exclude_id)
+    if (await db.scalar(q.limit(1))) is not None:
+        raise HTTPException(status_code=409, detail="Brand name already exists")
+
+
+@router.get("/brands", response_model=list[InventoryBrandOut])
+async def list_inventory_brands(
+    _admin: AdminOnly,
+    db: DB,
+    is_active: bool | None = None,
+) -> list[InventoryBrand]:
+    q = select(InventoryBrand)
+    if is_active is not None:
+        q = q.where(InventoryBrand.is_active == is_active)
+    q = q.order_by(InventoryBrand.name_zh)
+    result = await db.execute(q)
+    return list(result.scalars().all())
+
+
+@router.post("/brands", response_model=InventoryBrandOut, status_code=status.HTTP_201_CREATED)
+async def create_inventory_brand(body: InventoryBrandCreate, _admin: AdminOnly, db: DB) -> InventoryBrand:
+    await _assert_brand_name_free(db, body.name_zh)
+    brand = InventoryBrand(**body.model_dump())
+    db.add(brand)
+    await db.commit()
+    await db.refresh(brand)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="inventory_brands",
+        record_id=brand.id,
+        new_values=body.model_dump(mode="json"),
+        description=f"Created inventory brand {brand.name_zh}",
+    )
+    return brand
+
+
+@router.patch("/brands/{brand_id}", response_model=InventoryBrandOut)
+async def update_inventory_brand(
+    brand_id: uuid.UUID, body: InventoryBrandUpdate, _admin: AdminOnly, db: DB
+) -> InventoryBrand:
+    brand = await db.get(InventoryBrand, brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    update_data = body.model_dump(exclude_unset=True)
+    for required in ("name_zh", "is_active"):
+        if required in update_data and update_data[required] is None:
+            raise HTTPException(status_code=422, detail=f"{required} must not be null")
+    if "name_zh" in update_data:
+        await _assert_brand_name_free(db, update_data["name_zh"], exclude_id=brand_id)
+    old_values = {field: getattr(brand, field) for field in update_data}
+    for field, value in update_data.items():
+        setattr(brand, field, value)
+    await db.commit()
+    await db.refresh(brand)
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="inventory_brands",
+        record_id=brand_id,
+        old_values=old_values,
+        new_values=update_data,
+        description=f"Updated inventory brand {brand.name_zh}",
+    )
+    return brand
+
+
+# ---- Products ----
+
+
+def _assert_options_cover_skus(options: dict | None, skus: list[InventoryItem]) -> None:
+    for sku in skus:
+        for key, value in (sku.variant_attrs or {}).items():
+            if options is None or key not in options or value not in options[key]:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Option '{key}: {value}' is used by SKU {sku.sku_code} and cannot be removed",
+                )
+
+
+@router.get("/products", response_model=list[InventoryProductOut])
+async def list_inventory_products(
+    _admin: AdminOnly,
+    db: DB,
+    response: Response,
+    category_id: uuid.UUID | None = None,
+    brand_id: uuid.UUID | None = None,
+    is_active: bool | None = None,
+    search: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200),
+) -> list[InventoryProduct]:
+    clauses = []
+    if category_id is not None:
+        clauses.append(InventoryProduct.category_id.in_(_category_ids_with_children(category_id)))
+    if brand_id is not None:
+        clauses.append(InventoryProduct.brand_id == brand_id)
+    if is_active is not None:
+        clauses.append(InventoryProduct.is_active == is_active)
+    if search:
+        clauses.append(
+            or_(
+                ilike_contains(InventoryProduct.code, search),
+                ilike_contains(InventoryProduct.name_zh, search),
+                ilike_contains(InventoryProduct.name_en, search),
+            )
+        )
+    count_q = select(func.count()).select_from(InventoryProduct)
+    if clauses:
+        count_q = count_q.where(*clauses)
+    total = await db.scalar(count_q) or 0
+
+    q = select(InventoryProduct).options(selectinload(InventoryProduct.skus))
+    if clauses:
+        q = q.where(*clauses)
+    q = q.order_by(InventoryProduct.code).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(q)
+    response.headers["X-Total-Count"] = str(total)
+    products = list(result.scalars().all())
+    await _attach_on_hand(db, [sku for product in products for sku in product.skus])
+    return products
+
+
+def _set_sku_names(product: InventoryProduct, sku: InventoryItem) -> None:
+    values = list((sku.variant_attrs or {}).values())
+    suffix = f" {' / '.join(values)}" if values else ""
+    name_zh = f"{product.name_zh}{suffix}"
+    name_en = f"{product.name_en}{suffix}" if product.name_en else None
+    if len(name_zh) > 255 or (name_en is not None and len(name_en) > 255):
+        raise HTTPException(status_code=422, detail=f"Derived name for SKU is longer than 255 characters: {name_zh}")
+    sku.name_zh = name_zh
+    sku.name_en = name_en
+
+
+def _deactivate_skus_of_inactive_product(product: InventoryProduct) -> list[str]:
+    if product.is_active:
+        return []
+    deactivated = []
+    for sku in product.skus:
+        if sku.is_active:
+            sku.is_active = False
+            deactivated.append(sku.sku_code)
+    return deactivated
+
+
+def _validate_product_skus(product: InventoryProduct) -> None:
+    options = product.options or {}
+    keys = set(options)
+    seen: dict[tuple, str] = {}
+    for sku in product.skus:
+        attrs = sku.variant_attrs
+        if not attrs:
+            continue
+        if set(attrs) != keys:
+            raise HTTPException(
+                status_code=422,
+                detail=f"SKU {sku.sku_code} must have a value for exactly these option(s): {', '.join(options)}",
+            )
+        for key, value in attrs.items():
+            if value not in options[key]:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"SKU {sku.sku_code}: '{value}' is not an allowed value for option '{key}'",
+                )
+        signature = tuple(sorted(attrs.items()))
+        if signature in seen:
+            raise HTTPException(
+                status_code=409,
+                detail=f"SKUs {seen[signature]} and {sku.sku_code} have the same variant_attrs",
+            )
+        seen[signature] = sku.sku_code
+
+
+async def _apply_sku_inputs(
+    db: DB, product: InventoryProduct, entries: list[InventoryProductSkuInput]
+) -> tuple[list[str], list[str]]:
+    if not product.options:
+        raise HTTPException(status_code=422, detail="options are required when skus are given")
+    by_id = {sku.id: sku for sku in product.skus}
+    payload_ids = [entry.id for entry in entries if entry.id is not None]
+    if len(set(payload_ids)) != len(payload_ids):
+        raise HTTPException(status_code=422, detail="Duplicate SKU id in skus")
+    for entry_id in payload_ids:
+        if entry_id not in by_id:
+            raise HTTPException(status_code=422, detail=f"SKU {entry_id} does not belong to this product")
+
+    codes = [entry.sku_code for entry in entries]
+    duplicated = sorted({code for code in codes if codes.count(code) > 1})
+    if duplicated:
+        raise HTTPException(status_code=409, detail=f"Duplicate sku_code in payload: {', '.join(duplicated)}")
+    if codes:
+        taken_q = select(InventoryItem.sku_code).where(InventoryItem.sku_code.in_(codes))
+        if payload_ids:
+            taken_q = taken_q.where(InventoryItem.id.not_in(payload_ids))
+        taken = sorted((await db.execute(taken_q)).scalars().all())
+        if taken:
+            raise HTTPException(status_code=409, detail=f"SKU code already exists: {', '.join(taken)}")
+
+    created: list[str] = []
+    updated: list[str] = []
+    for entry in entries:
+        if entry.id is not None:
+            sku = by_id[entry.id]
+            updated.append(entry.sku_code)
+        else:
+            sku = InventoryItem(
+                category_id=product.category_id,
+                brand_id=product.brand_id,
+                unit_of_measure=product.unit_of_measure,
+                image_url=product.image_url,
+                name_zh=product.name_zh,
+            )
+            product.skus.append(sku)
+            created.append(entry.sku_code)
+        sku.sku_code = entry.sku_code
+        sku.variant_attrs = entry.variant_attrs
+        sku.sale_price = entry.sale_price
+        sku.cost_price = entry.cost_price
+        sku.other_cost = entry.other_cost
+        sku.barcode = entry.barcode
+        sku.reorder_level = entry.reorder_level
+        sku.is_active = entry.is_active
+        _set_sku_names(product, sku)
+    return created, updated
+
+
+@router.post("/products", response_model=InventoryProductOut, status_code=status.HTTP_201_CREATED)
+async def create_inventory_product(body: InventoryProductCreate, _admin: AdminOnly, db: DB) -> InventoryProduct:
+    await _assert_category_exists(db, body.category_id)
+    await _assert_brand_exists(db, body.brand_id)
+    exists = await db.execute(select(InventoryProduct.id).where(InventoryProduct.code == body.code))
+    if exists.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Product code already exists")
+    if body.skus and any(entry.id is not None for entry in body.skus):
+        raise HTTPException(status_code=422, detail="SKU id is not allowed when creating a product")
+
+    product = InventoryProduct(**body.model_dump(exclude={"skus"}), skus=[])
+    created: list[str] = []
+    try:
+        db.add(product)
+        try:
+            async with db.begin_nested():
+                await db.flush()
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Product code already exists")
+        if body.skus:
+            created, _updated = await _apply_sku_inputs(db, product, body.skus)
+            _validate_product_skus(product)
+            _deactivate_skus_of_inactive_product(product)
+            try:
+                async with db.begin_nested():
+                    await db.flush()
+            except IntegrityError:
+                raise HTTPException(status_code=409, detail="SKU code already exists")
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+    product_id = product.id
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="CREATE",
+        table_name="inventory_products",
+        record_id=product_id,
+        new_values={**body.model_dump(mode="json", exclude={"skus"}), "created_skus": created},
+        description=f"Created inventory product {body.code} {body.name_zh} with {len(created)} SKUs",
+    )
+    return await _get_product_or_404(db, product_id)
+
+
+@router.get("/products/{product_id}", response_model=InventoryProductOut)
+async def get_inventory_product(product_id: uuid.UUID, _admin: AdminOnly, db: DB) -> InventoryProduct:
+    return await _get_product_or_404(db, product_id)
+
+
+@router.patch("/products/{product_id}", response_model=InventoryProductOut)
+async def update_inventory_product(
+    product_id: uuid.UUID, body: InventoryProductUpdate, _admin: AdminOnly, db: DB
+) -> InventoryProduct:
+    product = await _get_product_or_404(db, product_id)
+    update_data = body.model_dump(exclude_unset=True, exclude={"skus"})
+    for required in ("code", "name_zh", "is_active"):
+        if required in update_data and update_data[required] is None:
+            raise HTTPException(status_code=422, detail=f"{required} must not be null")
+
+    new_code = update_data.get("code")
+    if new_code:
+        exists = await db.execute(
+            select(InventoryProduct.id).where(InventoryProduct.code == new_code, InventoryProduct.id != product_id)
+        )
+        if exists.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Product code already exists")
+    if "category_id" in update_data:
+        await _assert_category_exists(db, update_data["category_id"])
+    if "brand_id" in update_data:
+        await _assert_brand_exists(db, update_data["brand_id"])
+    if "options" in update_data and body.skus is None:
+        _assert_options_cover_skus(update_data["options"], list(product.skus))
+
+    old_values = {field: getattr(product, field) for field in update_data}
+    created: list[str] = []
+    updated: list[str] = []
+    deactivated: list[str] = []
+    try:
+        for field, value in update_data.items():
+            setattr(product, field, value)
+        for field in ("category_id", "brand_id", "unit_of_measure"):
+            if field in update_data:
+                for sku in product.skus:
+                    setattr(sku, field, getattr(product, field))
+        if "name_zh" in update_data or "name_en" in update_data:
+            for sku in product.skus:
+                _set_sku_names(product, sku)
+        if body.skus is not None:
+            created, updated = await _apply_sku_inputs(db, product, body.skus)
+            _validate_product_skus(product)
+        deactivated = _deactivate_skus_of_inactive_product(product)
+        try:
+            async with db.begin_nested():
+                await db.flush()
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Product or SKU code already exists")
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+    await audit_log_svc.log_audit(
+        db,
+        user_id=_admin.id,
+        action="UPDATE",
+        table_name="inventory_products",
+        record_id=product_id,
+        old_values=old_values,
+        new_values={
+            **update_data,
+            "created_skus": created,
+            "updated_skus": updated,
+            "deactivated_skus": deactivated,
+        },
+        description=(
+            f"Updated inventory product {product.code}"
+            f" ({len(created)} SKUs created, {len(updated)} updated)"
+        ),
+    )
+    return await _get_product_or_404(db, product_id)
+
+
+@router.post("/products/{product_id}/generate-skus", response_model=InventoryProductOut)
+async def generate_inventory_product_skus(
+    product_id: uuid.UUID, body: InventoryGenerateSkusRequest, _admin: AdminOnly, db: DB
+) -> InventoryProduct:
+    product = await _get_product_or_404(db, product_id)
+    options = product.options or {}
+    if not options:
+        raise HTTPException(status_code=422, detail="Product has no options to generate SKUs from")
+
+    keys = list(options.keys())
+    option_key_set = set(keys)
+    mismatched = [
+        sku for sku in product.skus if sku.variant_attrs and set(sku.variant_attrs) != option_key_set
+    ]
+    if mismatched:
+        missing_keys = [key for key in keys if any(key not in sku.variant_attrs for sku in mismatched)]
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"SKUs {', '.join(sku.sku_code for sku in mismatched)} are missing option(s) "
+                f"{', '.join(missing_keys)}; set them in the item editor before generating"
+            ),
+        )
+    existing_attrs = [sku.variant_attrs for sku in product.skus if sku.variant_attrs]
+    planned: list[tuple[str, dict[str, str]]] = []
+    for combo in itertools.product(*(options[key] for key in keys)):
+        attrs = dict(zip(keys, combo))
+        if attrs in existing_attrs:
+            continue
+        planned.append((f"{product.code}-{'-'.join(combo)}", attrs))
+
+    too_long = [code for code, _attrs in planned if len(code) > 100]
+    if too_long:
+        raise HTTPException(status_code=422, detail=f"Generated SKU code exceeds 100 characters: {', '.join(too_long)}")
+
+    if planned:
+        taken = await db.execute(
+            select(InventoryItem.sku_code).where(InventoryItem.sku_code.in_([code for code, _a in planned]))
+        )
+        conflicts = sorted(taken.scalars().all())
+        if conflicts:
+            raise HTTPException(status_code=409, detail=f"SKU code already exists: {', '.join(conflicts)}")
+
+        for code, attrs in planned:
+            values = list(attrs.values())
+            db.add(
+                InventoryItem(
+                    sku_code=code,
+                    name_zh=f"{product.name_zh} {' / '.join(values)}",
+                    name_en=f"{product.name_en} {' / '.join(values)}" if product.name_en else None,
+                    category_id=product.category_id,
+                    brand_id=product.brand_id,
+                    unit_of_measure=product.unit_of_measure,
+                    image_url=product.image_url,
+                    product_id=product.id,
+                    variant_attrs=attrs,
+                    sale_price=body.sale_price,
+                    cost_price=body.cost_price,
+                    reorder_level=body.reorder_level,
+                )
+            )
+        try:
+            async with db.begin_nested():
+                await db.flush()
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="SKU code already exists")
+        await db.commit()
+        await audit_log_svc.log_audit(
+            db,
+            user_id=_admin.id,
+            action="CREATE",
+            table_name="inventory_products",
+            record_id=product_id,
+            new_values={"created_skus": [code for code, _a in planned]},
+            description=f"Generated {len(planned)} SKUs for product {product.code}",
+        )
+    return await _get_product_or_404(db, product_id)
+
+
 # ---- Items ----
 
 
@@ -319,6 +905,8 @@ async def list_inventory_items(
     db: DB,
     response: Response,
     category_id: uuid.UUID | None = None,
+    brand_id: uuid.UUID | None = None,
+    product_id: uuid.UUID | None = None,
     is_active: bool | None = None,
     low_stock: bool | None = None,
     search: str | None = None,
@@ -327,7 +915,11 @@ async def list_inventory_items(
 ) -> list[InventoryItem]:
     clauses = []
     if category_id is not None:
-        clauses.append(InventoryItem.category_id == category_id)
+        clauses.append(InventoryItem.category_id.in_(_category_ids_with_children(category_id)))
+    if brand_id is not None:
+        clauses.append(InventoryItem.brand_id == brand_id)
+    if product_id is not None:
+        clauses.append(InventoryItem.product_id == product_id)
     if is_active is not None:
         clauses.append(InventoryItem.is_active == is_active)
     if search:
@@ -361,12 +953,17 @@ async def list_inventory_items(
     q = q.order_by(InventoryItem.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return list(result.scalars().all())
+    items = list(result.scalars().all())
+    await _attach_on_hand(db, items)
+    return items
 
 
 @router.post("/items", response_model=InventoryItemOut, status_code=status.HTTP_201_CREATED)
 async def create_inventory_item(body: InventoryItemCreate, _admin: AdminOnly, db: DB) -> InventoryItem:
     await _assert_category_exists(db, body.category_id)
+    await _assert_brand_exists(db, body.brand_id)
+    await _validate_item_variant(db, body.product_id, body.variant_attrs)
+    await _assert_product_active_for_item(db, body.product_id, body.is_active)
 
     exists = await db.execute(select(InventoryItem).where(InventoryItem.sku_code == body.sku_code))
     if exists.scalar_one_or_none():
@@ -390,12 +987,15 @@ async def create_inventory_item(body: InventoryItemCreate, _admin: AdminOnly, db
         new_values=body.model_dump(),
         description=f"Created inventory item {item.sku_code} {item.name_zh}",
     )
+    await _attach_on_hand(db, [item])
     return item
 
 
 @router.get("/items/{item_id}", response_model=InventoryItemOut)
 async def get_inventory_item(item_id: uuid.UUID, _admin: AdminOnly, db: DB) -> InventoryItem:
-    return await _get_item_or_404(db, item_id)
+    item = await _get_item_or_404(db, item_id)
+    await _attach_on_hand(db, [item])
+    return item
 
 
 @router.patch("/items/{item_id}", response_model=InventoryItemOut)
@@ -407,6 +1007,21 @@ async def update_inventory_item(
     update_data = body.model_dump(exclude_unset=True)
     if "category_id" in update_data:
         await _assert_category_exists(db, update_data["category_id"])
+    if "brand_id" in update_data:
+        await _assert_brand_exists(db, update_data["brand_id"])
+
+    if "product_id" in update_data and update_data["product_id"] is None:
+        update_data["variant_attrs"] = None
+    if "product_id" in update_data or "variant_attrs" in update_data:
+        await _validate_item_variant(
+            db,
+            update_data.get("product_id", item.product_id),
+            update_data.get("variant_attrs", item.variant_attrs),
+            exclude_item_id=item_id,
+        )
+
+    if update_data.get("is_active") is True:
+        await _assert_product_active_for_item(db, update_data.get("product_id", item.product_id), True)
 
     new_code = update_data.get("sku_code")
     if new_code:
@@ -431,6 +1046,7 @@ async def update_inventory_item(
         new_values=update_data,
         description=f"Updated inventory item {item.sku_code} {item.name_zh}",
     )
+    await _attach_on_hand(db, [item])
     return item
 
 
@@ -915,14 +1531,23 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> Response:
     categories = (
         await db.execute(select(InventoryCategory))
     ).scalars().all()
-    cat_name = {c.id: c.name_zh for c in categories}
+    brands = (await db.execute(select(InventoryBrand))).scalars().all()
+    by_id = {c.id: c for c in categories}
+    brand_name = {b.id: b.name_zh for b in brands}
+
+    def category_path(category_id: uuid.UUID | None) -> str:
+        category = by_id.get(category_id)
+        if category is None:
+            return ""
+        parent = by_id.get(category.parent_id) if category.parent_id else None
+        return f"{parent.name_zh} > {category.name_zh}" if parent else category.name_zh
 
     rows = [
         [
             item.sku_code,
             item.name_zh,
             item.name_en or "",
-            cat_name.get(item.category_id, ""),
+            category_path(item.category_id),
             item.unit_of_measure or "",
             item.barcode or "",
             item.cost_price if item.cost_price is not None else "",
@@ -930,6 +1555,7 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> Response:
             item.sale_price if item.sale_price is not None else "",
             item.reorder_level,
             item.is_active,
+            brand_name.get(item.brand_id, ""),
         ]
         for item in items
     ]
@@ -947,6 +1573,7 @@ async def export_inventory_items(_admin: AdminOnly, db: DB) -> Response:
             "sale_price",
             "reorder_level",
             "is_active",
+            "brand",
         ],
         rows,
     )
@@ -1037,6 +1664,10 @@ def _parse_int(value: str | None) -> int | None:
         raise ValueError(f"invalid integer: {value}")
 
 
+def _category_label_parts(label: str) -> list[str]:
+    return [part.strip() for part in label.split(">")]
+
+
 @router.post("/import/items", response_model=InventoryImportResult)
 async def import_inventory_items(
     file: UploadFile, _admin: AdminOnly, db: DB
@@ -1044,14 +1675,38 @@ async def import_inventory_items(
     rows = await _read_csv_rows(file)
 
     categories = list((await db.execute(select(InventoryCategory))).scalars().all())
-    cat_by_name = {c.name_zh.strip(): c for c in categories}
-    cat_by_name.update(
-        {c.name_en.strip(): c for c in categories if c.name_en}
-    )
+    top_level = [c for c in categories if c.parent_id is None]
+    brands = list((await db.execute(select(InventoryBrand))).scalars().all())
+    brand_by_name: dict[str, InventoryBrand] = {}
+    for brand in brands:
+        brand_by_name[brand.name_zh.strip().lower()] = brand
+    for brand in brands:
+        if brand.name_en:
+            brand_by_name.setdefault(brand.name_en.strip().lower(), brand)
     existing_items = (
         await db.execute(select(InventoryItem))
     ).scalars().all()
     item_by_sku = {i.sku_code: i for i in existing_items}
+
+    def names_of(category: InventoryCategory) -> set[str]:
+        return {n for n in (category.name_zh.strip(), (category.name_en or "").strip()) if n}
+
+    def resolve_category(label: str) -> InventoryCategory | tuple[str, ...]:
+        parts = _category_label_parts(label)
+        if len(parts) > 2 or not all(parts):
+            raise ValueError(f"invalid category path: {label} (use 'Parent > Child', at most 2 levels)")
+        if len(parts) == 1:
+            matches = [c for c in categories if parts[0] in names_of(c)]
+            if len(matches) > 1:
+                raise ValueError(
+                    f"category '{label}' is ambiguous ({len(matches)} matches); use the 'Parent > Child' path"
+                )
+            return matches[0] if matches else (parts[0],)
+        parent = next((c for c in top_level if parts[0] in names_of(c)), None)
+        if parent is None:
+            return (parts[0], parts[1])
+        child = next((c for c in categories if c.parent_id == parent.id and parts[1] in names_of(c)), None)
+        return child if child is not None else (parts[0], parts[1])
 
     parsed = []
     errors = []
@@ -1077,16 +1732,26 @@ async def import_inventory_items(
             barcode = (row.get("barcode") or "").strip() or None
             if barcode is not None and len(barcode) > 100:
                 raise ValueError("barcode must be <= 100 characters")
+            category_label = (row.get("category") or "").strip()
+            category_ref = resolve_category(category_label) if category_label else None
+            brand_id = None
+            if "brand" in row and (row.get("brand") or "").strip():
+                brand = brand_by_name.get((row.get("brand") or "").strip().lower())
+                if brand is None:
+                    raise ValueError(f"unknown brand: {(row.get('brand') or '').strip()}")
+                brand_id = brand.id
             parsed.append(
                 {
                     "row": idx,
                     "sku_code": sku,
                     "name_zh": name_zh,
                     "name_en": (row.get("name_en") or "").strip() or None,
-                    "category": (row.get("category") or "").strip() or None,
+                    "category_ref": category_ref,
                     "unit_of_measure": (row.get("unit_of_measure") or "").strip() or None,
                     "has_barcode": "barcode" in row,
                     "has_other_cost": "other_cost" in row,
+                    "has_brand": "brand" in row,
+                    "brand_id": brand_id,
                     "barcode": barcode,
                     "cost_price": cost_price,
                     "other_cost": other_cost,
@@ -1102,16 +1767,26 @@ async def import_inventory_items(
             detail={"message": "CSV validation failed; nothing was imported", "errors": errors},
         )
 
+    created_categories: dict[tuple[str, ...], InventoryCategory] = {}
+
+    def new_category(path: tuple[str, ...]) -> InventoryCategory:
+        if path in created_categories:
+            return created_categories[path]
+        parent_id = None
+        if len(path) == 2:
+            parent = next((c for c in top_level if path[0] in names_of(c)), None) or new_category((path[0],))
+            parent_id = parent.id
+        category = InventoryCategory(id=uuid.uuid4(), name_zh=path[-1], parent_id=parent_id)
+        db.add(category)
+        created_categories[path] = category
+        return category
+
     created = updated = 0
     for row in parsed:
         category_id = None
-        if row["category"]:
-            category = cat_by_name.get(row["category"])
-            if category is None:
-                category = InventoryCategory(id=uuid.uuid4(), name_zh=row["category"])
-                db.add(category)
-                cat_by_name[row["category"]] = category
-            category_id = category.id
+        ref = row["category_ref"]
+        if ref is not None:
+            category_id = (new_category(ref) if isinstance(ref, tuple) else ref).id
 
         item = item_by_sku.get(row["sku_code"])
         if item is None:
@@ -1120,6 +1795,7 @@ async def import_inventory_items(
                 name_zh=row["name_zh"],
                 name_en=row["name_en"],
                 category_id=category_id,
+                brand_id=row["brand_id"],
                 unit_of_measure=row["unit_of_measure"],
                 barcode=row["barcode"],
                 cost_price=row["cost_price"],
@@ -1133,6 +1809,8 @@ async def import_inventory_items(
             item.name_zh = row["name_zh"]
             item.name_en = row["name_en"]
             item.category_id = category_id
+            if row["has_brand"]:
+                item.brand_id = row["brand_id"]
             item.unit_of_measure = row["unit_of_measure"]
             if row["has_barcode"]:
                 item.barcode = row["barcode"]

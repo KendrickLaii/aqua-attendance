@@ -54,8 +54,24 @@ export async function deleteWarehouse(id: string): Promise<void> {
   await $attendanceApi(`/inventory/warehouses/${id}`, { method: 'DELETE' })
 }
 
+export interface InventoryBrand {
+  id: string
+  name_zh: string
+  name_en: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface InventoryBrandPayload {
+  name_zh: string
+  name_en?: string | null
+  is_active?: boolean
+}
+
 export interface InventoryCategory {
   id: string
+  parent_id: string | null
   name_zh: string
   name_en: string | null
   is_active: boolean
@@ -66,6 +82,7 @@ export interface InventoryCategory {
 export interface InventoryCategoryPayload {
   name_zh: string
   name_en?: string | null
+  parent_id?: string | null
   is_active?: boolean
 }
 
@@ -85,6 +102,10 @@ export interface InventoryItem {
   is_active: boolean
   image_url: string | null
   sub_image_urls: string[]
+  product_id: string | null
+  brand_id: string | null
+  variant_attrs: Record<string, string> | null
+  on_hand: number
   created_at: string
   updated_at: string
 }
@@ -103,6 +124,57 @@ export interface InventoryItemPayload {
   is_active?: boolean
   image_url?: string | null
   sub_image_urls?: string[] | null
+  product_id?: string | null
+  brand_id?: string | null
+  variant_attrs?: Record<string, string> | null
+}
+
+export interface InventoryProduct {
+  id: string
+  code: string
+  name_zh: string
+  name_en: string | null
+  category_id: string | null
+  brand_id: string | null
+  unit_of_measure: string | null
+  image_url: string | null
+  options: Record<string, string[]> | null
+  is_active: boolean
+  skus: InventoryItem[]
+  sku_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface InventoryProductSkuInput {
+  id?: string | null
+  sku_code: string
+  variant_attrs: Record<string, string>
+  sale_price?: number | null
+  cost_price?: number | null
+  other_cost?: number | null
+  barcode?: string | null
+  reorder_level?: number
+  is_active?: boolean
+}
+
+export interface InventoryProductPayload {
+  code: string
+  name_zh: string
+  name_en?: string | null
+  category_id?: string | null
+  brand_id?: string | null
+  unit_of_measure?: string | null
+  image_url?: string | null
+  options?: Record<string, string[]> | null
+  is_active?: boolean
+  skus?: InventoryProductSkuInput[] | null
+}
+
+export interface InventoryGenerateSkusPayload {
+  sale_price?: number | null
+  cost_price?: number | null
+  reorder_level?: number
 }
 
 export interface InventoryStock {
@@ -228,10 +300,60 @@ export async function updateInventoryCategory(
   return await $attendanceApi(`/inventory/categories/${id}`, { method: 'PATCH', body: payload })
 }
 
+// ---- Brands ----
+
+export async function listInventoryBrands(params?: { is_active?: boolean }): Promise<InventoryBrand[]> {
+  return await $attendanceApi('/inventory/brands', { params })
+}
+
+export async function createInventoryBrand(payload: InventoryBrandPayload): Promise<InventoryBrand> {
+  return await $attendanceApi('/inventory/brands', { method: 'POST', body: payload })
+}
+
+export async function updateInventoryBrand(
+  id: string,
+  payload: Partial<InventoryBrandPayload>,
+): Promise<InventoryBrand> {
+  return await $attendanceApi(`/inventory/brands/${id}`, { method: 'PATCH', body: payload })
+}
+
+// ---- Products (SPU) ----
+
+export async function listInventoryProducts(params?: {
+  category_id?: string
+  brand_id?: string
+  is_active?: boolean
+  search?: string
+}): Promise<InventoryProduct[]> {
+  const result = await fetchAllAttendancePages<InventoryProduct>('/inventory/products', params)
+
+  return result.items
+}
+
+export async function createInventoryProduct(payload: InventoryProductPayload): Promise<InventoryProduct> {
+  return await $attendanceApi('/inventory/products', { method: 'POST', body: payload })
+}
+
+export async function updateInventoryProduct(
+  id: string,
+  payload: Partial<InventoryProductPayload>,
+): Promise<InventoryProduct> {
+  return await $attendanceApi(`/inventory/products/${id}`, { method: 'PATCH', body: payload })
+}
+
+export async function generateInventoryProductSkus(
+  id: string,
+  payload: InventoryGenerateSkusPayload,
+): Promise<InventoryProduct> {
+  return await $attendanceApi(`/inventory/products/${id}/generate-skus`, { method: 'POST', body: payload })
+}
+
 // ---- Items ----
 
 export async function listInventoryItems(params?: {
   category_id?: string
+  brand_id?: string
+  product_id?: string
   is_active?: boolean
   low_stock?: boolean
   search?: string

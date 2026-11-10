@@ -1,21 +1,47 @@
 <script setup lang="ts">
 import {
+  type InventoryBrand,
   type InventoryCategory,
   type InventoryItem,
+  type InventoryProduct,
   exportInventoryItemsCSV,
   importInventoryItemsCSV,
+  listInventoryBrands,
   listInventoryCategories,
   listInventoryItems,
+  listInventoryProducts,
 } from '@/api/attendance/inventory'
 import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
-import InventoryCategoryDialog from '@/components/attendance/inventory/InventoryCategoryDialog.vue'
-import InventoryItemDialog from '@/components/attendance/inventory/InventoryItemDialog.vue'
+import InventoryGoodsDialog from '@/components/attendance/inventory/InventoryGoodsDialog.vue'
 import InventoryItemImage from '@/components/attendance/inventory/InventoryItemImage.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatMoney } from '@/utils/inventoryDisplay'
+import {
+  type GoodsEditing,
+  buildCategoryOptions,
+  categoryIdsWithChildren,
+  categoryPath,
+} from '@/utils/inventoryGoods'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
 definePage({ meta: {} })
+
+interface GoodsRow {
+  key: string
+  product: InventoryProduct | null
+  item: InventoryItem | null
+  name: string
+  code: string
+  imageUrl: string | null
+  brandId: string | null
+  categoryId: string | null
+  isActive: boolean
+  variants: InventoryItem[]
+  variantCount: number
+  prices: number[]
+  onHand: number
+  lowStock: boolean
+}
 
 const { ensureAccess } = useAttendanceAdminGate()
 const toast = useToast()
@@ -26,42 +52,115 @@ const loadError = ref('')
 useAutoClearAlerts(loadError)
 
 const categories = ref<InventoryCategory[]>([])
+const brands = ref<InventoryBrand[]>([])
 const items = ref<InventoryItem[]>([])
+const products = ref<InventoryProduct[]>([])
 
 const search = ref('')
+const brandFilter = ref<string | null>(null)
 const categoryFilter = ref<string | null>(null)
 const showInactive = ref(false)
+const expanded = ref<Set<string>>(new Set())
 
-const itemDialogOpen = ref(false)
-const editingItem = ref<InventoryItem | null>(null)
-const categoryDialogOpen = ref(false)
-const editingCategory = ref<InventoryCategory | null>(null)
+const goodsDialogOpen = ref(false)
+const editing = ref<GoodsEditing | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
 
-const categoryById = computed(() => new Map(categories.value.map(c => [c.id, c])))
+const brandById = computed(() => new Map(brands.value.map(b => [b.id, b])))
+const categoryOptions = computed(() => buildCategoryOptions(categories.value))
 
-const categoryOptions = computed(() =>
-  categories.value
-    .filter(c => c.is_active)
-    .map(c => ({ value: c.id, title: [c.name_zh, c.name_en].filter(Boolean).join(' · ') })),
+const brandOptions = computed(() =>
+  brands.value
+    .filter(b => b.is_active)
+    .map(b => ({ value: b.id, title: [b.name_zh, b.name_en].filter(Boolean).join(' · ') })),
 )
 
-const filteredItems = computed(() => {
+function isLow(item: InventoryItem): boolean {
+  return item.is_active && item.reorder_level > 0 && item.on_hand <= item.reorder_level
+}
+
+const goodsRows = computed<GoodsRow[]>(() => {
   const term = search.value.trim().toLowerCase()
 
-  return items.value.filter(item => {
-    if (!showInactive.value && !item.is_active)
-      return false
-    if (categoryFilter.value && item.category_id !== categoryFilter.value)
-      return false
+  const matches = (values: (string | null | undefined)[]) =>
+    !term || values.some(v => (v ?? '').toLowerCase().includes(term))
 
-    return !(
-      term
-      && ![item.sku_code, item.name_zh, item.name_en ?? '', item.barcode ?? '']
-        .some(v => v.toLowerCase().includes(term))
-    )
-  })
+  const categoryIds = categoryFilter.value ? categoryIdsWithChildren(categories.value, categoryFilter.value) : null
+  const categoryOk = (id: string | null) => !categoryIds || (!!id && categoryIds.has(id))
+  const brandOk = (id: string | null) => !brandFilter.value || id === brandFilter.value
+  const skusByProduct = new Map<string, InventoryItem[]>()
+
+  for (const item of items.value) {
+    if (item.product_id)
+      skusByProduct.set(item.product_id, [...(skusByProduct.get(item.product_id) ?? []), item])
+  }
+
+  const rows: GoodsRow[] = []
+
+  for (const product of products.value) {
+    if ((!showInactive.value && !product.is_active) || !brandOk(product.brand_id) || !categoryOk(product.category_id))
+      continue
+
+    const allSkus = skusByProduct.get(product.id) ?? []
+    const productMatches = matches([product.code, product.name_zh, product.name_en])
+
+    const variants = allSkus
+      .filter(sku => showInactive.value || sku.is_active)
+      .filter(sku => productMatches || matches([sku.sku_code, sku.name_zh, sku.name_en, sku.barcode]))
+      .sort((a, b) => a.sku_code.localeCompare(b.sku_code, undefined, { numeric: true }))
+
+    if (term && !productMatches && !variants.length)
+      continue
+
+    rows.push({
+      key: `p-${product.id}`,
+      product,
+      item: null,
+      name: product.name_zh,
+      code: product.code,
+      imageUrl: product.image_url,
+      brandId: product.brand_id,
+      categoryId: product.category_id,
+      isActive: product.is_active,
+      variants,
+      variantCount: allSkus.length,
+      prices: allSkus.filter(sku => sku.is_active && sku.sale_price !== null).map(sku => sku.sale_price as number),
+      onHand: allSkus.reduce((total, sku) => total + sku.on_hand, 0),
+      lowStock: allSkus.some(isLow),
+    })
+  }
+
+  for (const item of items.value) {
+    if (item.product_id)
+      continue
+    if (!showInactive.value && !item.is_active)
+      continue
+    if (!brandOk(item.brand_id) || !categoryOk(item.category_id))
+      continue
+    if (!matches([item.sku_code, item.name_zh, item.name_en, item.barcode]))
+      continue
+    rows.push({
+      key: `i-${item.id}`,
+      product: null,
+      item,
+      name: item.name_zh,
+      code: item.sku_code,
+      imageUrl: item.image_url,
+      brandId: item.brand_id,
+      categoryId: item.category_id,
+      isActive: item.is_active,
+      variants: [],
+      variantCount: 0,
+      prices: item.sale_price === null ? [] : [item.sale_price],
+      onHand: item.on_hand,
+      lowStock: isLow(item),
+    })
+  }
+
+  return rows.sort((a, b) =>
+    a.name.localeCompare(b.name, 'zh-Hant', { numeric: true }) || a.code.localeCompare(b.code, undefined, { numeric: true }),
+  )
 })
 
 const route = useRoute()
@@ -73,7 +172,7 @@ onMounted(async () => {
   await loadAll()
 
   if (route.query.action === 'new') {
-    openCreateItem()
+    openCreate()
 
     const rest = { ...route.query }
 
@@ -86,43 +185,74 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [categoryList, itemList] = await Promise.all([
+    const [categoryList, brandList, itemList, productList] = await Promise.all([
       listInventoryCategories(),
+      listInventoryBrands(),
       listInventoryItems(),
+      listInventoryProducts(),
     ])
 
     categories.value = categoryList
-    items.value = [...itemList].sort((a, b) =>
-      a.sku_code.localeCompare(b.sku_code, undefined, { numeric: true }),
-    )
+    brands.value = brandList
+    items.value = itemList
+    products.value = productList
   }
   catch (e) {
     console.error('Failed to load inventory items', e)
-    loadError.value = formatApiError(e, 'Failed to load inventory items.')
+    loadError.value = formatApiError(e, 'Failed to load items.')
   }
   finally {
     loading.value = false
   }
 }
 
-function openCreateItem() {
-  editingItem.value = null
-  itemDialogOpen.value = true
+async function reloadLookups() {
+  try {
+    const [categoryList, brandList] = await Promise.all([listInventoryCategories(), listInventoryBrands()])
+
+    categories.value = categoryList
+    brands.value = brandList
+  }
+  catch (e) {
+    console.error('Failed to reload categories and brands', e)
+  }
 }
 
-function openEditItem(item: InventoryItem) {
-  editingItem.value = item
-  itemDialogOpen.value = true
+function openCreate() {
+  editing.value = null
+  goodsDialogOpen.value = true
 }
 
-function openCreateCategory() {
-  editingCategory.value = null
-  categoryDialogOpen.value = true
+function openEdit(row: GoodsRow) {
+  if (row.product)
+    editing.value = { kind: 'product', product: row.product }
+  else if (row.item)
+    editing.value = { kind: 'item', item: row.item }
+  goodsDialogOpen.value = true
 }
 
-function openEditCategory(category: InventoryCategory) {
-  editingCategory.value = category
-  categoryDialogOpen.value = true
+function toggleExpanded(key: string) {
+  const next = new Set(expanded.value)
+
+  if (!next.delete(key))
+    next.add(key)
+  expanded.value = next
+}
+
+function priceLabel(prices: number[]): string {
+  if (!prices.length)
+    return '—'
+
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+
+  return min === max ? formatMoney(min) : `${formatMoney(min)} – ${formatMoney(max)}`
+}
+
+function brandLabel(brandId: string | null): string {
+  const brand = brandId ? brandById.value.get(brandId) : undefined
+
+  return brand ? brand.name_zh : '—'
 }
 
 async function exportItems() {
@@ -160,19 +290,11 @@ async function onImportFile(event: Event) {
     await loadAll()
   }
   catch (e) {
-    toast.show(formatApiError(e, 'Items import failed.'), 'error', 6000)
+    toast.show(formatApiError(e, 'Import failed.'), 'error', 6000)
   }
   finally {
     importing.value = false
   }
-}
-
-function categoryLabel(categoryId: string | null): string {
-  if (!categoryId)
-    return '—'
-  const category = categoryById.value.get(categoryId)
-
-  return category ? [category.name_zh, category.name_en].filter(Boolean).join(' · ') : '—'
 }
 </script>
 
@@ -184,47 +306,55 @@ function categoryLabel(categoryId: string | null): string {
     >
       <VCol>
         <div class="text-h5 font-weight-medium">
-          Inventory Items 品項
+          Inventory Items
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          這一頁管理品項資料：名稱、售價和安全庫存量。
+          Manage items, prices and variants. 管理貨品、價錢同規格。
         </div>
       </VCol>
       <VCol
         cols="auto"
-        class="d-flex gap-2"
+        class="d-flex flex-wrap gap-2"
       >
+        <VMenu>
+          <template #activator="{ props: menuProps }">
+            <VBtn
+              v-bind="menuProps"
+              variant="tonal"
+              color="primary"
+              prepend-icon="ri-more-2-line"
+              :loading="importing"
+            >
+              CSV
+            </VBtn>
+          </template>
+          <VList density="compact">
+            <VListItem
+              prepend-icon="ri-download-line"
+              title="Export CSV"
+              @click="exportItems"
+            />
+            <VListItem
+              prepend-icon="ri-upload-line"
+              title="Import CSV"
+              @click="pickImportFile"
+            />
+          </VList>
+        </VMenu>
         <VBtn
           variant="tonal"
           color="primary"
-          prepend-icon="ri-download-line"
-          @click="exportItems"
+          prepend-icon="ri-price-tag-3-line"
+          :to="{ name: 'attendance-inventory-categories' }"
         >
-          Export CSV
+          Categories & Brands
         </VBtn>
         <VBtn
-          variant="tonal"
-          color="primary"
-          prepend-icon="ri-upload-line"
-          :loading="importing"
-          @click="pickImportFile"
-        >
-          Import CSV
-        </VBtn>
-        <VBtn
-          variant="tonal"
           color="primary"
           prepend-icon="ri-add-line"
-          @click="openCreateCategory"
+          @click="openCreate"
         >
-          Add Category
-        </VBtn>
-        <VBtn
-          color="primary"
-          prepend-icon="ri-add-line"
-          @click="openCreateItem"
-        >
-          Add Item
+          New item
         </VBtn>
         <input
           ref="importInput"
@@ -260,120 +390,119 @@ function categoryLabel(categoryId: string | null): string {
       </VCol>
     </VRow>
 
-    <template v-else>
-      <VCard class="mb-4">
-        <VCardTitle class="text-subtitle-1">
-          Categories
-        </VCardTitle>
-        <VCardText>
-          <VChip
-            v-for="category in categories"
-            :key="category.id"
-            class="me-2 mb-2"
-            :variant="category.is_active ? 'tonal' : 'outlined'"
-            :color="category.is_active ? 'primary' : 'default'"
-            @click="openEditCategory(category)"
-          >
-            {{ [category.name_zh, category.name_en].filter(Boolean).join(' · ') }}
-            <template v-if="!category.is_active">
-              (inactive)
-            </template>
-          </VChip>
-          <div
-            v-if="categories.length === 0"
-            class="text-medium-emphasis"
-          >
-            No categories yet — click "Add Category" first.
-          </div>
-        </VCardText>
-      </VCard>
-
-      <VCard>
-        <VCardText class="d-flex flex-wrap gap-3 align-center">
-          <VTextField
-            v-model="search"
-            label="Search item"
-            prepend-inner-icon="ri-search-line"
-            density="comfortable"
-            style="max-width: 280px"
-            hide-details
-            clearable
-          />
-          <VSelect
-            v-model="categoryFilter"
-            :items="categoryOptions"
-            label="Category"
-            density="comfortable"
-            style="max-width: 240px"
-            hide-details
-            clearable
-          />
-          <VSwitch
-            v-model="showInactive"
-            label="Show inactive"
-            density="comfortable"
-            color="primary"
-            hide-details
-          />
-        </VCardText>
-        <div class="overflow-x-auto">
-          <VTable>
-            <thead>
-              <tr>
-                <th />
-                <th>SKU</th>
-                <th>Item</th>
-                <th>Category</th>
-                <th>Unit</th>
-                <th class="text-end">
-                  Purchase price
-                </th>
-                <th class="text-end">
-                  Other cost
-                </th>
-                <th class="text-end">
-                  Sale
-                </th>
-                <th class="text-end">
-                  Reorder level
-                </th>
-                <th>Status</th>
-                <th class="text-end">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="item in filteredItems"
-                :key="item.id"
-              >
+    <VCard v-else>
+      <VCardText class="d-flex flex-wrap gap-3 align-center">
+        <VTextField
+          v-model="search"
+          label="Search (name / code / barcode)"
+          prepend-inner-icon="ri-search-line"
+          density="comfortable"
+          style="max-width: 300px"
+          hide-details
+          clearable
+        />
+        <VSelect
+          v-model="brandFilter"
+          :items="brandOptions"
+          label="Brand"
+          density="comfortable"
+          style="max-width: 200px"
+          hide-details
+          clearable
+        />
+        <VSelect
+          v-model="categoryFilter"
+          :items="categoryOptions"
+          label="Category"
+          density="comfortable"
+          style="max-width: 260px"
+          hide-details
+          clearable
+        />
+        <VSwitch
+          v-model="showInactive"
+          label="Show inactive"
+          density="comfortable"
+          color="primary"
+          hide-details
+        />
+      </VCardText>
+      <div class="overflow-x-auto">
+        <VTable>
+          <thead>
+            <tr>
+              <th style="width: 48px" />
+              <th style="width: 64px" />
+              <th>Item</th>
+              <th>Brand</th>
+              <th>Category</th>
+              <th class="text-end">
+                Sale price
+              </th>
+              <th class="text-end">
+                Stock
+              </th>
+              <th>Status</th>
+              <th class="text-end">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <template
+              v-for="row in goodsRows"
+              :key="row.key"
+            >
+              <tr :class="{ 'text-disabled': !row.isActive }">
                 <td>
-                  <InventoryItemImage :url="item.image_url" />
+                  <VBtn
+                    v-if="row.product"
+                    :icon="expanded.has(row.key) ? 'ri-arrow-down-s-line' : 'ri-arrow-right-s-line'"
+                    variant="text"
+                    size="small"
+                    :aria-label="expanded.has(row.key) ? 'Collapse variants' : 'Expand variants'"
+                    @click="toggleExpanded(row.key)"
+                  />
                 </td>
-                <td>{{ item.sku_code }}</td>
-                <td>{{ [item.name_zh, item.name_en].filter(Boolean).join(' · ') }}</td>
-                <td>{{ categoryLabel(item.category_id) }}</td>
-                <td>{{ item.unit_of_measure || '—' }}</td>
+                <td>
+                  <InventoryItemImage :url="row.imageUrl" />
+                </td>
+                <td>
+                  <div class="font-weight-medium">
+                    {{ row.name }}
+                  </div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{ row.code }}<template v-if="row.product">
+                      · {{ row.variantCount }} variants
+                    </template>
+                  </div>
+                </td>
+                <td>{{ brandLabel(row.brandId) }}</td>
+                <td>{{ categoryPath(categories, row.categoryId) }}</td>
                 <td class="text-end tabular-nums">
-                  {{ formatMoney(item.cost_price) }}
+                  {{ priceLabel(row.prices) }}
                 </td>
                 <td class="text-end tabular-nums">
-                  {{ formatMoney(item.other_cost) }}
-                </td>
-                <td class="text-end tabular-nums">
-                  {{ formatMoney(item.sale_price) }}
-                </td>
-                <td class="text-end tabular-nums">
-                  {{ item.reorder_level }}
+                  <VChip
+                    v-if="row.lowStock"
+                    color="warning"
+                    size="small"
+                    variant="tonal"
+                    title="A variant is low on stock"
+                  >
+                    {{ row.onHand }}
+                  </VChip>
+                  <template v-else>
+                    {{ row.onHand }}
+                  </template>
                 </td>
                 <td>
                   <VChip
-                    :color="item.is_active ? 'success' : 'default'"
+                    :color="row.isActive ? 'success' : 'default'"
                     size="small"
                     variant="tonal"
                   >
-                    {{ item.is_active ? 'Active' : 'Inactive' }}
+                    {{ row.isActive ? 'Active' : 'Inactive' }}
                   </VChip>
                 </td>
                 <td class="text-end">
@@ -382,36 +511,120 @@ function categoryLabel(categoryId: string | null): string {
                     variant="text"
                     size="small"
                     aria-label="Edit item"
-                    @click="openEditItem(item)"
+                    @click="openEdit(row)"
                   />
                 </td>
               </tr>
-              <tr v-if="filteredItems.length === 0">
-                <td colspan="11">
-                  <InventoryEmptyState
-                    icon="ri-archive-line"
-                    :text="items.length ? 'No items match the current filters.' : 'No items yet.'"
-                    :action-label="items.length ? undefined : 'Add Item'"
-                    @action="openCreateItem"
-                  />
+              <tr
+                v-if="row.product && expanded.has(row.key)"
+                class="bg-surface-variant"
+              >
+                <td colspan="2" />
+                <td colspan="7">
+                  <VTable
+                    v-if="row.variants.length"
+                    density="compact"
+                    class="bg-transparent"
+                  >
+                    <thead>
+                      <tr>
+                        <th>Variant</th>
+                        <th>Code</th>
+                        <th class="text-end">
+                          Sale price
+                        </th>
+                        <th class="text-end">
+                          Cost price
+                        </th>
+                        <th>Barcode</th>
+                        <th class="text-end">
+                          Stock
+                        </th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="variant in row.variants"
+                        :key="variant.id"
+                        :class="{ 'text-disabled': !variant.is_active }"
+                      >
+                        <td>
+                          <VChip
+                            v-for="(value, key) in variant.variant_attrs ?? {}"
+                            :key="key"
+                            size="x-small"
+                            variant="tonal"
+                            class="me-1"
+                          >
+                            {{ key }}: {{ value }}
+                          </VChip>
+                          <span v-if="!variant.variant_attrs">—</span>
+                        </td>
+                        <td>{{ variant.sku_code }}</td>
+                        <td class="text-end tabular-nums">
+                          {{ formatMoney(variant.sale_price) }}
+                        </td>
+                        <td class="text-end tabular-nums">
+                          {{ formatMoney(variant.cost_price) }}
+                        </td>
+                        <td>{{ variant.barcode || '—' }}</td>
+                        <td class="text-end tabular-nums">
+                          <VChip
+                            v-if="variant.is_active && variant.reorder_level > 0 && variant.on_hand <= variant.reorder_level"
+                            color="warning"
+                            size="x-small"
+                            variant="tonal"
+                          >
+                            {{ variant.on_hand }}
+                          </VChip>
+                          <template v-else>
+                            {{ variant.on_hand }}
+                          </template>
+                        </td>
+                        <td>
+                          <VChip
+                            :color="variant.is_active ? 'success' : 'default'"
+                            size="x-small"
+                            variant="tonal"
+                          >
+                            {{ variant.is_active ? 'Active' : 'Inactive' }}
+                          </VChip>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </VTable>
+                  <div
+                    v-else
+                    class="text-body-2 text-medium-emphasis py-2"
+                  >
+                    No variants match the filters.
+                  </div>
                 </td>
               </tr>
-            </tbody>
-          </VTable>
-        </div>
-      </VCard>
-    </template>
+            </template>
+            <tr v-if="goodsRows.length === 0">
+              <td colspan="9">
+                <InventoryEmptyState
+                  icon="ri-archive-line"
+                  :text="items.length || products.length ? 'No items match the filters.' : 'No items yet'"
+                  :action-label="items.length || products.length ? undefined : 'New item'"
+                  @action="openCreate"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </VTable>
+      </div>
+    </VCard>
 
-    <InventoryItemDialog
-      v-model="itemDialogOpen"
-      :editing-item="editingItem"
-      :category-options="categoryOptions"
+    <InventoryGoodsDialog
+      v-model="goodsDialogOpen"
+      :editing="editing"
+      :categories="categories"
+      :brands="brands"
       @saved="loadAll"
-    />
-    <InventoryCategoryDialog
-      v-model="categoryDialogOpen"
-      :editing-category="editingCategory"
-      @saved="loadAll"
+      @lookups-changed="reloadLookups"
     />
   </VContainer>
 </template>
