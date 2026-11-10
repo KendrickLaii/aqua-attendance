@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="630" viewBox="0 0 1000 630" font-family="'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#37474f"/></marker>
+    <style>
+      .t{font-size:16px;fill:#212121;text-anchor:middle}
+      .s{font-size:12px;fill:#546e7a;text-anchor:middle}
+      .h{font-size:15px;font-weight:bold;fill:#212121}
+    </style>
+  </defs>
+  <rect width="1000" height="630" fill="#fafafa"/>
+  <text x="500" y="38" class="h" text-anchor="middle" style="font-size:26px">貨品與規格 Items &amp; Variants</text>
+  <text x="500" y="62" class="s" style="font-size:14px">一件貨品可以有多個規格；每個規格都是一個可以買賣、獨立計庫存的貨品</text>
+
+  <!-- item with variants -->
+  <text x="40" y="100" class="h" style="fill:#1565c0">有規格的貨品 Item with variants</text>
+  <rect x="40" y="110" width="300" height="220" rx="10" fill="#fff" stroke="#1976d2" stroke-width="2.5"/>
+  <text x="190" y="146" class="t" style="font-size:20px;font-weight:bold">校服 T-shirt</text>
+  <text x="190" y="168" class="s" style="font-size:14px">School T-shirt</text>
+  <line x1="60" y1="184" x2="320" y2="184" stroke="#cfd8dc"/>
+  <text x="190" y="208" class="s" style="font-size:13px">品牌 Brand: House brand</text>
+  <text x="190" y="230" class="s" style="font-size:13px">分類 Category: 校服 › 上衣</text>
+  <line x1="60" y1="246" x2="320" y2="246" stroke="#cfd8dc"/>
+  <text x="190" y="272" class="s" style="font-size:13px;font-weight:bold">規格 Options</text>
+  <text x="190" y="300" class="t" style="font-size:15px">尺寸 Size: S · M · L · XL</text>
+
+  <!-- variants -->
+  <text x="560" y="100" class="h" style="fill:#1565c0">規格 Variants（每個規格一行）</text>
+  <line x1="340" y1="220" x2="558" y2="142" stroke="#37474f" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="340" y1="220" x2="558" y2="222" stroke="#37474f" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="340" y1="220" x2="558" y2="302" stroke="#37474f" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="340" y1="220" x2="558" y2="382" stroke="#37474f" stroke-width="2" marker-end="url(#arr)"/>
+
+  <rect x="560" y="110" width="400" height="64" rx="8" fill="#fff" stroke="#1976d2" stroke-width="2"/>
+  <text x="760" y="136" class="t">TSHIRT-S · 尺寸 S</text>
+  <text x="760" y="158" class="s">售價 Price $80 · 庫存 Stock 12</text>
+  <rect x="560" y="190" width="400" height="64" rx="8" fill="#fff" stroke="#1976d2" stroke-width="2"/>
+  <text x="760" y="216" class="t">TSHIRT-M · 尺寸 M</text>
+  <text x="760" y="238" class="s">售價 Price $80 · 庫存 Stock 30</text>
+  <rect x="560" y="270" width="400" height="64" rx="8" fill="#fff" stroke="#1976d2" stroke-width="2"/>
+  <text x="760" y="296" class="t">TSHIRT-L · 尺寸 L</text>
+  <text x="760" y="318" class="s">售價 Price $85 · 庫存 Stock 8</text>
+  <rect x="560" y="350" width="400" height="64" rx="8" fill="#eeeeee" stroke="#9e9e9e" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="760" y="376" class="t" style="fill:#9e9e9e">TSHIRT-XL · 尺寸 XL</text>
+  <text x="760" y="398" class="s" style="fill:#9e9e9e">售價 Price $85 · 庫存 Stock 0 · 停用 inactive</text>
+
+  <!-- example note -->
+  <rect x="560" y="432" width="400" height="66" rx="8" fill="#e8f5e9" stroke="#a5d6a7"/>
+  <text x="760" y="460" class="s" style="font-size:13px">例如：賣出 M 碼，只扣 TSHIRT-M 的庫存</text>
+  <text x="760" y="480" class="s" style="font-size:13px">Selling size M only reduces TSHIRT-M</text>
+
+  <!-- single item -->
+  <text x="40" y="392" class="h" style="fill:#e65100">沒有規格的貨品 Item without variants</text>
+  <rect x="40" y="402" width="300" height="96" rx="10" fill="#fff" stroke="#ef6c00" stroke-width="2.5"/>
+  <text x="190" y="432" class="t">Casio fx-50FH II 計數機</text>
+  <text x="190" y="456" class="s" style="font-size:13px">單品 Single item</text>
+  <text x="190" y="478" class="s" style="font-size:13px">售價 Price $168 · 庫存 Stock 20</text>
+
+  <!-- footer -->
+  <rect x="30" y="535" width="940" height="64" rx="10" fill="#fffde7" stroke="#fbc02d" stroke-width="2"/>
+  <text x="500" y="562" class="t" style="font-weight:bold">每個規格獨立計庫存，開單時選到規格</text>
+  <text x="500" y="583" class="s" style="font-size:13px">Each variant has its own stock; documents use the exact variant</text>
+</svg>
