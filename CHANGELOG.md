@@ -4,6 +4,12 @@
 
 ## [2026-11-10]（Inventory 貨品頁改版）
 
+- 收貨單（GRN）日期更正：Draft 收貨單詳情 ⋮ 選單新增 **Edit date & notes**（用現有 `PATCH /goods-receipts/{id}`），詳情顯示 notes；建立表單 Receipt date 加提示（補舊單填實際日期）；Void 選項說明加「日期錯咗可以作廢再開過」。新增 API 測試：draft 可改 `receipt_date`、已確認 409。
+
+- 貨品彈窗規格編輯器：Option name／Values 會建議其他貨品用過嘅規格同選項（大小寫自動對齊，可「Add all」，仍可輸入新嘅）；純前端，由現有產品 `options` 推算（`utils/inventoryGoods.ts` `buildOptionSuggestions`，附單元測試）。
+
+- Inventory **Start Here**（`/attendance/inventory/workflow`）改為中英並列（英文為主，中文在下）：開始前加到 4 步（加入分類與品牌）、新增「Items and variants 貨品與規格」說明區（附新圖 `public/inventory-variants.svg`、要記住清單、開發人員面板）、新增「Maintain items」工作、新增 FAQ；`public/inventory-workflow.svg` 頂部加「0. Item setup」帶。
+
 - 貨品頁、分類與品牌頁、貨品彈窗改為英文介面（提示可附粵語）；`seed_inventory.py` 新增 `--catalog`（品牌／子分類／多規格貨品 demo 資料，`--reset-demo` 會一併清除）。
 
 ### 新增（Inventory 品牌、子分類、多規格貨品）

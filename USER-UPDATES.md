@@ -9,6 +9,15 @@
 
 ## 10/11/2026
 
+### 【測試機】收貨單可以改日期同備註
+
+<http://3.114.114.143/attendance/inventory/goods-receipts>
+
+- 補舊單填錯收貨日期？**Draft** 收貨單撳右上角 **⋮ → Edit date & notes**，改完撳 **Save** 就得
+- 收貨單詳情而家會顯示備註
+- 新增收貨單時，Receipt date 下面有提示：補舊單請填實際收貨日期
+- 已經 Confirm 咗嘅收貨單唔可以直接改；日期錯咗就 **Void** 再重新開過一張
+
 ### 【測試機】Inventory 貨品頁改版：New item、多個規格、Categories & Brands
 
 <http://3.114.114.143/attendance/inventory/items>
@@ -25,6 +34,8 @@
 - 貨品頁可以按名稱／編號／條碼、Brand、Category 篩選；揀上層分類會包括佢下面嘅子分類
 - CSV 匯入／匯出（右上角 CSV 掣）多咗 brand 欄，子分類會寫成「上層 > 子分類」；暫時 CSV 未有多規格資料
 - 已經有嘅單品唔受影響；單品暫時唔可以改做多規格
+- 新增貨品揀規格時，會列出其他貨品用過嘅規格同選項（例如 Size：S、M、L、XL），可以直接揀或者按「Add all」，亦可以輸入新嘅
+- Start Here 頁已更新（<http://3.114.114.143/attendance/inventory/workflow>）：中英對照、新增「貨品與規格」說明圖（可下載）、「維護貨品」步驟同 FAQ 常見問題
 
 ## 05/11/2026
 

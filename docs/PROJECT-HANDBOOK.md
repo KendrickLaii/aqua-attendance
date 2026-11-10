@@ -434,6 +434,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 - 取消銷售單會一併刪除該單嘅 **draft** 發票（已發出嘅發票不受影響）；SO 已取消時 draft 發票不能 Issue（409）。
 - 折讓單行金額會按行小計比例攤分發票整單折扣（尾差落在最後一行），所以有折扣嘅發票可以全數折讓；折讓總額仍不能超過發票未收餘額，已全數收款嘅發票要先作廢收據（UI 會停用 Create Credit Note）。
 - 庫存移動列表 `date_from`／`date_to` 按香港日曆日計；items 列表搜尋（server 同 web）包含 `barcode`；銷售單列表 API 支援 `search`（so_no／buyer_name）。CSV import 只喺 CSV 有 `barcode`／`other_cost` 欄時先會更新對應欄位；`NaN`／`Infinity` 當錯誤行。
+- GRN 日期更正：只有 **draft** 收貨單可改（`PATCH /goods-receipts/{id}`：`receipt_date`／`notes`／`lines`，非 draft 回 409）；Web 在詳情右上 ⋮ → Edit date & notes。已確認嘅要改日期就 Void 再重開。
 - Item 欄位（Migration **051**）：`inventory_items` 加 `barcode`（String(100)，可空，有 index、非 unique；API trim 後空白存 NULL）同 `other_cost`（Numeric(10,2)，可空，≥0）。`cost_price` 欄名不變；Item dialog label 改「Purchase price」，Items 表頭「Cost」改「Purchase price」並加「Other cost」欄。Items CSV export／import 加 `barcode`、`other_cost` 兩欄；舊 CSV 冇呢兩欄照樣入到（update 時會清返 NULL，同 `cost_price` 一致）。
 
 #### 倉庫同中心脫鉤（Migration 052）
@@ -489,6 +490,8 @@ API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
 - `InventoryItemOut` 加 `brand_id`、`on_hand`（所有倉庫 `inventory_stocks.quantity` 總和，冇庫存為 0）。`on_hand` 只喺 `/items`、`/items/{id}`、items POST／PATCH、`/products*` 嘅內嵌 `skus` 填值（分組一次查詢，冇 N+1），其他回傳 item 嘅端點預設 0。
 - Items CSV：匯出加 `brand` 欄（品牌 `name_zh`），`category` 欄子分類輸出 `上層 > 子分類`。匯入：`category` 接受路徑或單一名稱（單一名稱符合多個分類 → 該行報錯，要用路徑；找唔到仍然自動建立，路徑會連上層一齊建立）；`brand` 欄有值但搵唔到品牌 → 報錯（唔會自動建立品牌，整個匯入 422 不寫入）；冇 `brand` 欄嘅舊 CSV 唔會改動品牌。
 - 貨品頁（054 改版）：`/attendance/inventory/items` 一行一件貨（單品或多規格貨品，可展開規格），篩選（搜尋／品牌／分類含子分類／顯示已停用），欄位：貨品、品牌、分類路徑、售價（多規格顯示範圍）、庫存（有規格庫存 ≤ 安全庫存且安全庫存 > 0 時警示）、狀態。新增／編輯用單一「貨品」彈窗（名稱、編號、品牌、分類、單位、圖片；「此貨品有多個規格」開關：關＝單品價錢欄位；開＝規格編輯器＋各規格表格，儲存時 POST／PATCH `/products` 帶 `skus`）。已存在嘅單品唔可以轉做多規格（見 §5 #L10），多規格貨品亦唔可以改返單品；已被 SKU 使用嘅選項值唔可移除。分類同品牌管理喺 `/attendance/inventory/categories`（側欄 Inventory → Stock → Categories & Brands），貨品彈窗內可以用 ＋ 即時新增。
+- 貨品彈窗嘅規格名稱／選項建議純前端：由現有產品 `options` 推算（名稱唔分大小寫合併，選項按首次出現次序合併），冇新表、冇新 API。
+- Start Here 頁（`/attendance/inventory/workflow`）已包含貨品與規格說明、維護貨品步驟同 FAQ，中英並列；說明圖為 `apps/web/public/inventory-variants.svg`，總流程圖 `inventory-workflow.svg` 頂部有「0. Item setup」。
 - Demo 資料：`apps/api/seed_inventory.py --catalog`（只可對 DB `attendance_inventory` 執行，經 API :8010、以 `demo_admin` 登入）只種品牌、兩層分類、8 個多規格貨品同 5 個單品，連期初庫存；已有 `DEMO-TSHIRT` 就跳過。`--reset-demo` 會一併清走（SKU → 產品 → 品牌 → 子分類 → 頂層分類；仍被非 demo 資料使用嘅會保留）。
 
 ---
