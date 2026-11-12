@@ -187,7 +187,8 @@ const iconSrc = useAuthenticatedMediaSrc(() => props.location.icon_url)
     height: 128px;
     object-fit: contain;
     object-position: center;
-    background: rgb(var(--v-theme-surface-variant));
+    background: rgb(var(--v-theme-surface));
+    border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   }
 
   &__cover-placeholder {
