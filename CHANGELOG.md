@@ -2,6 +2,14 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [2026-11-12]（Inventory 名稱、地點卡片、金額欄）
+
+### 變更
+
+- **中文名唔再必填**（Inventory 主檔：倉庫、品牌、分類、貨品、產品、供應商、客戶）：`name_zh`、`name_en` 至少填一個；`name_zh` 留空時伺服器用 `name_en`（trim 後）填入，所以所有顯示、單據快照、報表、列印照舊讀 `name_zh`，冇 migration。更新時 `name_zh` 傳空字串會用同一請求嘅 `name_en`，兩個都空回 422（`Enter a Chinese or English name.`）。Items CSV 匯入只有 `name_en` 嘅行亦可以。表單移除中文名必填，打開舊資料時若 `name_zh` 等於 `name_en` 會顯示為空。
+- 地點卡片封面 logo 背景改白色，並加底邊線。
+- 單據明細表（採購單／銷售單／發票／貸項單等）金額欄闊度 100px → 130px 並不斷行。
+
 ## [2026-11-10]（Inventory 貨品頁改版）
 
 - 庫存異動 **effective date**（Migration **055**）：`inventory_movements.effective_date`（DATE 可空，有索引）。GRN Confirm 寫入 `receipt_date`，補舊收貨單喺異動紀錄同報表（`GET /movements`、`/reports/movements-summary`、`/reports/write-offs` 日期篩選）跟實際收貨日；排序同 `balance_after` 仍用 `created_at`。`InventoryMovementOut` 加 `effective_date`；Postgres 升級時回填舊 GRN 入庫異動；異動頁日期格顯示「Received DD/MM/YYYY」。新增 API 測試。

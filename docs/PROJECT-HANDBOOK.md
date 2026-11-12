@@ -494,6 +494,7 @@ API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
 - 貨品彈窗嘅規格名稱／選項建議純前端：由現有產品 `options` 推算（名稱唔分大小寫合併，選項按首次出現次序合併），冇新表、冇新 API。
 - Start Here 頁（`/attendance/inventory/workflow`）已包含貨品與規格說明、維護貨品步驟同 FAQ，中英並列；說明圖為 `apps/web/public/inventory-variants.svg`，總流程圖 `inventory-workflow.svg` 頂部有「0. Item setup」。
 - Demo 資料：`apps/api/seed_inventory.py --catalog`（只可對 DB `attendance_inventory` 執行，經 API :8010、以 `demo_admin` 登入）只種品牌、兩層分類、8 個多規格貨品同 5 個單品，連期初庫存；已有 `DEMO-TSHIRT` 就跳過。`--reset-demo` 會一併清走（SKU → 產品 → 品牌 → 子分類 → 頂層分類；仍被非 demo 資料使用嘅會保留）。
+- **名稱規則**：倉庫、品牌、分類、貨品、產品、供應商、客戶嘅 `name_zh`／`name_en` 至少填一個；`name_zh` 空白時由 `name_en` 填入（schema `fill_name_zh`，冇 migration，DB `name_zh` 仍然 NOT NULL）。更新時 `name_zh` 傳空字串用同一 payload 嘅 `name_en`，兩者皆空 422。Items CSV 匯入亦適用。品牌／分類唯一性檢查用填好之後嘅 `name_zh`。
 
 ---
 
