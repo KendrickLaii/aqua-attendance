@@ -1021,7 +1021,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 - **位置**：inventory 全部程式碼（`apps/api/app/{models,routers,schemas,services}/inventory*.py`、`tests/test_inventory*.py`、`seed_inventory.py`、`apps/web/src/{pages,components}/attendance/inventory/`、`apps/web/src/api/attendance/inventory*.ts`、`start-inventory.ps1`、§1.14）
 - **問題**：2026-11-12 起 inventory 改喺新 repo `KendrickLaii/aqua-erp-suite` 開發（從 `07f1753` 複製，連 history）。本 repo 長遠只做 attendance，但測試機仍靠本 repo image 跑 inventory，所以暫時保留。期間 inventory 只喺新 repo 改；attendance 修正先喺本 repo 做，再 cherry-pick 去新 repo。
-- **前提**：`aqua-erp-suite` 有自己嘅伺服器並確認 inventory 正常之後先移除（建議另開新機，保留測試機俾本 repo 用）。
+- **前提**：先幫另一間公司做一台 attendance demo 機（`aqua-attendance` repo、`INVENTORY_ENABLED` 預設 off、空白 DB）；之後 `Ubuntu-testing-deploy` 切換拉 `aqua-erp-suite` image，確認 inventory 正常先移除。inventory 新功能（BOM 同之後）一律喺 `aqua-erp-suite` 開發，本 repo 唔加唔改。
 - **建議**：開 `refactor/remove-inventory` 分支移除程式碼。**保留** migration 042–055（中間夾住 attendance 嘅 050，正式機 DB 已到 055），DB 表亦暫留；要 drop 表另開 migration，先備份。連帶要改：`services/doc_numbers.py`（用 `InventoryCounter`，先確認無其他用途）、`tests/conftest.py`（`enable_inventory`、`mirror_warehouse`）、`tests/test_feature_flags.py`、`/api/features` 同 `useFeatureFlags`、`config.py` 嘅 `INVENTORY_*`、`main.py` alerts loop、`useInventoryLinePicker.ts`、`styles.scss` inventory 樣式、側欄 Inventory 群組、`models/__init__.py`。（2026-11-12 記錄，待做）
 
 ### 🟡 Medium — 安全與架構
