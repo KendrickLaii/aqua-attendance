@@ -4,7 +4,9 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.inventory import fill_name_zh, fill_name_zh_on_update
 
 PoStatus = Literal["draft", "ordered", "partial", "received", "cancelled"]
 ReceiptStatus = Literal["draft", "confirmed", "void"]
@@ -12,7 +14,7 @@ ReceiptStatus = Literal["draft", "confirmed", "void"]
 
 class SupplierCreate(BaseModel):
     code: str = Field(min_length=1, max_length=100)
-    name_zh: str = Field(min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     contact_name: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
@@ -21,10 +23,14 @@ class SupplierCreate(BaseModel):
     payment_terms: str | None = Field(default=None, max_length=255)
     is_active: bool = True
 
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh(self)
+
 
 class SupplierUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=100)
-    name_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     contact_name: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
@@ -32,6 +38,10 @@ class SupplierUpdate(BaseModel):
     address: str | None = Field(default=None, max_length=500)
     payment_terms: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh_on_update(self)
 
 
 class SupplierOut(BaseModel):

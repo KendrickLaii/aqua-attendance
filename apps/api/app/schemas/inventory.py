@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 MovementType = Literal["in", "out", "adjust"]
 MovementTypeOut = Literal["in", "out", "adjust", "transfer_in", "transfer_out"]
@@ -29,6 +29,33 @@ def _required_text(value: str) -> str:
     return cleaned
 
 
+NAME_REQUIRED_MESSAGE = "Enter a Chinese or English name."
+
+
+def fill_name_zh(model):
+    """Create payloads: at least one of name_zh / name_en; blank name_zh falls back to name_en."""
+    name_zh = (model.name_zh or "").strip()
+    name_en = (model.name_en or "").strip()
+    if not name_zh and not name_en:
+        raise ValueError(NAME_REQUIRED_MESSAGE)
+    model.name_zh = name_zh or name_en
+    model.name_en = name_en or None
+    return model
+
+
+def fill_name_zh_on_update(model):
+    """Update payloads: name_zh unset/None stays unchanged; a blank name_zh falls back to name_en."""
+    if model.name_zh is None:
+        return model
+    name_zh = model.name_zh.strip()
+    if not name_zh:
+        name_zh = (model.name_en or "").strip()
+        if not name_zh:
+            raise ValueError(NAME_REQUIRED_MESSAGE)
+    model.name_zh = name_zh
+    return model
+
+
 def _optional_text(value: str | None) -> str | None:
     if value is None or not isinstance(value, str):
         return value
@@ -37,14 +64,14 @@ def _optional_text(value: str | None) -> str | None:
 
 class InventoryWarehouseCreate(BaseModel):
     code: str = Field(min_length=1, max_length=20)
-    name_zh: str = Field(min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     address: str | None = Field(default=None, max_length=500)
     phone: str | None = Field(default=None, max_length=50)
     location_id: uuid.UUID | None = None
     is_active: bool = True
 
-    @field_validator("code", "name_zh", mode="before")
+    @field_validator("code", mode="before")
     @classmethod
     def _strip_required(cls, value: str) -> str:
         return _required_text(value)
@@ -54,17 +81,21 @@ class InventoryWarehouseCreate(BaseModel):
     def _strip_optional(cls, value: str | None) -> str | None:
         return _optional_text(value)
 
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh(self)
+
 
 class InventoryWarehouseUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=20)
-    name_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     address: str | None = Field(default=None, max_length=500)
     phone: str | None = Field(default=None, max_length=50)
     location_id: uuid.UUID | None = None
     is_active: bool | None = None
 
-    @field_validator("code", "name_zh", mode="before")
+    @field_validator("code", mode="before")
     @classmethod
     def _strip_required(cls, value: str | None) -> str | None:
         if value is None:
@@ -75,6 +106,10 @@ class InventoryWarehouseUpdate(BaseModel):
     @classmethod
     def _strip_optional(cls, value: str | None) -> str | None:
         return _optional_text(value)
+
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh_on_update(self)
 
 
 class InventoryWarehouseOut(BaseModel):
@@ -93,37 +128,33 @@ class InventoryWarehouseOut(BaseModel):
 
 
 class InventoryBrandCreate(BaseModel):
-    name_zh: str = Field(min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     is_active: bool = True
 
-    @field_validator("name_zh", mode="before")
-    @classmethod
-    def _strip_required(cls, value: str) -> str:
-        return _required_text(value)
-
     @field_validator("name_en", mode="before")
     @classmethod
     def _strip_optional(cls, value: str | None) -> str | None:
         return _optional_text(value)
+
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh(self)
 
 
 class InventoryBrandUpdate(BaseModel):
-    name_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
-
-    @field_validator("name_zh", mode="before")
-    @classmethod
-    def _strip_required(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        return _required_text(value)
 
     @field_validator("name_en", mode="before")
     @classmethod
     def _strip_optional(cls, value: str | None) -> str | None:
         return _optional_text(value)
+
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh_on_update(self)
 
 
 class InventoryBrandOut(BaseModel):
@@ -138,29 +169,25 @@ class InventoryBrandOut(BaseModel):
 
 
 class InventoryCategoryCreate(BaseModel):
-    name_zh: str = Field(min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     parent_id: uuid.UUID | None = None
     is_active: bool = True
 
-    @field_validator("name_zh", mode="before")
-    @classmethod
-    def _strip_required(cls, value: str) -> str:
-        return _required_text(value)
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh(self)
 
 
 class InventoryCategoryUpdate(BaseModel):
-    name_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     parent_id: uuid.UUID | None = None
     is_active: bool | None = None
 
-    @field_validator("name_zh", mode="before")
-    @classmethod
-    def _strip_required(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        return _required_text(value)
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh_on_update(self)
 
 
 class InventoryCategoryOut(BaseModel):
@@ -243,7 +270,7 @@ def _clean_variant_attrs(value: dict | None) -> dict | None:
 
 class InventoryItemCreate(BaseModel):
     sku_code: str = Field(min_length=1, max_length=100)
-    name_zh: str = Field(min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     category_id: uuid.UUID | None = None
     unit_of_measure: str | None = Field(default=None, max_length=50)
@@ -279,10 +306,14 @@ class InventoryItemCreate(BaseModel):
                     raise ValueError("Each sub image URL must be 1-500 characters")
         return cleaned
 
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh(self)
+
 
 class InventoryItemUpdate(BaseModel):
     sku_code: str | None = Field(default=None, min_length=1, max_length=100)
-    name_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     category_id: uuid.UUID | None = None
     unit_of_measure: str | None = Field(default=None, max_length=50)
@@ -317,6 +348,10 @@ class InventoryItemUpdate(BaseModel):
                 if not isinstance(url, str) or not (1 <= len(url) <= 500):
                     raise ValueError("Each sub image URL must be 1-500 characters")
         return cleaned
+
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh_on_update(self)
 
 
 class InventoryItemOut(BaseModel):
@@ -382,7 +417,7 @@ class InventoryProductSkuInput(BaseModel):
 
 class InventoryProductCreate(BaseModel):
     code: str = Field(min_length=1, max_length=100)
-    name_zh: str = Field(min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     category_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
@@ -392,7 +427,7 @@ class InventoryProductCreate(BaseModel):
     is_active: bool = True
     skus: list[InventoryProductSkuInput] | None = Field(default=None, max_length=200)
 
-    @field_validator("code", "name_zh", mode="before")
+    @field_validator("code", mode="before")
     @classmethod
     def _strip_required(cls, value: str) -> str:
         return _required_text(value)
@@ -407,10 +442,14 @@ class InventoryProductCreate(BaseModel):
     def _clean_options_field(cls, value: dict | None) -> dict | None:
         return _clean_options(value)
 
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh(self)
+
 
 class InventoryProductUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=100)
-    name_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     category_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
@@ -420,7 +459,7 @@ class InventoryProductUpdate(BaseModel):
     is_active: bool | None = None
     skus: list[InventoryProductSkuInput] | None = Field(default=None, max_length=200)
 
-    @field_validator("code", "name_zh", mode="before")
+    @field_validator("code", mode="before")
     @classmethod
     def _strip_required(cls, value: str | None) -> str | None:
         if value is None:
@@ -436,6 +475,10 @@ class InventoryProductUpdate(BaseModel):
     @classmethod
     def _clean_options_field(cls, value: dict | None) -> dict | None:
         return _clean_options(value)
+
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh_on_update(self)
 
 
 class InventoryProductOut(BaseModel):

@@ -10,6 +10,7 @@ import {
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { NAME_REQUIRED_HINT, namesMissing, zhForEdit } from '@/utils/inventoryGoods'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useLatestRequest } from '@/composables/useLatestRequest'
 
@@ -53,6 +54,12 @@ const form = reactive<InventorySupplierPayload>({
   is_active: true,
 })
 
+const namesTouched = ref(false)
+
+const namesHint = computed(() =>
+  namesTouched.value && namesMissing(form.name_zh, form.name_en) ? NAME_REQUIRED_HINT : undefined,
+)
+
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
@@ -95,6 +102,7 @@ function onFiltersChange() {
 }
 
 function openCreate() {
+  namesTouched.value = false
   editing.value = null
   Object.assign(form, {
     code: '',
@@ -111,10 +119,11 @@ function openCreate() {
 }
 
 function openEdit(supplier: InventorySupplier) {
+  namesTouched.value = false
   editing.value = supplier
   Object.assign(form, {
     code: supplier.code,
-    name_zh: supplier.name_zh,
+    name_zh: zhForEdit(supplier.name_zh, supplier.name_en),
     name_en: supplier.name_en,
     contact_name: supplier.contact_name,
     phone: supplier.phone,
@@ -329,6 +338,9 @@ async function submit() {
                 v-model="form.name_zh"
                 label="Name (zh)"
                 density="comfortable"
+                :hint="namesHint"
+                :persistent-hint="!!namesHint"
+                @update:model-value="namesTouched = true"
               />
             </VCol>
             <VCol
@@ -339,6 +351,7 @@ async function submit() {
                 v-model="form.name_en"
                 label="Name (en)"
                 density="comfortable"
+                @update:model-value="namesTouched = true"
               />
             </VCol>
           </VRow>
@@ -427,7 +440,7 @@ async function submit() {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="!form.code || !form.name_zh"
+            :disabled="!form.code || namesMissing(form.name_zh, form.name_en)"
             @click="submit"
           >
             Save

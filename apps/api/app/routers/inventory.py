@@ -1716,9 +1716,10 @@ async def import_inventory_items(
     errors = []
     for idx, row in enumerate(rows, start=2):
         sku = (row.get("sku_code") or "").strip()
-        name_zh = (row.get("name_zh") or "").strip()
+        name_en_cell = (row.get("name_en") or "").strip()
+        name_zh = (row.get("name_zh") or "").strip() or name_en_cell
         if not sku or not name_zh:
-            errors.append({"row": idx, "error": "sku_code and name_zh are required"})
+            errors.append({"row": idx, "error": "sku_code and a Chinese or English name are required"})
             continue
         try:
             cost_price = _parse_decimal(row.get("cost_price"))

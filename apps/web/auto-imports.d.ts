@@ -29,6 +29,7 @@ declare global {
   const LOCATION_DAYS: typeof import('./src/utils/locationHours')['LOCATION_DAYS']
   const MANUAL_CREDIT_HINT: typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']
   const MAX_VARIANT_COMBINATIONS: typeof import('./src/utils/inventoryGoods')['MAX_VARIANT_COMBINATIONS']
+  const NAME_REQUIRED_HINT: typeof import('./src/utils/inventoryGoods')['NAME_REQUIRED_HINT']
   const ONGOING_END_DATE_HINT: typeof import('./src/utils/billingStaffCopy')['ONGOING_END_DATE_HINT']
   const ONGOING_SET_END_HINT: typeof import('./src/utils/billingStaffCopy')['ONGOING_SET_END_HINT']
   const REMOVE_CANCELLED_INVOICE: typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']
@@ -283,6 +284,7 @@ declare global {
   const monthLabelToPeriod: typeof import('./src/utils/invoiceDisplay')['monthLabelToPeriod']
   const monthOfWeek: typeof import('./src/utils/shiftDisplay')['monthOfWeek']
   const monthOptions: typeof import('./src/utils/shiftDisplay')['monthOptions']
+  const namesMissing: typeof import('./src/utils/inventoryGoods')['namesMissing']
   const needsAuthenticatedMediaFetch: typeof import('./src/utils/mediaUrl')['needsAuthenticatedMediaFetch']
   const needsManualReview: typeof import('./src/utils/summaryDisplay')['needsManualReview']
   const nextTick: typeof import('vue')['nextTick']
@@ -659,6 +661,7 @@ declare global {
   const weekFromQuery: typeof import('./src/utils/shiftDisplay')['weekFromQuery']
   const weekdayOptions: typeof import('./src/utils/courseRosterDisplay')['weekdayOptions']
   const whenever: typeof import('@vueuse/core')['whenever']
+  const zhForEdit: typeof import('./src/utils/inventoryGoods')['zhForEdit']
   const zonedTimeToUtc: typeof import('./src/utils/attendanceDisplay')['zonedTimeToUtc']
 }
 // for type re-export
@@ -694,6 +697,7 @@ declare module 'vue' {
     readonly LOCATION_DAYS: UnwrapRef<typeof import('./src/utils/locationHours')['LOCATION_DAYS']>
     readonly MANUAL_CREDIT_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['MANUAL_CREDIT_HINT']>
     readonly MAX_VARIANT_COMBINATIONS: UnwrapRef<typeof import('./src/utils/inventoryGoods')['MAX_VARIANT_COMBINATIONS']>
+    readonly NAME_REQUIRED_HINT: UnwrapRef<typeof import('./src/utils/inventoryGoods')['NAME_REQUIRED_HINT']>
     readonly ONGOING_END_DATE_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['ONGOING_END_DATE_HINT']>
     readonly ONGOING_SET_END_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['ONGOING_SET_END_HINT']>
     readonly REMOVE_CANCELLED_INVOICE: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['REMOVE_CANCELLED_INVOICE']>
@@ -946,6 +950,7 @@ declare module 'vue' {
     readonly monthLabelToPeriod: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['monthLabelToPeriod']>
     readonly monthOfWeek: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthOfWeek']>
     readonly monthOptions: UnwrapRef<typeof import('./src/utils/shiftDisplay')['monthOptions']>
+    readonly namesMissing: UnwrapRef<typeof import('./src/utils/inventoryGoods')['namesMissing']>
     readonly needsAuthenticatedMediaFetch: UnwrapRef<typeof import('./src/utils/mediaUrl')['needsAuthenticatedMediaFetch']>
     readonly needsManualReview: UnwrapRef<typeof import('./src/utils/summaryDisplay')['needsManualReview']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
@@ -1319,6 +1324,7 @@ declare module 'vue' {
     readonly weekFromQuery: UnwrapRef<typeof import('./src/utils/shiftDisplay')['weekFromQuery']>
     readonly weekdayOptions: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['weekdayOptions']>
     readonly whenever: UnwrapRef<typeof import('@vueuse/core')['whenever']>
+    readonly zhForEdit: UnwrapRef<typeof import('./src/utils/inventoryGoods')['zhForEdit']>
     readonly zonedTimeToUtc: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['zonedTimeToUtc']>
   }
 }

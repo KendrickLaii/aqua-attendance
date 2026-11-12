@@ -13,6 +13,7 @@ import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDi
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { NAME_REQUIRED_HINT, namesMissing, zhForEdit } from '@/utils/inventoryGoods'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useConfirmAction } from '@/composables/useConfirmAction'
 import { useLatestRequest } from '@/composables/useLatestRequest'
@@ -63,6 +64,12 @@ const form = reactive({
   is_active: true,
 })
 
+const namesTouched = ref(false)
+
+const namesHint = computed(() =>
+  namesTouched.value && namesMissing(form.name_zh, form.name_en) ? NAME_REQUIRED_HINT : undefined,
+)
+
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
@@ -107,9 +114,10 @@ function onFiltersChange() {
 
 function resetForm(warehouse: InventoryWarehouse | null) {
   editing.value = warehouse
+  namesTouched.value = false
   Object.assign(form, {
     code: warehouse?.code ?? '',
-    name_zh: warehouse?.name_zh ?? '',
+    name_zh: zhForEdit(warehouse?.name_zh, warehouse?.name_en),
     name_en: warehouse?.name_en ?? '',
     address: warehouse?.address ?? '',
     phone: warehouse?.phone ?? '',
@@ -437,6 +445,9 @@ function askDelete(warehouse: InventoryWarehouse) {
                 v-model="form.name_zh"
                 label="Name (zh)"
                 density="comfortable"
+                :hint="namesHint"
+                :persistent-hint="!!namesHint"
+                @update:model-value="namesTouched = true"
               />
             </VCol>
             <VCol cols="12">
@@ -444,6 +455,7 @@ function askDelete(warehouse: InventoryWarehouse) {
                 v-model="form.name_en"
                 label="Name (en)"
                 density="comfortable"
+                @update:model-value="namesTouched = true"
               />
             </VCol>
           </VRow>
@@ -502,7 +514,7 @@ function askDelete(warehouse: InventoryWarehouse) {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="!form.code.trim() || !form.name_zh.trim()"
+            :disabled="!form.code.trim() || namesMissing(form.name_zh, form.name_en)"
             @click="submit"
           >
             Save

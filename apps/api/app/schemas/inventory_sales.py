@@ -4,7 +4,9 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.inventory import fill_name_zh, fill_name_zh_on_update
 
 CustomerType = Literal["individual", "company"]
 SoStatus = Literal["draft", "confirmed", "partial", "fulfilled", "cancelled"]
@@ -13,7 +15,7 @@ DoStatus = Literal["draft", "confirmed", "void"]
 
 class CustomerCreate(BaseModel):
     code: str = Field(min_length=1, max_length=100)
-    name_zh: str = Field(min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     type: CustomerType = "individual"
     contact_name: str | None = Field(default=None, max_length=255)
@@ -23,10 +25,14 @@ class CustomerCreate(BaseModel):
     student_unit_id: uuid.UUID | None = None
     is_active: bool = True
 
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh(self)
+
 
 class CustomerUpdate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=100)
-    name_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    name_zh: str | None = Field(default=None, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
     type: CustomerType | None = None
     contact_name: str | None = Field(default=None, max_length=255)
@@ -34,6 +40,10 @@ class CustomerUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     address: str | None = Field(default=None, max_length=500)
     is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _names(self):
+        return fill_name_zh_on_update(self)
 
 
 class CustomerOut(BaseModel):

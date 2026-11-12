@@ -127,3 +127,16 @@ export function canonicalValue(value: string, suggestion: OptionSuggestion | und
 
   return suggestion?.values.find(v => normalise(v) === normalise(trimmed)) ?? trimmed
 }
+
+export const NAME_REQUIRED_HINT = 'Chinese or English name required. 中文或英文名填一個。'
+
+export function namesMissing(nameZh: string | null | undefined, nameEn: string | null | undefined): boolean {
+  return !(nameZh ?? '').trim() && !(nameEn ?? '').trim()
+}
+
+/** The server fills a blank Chinese name from the English one; show that fallback as blank when editing. */
+export function zhForEdit(nameZh: string | null | undefined, nameEn: string | null | undefined): string {
+  const zh = nameZh ?? ''
+
+  return zh && zh === (nameEn ?? '') ? '' : zh
+}

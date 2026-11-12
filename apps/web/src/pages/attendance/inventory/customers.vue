@@ -13,6 +13,7 @@ import { type Unit, listUnits } from '@/api/attendance/units'
 import AttendancePaginationBar from '@/components/attendance/AttendancePaginationBar.vue'
 import InventoryEmptyState from '@/components/attendance/inventory/InventoryEmptyState.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { NAME_REQUIRED_HINT, namesMissing, zhForEdit } from '@/utils/inventoryGoods'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useLatestRequest } from '@/composables/useLatestRequest'
 
@@ -61,6 +62,12 @@ const form = reactive<InventoryCustomerPayload>({
   address: '',
   is_active: true,
 })
+
+const namesTouched = ref(false)
+
+const namesHint = computed(() =>
+  namesTouched.value && namesMissing(form.name_zh, form.name_en) ? NAME_REQUIRED_HINT : undefined,
+)
 
 const studentDialogOpen = ref(false)
 const studentUnits = ref<Unit[]>([])
@@ -118,6 +125,7 @@ function onFiltersChange() {
 }
 
 function openCreate() {
+  namesTouched.value = false
   editing.value = null
   Object.assign(form, {
     code: '',
@@ -134,10 +142,11 @@ function openCreate() {
 }
 
 function openEdit(customer: InventoryCustomer) {
+  namesTouched.value = false
   editing.value = customer
   Object.assign(form, {
     code: customer.code,
-    name_zh: customer.name_zh,
+    name_zh: zhForEdit(customer.name_zh, customer.name_en),
     name_en: customer.name_en,
     type: customer.type,
     contact_name: customer.contact_name,
@@ -436,6 +445,9 @@ async function submitFromStudent() {
                 v-model="form.name_zh"
                 label="Name (zh)"
                 density="comfortable"
+                :hint="namesHint"
+                :persistent-hint="!!namesHint"
+                @update:model-value="namesTouched = true"
               />
             </VCol>
             <VCol
@@ -446,6 +458,7 @@ async function submitFromStudent() {
                 v-model="form.name_en"
                 label="Name (en)"
                 density="comfortable"
+                @update:model-value="namesTouched = true"
               />
             </VCol>
           </VRow>
@@ -517,7 +530,7 @@ async function submitFromStudent() {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="!form.code || !form.name_zh"
+            :disabled="!form.code || namesMissing(form.name_zh, form.name_en)"
             @click="submit"
           >
             Save

@@ -17,10 +17,13 @@ import { formatApiError } from '@/utils/formatApiDetail'
 import {
   type GoodsEditing,
   MAX_VARIANT_COMBINATIONS,
+  NAME_REQUIRED_HINT,
   type OptionSuggestion,
   buildCategoryOptions,
   canonicalOption,
   canonicalValue,
+  namesMissing,
+  zhForEdit,
 } from '@/utils/inventoryGoods'
 
 interface OptionRow {
@@ -257,8 +260,14 @@ const tableIssue = computed(() => {
   return ''
 })
 
+const namesTouched = ref(false)
+
+const namesHint = computed(() =>
+  namesTouched.value && namesMissing(form.name_zh, form.name_en) ? NAME_REQUIRED_HINT : undefined,
+)
+
 const canSave = computed(() =>
-  !!(form.code.trim() && form.name_zh.trim()) && !optionIssue.value && !tableIssue.value,
+  !!form.code.trim() && !namesMissing(form.name_zh, form.name_en) && !optionIssue.value && !tableIssue.value,
 )
 
 function toRow(sku: { id: string; sku_code: string; variant_attrs: Record<string, string> | null; sale_price: number | null; cost_price: number | null; other_cost: number | null; barcode: string | null; reorder_level: number; is_active: boolean }): VariantRow {
@@ -281,6 +290,7 @@ function resetForm() {
   const editing = props.editing
 
   saveError.value = ''
+  namesTouched.value = false
   categoryList.value = [...props.categories]
   brandList.value = [...props.brands]
   newRowStore.clear()
@@ -314,7 +324,7 @@ function resetForm() {
 
     Object.assign(form, {
       code: item.sku_code,
-      name_zh: item.name_zh,
+      name_zh: zhForEdit(item.name_zh, item.name_en),
       name_en: item.name_en ?? '',
       brand_id: item.brand_id,
       category_id: item.category_id,
@@ -335,7 +345,7 @@ function resetForm() {
 
     Object.assign(form, {
       code: product.code,
-      name_zh: product.name_zh,
+      name_zh: zhForEdit(product.name_zh, product.name_en),
       name_en: product.name_en ?? '',
       brand_id: product.brand_id,
       category_id: product.category_id,
@@ -521,7 +531,7 @@ async function save() {
     }
     emit('update:modelValue', false)
     emit('saved')
-    toast.show(`Item "${common.name_zh}" saved`)
+    toast.show(`Item "${common.name_zh || common.name_en}" saved`)
   }
   catch (e) {
     saveError.value = formatApiError(e, 'Could not save item.')
@@ -563,9 +573,10 @@ async function save() {
             <VTextField
               v-model="form.name_zh"
               label="Name (Chinese)"
-              hint="Required. 必填"
-              persistent-hint
+              :hint="namesHint"
+              :persistent-hint="!!namesHint"
               density="comfortable"
+              @update:model-value="namesTouched = true"
             />
           </VCol>
           <VCol
@@ -575,9 +586,8 @@ async function save() {
             <VTextField
               v-model="form.name_en"
               label="Name (English)"
-              hint="Optional. 選填"
-              persistent-hint
               density="comfortable"
+              @update:model-value="namesTouched = true"
             />
           </VCol>
           <VCol

@@ -7,6 +7,7 @@ import {
   updateInventoryBrand,
 } from '@/api/attendance/inventory'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { NAME_REQUIRED_HINT, namesMissing, zhForEdit } from '@/utils/inventoryGoods'
 
 const props = defineProps<{
   modelValue: boolean
@@ -29,13 +30,20 @@ const form = reactive({
   is_active: true,
 })
 
-const canSave = computed(() => !!form.name_zh.trim())
+const namesTouched = ref(false)
+
+const namesHint = computed(() =>
+  namesTouched.value && namesMissing(form.name_zh, form.name_en) ? NAME_REQUIRED_HINT : undefined,
+)
+
+const canSave = computed(() => !namesMissing(form.name_zh, form.name_en))
 
 watch(() => props.modelValue, open => {
   if (!open)
     return
   saveError.value = ''
-  form.name_zh = props.editingBrand?.name_zh ?? ''
+  namesTouched.value = false
+  form.name_zh = zhForEdit(props.editingBrand?.name_zh, props.editingBrand?.name_en)
   form.name_en = props.editingBrand?.name_en ?? ''
   form.is_active = props.editingBrand?.is_active ?? true
 })
@@ -59,7 +67,7 @@ async function save() {
 
     emit('update:modelValue', false)
     emit('saved', saved)
-    toast.show(`Brand "${payload.name_zh}" saved`)
+    toast.show(`Brand "${payload.name_zh || payload.name_en}" saved`)
   }
   catch (e) {
     saveError.value = formatApiError(e, 'Could not save brand.')
@@ -92,10 +100,11 @@ async function save() {
         <VTextField
           v-model="form.name_zh"
           label="Name (Chinese)"
-          hint="Required. 必填"
-          persistent-hint
+          :hint="namesHint"
+          :persistent-hint="!!namesHint"
           density="comfortable"
           class="mb-3"
+          @update:model-value="namesTouched = true"
         />
         <VTextField
           v-model="form.name_en"
@@ -104,6 +113,7 @@ async function save() {
           persistent-hint
           density="comfortable"
           class="mb-3"
+          @update:model-value="namesTouched = true"
         />
         <VSwitch
           v-model="form.is_active"
