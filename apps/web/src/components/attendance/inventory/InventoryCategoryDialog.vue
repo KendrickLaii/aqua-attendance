@@ -144,8 +144,6 @@ async function save() {
         <VTextField
           v-model="form.name_en"
           label="Name (English)"
-          hint="Optional. 選填"
-          persistent-hint
           density="comfortable"
           class="mb-3"
           @update:model-value="namesTouched = true"

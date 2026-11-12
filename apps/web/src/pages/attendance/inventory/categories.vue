@@ -156,7 +156,7 @@ function label(entity: { name_zh: string; name_en: string | null }): string {
                 color="primary"
                 size="small"
                 prepend-icon="ri-add-line"
-                @click="openCreateCategory"
+                @click="openCreateCategory(null)"
               >
                 New category
               </VBtn>
@@ -234,7 +234,7 @@ function label(entity: { name_zh: string; name_en: string | null }): string {
             icon="ri-folder-line"
             text="No categories yet"
             action-label="New category"
-            @action="openCreateCategory"
+            @action="openCreateCategory(null)"
           />
         </VCard>
       </VCol>
