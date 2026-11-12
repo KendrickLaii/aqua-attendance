@@ -10,6 +10,12 @@
 - 地點卡片封面 logo 背景改白色，並加底邊線。
 - 單據明細表（採購單／銷售單／發票／貸項單等）金額欄闊度 100px → 130px 並不斷行。
 
+### 修正
+
+- 有標題嘅彈窗（全站）第一個欄位嘅浮動標籤被裁走：`styles.scss` 蓋過 Vuetify `.v-dialog > … > .v-card-item + .v-card-text { padding-top: 0 }`，改為 8px。
+- 分類與品牌頁「New category」打開時 Parent category 顯示 `[object PointerEvent]`（點擊事件被當成上層分類 id）。
+- 品牌／分類彈窗移除 Name (English) 嘅「Optional. 選填」提示（中英文名填一個即可）。
+
 ## [2026-11-10]（Inventory 貨品頁改版）
 
 - 庫存異動 **effective date**（Migration **055**）：`inventory_movements.effective_date`（DATE 可空，有索引）。GRN Confirm 寫入 `receipt_date`，補舊收貨單喺異動紀錄同報表（`GET /movements`、`/reports/movements-summary`、`/reports/write-offs` 日期篩選）跟實際收貨日；排序同 `balance_after` 仍用 `created_at`。`InventoryMovementOut` 加 `effective_date`；Postgres 升級時回填舊 GRN 入庫異動；異動頁日期格顯示「Received DD/MM/YYYY」。新增 API 測試。
