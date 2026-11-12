@@ -13,6 +13,15 @@
   min-height: auto;
 }
 
+// Leave room for the first field's floating label below a dialog title (`html` outranks Vuetify's dialog rule)
+html .v-dialog > .v-overlay__content > .v-card,
+html .v-dialog > .v-overlay__content > form > .v-card {
+  > .v-card-item + .v-card-text,
+  > .v-card-title + .v-card-text {
+    padding-top: 8px;
+  }
+}
+
 // Tabular figures for numeric table cells
 .tabular-nums {
   font-variant-numeric: tabular-nums;
