@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { listUnits } from '@/api/attendance/units'
 import type { Unit } from '@/api/attendance/units'
+import { listLocations } from '@/api/attendance/locations'
+import type { LocationItem } from '@/api/attendance/locations'
 import UnitQrDialogs from '@/components/attendance/UnitQrDialogs.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
@@ -19,6 +21,8 @@ const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 const filterType = ref('')
+const filterLocationId = ref<string | null>(null)
+const locations = ref<LocationItem[]>([])
 const showInactive = ref(false)
 const searchQuery = ref('')
 const qrDialogsRef = ref<InstanceType<typeof UnitQrDialogs> | null>(null)
@@ -32,6 +36,18 @@ const typeOptions = [
   { title: 'Student', value: 'student' },
   { title: 'Staff', value: 'staff' },
 ]
+
+const locationName = (location: LocationItem) =>
+  [location.name_en, location.name_zh].filter(Boolean).join(' · ')
+
+const locationFilterItems = computed(() => [
+  { title: 'All locations', value: null },
+  ...locations.value.map(location => ({ title: locationName(location), value: location.id })),
+])
+
+const hasFilters = computed(() =>
+  Boolean(searchQuery.value || filterType.value || filterLocationId.value || showInactive.value),
+)
 
 const unitsCapped = computed(() => units.value.length >= UNIT_PAGE_SIZE)
 const checkedInCount = computed(() => units.value.filter(u => u.attendance_status === 'checked_in').length)
@@ -62,28 +78,32 @@ const listCaption = computed(() => {
   const total = units.value.length
   if (unitsCapped.value)
     return `Showing ${total} of ${UNIT_PAGE_SIZE}+ active units`
-  if (searchQuery.value || filterType.value || showInactive.value)
+  if (hasFilters.value)
     return `Showing ${total} matching active unit${total === 1 ? '' : 's'}`
 
   return `${total} active unit${total === 1 ? '' : 's'}`
 })
 
-const emptyStateMessage = computed(() => {
-  if (searchQuery.value || filterType.value || showInactive.value)
-    return 'No matching active units'
-
-  return 'No active units found'
-})
-
-const showEmptyUnitsCta = computed(() =>
-  !searchQuery.value && !filterType.value && !showInactive.value,
+const emptyStateMessage = computed(() =>
+  hasFilters.value ? 'No matching active units' : 'No active units found',
 )
+
+const showEmptyUnitsCta = computed(() => !hasFilters.value)
 
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
-  await loadUnits()
+  await Promise.all([loadUnits(), loadLocations()])
 })
+
+async function loadLocations() {
+  try {
+    locations.value = await listLocations({ is_active: true, page_size: 200 })
+  }
+  catch (e) {
+    loadError.value = formatApiError(e, 'Could not load locations. The location filter may be empty.')
+  }
+}
 
 async function loadUnits(isRefresh = false) {
   const softRefresh = isRefresh === true
@@ -97,9 +117,15 @@ async function loadUnits(isRefresh = false) {
     units.value = await listUnits({
       search: searchQuery.value || undefined,
       unit_type: filterType.value || undefined,
+      registered_location_id: filterLocationId.value || undefined,
       is_active: showInactive.value ? undefined : true,
       page_size: UNIT_PAGE_SIZE,
     })
+    const visible = new Set(units.value.map(unit => unit.id))
+
+    if ([...selectedIds.value].some(id => !visible.has(id))) {
+      selectedIds.value = new Set([...selectedIds.value].filter(id => visible.has(id)))
+    }
   }
   catch (e) {
     console.error('Failed to load QR units', e)
@@ -118,6 +144,10 @@ watch(searchQuery, () => {
 })
 
 watch(filterType, () => {
+  loadUnits(true)
+})
+
+watch(filterLocationId, () => {
   loadUnits(true)
 })
 
@@ -253,6 +283,19 @@ async function printSelected() {
           label="Type"
           density="compact"
           hide-details
+        />
+      </VCol>
+      <VCol
+        cols="12"
+        sm="3"
+      >
+        <VSelect
+          v-model="filterLocationId"
+          :items="locationFilterItems"
+          label="Location"
+          density="compact"
+          hide-details
+          clearable
         />
       </VCol>
       <VCol cols="auto">

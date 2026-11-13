@@ -237,3 +237,47 @@ async def test_list_units_employment_type_filter(
     assert resp.headers.get("X-Total-Count") == "1"
     assert [row["id"] for row in body] == [part["id"]]
     assert body[0]["staff_profile"]["employment_type"] == "part_time"
+
+
+@pytest.mark.asyncio
+async def test_list_units_registered_location_filter(
+    client: AsyncClient,
+    admin_token: str,
+    sample_location: dict,
+    sample_location_b: dict,
+) -> None:
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    here = await client.post(
+        "/api/units",
+        json={
+            "code": f"LOC-{uuid.uuid4().hex[:6]}",
+            "full_name": "At branch A",
+            "unit_type": "student",
+            "registered_location_id": sample_location["id"],
+            "scan_location_ids": [sample_location["id"]],
+        },
+        headers=headers,
+    )
+    assert here.status_code == 201, here.text
+    other = await client.post(
+        "/api/units",
+        json={
+            "code": f"LOC-{uuid.uuid4().hex[:6]}",
+            "full_name": "At branch B",
+            "unit_type": "student",
+            "registered_location_id": sample_location_b["id"],
+            "scan_location_ids": [sample_location_b["id"]],
+        },
+        headers=headers,
+    )
+    assert other.status_code == 201, other.text
+
+    resp = await client.get(
+        "/api/units",
+        params={"registered_location_id": sample_location["id"], "page_size": 50},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    ids = {row["id"] for row in resp.json()}
+    assert here.json()["id"] in ids
+    assert other.json()["id"] not in ids

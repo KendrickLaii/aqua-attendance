@@ -37,6 +37,7 @@ def _unit_filters(
     search: str | None,
     attendance_status: str | None,
     employment_type: str | None,
+    registered_location_id: uuid.UUID | None,
 ) -> list:
     clauses = []
     if unit_type:
@@ -53,6 +54,8 @@ def _unit_filters(
         )
     if attendance_status:
         clauses.append(Unit.attendance_status == attendance_status)
+    if registered_location_id is not None:
+        clauses.append(Unit.registered_location_id == registered_location_id)
     if employment_type:
         clauses.append(StaffProfile.employment_type == employment_type)
     return clauses
@@ -68,6 +71,7 @@ async def list_units(
     search: str | None = None,
     attendance_status: str | None = None,
     employment_type: str | None = None,
+    registered_location_id: uuid.UUID | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[UnitOut]:
@@ -88,6 +92,7 @@ async def list_units(
         search=search,
         attendance_status=attendance_status,
         employment_type=employment_type,
+        registered_location_id=registered_location_id,
     )
 
     count_q = select(func.count()).select_from(Unit)

@@ -114,6 +114,7 @@ export async function listUnits(params?: {
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
   employment_type?: 'part_time' | 'full_time'
+  registered_location_id?: string
   page?: number
   page_size?: number
 }): Promise<Unit[]> {
@@ -128,6 +129,7 @@ export async function listUnitsWithTotal(params?: {
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
   employment_type?: 'part_time' | 'full_time'
+  registered_location_id?: string
   page?: number
   page_size?: number
 }): Promise<AttendanceListResult<Unit>> {
@@ -140,6 +142,7 @@ export async function listAllUnits(params?: {
   attendance_status?: 'checked_in' | 'checked_out'
   search?: string
   employment_type?: 'part_time' | 'full_time'
+  registered_location_id?: string
 }): Promise<Unit[]> {
   const result = await fetchAllAttendancePages<Unit>('/units', params)
 
