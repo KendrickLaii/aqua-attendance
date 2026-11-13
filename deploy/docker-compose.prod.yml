@@ -41,6 +41,7 @@ services:
       SCAN_RATE_LIMIT: ${SCAN_RATE_LIMIT:-30/minute}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       INVENTORY_ENABLED: ${INVENTORY_ENABLED:-false}
+      APP_BRAND: ${APP_BRAND:-aqua}
       UPLOAD_DIR: /data/uploads
       PYTHONPATH: /app
     volumes:

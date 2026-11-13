@@ -166,3 +166,9 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
 async def features() -> dict:
     """Runtime feature flags for the web app (public, no auth)."""
     return {"inventory": settings.INVENTORY_ENABLED}
+
+
+@app.get("/api/branding")
+async def branding() -> dict:
+    """Runtime brand key for the web app (public, no auth — login page needs it)."""
+    return {"brand": settings.APP_BRAND}

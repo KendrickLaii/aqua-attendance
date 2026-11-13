@@ -4,6 +4,19 @@ from httpx import AsyncClient
 from app.config import settings
 
 
+async def test_branding_defaults_to_aqua(client: AsyncClient):
+    resp = await client.get("/api/branding")
+    assert resp.status_code == 200
+    assert resp.json() == {"brand": "aqua"}
+
+
+async def test_branding_reports_app_brand(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "APP_BRAND", "cpa")
+    resp = await client.get("/api/branding")
+    assert resp.status_code == 200
+    assert resp.json() == {"brand": "cpa"}
+
+
 async def test_features_reports_inventory_enabled(client: AsyncClient):
     resp = await client.get("/api/features")
     assert resp.status_code == 200

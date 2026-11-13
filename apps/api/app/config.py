@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     ATTACHMENTS_PER_MONTH: int = 2
     MAX_DETAIL_PHOTOS: int = 10
 
+    # Runtime brand for the web UI (public /api/branding). Same image can serve
+    # a different brand per server; "aqua" is the production look.
+    APP_BRAND: str = "aqua"
+
     # Inventory alerts / reporting
     INVENTORY_ENABLED: bool = False
     INVENTORY_ALERTS_ENABLED: bool = True
