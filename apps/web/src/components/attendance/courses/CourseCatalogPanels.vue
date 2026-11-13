@@ -309,7 +309,7 @@ defineExpose({ scrollCatalogSelection })
                   />
                 </th>
                 <th
-                  class="sortable"
+                  class="sortable col-name"
                   @click="toggleSort(skuSort, 'name')"
                 >
                   Name
@@ -320,9 +320,11 @@ defineExpose({ scrollCatalogSelection })
                     :class="{ 'sort-icon--active': skuSort.key === 'name' }"
                   />
                 </th>
-                <th>Schedule</th>
+                <th class="col-schedule">
+                  Schedule
+                </th>
                 <th
-                  class="sortable"
+                  class="sortable col-billing"
                   @click="toggleSort(skuSort, 'billing')"
                 >
                   Billing
@@ -334,7 +336,7 @@ defineExpose({ scrollCatalogSelection })
                   />
                 </th>
                 <th
-                  class="sortable text-end"
+                  class="sortable text-end col-inclass"
                   @click="toggleSort(skuSort, 'students')"
                 >
                   In class
@@ -346,7 +348,7 @@ defineExpose({ scrollCatalogSelection })
                   />
                 </th>
                 <th
-                  class="sortable text-end"
+                  class="sortable text-end col-price"
                   @click="toggleSort(skuSort, 'price')"
                 >
                   <VIcon
@@ -369,9 +371,9 @@ defineExpose({ scrollCatalogSelection })
                 @click="emit('select-class', sku.id)"
               >
                 <td class="col-code">{{ sku.code }}</td>
-                <td>
+                <td class="col-name">
                   <div class="catalog-cell">
-                    <span class="catalog-cell__primary">
+                    <span class="catalog-cell__primary catalog-cell__primary--wrap">
                       {{ sku.name_zh }}
                     </span>
                     <VChip
@@ -394,7 +396,7 @@ defineExpose({ scrollCatalogSelection })
                     {{ [sku.level, meetingDaysLabel(sku.meeting_weekdays)].filter(v => v && v !== '—').join(' · ') || '—' }}
                   </div>
                 </td>
-                <td>
+                <td class="col-schedule">
                   <div
                     class="catalog-cell__primary"
                     :title="sku.schedule_note || undefined"
@@ -409,14 +411,16 @@ defineExpose({ scrollCatalogSelection })
                     {{ [sku.location_id ? locationName(sku.location_id) : '', staffName(sku.staff_id)].filter(Boolean).join(' · ') }}
                   </div>
                 </td>
-                <td>{{ billingUnitShortLabel(sku.billing_unit ?? 'monthly') }}</td>
+                <td class="col-billing">
+                  {{ billingUnitShortLabel(sku.billing_unit ?? 'monthly') }}
+                </td>
                 <td
-                  class="text-end tabular-nums"
+                  class="text-end tabular-nums col-inclass"
                   :title="`${props.inClassCounts[sku.id] ?? 0} in class`"
                 >
                   {{ inClassLabel(sku) }}
                 </td>
-                <td class="text-end">
+                <td class="text-end col-price">
                   {{ sku.price != null ? sku.price : '—' }}
                 </td>
                 <td class="text-end col-actions">
@@ -584,12 +588,46 @@ defineExpose({ scrollCatalogSelection })
   background: rgba(var(--v-theme-primary), 0.08);
 }
 
+.offerings-table :deep(table) {
+  table-layout: fixed;
+}
+
+.offerings-table :deep(.col-code) {
+  width: 12%;
+}
+
+.offerings-table :deep(.col-name) {
+  width: 36%;
+}
+
+.offerings-table :deep(.col-schedule) {
+  width: 18%;
+}
+
+.offerings-table :deep(.col-billing) {
+  width: 10%;
+}
+
+.offerings-table :deep(.col-inclass) {
+  width: 8%;
+}
+
+.offerings-table :deep(.col-price) {
+  width: 8%;
+}
+
+.catalog-cell__primary--wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
 .offerings-table :deep(.col-actions) {
   position: sticky;
   inset-inline-end: 0;
   z-index: 1;
   white-space: nowrap;
-  width: 1%;
+  width: 8%;
   background: rgb(var(--v-theme-surface));
   border-inline-start: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }

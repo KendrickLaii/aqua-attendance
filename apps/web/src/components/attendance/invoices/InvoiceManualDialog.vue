@@ -17,6 +17,7 @@ import {
 import { type Unit, listAllUnits, listUnits } from '@/api/attendance/units'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import HelpBubble from '@/components/attendance/HelpBubble.vue'
+import { useBranding } from '@/composables/useBranding'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { MANUAL_CREDIT_HINT } from '@/utils/billingStaffCopy'
 import {
@@ -66,7 +67,10 @@ interface UnbilledPackage {
   sku: CourseSku | undefined
 }
 
-const MANUAL_MAX_ROWS = 5
+const { brand } = useBranding()
+
+const manualMaxRows = computed(() => Math.max(1, brand.value.manualInvoiceMaxLines))
+
 const open = computed({
   get: () => props.modelValue,
   set: value => emit('update:modelValue', value),
@@ -170,8 +174,17 @@ function isBlankManualRow(row: ManualInvoiceRow): boolean {
   return !row.purchaseId && !row.course.trim() && !row.fee.trim() && !row.qty.trim()
 }
 
+function initialManualRows(): ManualInvoiceRow[] {
+  const count = Math.min(
+    manualMaxRows.value,
+    Math.max(1, brand.value.manualInvoiceDefaultLines),
+  )
+
+  return Array.from({ length: count }, () => blankManualRow())
+}
+
 const manualCanAddRow = computed(
-  () => manualForm.value.rows.length < MANUAL_MAX_ROWS
+  () => manualForm.value.rows.length < manualMaxRows.value
     || manualForm.value.rows.some(isBlankManualRow),
 )
 
@@ -182,7 +195,7 @@ function pushManualRow(row: ManualInvoiceRow): boolean {
 
     return true
   }
-  if (manualForm.value.rows.length >= MANUAL_MAX_ROWS)
+  if (manualForm.value.rows.length >= manualMaxRows.value)
     return false
   manualForm.value.rows.push(row)
 
@@ -477,7 +490,7 @@ function resetForm() {
     remark: '',
     payableTo: '',
     payeeName: '',
-    rows: [blankManualRow()],
+    rows: initialManualRows(),
   }
   manualForm.value.period = linePeriod.value
   manualStudent.value = null
@@ -542,6 +555,7 @@ async function printOptionsFor(invoice: { location_id: string }) {
   return {
     logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
     header: location ? invoicePrintHeaderFromLocation(location) : undefined,
+    template: brand.value.invoicePrintTemplate,
     payableTo: (manualForm.value.payableTo ?? '').trim(),
     payeeName: (manualForm.value.payeeName ?? '').trim(),
   }
@@ -976,7 +990,7 @@ async function printManualInvoice() {
             size="small"
             variant="text"
             prepend-icon="ri-add-line"
-            :disabled="manualForm.rows.length >= MANUAL_MAX_ROWS || manualForm.rows.some(isBlankManualRow)"
+            :disabled="manualForm.rows.length >= manualMaxRows || manualForm.rows.some(isBlankManualRow)"
             @click="manualForm.rows.push(blankManualRow())"
           >
             Add line

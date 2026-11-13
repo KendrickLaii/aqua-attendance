@@ -7,7 +7,11 @@ from app.database import Base
 
 
 class InvoiceCounter(Base):
-    """Per-location counter for sequential printed invoice numbers (1-999999)."""
+    """Per-location counter for sequential printed invoice numbers.
+
+    Aqua accepts 1–999999. CPA accepts up to PostgreSQL INTEGER max so a
+    hand-typed YYYYMM#### still advances this counter. See `_invoice_no_max`.
+    """
 
     __tablename__ = "invoice_counters"
 

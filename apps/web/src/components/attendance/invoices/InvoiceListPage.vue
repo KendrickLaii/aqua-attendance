@@ -17,6 +17,7 @@ import StatCards from '@/components/attendance/StatCards.vue'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useBranding } from '@/composables/useBranding'
 import {
   GENERATE_CONFIRM,
   INVOICE_CANCEL_GENERATED,
@@ -50,6 +51,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   variant: 'invoice',
 })
+
+const { brand } = useBranding()
 
 const isCreditPage = computed(() => props.variant === 'credit')
 
@@ -604,6 +607,7 @@ async function printOptionsFor(
     header: location ? invoicePrintHeaderFromLocation(location) : undefined,
     payableTo: names?.payableTo,
     payeeName: names?.payeeName,
+    template: brand.value.invoicePrintTemplate,
   }
 }
 

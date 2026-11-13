@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.config import settings
 from app.models.course_enrollment import EnrollmentPurchase
 from app.services.tuition_invoice_generator import _BillingContext, _lines_from_enrollment
 from tests.conftest import TestSessionLocal
@@ -2889,3 +2890,56 @@ async def test_manual_invoice_rejects_bad_period(
         headers=_auth(admin_token),
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_rejects_yyyymm_number_on_aqua(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-11-01",
+            "location_id": sample_location["id"],
+            "manual_student_name": "Walk-in",
+            "invoice_no": "202611001",
+            "lines": [{"month": "2026-11", "course": "服務費", "fee": 100, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+    assert "999999" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_accepts_yyyymm_number_on_cpa(
+    client: AsyncClient, admin_token: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "APP_BRAND", "cpa")
+    location = (
+        await client.post(
+            "/api/locations",
+            json={"name_en": f"CPA {uuid.uuid4().hex[:6]}"},
+            headers=_auth(admin_token),
+        )
+    ).json()
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json={
+            "date": "2026-11-01",
+            "location_id": location["id"],
+            "manual_student_name": "每運宏",
+            "invoice_no": "202611001",
+            "lines": [{"month": "2026-11", "course": "服務費", "fee": 100, "qty": 1}],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["invoice_no"] == "202611001"
+
+    peeked = await client.get(
+        f"/api/tuition-invoices/next-no?location_id={location['id']}",
+        headers=_auth(admin_token),
+    )
+    assert peeked.status_code == 200, peeked.text
+    assert peeked.json()["invoice_no"] == "202611002"

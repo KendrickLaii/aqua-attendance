@@ -1,5 +1,7 @@
 import type { TuitionInvoice } from '@/api/attendance/tuitionInvoices'
+import type { InvoicePrintTemplate } from '@/config/brands'
 import { buildTuitionCreditNotePrintHtml, isCreditNotePrint } from '@/utils/printTuitionCreditNote'
+import { DRJ_DEBIT_NOTE_LOGO, buildDebitNotePrintHtml } from '@/utils/printTuitionDebitNote'
 import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/printWindow'
 
 // Hosted logo shown top-left on the printed invoice (same pattern as
@@ -33,6 +35,7 @@ export interface TuitionInvoicePrintData {
   title?: string
   payableTo?: string
   payeeName?: string
+  template?: InvoicePrintTemplate
 }
 
 const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
@@ -93,6 +96,7 @@ export function tuitionInvoicePrintData(
     header?: TuitionInvoicePrintHeader
     payableTo?: string
     payeeName?: string
+    template?: InvoicePrintTemplate
   },
 ): TuitionInvoicePrintData {
   const studentName = invoice.unit_name
@@ -111,6 +115,7 @@ export function tuitionInvoicePrintData(
     title: Number(invoice.total) < 0 ? 'CREDIT NOTE' : 'INVOICE',
     payableTo: options?.payableTo ?? invoice.payable_to_name ?? undefined,
     payeeName: options?.payeeName ?? invoice.payee_name ?? undefined,
+    template: options?.template,
     lines: invoice.lines.map(line => ({
       month: line.month_label ?? invoiceMonthLabel(invoice.period_start),
       course: line.name_zh || line.sku_code,
@@ -219,6 +224,9 @@ ${lineRows}
 export function buildTuitionInvoicePrintHtml(data: TuitionInvoicePrintData): string {
   if (isCreditNotePrint(data))
     return buildTuitionCreditNotePrintHtml(data)
+
+  if (data.template === 'debit-note')
+    return buildDebitNotePrintHtml(data)
 
   const rows = [...data.lines]
   while (rows.length < MIN_ROWS)
@@ -502,7 +510,10 @@ export function renderTuitionInvoicePrintWindow(printWindow: Window, data: Tuiti
 }
 
 export async function printTuitionInvoice(printWindow: Window, data: TuitionInvoicePrintData) {
-  const logoUrl = data.logoUrl || INVOICE_LOGO_URL
+  const logoUrl = data.template === 'debit-note'
+    ? DRJ_DEBIT_NOTE_LOGO
+    : (data.logoUrl || INVOICE_LOGO_URL)
+
   const inlinedLogo = logoUrl ? await inlineLogoForPrint(logoUrl) : ''
   if (printWindow.closed)
     return

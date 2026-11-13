@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.deps import AdminOnly, DB
 from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
 from app.models.course_sku import CourseSku
@@ -187,8 +188,19 @@ async def generate_tuition_invoices(
     return TuitionInvoiceGenerateResult(**result)
 
 
-_INVOICE_NO_MAX = 999999
+# Aqua keeps the original 6-digit series. CPA may type YYYYMM#### (for example
+# 202611001 or 2026110001). Those values are still plain integers, so the
+# existing counter can reserve them. The column is PostgreSQL INTEGER, whose
+# max is 2147483647 — 9999999999 does not fit without a migration.
+_INVOICE_NO_MAX_AQUA = 999_999
+_INVOICE_NO_MAX_CPA = 2_147_483_647
 _COUNTER_ID = 1
+
+
+def _invoice_no_max() -> int:
+    if settings.APP_BRAND == "cpa":
+        return _INVOICE_NO_MAX_CPA
+    return _INVOICE_NO_MAX_AQUA
 
 
 async def _max_numeric_invoice_no(db: AsyncSession, location_id: uuid.UUID | None) -> int:
@@ -241,8 +253,9 @@ async def _bump_invoice_counter(db: AsyncSession, n: int, location_id: uuid.UUID
     """Advance the per-location counter to at least n + 1 in a committed, separate session."""
     if n < 1:
         return
-    if n > _INVOICE_NO_MAX:
-        raise HTTPException(status_code=422, detail="Invoice number exceeds maximum 999999.")
+    limit = _invoice_no_max()
+    if n > limit:
+        raise HTTPException(status_code=422, detail=f"Invoice number exceeds maximum {limit}.")
     session = await _counter_session(db)
     async with session, session.begin():
         counter = await session.execute(
@@ -291,8 +304,11 @@ async def _allocate_invoice_no(db: AsyncSession, location_id: uuid.UUID | None =
             next_after = result.scalar_one_or_none()
             if next_after is None:
                 allocated = await _max_numeric_invoice_no(session, location_id) + 1
-                if allocated > _INVOICE_NO_MAX:
-                    raise HTTPException(status_code=422, detail="Invoice numbers exhausted (max 999999).")
+                if allocated > _invoice_no_max():
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Invoice numbers exhausted (max {_invoice_no_max()}).",
+                    )
                 try:
                     async with session.begin_nested():
                         session.add(InvoiceCounter(location_id=location_id, next_no=allocated + 1))
@@ -304,8 +320,11 @@ async def _allocate_invoice_no(db: AsyncSession, location_id: uuid.UUID | None =
                 return allocated
 
             allocated = next_after - 1
-            if allocated > _INVOICE_NO_MAX:
-                raise HTTPException(status_code=422, detail="Invoice numbers exhausted (max 999999).")
+            if allocated > _invoice_no_max():
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invoice numbers exhausted (max {_invoice_no_max()}).",
+                )
 
             # A manually entered number may have been used without updating
             # the counter. Skip any already-allocated numbers in this location.

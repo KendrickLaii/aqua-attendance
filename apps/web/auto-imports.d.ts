@@ -20,6 +20,7 @@ declare global {
   const BILLING_HELP_STOP: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const COURSES_PAGE_HINT: typeof import('./src/utils/billingStaffCopy')['COURSES_PAGE_HINT']
+  const DRJ_DEBIT_NOTE_LOGO: typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_LOGO']
   const EffectScope: typeof import('vue')['EffectScope']
   const GENERATE_CONFIRM: typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']
   const INVOICE_CANCEL_GENERATED: typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']
@@ -81,6 +82,7 @@ declare global {
   const billingWindowLabel: typeof import('./src/utils/courseRosterDisplay')['billingWindowLabel']
   const buildBusinessHoursString: typeof import('./src/utils/locationHours')['buildBusinessHoursString']
   const buildCategoryOptions: typeof import('./src/utils/inventoryGoods')['buildCategoryOptions']
+  const buildDebitNotePrintHtml: typeof import('./src/utils/printTuitionDebitNote')['buildDebitNotePrintHtml']
   const buildDetailPhotos: typeof import('./src/utils/locationPhotos')['buildDetailPhotos']
   const buildOptionSuggestions: typeof import('./src/utils/inventoryGoods')['buildOptionSuggestions']
   const buildRowsFromObject: typeof import('./src/utils/review-format')['buildRowsFromObject']
@@ -691,6 +693,7 @@ declare module 'vue' {
     readonly BILLING_HELP_STOP: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly COURSES_PAGE_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['COURSES_PAGE_HINT']>
+    readonly DRJ_DEBIT_NOTE_LOGO: UnwrapRef<typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_LOGO']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly GENERATE_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']>
     readonly INVOICE_CANCEL_GENERATED: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']>
@@ -751,6 +754,7 @@ declare module 'vue' {
     readonly billingWindowLabel: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['billingWindowLabel']>
     readonly buildBusinessHoursString: UnwrapRef<typeof import('./src/utils/locationHours')['buildBusinessHoursString']>
     readonly buildCategoryOptions: UnwrapRef<typeof import('./src/utils/inventoryGoods')['buildCategoryOptions']>
+    readonly buildDebitNotePrintHtml: UnwrapRef<typeof import('./src/utils/printTuitionDebitNote')['buildDebitNotePrintHtml']>
     readonly buildDetailPhotos: UnwrapRef<typeof import('./src/utils/locationPhotos')['buildDetailPhotos']>
     readonly buildOptionSuggestions: UnwrapRef<typeof import('./src/utils/inventoryGoods')['buildOptionSuggestions']>
     readonly buildRowsFromObject: UnwrapRef<typeof import('./src/utils/review-format')['buildRowsFromObject']>

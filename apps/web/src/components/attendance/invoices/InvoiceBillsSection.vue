@@ -591,20 +591,20 @@ const emit = defineEmits<{
 }
 
 .invoices-table :deep(.col-student) {
-  width: 18%;
+  width: 22%;
   padding-left: 12px;
 }
 
 .invoices-table :deep(.col-no) {
-  width: 7%;
+  width: 8%;
 }
 
 .invoices-table :deep(.col-staff) {
-  width: 12%;
+  width: 8%;
 }
 
 .invoices-table :deep(.col-classes) {
-  width: 28%;
+  width: 32%;
 }
 
 .invoices-table :deep(.col-status) {
@@ -612,11 +612,11 @@ const emit = defineEmits<{
 }
 
 .invoices-table :deep(.col-total) {
-  width: 12%;
+  width: 9%;
 }
 
 .invoices-table :deep(.col-actions) {
-  width: 14%;
+  width: 12%;
   white-space: nowrap;
 }
 
@@ -635,9 +635,13 @@ const emit = defineEmits<{
   font-weight: 500;
 }
 
-.invoices-table :deep(.student-name__text) {
+.invoices-table :deep(.student-name__text),
+.invoices-table :deep(.class-preview) {
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
   min-width: 0;
 }
 
