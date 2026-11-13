@@ -2,6 +2,7 @@
 import type { CourseSku, CourseSpu } from '@/api/attendance/courses'
 import type { LocationItem } from '@/api/attendance/locations'
 import type { Unit } from '@/api/attendance/units'
+import { useBranding } from '@/composables/useBranding'
 import { billingUnitShortLabel } from '@/utils/courseEnrollmentDisplay'
 import { meetingDaysLabel } from '@/utils/courseRosterDisplay'
 import { type TableSort, compareSortValues, sortIconFor, toggleSort } from '@/utils/tableSort'
@@ -27,6 +28,8 @@ const emit = defineEmits<{
   'edit-sku': [sku: CourseSku]
   'delete-sku': [sku: CourseSku]
 }>()
+
+const { t } = useBranding()
 
 const coursesScroll = ref<HTMLElement | null>(null)
 const offeringsScroll = ref<HTMLElement | null>(null)
@@ -122,14 +125,14 @@ defineExpose({ scrollCatalogSelection })
       <template #title>
         <div class="catalog-panel__heading">
           <div class="text-subtitle-1">
-            Courses
+            {{ t('Courses') }}
           </div>
           <div class="text-caption text-medium-emphasis">
             <template v-if="selectedSpu">
               {{ selectedSpu.code }} · {{ selectedSpu.name_zh }}
             </template>
             <template v-else>
-              {{ sortedSpus.length }} course{{ sortedSpus.length === 1 ? '' : 's' }}
+              {{ sortedSpus.length }} {{ sortedSpus.length === 1 ? t('course') : t('courses') }}
             </template>
           </div>
         </div>
@@ -237,7 +240,7 @@ defineExpose({ scrollCatalogSelection })
                   colspan="4"
                   class="text-center text-medium-emphasis py-6"
                 >
-                  No courses yet. Click <strong>Add Course</strong> to create one.
+                  No {{ t('courses') }} yet. Click <strong>{{ t('Add Course') }}</strong> to create one.
                 </td>
               </tr>
             </tbody>
@@ -250,17 +253,17 @@ defineExpose({ scrollCatalogSelection })
       <template #title>
         <div class="catalog-panel__heading">
           <div class="text-subtitle-1">
-            Class Offerings
+            {{ t('Class Offerings') }}
           </div>
           <div class="text-caption text-medium-emphasis">
             <template v-if="rosterSku">
               {{ rosterSku.code }} · {{ rosterSku.name_zh }}
             </template>
             <template v-else-if="selectedSpu">
-              {{ skusForSelectedSpu.length }} class{{ skusForSelectedSpu.length === 1 ? '' : 'es' }} in {{ selectedSpu.name_zh }}
+              {{ skusForSelectedSpu.length }} {{ skusForSelectedSpu.length === 1 ? t('class') : t('classes') }} in {{ selectedSpu.name_zh }}
             </template>
             <template v-else>
-              Pick a course first
+              Pick a {{ t('course') }} first
             </template>
           </div>
         </div>
@@ -272,7 +275,7 @@ defineExpose({ scrollCatalogSelection })
               {{ selectedSpu.code }} · {{ selectedSpu.name_zh }}
             </template>
             <template v-else>
-              Pick a course first
+              Pick a {{ t('course') }} first
             </template>
           </span>
           <VBtn
@@ -282,7 +285,7 @@ defineExpose({ scrollCatalogSelection })
             :disabled="!selectedSpuId"
             @click="emit('create-sku')"
           >
-            Add Class
+            {{ t('Add Class') }}
           </VBtn>
         </div>
         <div
@@ -339,7 +342,7 @@ defineExpose({ scrollCatalogSelection })
                   class="sortable text-end col-inclass"
                   @click="toggleSort(skuSort, 'students')"
                 >
-                  In class
+                  {{ t('In class') }}
                   <VIcon
                     :icon="sortIconFor(skuSort, 'students')"
                     size="14"
@@ -416,7 +419,7 @@ defineExpose({ scrollCatalogSelection })
                 </td>
                 <td
                   class="text-end tabular-nums col-inclass"
-                  :title="`${props.inClassCounts[sku.id] ?? 0} in class`"
+                  :title="`${props.inClassCounts[sku.id] ?? 0} ${t('in class')}`"
                 >
                   {{ inClassLabel(sku) }}
                 </td>
@@ -454,7 +457,7 @@ defineExpose({ scrollCatalogSelection })
                   colspan="7"
                   class="text-center text-medium-emphasis py-6"
                 >
-                  No class offerings yet for this course.
+                  No {{ t('class offerings') }} yet for this {{ t('course') }}.
                 </td>
               </tr>
               <tr v-if="!selectedSpuId">
@@ -462,7 +465,7 @@ defineExpose({ scrollCatalogSelection })
                   colspan="7"
                   class="text-center text-medium-emphasis py-6"
                 >
-                  Select a course above to see its class offerings.
+                  Select a {{ t('course') }} above to see its {{ t('class offerings') }}.
                 </td>
               </tr>
             </tbody>

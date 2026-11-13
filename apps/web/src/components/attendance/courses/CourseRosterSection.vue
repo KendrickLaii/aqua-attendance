@@ -33,6 +33,7 @@ import {
   setEndSavedHint,
 } from '@/utils/billingStaffCopy'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useBranding } from '@/composables/useBranding'
 import { formatApiError } from '@/utils/formatApiDetail'
 import {
   billingWindowLabel,
@@ -41,7 +42,6 @@ import {
   enrollDisabledReason,
   enrollPriceHint,
   enrollmentPriceParts,
-  enrollmentStatusLabel,
   existingEnrollmentStatus,
   formatRosterDate,
   isFieldPromptReason,
@@ -69,6 +69,8 @@ const emit = defineEmits<{
   'jump-to-class': [skuId: string | null]
   'in-class-count': [skuId: string, count: number]
 }>()
+
+const { brand, t } = useBranding()
 
 const rosterSection = ref<HTMLElement | null>(null)
 const compareCodes = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })
@@ -220,7 +222,7 @@ async function loadRoster(skuId: string | null) {
   catch (e) {
     console.error('Failed to load roster', e)
     if (requestId === rosterRequestId)
-      enrollError.value = formatApiError(e, 'Could not load class roster.')
+      enrollError.value = formatApiError(e, `Could not load ${t('class')} roster.`)
   }
   finally {
     if (requestId === rosterRequestId)
@@ -326,7 +328,7 @@ const existingStatus = computed(() =>
 
 const enrollButtonLabel = computed(() => {
   if (!existingEnrollment.value)
-    return 'Join class'
+    return t('Join class')
 
   return enrollNeedsPurchasedQuantity() ? 'Top up sessions' : 'Update'
 })
@@ -362,9 +364,22 @@ const rosterStatusCounts = computed(() => {
   return { active, ended, all: enrollments.value.length }
 })
 
+function rosterStatusLabel(status: string): string {
+  if (status !== 'active' && status !== 'completed' && status !== 'cancelled')
+    return status
+
+  const active = status === 'active'
+  const custom = brand.value.terms[active ? 'rosterStatusActive' : 'rosterStatusInactive']
+
+  if (custom)
+    return custom
+
+  return active ? 'In class' : 'Left'
+}
+
 const rosterStatusFilters = computed(() => [
-  { value: 'active' as const, title: 'In class', count: rosterStatusCounts.value.active },
-  { value: 'ended' as const, title: 'Left', count: rosterStatusCounts.value.ended },
+  { value: 'active' as const, title: rosterStatusLabel('active'), count: rosterStatusCounts.value.active },
+  { value: 'ended' as const, title: rosterStatusLabel('cancelled'), count: rosterStatusCounts.value.ended },
   { value: 'all' as const, title: 'All', count: rosterStatusCounts.value.all },
 ])
 
@@ -538,12 +553,12 @@ async function enrollStudent() {
     if (picked)
       cacheStudents([picked])
 
-    enrollSuccess.value = `${picked?.full_name ?? 'Student'} joined ${rosterSku.value?.name_zh ?? 'class'}.`
+    enrollSuccess.value = `${picked?.full_name ?? 'Student'} joined ${rosterSku.value?.name_zh ?? t('class')}.`
     resetEnrollForm()
     rosterStatusFilter.value = 'active'
   }
   catch (e) {
-    enrollError.value = formatApiError(e, 'Could not join this class.')
+    enrollError.value = formatApiError(e, `Could not join this ${t('class')}.`)
   }
   finally {
     enrolling.value = false
@@ -852,9 +867,9 @@ function cancelEnrollment(enrollment: CourseEnrollment) {
   const unbilledQty = purchaseSummary(enrollment).unbilledQty
 
   openDeleteConfirm({
-    title: `Leave class — ${labelFor(enrollment)}?`,
+    title: `${t('Leave class')} — ${labelFor(enrollment)}?`,
     detail: LEAVE_CLASS_CONFIRM + leaveClassUnbilledNote(unbilledQty),
-    confirmLabel: 'Leave class',
+    confirmLabel: t('Leave class'),
     run: async () => {
       const updated = await updateCourseEnrollment(enrollment.id, { status: 'cancelled' })
       const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
@@ -870,10 +885,10 @@ async function reactivateEnrollment(enrollment: CourseEnrollment) {
     const idx = enrollments.value.findIndex(e => e.id === enrollment.id)
     if (idx !== -1)
       enrollments.value[idx] = updated
-    enrollSuccess.value = `${labelFor(enrollment)} is back in class.`
+    enrollSuccess.value = `${labelFor(enrollment)} is ${t('back in class')}.`
   }
   catch (e) {
-    enrollError.value = formatApiError(e, 'Could not put this student back in class.')
+    enrollError.value = formatApiError(e, `Could not put this student ${t('back in class')}.`)
   }
 }
 
@@ -956,7 +971,7 @@ defineExpose({ scrollIntoView })
       <div class="roster-identity">
         <div class="roster-identity__main">
           <div class="text-caption text-medium-emphasis text-uppercase roster-kicker">
-            Class roster · 班次名冊
+            {{ t('Class roster · 班次名冊') }}
           </div>
           <div
             v-if="rosterSku"
@@ -969,7 +984,7 @@ defineExpose({ scrollIntoView })
             v-else
             class="text-h6"
           >
-            Pick a class to open its roll
+            {{ t('Pick a class to open its roll') }}
           </div>
           <div
             v-if="metaLine"
@@ -984,7 +999,7 @@ defineExpose({ scrollIntoView })
             :items="classOptions"
             item-title="title"
             item-value="id"
-            label="Jump to class"
+            :label="t('Jump to class')"
             placeholder="Code or name"
             prepend-inner-icon="ri-search-line"
             density="compact"
@@ -1023,7 +1038,7 @@ defineExpose({ scrollIntoView })
           >
             <div class="d-flex align-center justify-space-between">
               <span class="text-subtitle-2">
-                {{ activeRosterCount }}{{ rosterSku.capacity != null ? ` / ${rosterSku.capacity}` : '' }} in class
+                {{ activeRosterCount }}{{ rosterSku.capacity != null ? ` / ${rosterSku.capacity}` : '' }} {{ t('in class') }}
               </span>
               <VChip
                 v-if="rosterAtCapacity"
@@ -1064,7 +1079,7 @@ defineExpose({ scrollIntoView })
       >
         <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
           <span class="text-subtitle-2 d-flex align-center">
-            Join a student
+            {{ t('Join a student') }}
             <HelpBubble :text="JOIN_CLASS_HINT" />
           </span>
         </div>
@@ -1080,7 +1095,7 @@ defineExpose({ scrollIntoView })
               :loading="studentSearchLoading"
               item-title="full_name"
               item-value="id"
-              label="Student"
+              :label="t('Student')"
               placeholder="Search name or code"
               prepend-inner-icon="ri-search-line"
               density="comfortable"
@@ -1248,7 +1263,7 @@ defineExpose({ scrollIntoView })
         </VChipGroup>
         <VTextField
           v-model="rosterSearch"
-          label="Find student"
+          :label="t('Find student')"
           placeholder="Name or code"
           prepend-inner-icon="ri-search-line"
           density="compact"
@@ -1294,10 +1309,10 @@ defineExpose({ scrollIntoView })
           class="mb-2"
         />
         <div class="text-subtitle-1">
-          No class selected
+          {{ t('No class selected') }}
         </div>
         <div class="text-body-2 text-medium-emphasis">
-          Click a class above, or search by code in Jump to class.
+          {{ t('Click a class above, or search by code in Jump to class.') }}
         </div>
       </div>
 
@@ -1323,7 +1338,7 @@ defineExpose({ scrollIntoView })
                 class="sortable"
                 @click="toggleSort(rosterSort, 'student')"
               >
-                Student
+                {{ t('Student') }}
                 <VIcon
                   :icon="sortIconFor(rosterSort, 'student')"
                   size="14"
@@ -1403,7 +1418,7 @@ defineExpose({ scrollIntoView })
                     variant="tonal"
                     :color="enrollmentStatusColor[e.status] ?? 'grey'"
                   >
-                    {{ enrollmentStatusLabel(e.status) }}
+                    {{ rosterStatusLabel(e.status) }}
                   </VChip>
                 </td>
                 <td v-if="rosterSku?.billing_unit === 'per_session'">
@@ -1502,13 +1517,13 @@ defineExpose({ scrollIntoView })
                         <VListItem
                           v-if="e.status === 'active'"
                           prepend-icon="ri-user-unfollow-line"
-                          title="Leave class"
+                          :title="t('Leave class')"
                           @click="cancelEnrollment(e)"
                         />
                         <VListItem
                           v-else
                           prepend-icon="ri-user-follow-line"
-                          title="Back in class"
+                          :title="t('Back in class')"
                           @click="reactivateEnrollment(e)"
                         />
                         <VListItem
@@ -1649,7 +1664,7 @@ defineExpose({ scrollIntoView })
         <VCardTitle>Edit {{ labelFor(editingEnrollment) }}</VCardTitle>
         <VCardSubtitle>
           {{ codeFor(editingEnrollment) }}
-          · {{ enrollmentStatusLabel(editingEnrollment.status) }}
+          · {{ rosterStatusLabel(editingEnrollment.status) }}
         </VCardSubtitle>
         <VCardText>
           <VRow dense>
@@ -1662,7 +1677,7 @@ defineExpose({ scrollIntoView })
                 step="0.01"
                 prefix="HK$"
                 density="comfortable"
-                :hint="rosterSku ? `Blank uses the class price (${rosterPriceLabel(rosterSku)}).` : 'Blank uses the class price.'"
+                :hint="rosterSku ? `Blank uses the ${t('class')} price (${rosterPriceLabel(rosterSku)}).` : `Blank uses the ${t('class')} price.`"
                 persistent-hint
               />
             </VCol>

@@ -52,7 +52,7 @@ const props = withDefaults(defineProps<{
   variant: 'invoice',
 })
 
-const { brand } = useBranding()
+const { brand, t } = useBranding()
 
 const isCreditPage = computed(() => props.variant === 'credit')
 
@@ -255,7 +255,7 @@ const locationOptions = computed(() =>
 )
 
 const locationSelectItems = computed(() => [
-  { value: 'all', title: 'All locations' },
+  { value: 'all', title: t('All locations') },
   ...locationOptions.value,
 ])
 
@@ -268,9 +268,9 @@ const locationFilter = computed({
 
 const locationLabel = computed(() => {
   if (!locationId.value)
-    return 'All locations'
+    return t('All locations')
 
-  return locationOptions.value.find(item => item.value === locationId.value)?.title ?? 'All locations'
+  return locationOptions.value.find(item => item.value === locationId.value)?.title ?? t('All locations')
 })
 
 const scopeLabel = computed(() => {
@@ -825,7 +825,7 @@ watch(yearMonth, () => {
     >
       <VCol>
         <div class="text-h5 font-weight-medium invoice-page-title">
-          {{ isCreditPage ? 'Credit notes' : 'Tuition invoices' }}
+          {{ isCreditPage ? 'Credit notes' : t('Tuition invoices') }}
         </div>
         <div class="text-body-2 text-medium-emphasis">
           {{ scopeLabel }}
@@ -924,7 +924,7 @@ watch(yearMonth, () => {
             :items="locationSelectItems"
             item-title="title"
             item-value="value"
-            label="Location"
+            :label="t('Location')"
             prepend-inner-icon="ri-building-line"
             density="compact"
             hide-details

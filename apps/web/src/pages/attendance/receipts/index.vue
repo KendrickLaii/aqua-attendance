@@ -8,12 +8,13 @@ import {
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import StatCards from '@/components/attendance/StatCards.vue'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
-import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useBranding } from '@/composables/useBranding'
 import {
   REMOVE_VOIDED_RECEIPT,
   VOID_RECEIPT_HINT,
 } from '@/utils/billingStaffCopy'
+import { formatApiError } from '@/utils/formatApiDetail'
 import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
 import { type CancellableTableSort, type SortValue, compareSortValues, cycleSort, sortHeaderTitle, sortIconFor } from '@/utils/tableSort'
 import {
@@ -28,6 +29,7 @@ import {
 definePage({ meta: {} })
 
 const router = useRouter()
+const { t } = useBranding()
 const { ensureAccess } = useAttendanceAdminGate()
 
 const {
@@ -159,7 +161,7 @@ const locationOptions = computed(() =>
     })),
 )
 const locationSelectItems = computed(() => [
-  { value: 'all', title: 'All locations' },
+  { value: 'all', title: t('All locations') },
   ...locationOptions.value,
 ])
 const locationFilter = computed({
@@ -170,8 +172,9 @@ const locationFilter = computed({
 })
 const locationLabel = computed(() => {
   if (!locationId.value)
-    return 'All locations'
-  return locationOptions.value.find(item => item.value === locationId.value)?.title ?? 'All locations'
+    return t('All locations')
+
+  return locationOptions.value.find(item => item.value === locationId.value)?.title ?? t('All locations')
 })
 const scopeLabel = computed(() => {
   const month = parsedYearMonth.value ? monthLabel.value : 'All months'
@@ -238,7 +241,7 @@ async function loadLocations() {
   }
   catch (e) {
     locations.value = []
-    loadError.value = formatApiError(e, 'Could not load locations. Campus filter and print headers may be incomplete.')
+    loadError.value = formatApiError(e, t('Could not load locations. Campus filter and print headers may be incomplete.'))
   }
 }
 
@@ -384,7 +387,7 @@ onMounted(async () => {
         </VBtn>
         <VTextField
           v-model="yearMonth"
-          label="Month"
+          :label="t('Month')"
           type="month"
           density="compact"
           hide-details
@@ -441,7 +444,7 @@ onMounted(async () => {
             :items="locationSelectItems"
             item-title="title"
             item-value="value"
-            label="Location"
+            :label="t('Location')"
             prepend-inner-icon="ri-building-line"
             density="compact"
             hide-details
@@ -450,7 +453,7 @@ onMounted(async () => {
           <VTextField
             v-model="searchQuery"
             label="Search"
-            placeholder="Student, receipt no., paid by…"
+            :placeholder="t('Student, receipt no., paid by…')"
             prepend-inner-icon="ri-search-line"
             density="compact"
             hide-details
@@ -533,10 +536,10 @@ onMounted(async () => {
               <th
                 class="sortable"
                 :aria-sort="ariaSort('student')"
-                :title="sortHeaderTitle(receiptSort, 'student', 'Student')"
+                :title="sortHeaderTitle(receiptSort, 'student', t('Student'))"
                 @click="onReceiptSort('student')"
               >
-                Student
+                {{ t('Student') }}
                 <VIcon
                   :icon="sortIconFor(receiptSort, 'student')"
                   size="14"

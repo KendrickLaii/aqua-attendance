@@ -9,6 +9,7 @@ import {
   uploadLocationAttachment,
 } from '@/api/attendance/locationAttachments'
 import { useToast } from '@/composables/useToast'
+import { useBranding } from '@/composables/useBranding'
 import { formatApiError } from '@/utils/formatApiDetail'
 
 const props = defineProps<{
@@ -18,6 +19,7 @@ const props = defineProps<{
 const RETENTION_MONTHS = 24
 
 const { show: showToast } = useToast()
+const { t } = useBranding()
 
 const data = ref<LocationAttachmentList | null>(null)
 const loading = ref(false)
@@ -246,7 +248,7 @@ async function confirmDelete() {
           <VSelect
             v-model="month"
             :items="monthOptions"
-            label="Month"
+            :label="t('Month')"
             density="compact"
             prepend-inner-icon="ri-calendar-line"
             hide-details

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { type CourseSpu, type CourseSpuPayload, createCourseSpu, updateCourseSpu } from '@/api/attendance/courses'
 import { formatApiError } from '@/utils/formatApiDetail'
+import { useBranding } from '@/composables/useBranding'
 
 const props = defineProps<{
   modelValue: boolean
@@ -11,6 +12,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   saved: []
 }>()
+
+const { t } = useBranding()
 
 const saving = ref(false)
 const saveError = ref('')
@@ -59,7 +62,7 @@ async function save() {
     emit('saved')
   }
   catch (e) {
-    saveError.value = formatApiError(e, 'Could not save course.')
+    saveError.value = formatApiError(e, `Could not save ${t('course')}.`)
   }
   finally {
     saving.value = false
@@ -73,7 +76,7 @@ async function save() {
     max-width="520"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <VCard :title="editingSpu ? 'Edit course' : 'Add course'">
+    <VCard :title="editingSpu ? t('Edit course') : t('Add course')">
       <VCardText>
         <VAlert
           v-if="saveError"
@@ -85,7 +88,7 @@ async function save() {
           {{ saveError }}
         </VAlert>
         <p class="text-body-2 text-medium-emphasis mb-4">
-          A course is the subject family (SPU). Class offerings (SKU) sit underneath it.
+          A {{ t('course') }} is the subject family (SPU). {{ t('Class offerings') }} (SKU) sit underneath it.
         </p>
         <VRow>
           <VCol cols="6">
@@ -101,7 +104,7 @@ async function save() {
           <VCol cols="6">
             <VTextField
               v-model="form.subject"
-              label="Subject"
+              :label="t('Subject')"
               placeholder="math"
               hint="Optional grouping label."
               persistent-hint
@@ -111,7 +114,7 @@ async function save() {
           <VCol cols="12">
             <VTextField
               v-model="form.name_zh"
-              label="Chinese name"
+              :label="t('Chinese name')"
               placeholder="小學數學"
               hint="Shown on the roster and invoices. Required."
               persistent-hint
@@ -121,7 +124,7 @@ async function save() {
           <VCol cols="12">
             <VTextField
               v-model="form.name_en"
-              label="English name"
+              :label="t('English name')"
               placeholder="Primary Math"
               hint="Optional."
               persistent-hint
@@ -141,8 +144,8 @@ async function save() {
           <VCol cols="12">
             <VSwitch
               v-model="form.is_active"
-              label="Active course"
-              hint="Inactive courses stay in the list but you should not add new classes under them."
+              :label="t('Active course')"
+              :hint="`Inactive ${t('courses')} stay in the list but you should not add new ${t('classes')} under them.`"
               persistent-hint
               density="comfortable"
               color="primary"

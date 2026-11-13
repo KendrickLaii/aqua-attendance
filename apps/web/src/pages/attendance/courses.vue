@@ -19,11 +19,19 @@ import { COURSES_PAGE_HINT } from '@/utils/billingStaffCopy'
 import { pickCourseSelectionForSku, skuIdFromRouteQuery } from '@/utils/courseEnrollmentDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useBranding } from '@/composables/useBranding'
 
 definePage({ meta: {} })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const { t } = useBranding()
 const route = useRoute()
+
+const pageHint = computed(() =>
+  COURSES_PAGE_HINT
+    .replace('Courses', t('Courses'))
+    .replace('Class Offerings', t('Class Offerings')),
+)
 
 const loading = ref(true)
 const loadError = ref('')
@@ -214,7 +222,7 @@ async function confirmCatalogDelete() {
 function removeSpu(spu: CourseSpu) {
   deleteTarget.value = {
     title: `Delete ${spu.name_zh}?`,
-    detail: `Delete course "${spu.name_zh}"? This only works if it has no class offerings.`,
+    detail: `Delete ${t('course')} "${spu.name_zh}"? This only works if it has no ${t('class offerings')}.`,
     run: async () => {
       await deleteCourseSpu(spu.id)
       if (selectedSpuId.value === spu.id)
@@ -229,7 +237,7 @@ function removeSpu(spu: CourseSpu) {
 function removeSku(sku: CourseSku) {
   deleteTarget.value = {
     title: `Delete ${sku.name_zh}?`,
-    detail: `Delete class "${sku.name_zh}"? This only works if no student is enrolled.`,
+    detail: `Delete ${t('class')} "${sku.name_zh}"? This only works if no student is enrolled.`,
     run: async () => {
       await deleteCourseSku(sku.id)
       await loadAll()
@@ -248,8 +256,8 @@ function removeSku(sku: CourseSku) {
     >
       <VCol>
         <div class="text-h5 font-weight-medium d-flex align-center">
-          Course Management
-          <HelpBubble :text="COURSES_PAGE_HINT" />
+          {{ t('Course Management') }}
+          <HelpBubble :text="pageHint" />
         </div>
       </VCol>
       <VCol
@@ -272,7 +280,7 @@ function removeSku(sku: CourseSku) {
           prepend-icon="ri-add-line"
           @click="openCreateSpu"
         >
-          Add Course
+          {{ t('Add Course') }}
         </VBtn>
         <VBtn
           v-if="catalogPanel === 'offerings'"
@@ -281,7 +289,7 @@ function removeSku(sku: CourseSku) {
           :disabled="!selectedSpuId"
           @click="openCreateSku"
         >
-          Add Class
+          {{ t('Add Class') }}
         </VBtn>
         <VBtn
           v-else
@@ -289,7 +297,7 @@ function removeSku(sku: CourseSku) {
           prepend-icon="ri-add-line"
           @click="openCreateSpu"
         >
-          Add Course
+          {{ t('Add Course') }}
         </VBtn>
       </VCol>
     </VRow>

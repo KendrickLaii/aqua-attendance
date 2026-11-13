@@ -19,6 +19,7 @@ import {
   invoiceStudentLabel,
   isCreditInvoice,
 } from '@/utils/invoiceDisplay'
+import { useBranding } from '@/composables/useBranding'
 import { type CancellableTableSort, sortHeaderTitle, sortIconFor } from '@/utils/tableSort'
 
 export type InvoiceSortKey = 'student' | 'no' | 'staff' | 'classes' | 'status' | 'total'
@@ -70,6 +71,8 @@ const emit = defineEmits<{
   'clear-filters': []
   sort: [key: InvoiceSortKey]
 }>()
+
+const { t } = useBranding()
 </script>
 
 <template>
@@ -155,10 +158,10 @@ const emit = defineEmits<{
               <th
                 class="sortable col-student"
                 :aria-sort="ariaSort(sort, 'student')"
-                :title="sortHeaderTitle(sort, 'student', 'Student')"
+                :title="sortHeaderTitle(sort, 'student', t('Student'))"
                 @click="emit('sort', 'student')"
               >
-                Student
+                {{ t('Student') }}
                 <VIcon
                   :icon="sortIconFor(sort, 'student')"
                   size="14"
@@ -183,10 +186,10 @@ const emit = defineEmits<{
               <th
                 class="sortable col-staff"
                 :aria-sort="ariaSort(sort, 'staff')"
-                :title="sortHeaderTitle(sort, 'staff', 'Tutor')"
+                :title="sortHeaderTitle(sort, 'staff', t('Tutor'))"
                 @click="emit('sort', 'staff')"
               >
-                Tutor
+                {{ t('Tutor') }}
                 <VIcon
                   :icon="sortIconFor(sort, 'staff')"
                   size="14"
@@ -197,10 +200,10 @@ const emit = defineEmits<{
               <th
                 class="sortable col-classes"
                 :aria-sort="ariaSort(sort, 'classes')"
-                :title="sortHeaderTitle(sort, 'classes', 'Classes')"
+                :title="sortHeaderTitle(sort, 'classes', t('Classes'))"
                 @click="emit('sort', 'classes')"
               >
-                Classes
+                {{ t('Classes') }}
                 <VIcon
                   :icon="sortIconFor(sort, 'classes')"
                   size="14"
@@ -450,7 +453,7 @@ const emit = defineEmits<{
                       </span>
                       <span>Period: {{ invoicePeriodLabel(invoice) }}</span>
                       <span v-if="invoiceOpenedBy(invoice)">
-                        Tutor <strong>{{ invoiceOpenedBy(invoice) }}</strong>
+                        {{ t('Tutor') }} <strong>{{ invoiceOpenedBy(invoice) }}</strong>
                       </span>
                       <span v-if="invoice.notes">
                         Remark: {{ invoice.notes }}
@@ -462,7 +465,7 @@ const emit = defineEmits<{
                     >
                       <thead>
                         <tr>
-                          <th>Class</th>
+                          <th>{{ t('Class') }}</th>
                           <th>Teacher</th>
                           <th>How billed</th>
                           <th>Calculation</th>

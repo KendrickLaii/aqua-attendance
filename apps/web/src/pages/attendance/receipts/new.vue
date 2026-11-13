@@ -9,6 +9,7 @@ import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { type Unit, listUnits } from '@/api/attendance/units'
 import { requiredValidator } from '@core/utils/validators'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
+import { useBranding } from '@/composables/useBranding'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
 import {
@@ -24,6 +25,7 @@ definePage({ meta: {} })
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useBranding()
 const { ensureAccess } = useAttendanceAdminGate()
 
 const LOCATION_FILTER_KEY = 'tuition-receipt-location'
@@ -193,7 +195,7 @@ async function loadStudents(search?: string) {
   }
   catch (e) {
     if (requestId === studentRequestId)
-      formError.value = formatApiError(e, 'Could not load students.')
+      formError.value = formatApiError(e, t('Could not load students.'))
   }
   finally {
     if (requestId === studentRequestId)
@@ -278,7 +280,7 @@ function headerFromLocation(location: LocationItem): TuitionInvoicePrintHeader {
 
 async function submit() {
   if (!locationId.value) {
-    formError.value = 'Pick a location.'
+    formError.value = t('Pick a location.')
     return
   }
   if (!paidBy.value?.trim()) {
@@ -397,7 +399,7 @@ onMounted(async () => {
               :items="locationOptions"
               item-title="title"
               item-value="value"
-              label="Location"
+              :label="t('Location')"
               density="compact"
               hide-details
               :disabled="lockedFromInvoice"
@@ -457,8 +459,8 @@ onMounted(async () => {
               :loading="studentLoading"
               item-title="full_name"
               return-object
-              label="Student"
-              placeholder="Search student…"
+              :label="t('Student')"
+              :placeholder="t('Search student…')"
               density="compact"
               hide-details
               clearable
@@ -474,7 +476,7 @@ onMounted(async () => {
             <VTextField
               v-else
               :model-value="lockedStudentLabel"
-              label="Student"
+              :label="t('Student')"
               density="compact"
               hide-details
               disabled
@@ -524,7 +526,7 @@ onMounted(async () => {
           v-else-if="!openInvoices.length"
           class="text-medium-emphasis py-4"
         >
-          No issued invoices to collect for this student.
+          {{ t('No issued invoices to collect for this student.') }}
         </div>
         <VTable
           v-else
@@ -534,7 +536,7 @@ onMounted(async () => {
             <tr>
               <th style="width: 48px;" />
               <th>Invoice</th>
-              <th>Classes</th>
+              <th>{{ t('Classes') }}</th>
               <th class="text-end">
                 Total
               </th>
@@ -593,7 +595,7 @@ onMounted(async () => {
         >
           <thead>
             <tr>
-              <th>Month</th>
+              <th>{{ t('Month') }}</th>
               <th>Description</th>
               <th class="text-end">
                 Amount

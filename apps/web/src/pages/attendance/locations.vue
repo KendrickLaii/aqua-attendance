@@ -21,8 +21,11 @@ import {
   detailPhotosToRows,
 } from '@/utils/locationPhotos'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useBranding } from '@/composables/useBranding'
 
 definePage({ meta: {} })
+
+const { t } = useBranding()
 
 const pageSize = ref(24)
 const pageSizeOptions = [12, 24, 40, 60, 100]
@@ -88,7 +91,8 @@ const pageSubtitle = computed(() => {
     return 'Loading…'
 
   const total = totalCount.value
-  let label = `${total} location${total === 1 ? '' : 's'} · ${activeCount.value} active on this page`
+  const noun = total === 1 ? t('location') : t('locations')
+  let label = `${total} ${noun} · ${activeCount.value} active on this page`
   if (totalPages.value > 1)
     label += ` · page ${page.value} of ${totalPages.value}`
 
@@ -103,7 +107,7 @@ const listCaption = computed(() => {
   const to = from + locations.value.length - 1
 
   if (totalCount.value <= pageSize.value)
-    return `${totalCount.value} location${totalCount.value === 1 ? '' : 's'}`
+    return `${totalCount.value} ${totalCount.value === 1 ? t('location') : t('locations')}`
 
   return `${from}–${to} of ${totalCount.value}`
 })
@@ -139,7 +143,7 @@ async function loadLocations(isRefresh = false, resetPage = false) {
   }
   catch (e) {
     console.error('Failed to load locations', e)
-    loadError.value = formatApiError(e, 'Failed to load locations. Please try again.')
+    loadError.value = formatApiError(e, t('Failed to load locations. Please try again.'))
   }
   finally {
     loading.value = false
@@ -296,7 +300,7 @@ async function handleSave() {
     await loadLocations(true)
   }
   catch (e: unknown) {
-    saveError.value = formatApiError(e, 'Could not save location')
+    saveError.value = formatApiError(e, t('Could not save location'))
   }
   finally {
     saving.value = false
@@ -327,7 +331,7 @@ async function confirmDelete() {
     await loadLocations(true)
   }
   catch (e: unknown) {
-    deleteError.value = formatApiError(e, 'Could not delete location')
+    deleteError.value = formatApiError(e, t('Could not delete location'))
   }
   finally {
     deleting.value = false
@@ -353,7 +357,7 @@ function displayName(l: LocationItem) {
         sm="8"
       >
         <div class="text-h5 font-weight-medium">
-          Location Management
+          {{ t('Location Management') }}
         </div>
         <div class="text-body-2 text-medium-emphasis">
           {{ pageSubtitle }}
@@ -379,7 +383,7 @@ function displayName(l: LocationItem) {
           prepend-icon="ri-add-line"
           @click="openCreate"
         >
-          Add Location
+          {{ t('Add Location') }}
         </VBtn>
       </VCol>
     </VRow>
@@ -394,7 +398,7 @@ function displayName(l: LocationItem) {
       >
         <VTextField
           v-model="search"
-          placeholder="Search locations..."
+          :placeholder="t('Search locations...')"
           prepend-inner-icon="ri-search-line"
           density="compact"
           hide-details
@@ -462,10 +466,10 @@ function displayName(l: LocationItem) {
       />
       <div class="mb-3">
         <template v-if="showEmptyCreateCta">
-          No locations yet. Click <strong>Add Location</strong> to get started.
+          No {{ t('locations') }} yet. Click <strong>{{ t('Add Location') }}</strong> to get started.
         </template>
         <template v-else>
-          No locations match your filters.
+          {{ t('No locations match your filters.') }}
         </template>
       </div>
       <VBtn
@@ -474,7 +478,7 @@ function displayName(l: LocationItem) {
         prepend-icon="ri-add-line"
         @click="openCreate"
       >
-        Add Location
+        {{ t('Add Location') }}
       </VBtn>
     </div>
 
@@ -527,7 +531,7 @@ function displayName(l: LocationItem) {
     <AttendanceFormDialog
       v-model="dialogOpen"
       :max-width="760"
-      :title="editing ? `Edit — ${editing.name_en || editing.name_zh}` : 'Create Location'"
+      :title="editing ? `Edit — ${editing.name_en || editing.name_zh}` : t('Create Location')"
       :icon="editing ? 'ri-edit-line' : 'ri-map-pin-add-line'"
       :saving="saving"
       :error="saveError"
@@ -598,7 +602,7 @@ function displayName(l: LocationItem) {
 
     <AttendanceConfirmDialog
       v-model="deleteConfirmOpen"
-      :title="`Delete ${deleteTarget ? displayName(deleteTarget) : 'location'}?`"
+      :title="`Delete ${deleteTarget ? displayName(deleteTarget) : t('location')}?`"
       :loading="deleting"
       :error="deleteError"
       @confirm="confirmDelete"
@@ -609,7 +613,7 @@ function displayName(l: LocationItem) {
         This will permanently remove
         <strong>{{ displayName(deleteTarget) }}</strong>
         <span v-if="deleteTarget.code"> ({{ deleteTarget.code }})</span>.
-        Locations referenced by attendance records cannot be deleted.
+        {{ t('Locations referenced by attendance records cannot be deleted.') }}
       </template>
     </AttendanceConfirmDialog>
   </VContainer>

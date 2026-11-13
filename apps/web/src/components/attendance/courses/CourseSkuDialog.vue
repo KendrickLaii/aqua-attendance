@@ -7,6 +7,7 @@ import {
   createCourseSku,
   updateCourseSku,
 } from '@/api/attendance/courses'
+import { useBranding } from '@/composables/useBranding'
 import { billingUnitOptions, skuBillingPreview, weekdayOptions } from '@/utils/courseRosterDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 
@@ -22,6 +23,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   saved: []
 }>()
+
+const { t } = useBranding()
 
 const saving = ref(false)
 const saveError = ref('')
@@ -113,7 +116,7 @@ async function save() {
     emit('saved')
   }
   catch (e) {
-    saveError.value = formatApiError(e, 'Could not save class offering.')
+    saveError.value = formatApiError(e, `Could not save ${t('class offering')}.`)
   }
   finally {
     saving.value = false
@@ -128,7 +131,7 @@ async function save() {
     scrollable
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <VCard :title="editingSku ? 'Edit class' : 'Add class'">
+    <VCard :title="editingSku ? t('Edit class') : t('Add class')">
       <VCardText>
         <VAlert
           v-if="saveError"
@@ -155,7 +158,7 @@ async function save() {
           <VCol cols="6">
             <VTextField
               v-model="form.code"
-              label="Class code"
+              :label="t('Class code')"
               placeholder="MATH-P3-TUE"
               hint="Unique. Required."
               persistent-hint
@@ -175,7 +178,7 @@ async function save() {
           <VCol cols="12">
             <VTextField
               v-model="form.name_zh"
-              label="Chinese name"
+              :label="t('Chinese name')"
               placeholder="小學數學 P3 週二班"
               hint="Shown on invoices. Required."
               persistent-hint
@@ -185,7 +188,7 @@ async function save() {
           <VCol cols="12">
             <VTextField
               v-model="form.name_en"
-              label="English name"
+              :label="t('English name')"
               hint="Optional."
               persistent-hint
               density="comfortable"
@@ -216,7 +219,7 @@ async function save() {
               :items="locationOptions"
               item-title="title"
               item-value="id"
-              label="Campus"
+              :label="t('Campus')"
               hint="Display only. Invoices filter by each student's registered campus, not this."
               persistent-hint
               density="comfortable"
@@ -230,8 +233,8 @@ async function save() {
             <VAutocomplete
               v-model="form.staff_id"
               :items="staffOptions"
-              label="Teacher / staff"
-              hint="Optional. The staff member who teaches this class."
+              :label="t('Teacher / staff')"
+              :hint="`Optional. The staff member who teaches this ${t('class')}.`"
               persistent-hint
               density="comfortable"
               clearable
@@ -256,7 +259,7 @@ async function save() {
             sm="8"
           >
             <div class="text-body-2 mb-1">
-              Class days
+              {{ t('Class days') }}
             </div>
             <div class="text-caption text-medium-emphasis mb-2">
               Optional. Shown on the roster for reference only; not used to calculate the bill.
@@ -290,8 +293,8 @@ async function save() {
               :items="billingUnitOptions"
               item-title="title"
               item-value="value"
-              label="How this class is charged"
-              hint="One method per class."
+              :label="`How this ${t('class')} is charged`"
+              :hint="`One method per ${t('class')}.`"
               persistent-hint
               density="comfortable"
             />
@@ -304,7 +307,7 @@ async function save() {
               min="0"
               step="0.01"
               prefix="HK$"
-              hint="Leave empty to skip this class at Generate — or for variable-rate classes like 私補, leave empty and set a per-student price on each enrollment."
+              :hint="`Leave empty to skip this ${t('class')} at Generate — or for variable-rate ${t('classes')} like 私補, leave empty and set a per-student price on each enrollment.`"
               persistent-hint
               density="comfortable"
             />
@@ -312,7 +315,7 @@ async function save() {
           <VCol cols="12">
             <VSwitch
               v-model="form.is_active"
-              label="Active class"
+              :label="t('Active class')"
               hint="Off: hidden from new enrollments and skipped at Generate. Issued/paid bills stay."
               persistent-hint
               density="comfortable"

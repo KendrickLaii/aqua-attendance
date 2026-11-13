@@ -67,7 +67,7 @@ interface UnbilledPackage {
   sku: CourseSku | undefined
 }
 
-const { brand } = useBranding()
+const { brand, t } = useBranding()
 
 const manualMaxRows = computed(() => Math.max(1, brand.value.manualInvoiceMaxLines))
 
@@ -357,7 +357,7 @@ const manualClassOptions = computed(() =>
     .map(k => ({
       ...k,
       title: `${k.code} · ${k.name_zh}`,
-      subtitle: `${k.billing_unit === 'per_session' ? 'Per class' : 'Monthly'}${k.price != null ? ` · HK$${Number(k.price).toFixed(2)}` : ''}`,
+      subtitle: `${k.billing_unit === 'per_session' ? `Per ${t('class')}` : 'Monthly'}${k.price != null ? ` · HK$${Number(k.price).toFixed(2)}` : ''}`,
     })),
 )
 
@@ -573,7 +573,7 @@ async function printManualInvoice() {
     }
 
     if (manualForm.value.rows.some(row => row.purchaseId && manualNumber(row.fee) == null)) {
-      manualError.value = 'Session package lines need a fee — enter the price to charge.'
+      manualError.value = 'Session package lines need a price. 0 is allowed, but it cannot be left blank.'
       manualPrinting.value = false
 
       return
@@ -593,14 +593,14 @@ async function printManualInvoice() {
           purchase_id: isCredit.value ? undefined : (row.purchaseId || undefined),
         }
       })
-      .filter(row => row.course && row.fee != null && row.qty != null && row.qty > 0)
+      .filter(row => row.course && row.fee != null && Number.isFinite(row.fee) && row.qty != null && row.qty > 0)
 
     const touchedRows = manualForm.value.rows.filter(
       row => row.purchaseId || row.course.trim() || row.fee.trim() || row.qty.trim(),
     ).length
 
     if (validLines.length < touchedRows) {
-      manualError.value = 'Each filled line needs a course, a fee and a quantity above 0 — fix or remove it. Use a negative fee for a credit note.'
+      manualError.value = 'Each filled line needs a course, a price (0 is allowed) and a quantity above 0 — fix or remove it. Use a negative price for a credit note.'
       manualPrinting.value = false
 
       return
@@ -619,14 +619,14 @@ async function printManualInvoice() {
         : undefined)
 
     if (!unitId && !(manualForm.value.studentName ?? '').trim()) {
-      manualError.value = 'Pick a student, or type a name for a walk-in invoice.'
+      manualError.value = t('Pick a student, or type a name for a walk-in invoice.')
       manualPrinting.value = false
 
       return
     }
 
     if (!manualLocationId.value) {
-      manualError.value = 'Please select a location for the manual invoice.'
+      manualError.value = t('Please select a location for the manual invoice.')
       manualPrinting.value = false
 
       return
@@ -764,10 +764,10 @@ async function printManualInvoice() {
           >
             <VTextField
               v-model="manualForm.period"
-              label="Bill month"
+              :label="t('Bill month')"
               type="month"
               density="compact"
-              hint="Month this bill counts in"
+              :hint="t('Month this bill counts in')"
               persistent-hint
               autocomplete="off"
               @update:model-value="manualPeriodEdited = true"
@@ -780,7 +780,7 @@ async function printManualInvoice() {
             <VSelect
               v-model="manualLocationId"
               :items="locationOptions"
-              label="Location (logo)"
+              :label="t('Location (logo)')"
               density="compact"
               hide-details
               clearable
@@ -798,8 +798,8 @@ async function printManualInvoice() {
               :loading="manualStudentLoading"
               item-title="full_name"
               return-object
-              label="Student name"
-              placeholder="Search student name or code — or type any name…"
+              :label="t('Student name')"
+              :placeholder="t('Search student name or code — or type any name…')"
               prepend-inner-icon="ri-search-line"
               density="compact"
               hide-details
@@ -822,8 +822,8 @@ async function printManualInvoice() {
             <VCombobox
               v-model="manualForm.staff"
               :items="manualStaffOptions"
-              label="Tutor"
-              placeholder="Tutor for this bill — for commission…"
+              :label="t('Tutor')"
+              :placeholder="t('Tutor for this bill — for commission…')"
               prepend-inner-icon="ri-user-star-line"
               density="compact"
               hint="Applies to every line; not printed on the invoice."
@@ -865,7 +865,7 @@ async function printManualInvoice() {
             cols="12"
           >
             <div class="text-caption text-medium-emphasis mb-1">
-              Unbilled class packages — click to add a line:
+              Unbilled {{ t('class') }} packages — click to add a line:
             </div>
             <VChip
               v-for="pkg in manualUnbilledPackages"
@@ -881,7 +881,7 @@ async function printManualInvoice() {
                 start
               />
               {{ pkg.sku ? `${pkg.sku.code} · ${pkg.sku.name_zh}` : 'Sessions' }}
-              · {{ pkg.purchase.purchased_quantity }} {{ pkg.purchase.purchased_quantity === 1 ? 'class' : 'classes' }}
+              · {{ pkg.purchase.purchased_quantity }} {{ pkg.purchase.purchased_quantity === 1 ? t('class') : t('classes') }}
               <template v-if="pkg.purchase.unit_price != null">
                 × HK${{ Number(pkg.purchase.unit_price).toFixed(2) }}
               </template>
@@ -899,8 +899,8 @@ async function printManualInvoice() {
         >
           <thead>
             <tr>
-              <th>Month</th>
-              <th>Class</th>
+              <th>{{ t('Month') }}</th>
+              <th>{{ t('Class') }}</th>
               <th style="width: 110px;">
                 Price
               </th>
@@ -935,7 +935,7 @@ async function printManualInvoice() {
                     v-model="row.course"
                     density="compact"
                     hide-details
-                    placeholder="Homework class…"
+                    :placeholder="`Homework ${t('class')}…`"
                   />
                   <VChip
                     v-if="row.purchaseId"
@@ -944,7 +944,7 @@ async function printManualInvoice() {
                     variant="tonal"
                     class="ms-1 flex-shrink-0"
                   >
-                    Per class
+                    Per {{ t('class') }}
                   </VChip>
                 </div>
               </td>
@@ -1000,7 +1000,7 @@ async function printManualInvoice() {
             :items="manualClassOptions"
             item-title="title"
             item-value="id"
-            label="Add a class"
+            :label="t('Add a class')"
             prepend-inner-icon="ri-add-circle-line"
             density="compact"
             hide-details
