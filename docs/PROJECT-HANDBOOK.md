@@ -93,6 +93,8 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 
 **輪替**：`POST /api/qr/token/{unit_id}/refresh` 會增加 `qr_token_version`，使舊 QR 失效。
 
+QR Codes 頁（`/attendance/qr-codes`）可按註冊地點篩選。`GET /api/units?registered_location_id=` 只返回該 `registered_location_id` 的單位；不傳則全部。
+
 ### 1.4 簽到/簽退切換邏輯
 
 - 請求可帶明確的 `event_type`（`check_in` / `check_out`）；未帶時依 `attendance_status` 自動切換：`checked_out` → `check_in`；`checked_in` → `check_out`
@@ -500,7 +502,7 @@ API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
 
 ### 1.15 品牌（Per-server Brand）
 
-同一個 web image 可以按伺服器顯示唔同品牌。API env `APP_BRAND`（預設 `aqua`）經公開端點 `GET /api/branding` → `{"brand": "<key>"}` 話俾 web 知用邊個品牌（登入頁未登入都要讀，所以無 auth）。Web 端 `src/composables/useBranding.ts` fetch 一次（失敗／未知 key 一律落返 `aqua`），品牌定義喺 `src/config/brands.ts` registry：`title`（分頁標題／navbar）、`loginTitle`（登入頁）、`footerName`、`logo`、`primaryColor`（可選，覆寫 Vuetify `primary`，aqua／light／dark 全部 theme 一齊改）、`hiddenRoutes`（route name 前綴，側欄 `filterNavByFeatures` 過濾＋router guard 導去 `attendance-dashboard`）、`terms`（label 覆寫，`nav:<原標題>` 改側欄項目名）、`manualInvoiceDefaultLines`／`manualInvoiceMaxLines`（手動發票開單行數同上限）、`invoicePrintTemplate`（`aqua` 現有學費發票，或 `debit-note` DRJ 借項通知單）。`aqua` 係生產外觀，所有覆寫對 aqua 係 no-op，畫面同以前完全一樣；demo 機設 `APP_BRAND=cpa`（而家係 placeholder，logo／用字待客戶提供）。`index.html` 嘅 pre-JS splash（title／loader／favicon）維持 aqua，品牌要 JS 跑咗先生效。
+同一個 web image 可以按伺服器顯示唔同品牌。API env `APP_BRAND`（預設 `aqua`）經公開端點 `GET /api/branding` → `{"brand": "<key>"}` 話俾 web 知用邊個品牌（登入頁未登入都要讀，所以無 auth）。Web 端 `src/composables/useBranding.ts` fetch 一次（失敗／未知 key 一律落返 `aqua`），品牌定義喺 `src/config/brands.ts` registry：`title`（分頁標題／navbar）、`loginTitle`（登入頁）、`footerName`、`logo`、`primaryColor`（可選，覆寫 Vuetify `primary`，aqua／light／dark 全部 theme 一齊改）、`hiddenRoutes`（route name 前綴，側欄 `filterNavByFeatures` 過濾＋router guard 導去 `attendance-dashboard`）、`terms`（label 覆寫，`nav:<原標題>` 改側欄項目名；cpa 把 Courses／Course 顯示成 Services／Service，Class／Classes 顯示成 Line item／Line items；新增服務彈窗 Subject／Chinese name／English name 顯示成 Group／Name／Sub-name；新增 line item 彈窗 Chinese name／English name／Campus／Teacher / staff 顯示成 Name／Sub-name／Team／staff；名冊標題顯示成 Recurring Service；Join a student／Student／Find student 顯示成 Enrollment／Client／Find Client；名冊狀態顯示成 Active／Inactive。發票頁標題顯示成 Invoices，帳單表 Student 顯示成 Client，Location 選擇顯示成 Team，All locations 顯示成 All Teams；帳單表 Tutor 顯示成 Staff。手動發票 Student name／Tutor／Location (logo) 顯示成 Client／Staff／Team，Month／Bill month 顯示成 Period，Add a class 顯示成 Add Item；行價錢可以是 0。收據頁同新增收據 Location／Student／All locations／Month 顯示成 Team／Client／All Teams／Period；地點管理頁同側欄顯示成 Team Management）、`manualInvoiceDefaultLines`／`manualInvoiceMaxLines`（手動發票開單行數同上限）、`invoicePrintTemplate`（`aqua` 現有學費發票，或 `debit-note` DRJ 借項通知單）。`aqua` 係生產外觀，所有覆寫對 aqua 係 no-op，畫面同以前完全一樣；demo 機設 `APP_BRAND=cpa`（而家係 placeholder，logo／用字待客戶提供）。`index.html` 嘅 pre-JS splash（title／loader／favicon）維持 aqua，品牌要 JS 跑咗先生效。
 
 ---
 

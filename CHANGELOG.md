@@ -11,6 +11,8 @@
 
 ### 變更
 
+- QR Codes 頁可按註冊地點篩選（`GET /api/units?registered_location_id=`）。
+- CPA 品牌將 Courses／Course 顯示為 Services／Service，Class／Classes 顯示為 Line item／Line items（課程管理、名冊、發票欄）。新增服務彈窗的 Subject／Chinese name／English name 顯示為 Group／Name／Sub-name。新增 line item 彈窗的 Chinese name／English name／Campus／Teacher / staff 顯示為 Name／Sub-name／Team／staff。Aqua 用字不變。名冊標題在 CPA 顯示為 Recurring Service。名冊的 Join a student／Student／Find student 顯示為 Enrollment／Client／Find Client。名冊狀態只顯示 Active 或 Inactive。發票頁標題顯示為 Invoices，帳單表 Student 顯示為 Client，地點選擇顯示為 Team，全部地點顯示為 All Teams。帳單表 Tutor 顯示為 Staff。手動發票跟同一套用字：Student name／Tutor／Location (logo) 顯示為 Client／Staff／Team，Month／Bill month 顯示為 Period，Add a class 顯示為 Add Item。手動發票價錢可以是 0。收據頁同新增收據的 Location／Student／All locations／Month 顯示為 Team／Client／All Teams／Period。地點管理頁同側欄在 CPA 顯示為 Team Management，Location 顯示為 Team。
 - 學費發票列表 Student、Classes 欄加闊（22%／32%），長名最多顯示兩行。
 - 課程管理班次表改為固定欄寬：Name 36% 並可換行，Schedule／Billing 不再食走右邊空位。
 

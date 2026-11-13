@@ -9,6 +9,18 @@
 
 ## 13/11/2026
 
+### 【測試機】CPA 課程頁改叫 Service，班次改叫 Line item
+
+<http://3.114.114.143/attendance/courses>
+
+- CPA 品牌側欄同課程管理頁的 Course 會顯示做 Service，Class 會顯示做 Line item。新增 Service 時，Subject 叫 Group、Chinese name 叫 Name、English name 叫 Sub-name。新增 Line item 時，Chinese name 叫 Name、English name 叫 Sub-name、Campus 叫 Team、Teacher / staff 叫 staff。名冊標題叫 Recurring Service。Join a student 叫 Enrollment，Student 叫 Client，Find student 叫 Find Client。狀態只顯示 Active 或 Inactive。發票頁標題叫 Invoices，帳單表 Student 叫 Client，地點選擇叫 Team，All locations 叫 All Teams。帳單表 Tutor 叫 Staff。手動發票的 Student name 叫 Client、Tutor 叫 Staff、Location 叫 Team、Month 叫 Period、Add a class 叫 Add Item。價錢可以填 0。收據同新增收據的 Location 叫 Team、Student 叫 Client、All locations 叫 All Teams、Month 叫 Period。正式機仍然係原本用字。
+
+### 【測試機】QR Codes 可以按地點篩
+
+<http://3.114.114.143/attendance/qr-codes>
+
+- QR Codes 頁多咗 Location，可以只睇某個地點註冊嘅學生同員工，再揀選列印
+
 ### 【測試機】學費發票同課程表睇到長名
 
 <http://3.114.114.143/attendance/invoices>
