@@ -262,12 +262,12 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - `DELETE /tuition-receipts/{id}`：只准 voided receipt；posted → 422。Void 後 Remove 先可以重用收條編號。
 - 兩人同時 Generate 撞唯一約束回 **409**（不是 500）。
 - **堂費** = `enrollment_purchases` 中 `billed_invoice_line_id` 為空（或所連行屬 void/本期重產）且 `purchased_at <=` 月末的購買，每條一行、行與 purchase 連結防止重複收費；月費每 enrollment 一行，數量 1。
-- 發票編號：Issue 或 Manual 建立時按 `location_id` 從 `invoice_counters` 取下一號（1–999999）；手打編號會推進該中心 counter，自動派號跳過已佔用號碼。
+- 發票編號：Issue 或 Manual 建立時按 `location_id` 從 `invoice_counters` 取下一號。`invoice_no` 係字串，但純數字會當整數推進該中心 counter，自動派號跳過已佔用號碼。上限按 `APP_BRAND`：`aqua` 維持 **1–999999**；`cpa` 放到 PostgreSQL INTEGER 上限 **2147483647**，所以可以手打 `202611001` 呢類 YYYYMM####（`2026110001` 都入到）。唔用 9999999999，因為 `invoice_counters.next_no` 係 INTEGER，超過 2147483647 要改欄位。帶字母或斜線嘅編號（例如 `KYS003/0404/26`）唔當數字，唔會推進 counter。手打一個大數字之後，下一張自動編號會跟住嗰個數，唔會自己變返下一個月份。
 - Web：`/attendance/invoices` 只顯示收費單（`total >= 0`）；`/attendance/credit-notes` 只顯示退款單（`total < 0`）。兩邊共用 `InvoiceListPage`。收費單：選月份 → Generate → Issue / Mark paid / Edit / Void。退款單：Manual credit note、列印退款單（REFUND REQUEST + REFUND ACKNOWLEDGEMENT）。Issue 後自動開列印；手動發票可選學生並一鍵加入其未出單堂費 package。Courses 名冊掣名 **Join class / Leave class / Back in class / Remove record**；hint 同確認框用粵語。
 
 #### 手動發票
 
-- `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。`fee` 可以係負數（credit note）；綁 `purchase_id` 嘅行不准負數。
+- `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。`fee` 可以係負數（credit note）；綁 `purchase_id` 嘅行不准負數。新單預設行數同上限嚟自品牌：`aqua` 開 1 行、最多 5 行（同之前一樣）；`cpa` 開 1 行、最多 100 行。列印：`aqua` 用現有學費發票（補到 5 行）；`cpa` 用 DRJ debit note（BILL TO、DN NO、日期、描述、金額、總額係單上資料；信頭同付款方法係公司固定文字）。退款單兩邊都用原本嘅 credit note。
 - `PATCH /api/tuition-invoices/{id}`：未 Paid 可改 `lines`／notes／staff／退款抬頭；Generated 行會保留 `enrollment_id`／SKU。Paid 或 Cancelled 連編號、行項目都唔准改 → 422，但 `payable_to_name`／`payee_name` 仍可改。
 - purchase 檢查在派號**之前**：購買須存在、屬所選學生、未被出單；失敗不消耗編號。void 手動發票後其 purchase 回復可出單。行項目 GET 會帶 `purchase_id`（如該行結算咗一條購買），Edit 要原封交返去，唔好拆咗連結。
 
@@ -500,7 +500,7 @@ API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
 
 ### 1.15 品牌（Per-server Brand）
 
-同一個 web image 可以按伺服器顯示唔同品牌。API env `APP_BRAND`（預設 `aqua`）經公開端點 `GET /api/branding` → `{"brand": "<key>"}` 話俾 web 知用邊個品牌（登入頁未登入都要讀，所以無 auth）。Web 端 `src/composables/useBranding.ts` fetch 一次（失敗／未知 key 一律落返 `aqua`），品牌定義喺 `src/config/brands.ts` registry：`title`（分頁標題／navbar）、`loginTitle`（登入頁）、`footerName`、`logo`、`primaryColor`（可選，覆寫 Vuetify `primary`，aqua／light／dark 全部 theme 一齊改）、`hiddenRoutes`（route name 前綴，側欄 `filterNavByFeatures` 過濾＋router guard 導去 `attendance-dashboard`）、`terms`（label 覆寫，`nav:<原標題>` 改側欄項目名）。`aqua` 係生產外觀，所有覆寫對 aqua 係 no-op，畫面同以前完全一樣；demo 機設 `APP_BRAND=cpa`（而家係 placeholder，logo／用字待客戶提供）。`index.html` 嘅 pre-JS splash（title／loader／favicon）維持 aqua，品牌要 JS 跑咗先生效。
+同一個 web image 可以按伺服器顯示唔同品牌。API env `APP_BRAND`（預設 `aqua`）經公開端點 `GET /api/branding` → `{"brand": "<key>"}` 話俾 web 知用邊個品牌（登入頁未登入都要讀，所以無 auth）。Web 端 `src/composables/useBranding.ts` fetch 一次（失敗／未知 key 一律落返 `aqua`），品牌定義喺 `src/config/brands.ts` registry：`title`（分頁標題／navbar）、`loginTitle`（登入頁）、`footerName`、`logo`、`primaryColor`（可選，覆寫 Vuetify `primary`，aqua／light／dark 全部 theme 一齊改）、`hiddenRoutes`（route name 前綴，側欄 `filterNavByFeatures` 過濾＋router guard 導去 `attendance-dashboard`）、`terms`（label 覆寫，`nav:<原標題>` 改側欄項目名）、`manualInvoiceDefaultLines`／`manualInvoiceMaxLines`（手動發票開單行數同上限）、`invoicePrintTemplate`（`aqua` 現有學費發票，或 `debit-note` DRJ 借項通知單）。`aqua` 係生產外觀，所有覆寫對 aqua 係 no-op，畫面同以前完全一樣；demo 機設 `APP_BRAND=cpa`（而家係 placeholder，logo／用字待客戶提供）。`index.html` 嘅 pre-JS splash（title／loader／favicon）維持 aqua，品牌要 JS 跑咗先生效。
 
 ---
 
@@ -1972,7 +1972,7 @@ erDiagram
         uuid location_id FK "編號系列＋列印抬頭"
         string kind "tuition / manual"
         string manual_student_name "walk-in 姓名"
-        string invoice_no "每中心系列 1–999999"
+        string invoice_no "每中心系列；aqua 1–999999，cpa 至 2147483647"
         datetime issued_at
         date period_start
         date period_end

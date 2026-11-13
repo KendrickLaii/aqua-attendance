@@ -6,7 +6,13 @@
 
 ### 新增
 
-- **Per-server 品牌（runtime theming）**：API 新增 env `APP_BRAND`（預設 `aqua`）與公開端點 `GET /api/branding` → `{"brand": "<key>"}`；web 新增 `src/config/brands.ts` registry（`title`／`loginTitle`／`footerName`／`logo`／`primaryColor`／`hiddenRoutes`／`terms`）同 `useBranding` composable（fetch 一次、失敗落返 `aqua`），套用至分頁標題、navbar 標題／logo、登入頁標題、頁尾名、可選 primary 色覆寫、`hiddenRoutes` 側欄過濾＋router guard 導 dashboard。`aqua` 品牌所有覆寫係 no-op，畫面同之前完全一樣；demo 機設 `APP_BRAND=cpa`（內容暫為 placeholder）。
+- **CPA 學費發票**：品牌 registry 加 `manualInvoiceDefaultLines`、`manualInvoiceMaxLines`、`invoicePrintTemplate`。手動發票開單行數跟品牌（aqua 仍然 1 行、最多 5 行；cpa 1 行、最多 100 行）。`APP_BRAND=cpa` 時手打發票編號上限由 999999 放到 PostgreSQL INTEGER 上限 2147483647，可以入 `202611001` 呢類 YYYYMM####；aqua 上限不變。cpa 列印改用 DRJ debit note（`public/brands/drj-logo.png`）；aqua 列印模板不變。退款單兩邊都用原本版面。
+- **Per-server 品牌（runtime theming）**：API 新增 env `APP_BRAND`（預設 `aqua`）與公開端點 `GET /api/branding` → `{"brand": "<key>"}`；web 新增 `src/config/brands.ts` registry（`title`／`loginTitle`／`footerName`／`logo`／`primaryColor`／`hiddenRoutes`／`terms`／`manualInvoiceDefaultLines`／`manualInvoiceMaxLines`／`invoicePrintTemplate`）同 `useBranding` composable（fetch 一次、失敗落返 `aqua`），套用至分頁標題、navbar 標題／logo、登入頁標題、頁尾名、可選 primary 色覆寫、`hiddenRoutes` 側欄過濾＋router guard 導 dashboard。`aqua` 品牌所有覆寫係 no-op，畫面同之前完全一樣；demo 機設 `APP_BRAND=cpa`（內容暫為 placeholder）。
+
+### 變更
+
+- 學費發票列表 Student、Classes 欄加闊（22%／32%），長名最多顯示兩行。
+- 課程管理班次表改為固定欄寬：Name 36% 並可換行，Schedule／Billing 不再食走右邊空位。
 
 ## [2026-11-12]（Inventory 名稱、地點卡片、金額欄）
 
