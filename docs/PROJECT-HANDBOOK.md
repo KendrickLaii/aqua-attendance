@@ -154,6 +154,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `GET /api/uploads/{key}` | 無（UUID 路徑；上傳仍要 admin） |
 | `GET /api/health` | 無 |
 | `GET /api/features` | 無（feature flags；`{"inventory": bool}`） |
+| `GET /api/branding` | 無（per-server 品牌；`{"brand": "aqua"}`，見 §1.15） |
 | `GET/POST/PATCH/DELETE /api/inventory/...` | Admin（`admin`／`superadmin`，同其他 Admin 端點一致）；`INVENTORY_ENABLED=false` 時全部 **404** |
 | `GET/POST /api/inventory/warehouses`、`PATCH/DELETE /api/inventory/warehouses/{id}` | Admin；被引用時 DELETE **409**（改為停用）；code 重複 **409** |
 | `GET/POST /api/inventory/brands`、`PATCH /api/inventory/brands/{id}`、`GET/POST /api/inventory/categories`、`PATCH /api/inventory/categories/{id}` | Admin；品牌名重複 **409**；分類上層不存在／超過兩層／自己做上層／有子分類仲掛上層 **422**；同層重名 **409**；無 DELETE |
@@ -174,6 +175,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `CORS_ORIGINS` | localhost | 逗號分隔的允許來源 |
 | `ENV` | `development` | `production` 會啟用密鑰驗證 |
+| `APP_BRAND` | `aqua` | 每台伺服器嘅品牌（runtime，`aqua`｜`cpa`；見 §1.15） |
 | `LOGIN_RATE_LIMIT` | `5/minute` | 登入限流 |
 | `SCAN_RATE_LIMIT` | `30/minute` | 掃描限流 |
 | `REDIS_URL` | `redis://redis:6379/0` | Rate limit 共用儲存（多副本） |
@@ -495,6 +497,10 @@ API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
 - Start Here 頁（`/attendance/inventory/workflow`）已包含貨品與規格說明、維護貨品步驟同 FAQ，中英並列；說明圖為 `apps/web/public/inventory-variants.svg`，總流程圖 `inventory-workflow.svg` 頂部有「0. Item setup」。
 - Demo 資料：`apps/api/seed_inventory.py --catalog`（只可對 DB `attendance_inventory` 執行，經 API :8010、以 `demo_admin` 登入）只種品牌、兩層分類、8 個多規格貨品同 5 個單品，連期初庫存；已有 `DEMO-TSHIRT` 就跳過。`--reset-demo` 會一併清走（SKU → 產品 → 品牌 → 子分類 → 頂層分類；仍被非 demo 資料使用嘅會保留）。
 - **名稱規則**：倉庫、品牌、分類、貨品、產品、供應商、客戶嘅 `name_zh`／`name_en` 至少填一個；`name_zh` 空白時由 `name_en` 填入（schema `fill_name_zh`，冇 migration，DB `name_zh` 仍然 NOT NULL）。更新時 `name_zh` 傳空字串用同一 payload 嘅 `name_en`，兩者皆空 422。Items CSV 匯入亦適用。品牌／分類唯一性檢查用填好之後嘅 `name_zh`。
+
+### 1.15 品牌（Per-server Brand）
+
+同一個 web image 可以按伺服器顯示唔同品牌。API env `APP_BRAND`（預設 `aqua`）經公開端點 `GET /api/branding` → `{"brand": "<key>"}` 話俾 web 知用邊個品牌（登入頁未登入都要讀，所以無 auth）。Web 端 `src/composables/useBranding.ts` fetch 一次（失敗／未知 key 一律落返 `aqua`），品牌定義喺 `src/config/brands.ts` registry：`title`（分頁標題／navbar）、`loginTitle`（登入頁）、`footerName`、`logo`、`primaryColor`（可選，覆寫 Vuetify `primary`，aqua／light／dark 全部 theme 一齊改）、`hiddenRoutes`（route name 前綴，側欄 `filterNavByFeatures` 過濾＋router guard 導去 `attendance-dashboard`）、`terms`（label 覆寫，`nav:<原標題>` 改側欄項目名）。`aqua` 係生產外觀，所有覆寫對 aqua 係 no-op，畫面同以前完全一樣；demo 機設 `APP_BRAND=cpa`（而家係 placeholder，logo／用字待客戶提供）。`index.html` 嘅 pre-JS splash（title／loader／favicon）維持 aqua，品牌要 JS 跑咗先生效。
 
 ---
 

@@ -2,6 +2,12 @@
 
 本檔案以 [Keep a Changelog](https://keepachangelog.com/) 格式記錄發布內容。
 
+## [Unreleased]
+
+### 新增
+
+- **Per-server 品牌（runtime theming）**：API 新增 env `APP_BRAND`（預設 `aqua`）與公開端點 `GET /api/branding` → `{"brand": "<key>"}`；web 新增 `src/config/brands.ts` registry（`title`／`loginTitle`／`footerName`／`logo`／`primaryColor`／`hiddenRoutes`／`terms`）同 `useBranding` composable（fetch 一次、失敗落返 `aqua`），套用至分頁標題、navbar 標題／logo、登入頁標題、頁尾名、可選 primary 色覆寫、`hiddenRoutes` 側欄過濾＋router guard 導 dashboard。`aqua` 品牌所有覆寫係 no-op，畫面同之前完全一樣；demo 機設 `APP_BRAND=cpa`（內容暫為 placeholder）。
+
 ## [2026-11-12]（Inventory 名稱、地點卡片、金額欄）
 
 ### 變更

@@ -70,6 +70,8 @@ npm run dev
 
 導航設定：`src/navigation/vertical/custom-pages.ts`（生產環境僅使用此列表）。Feature flag 過濾喺 `src/navigation/vertical/index.ts`（`filterNavByFeatures`）；flags 載入喺 `src/composables/useFeatureFlags.ts`。
 
+品牌（per-server）：runtime 讀 `GET /api/branding`（API env `APP_BRAND`，預設 `aqua`），品牌定義喺 `src/config/brands.ts`、載入喺 `src/composables/useBranding.ts`（標題／logo／primaryColor／hiddenRoutes／terms；詳見 PROJECT-HANDBOOK §1.15）。
+
 ## API 客戶端
 
 - `src/utils/attendanceApi.ts` — `ofetch`，Bearer token，401 自動 refresh
