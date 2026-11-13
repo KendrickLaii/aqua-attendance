@@ -1,6 +1,8 @@
 <script lang="ts" setup>
+import { useTheme } from 'vuetify'
 import rawNavItems, { filterNavByFeatures } from '@/navigation/vertical'
 import { loadFeatureFlags, useFeatureFlags } from '@/composables/useFeatureFlags'
+import { applyBrandPrimaryColor, loadBranding, useBranding } from '@/composables/useBranding'
 import { themeConfig } from '@themeConfig'
 
 // Components
@@ -16,10 +18,21 @@ import NavBarI18n from '@core/components/I18n.vue'
 import { VerticalNavLayout } from '@layouts'
 
 const { featureFlags } = useFeatureFlags()
+const { brand, applyNavTitles } = useBranding()
 
 loadFeatureFlags()
+loadBranding()
 
-const navItems = computed(() => filterNavByFeatures(rawNavItems, featureFlags.value))
+// Runtime brand primary-color override (aqua has none → identical to before)
+const vTheme = useTheme()
+
+watch(brand, b => {
+  if (b.primaryColor)
+    applyBrandPrimaryColor(vTheme, b.primaryColor)
+})
+
+const navItems = computed(() =>
+  applyNavTitles(filterNavByFeatures(rawNavItems, featureFlags.value, brand.value.hiddenRoutes)))
 </script>
 
 <template>

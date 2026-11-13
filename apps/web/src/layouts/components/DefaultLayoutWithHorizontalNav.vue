@@ -1,5 +1,8 @@
 <script lang="ts" setup>
+import { h } from 'vue'
+import { useTheme } from 'vuetify'
 import navItems from '@/navigation/horizontal'
+import { applyBrandPrimaryColor, loadBranding, useBranding } from '@/composables/useBranding'
 
 import { themeConfig } from '@themeConfig'
 
@@ -13,6 +16,27 @@ import UserProfile from '@/layouts/components/UserProfile.vue'
 import NavBarI18n from '@core/components/I18n.vue'
 import { HorizontalNavLayout } from '@layouts'
 import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
+
+const { brand } = useBranding()
+
+loadBranding()
+
+// Runtime brand primary-color override (aqua has none → identical to before)
+const vTheme = useTheme()
+
+watch(brand, b => {
+  if (b.primaryColor)
+    applyBrandPrimaryColor(vTheme, b.primaryColor)
+})
+
+// Aqua keeps the themeConfig navbar title/logo untouched (parity); other
+// brands render their registry values.
+const appTitle = computed(() => (brand.value.key === 'aqua' ? themeConfig.app.title : brand.value.title))
+
+const appLogo = computed(() =>
+  brand.value.key === 'aqua'
+    ? themeConfig.app.logo
+    : h('img', { src: brand.value.logo, style: 'height: 30px; width: auto;' }))
 </script>
 
 <template>
@@ -23,10 +47,10 @@ import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
         to="/"
         class="d-flex align-start gap-x-4"
       >
-        <VNodeRenderer :nodes="themeConfig.app.logo" />
+        <VNodeRenderer :nodes="appLogo" />
 
         <h1 class="leading-normal text-xl text-uppercase">
-          {{ themeConfig.app.title }}
+          {{ appTitle }}
         </h1>
       </RouterLink>
       <VSpacer />

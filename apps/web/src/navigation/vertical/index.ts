@@ -62,12 +62,24 @@ function itemOrDescendantStartsWith(item: { to?: unknown; children?: unknown[] }
   return false
 }
 
-/** drop top-level nav groups gated behind a disabled runtime feature flag */
-export function filterNavByFeatures(items: VerticalNavItems, flags: NavFeatureFlags): VerticalNavItems {
-  if (flags.inventory)
-    return items
+/** drop top-level nav groups gated behind a disabled runtime feature flag or the active brand's hiddenRoutes */
+export function filterNavByFeatures(
+  items: VerticalNavItems,
+  flags: NavFeatureFlags,
+  hiddenRoutes: readonly string[] = [],
+): VerticalNavItems {
+  let result = items
 
-  return items.filter(item => !itemOrDescendantStartsWith(item as { to?: unknown; children?: unknown[] }, 'attendance-inventory'))
+  if (!flags.inventory)
+    result = result.filter(item => !itemOrDescendantStartsWith(item as { to?: unknown; children?: unknown[] }, 'attendance-inventory'))
+
+  if (hiddenRoutes.length) {
+    result = result.filter(item =>
+      !hiddenRoutes.some(route =>
+        itemOrDescendantStartsWith(item as { to?: unknown; children?: unknown[] }, route)))
+  }
+
+  return result
 }
 
 /** return the set of route names that are allowed in the prod navigation, pages not in the set should be redirected to 404 */

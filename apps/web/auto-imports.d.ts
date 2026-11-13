@@ -66,6 +66,7 @@ declare global {
   const addDetailPhotoRow: typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']
   const alphaDashValidator: typeof import('./src/@core/utils/validators')['alphaDashValidator']
   const alphaValidator: typeof import('./src/@core/utils/validators')['alphaValidator']
+  const applyBrandPrimaryColor: typeof import('./src/composables/useBranding')['applyBrandPrimaryColor']
   const applyHoursPreset: typeof import('./src/utils/locationHours')['applyHoursPreset']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
   const attendanceCreatePasswordValidator: typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']
@@ -262,6 +263,7 @@ declare global {
   const lastDayOfMonth: typeof import('./src/utils/courseRosterDisplay')['lastDayOfMonth']
   const leaveClassUnbilledNote: typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']
   const lengthValidator: typeof import('./src/@core/utils/validators')['lengthValidator']
+  const loadBranding: typeof import('./src/composables/useBranding')['loadBranding']
   const loadFeatureFlags: typeof import('./src/composables/useFeatureFlags')['loadFeatureFlags']
   const loadHoursSchedule: typeof import('./src/utils/locationHours')['loadHoursSchedule']
   const locationTitle: typeof import('./src/utils/invoiceDisplay')['locationTitle']
@@ -468,6 +470,7 @@ declare global {
   const useBase64: typeof import('@vueuse/core')['useBase64']
   const useBattery: typeof import('@vueuse/core')['useBattery']
   const useBluetooth: typeof import('@vueuse/core')['useBluetooth']
+  const useBranding: typeof import('./src/composables/useBranding')['useBranding']
   const useBreakpoints: typeof import('@vueuse/core')['useBreakpoints']
   const useBroadcastChannel: typeof import('@vueuse/core')['useBroadcastChannel']
   const useBrowserLocation: typeof import('@vueuse/core')['useBrowserLocation']
@@ -733,6 +736,7 @@ declare module 'vue' {
     readonly addDetailPhotoRow: UnwrapRef<typeof import('./src/utils/locationPhotos')['addDetailPhotoRow']>
     readonly alphaDashValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaDashValidator']>
     readonly alphaValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['alphaValidator']>
+    readonly applyBrandPrimaryColor: UnwrapRef<typeof import('./src/composables/useBranding')['applyBrandPrimaryColor']>
     readonly applyHoursPreset: UnwrapRef<typeof import('./src/utils/locationHours')['applyHoursPreset']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly attendanceCreatePasswordValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['attendanceCreatePasswordValidator']>
@@ -928,6 +932,7 @@ declare module 'vue' {
     readonly lastDayOfMonth: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['lastDayOfMonth']>
     readonly leaveClassUnbilledNote: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['leaveClassUnbilledNote']>
     readonly lengthValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['lengthValidator']>
+    readonly loadBranding: UnwrapRef<typeof import('./src/composables/useBranding')['loadBranding']>
     readonly loadFeatureFlags: UnwrapRef<typeof import('./src/composables/useFeatureFlags')['loadFeatureFlags']>
     readonly loadHoursSchedule: UnwrapRef<typeof import('./src/utils/locationHours')['loadHoursSchedule']>
     readonly locationTitle: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['locationTitle']>
@@ -1131,6 +1136,7 @@ declare module 'vue' {
     readonly useBase64: UnwrapRef<typeof import('@vueuse/core')['useBase64']>
     readonly useBattery: UnwrapRef<typeof import('@vueuse/core')['useBattery']>
     readonly useBluetooth: UnwrapRef<typeof import('@vueuse/core')['useBluetooth']>
+    readonly useBranding: UnwrapRef<typeof import('./src/composables/useBranding')['useBranding']>
     readonly useBreakpoints: UnwrapRef<typeof import('@vueuse/core')['useBreakpoints']>
     readonly useBroadcastChannel: UnwrapRef<typeof import('@vueuse/core')['useBroadcastChannel']>
     readonly useBrowserLocation: UnwrapRef<typeof import('@vueuse/core')['useBrowserLocation']>

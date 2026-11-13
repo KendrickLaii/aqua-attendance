@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { loadBranding, useBranding } from '@/composables/useBranding'
+
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+const { brand } = useBranding()
+
+loadBranding()
 </script>
 
 <template>
@@ -26,7 +31,7 @@ const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
         class="text-primary ms-1"
         >
       -->
-      AQUA
+      {{ brand.footerName }}
       <!-- </a> -->
     </span>
     <!-- 👉 Footer: right content -->

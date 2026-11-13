@@ -2,6 +2,7 @@ import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
 import { getAllowedRouteNames } from '@/navigation/vertical'
 import { canNavigate } from '@layouts/plugins/casl'
 import { loadFeatureFlags, useFeatureFlags } from '@/composables/useFeatureFlags'
+import { loadBranding, useBranding } from '@/composables/useBranding'
 import { getAttendanceRole, isAttendanceLoggedIn } from '@/utils/attendanceSession'
 
 const ATTENDANCE_PUBLIC_ROUTE_NAMES = new Set(['attendance-login', 'attendance'])
@@ -28,6 +29,7 @@ function resolveAttendanceRedirectTarget(to: { query: Record<string, unknown>; f
 export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]: any }>) => {
   const allowedRouteNames = getAllowedRouteNames()
   const { featureFlags } = useFeatureFlags()
+  const { brand } = useBranding()
 
   router.beforeEach(async to => {
     if (to.meta.public)
@@ -59,6 +61,13 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
       if (loggedIn && to.path.startsWith('/attendance/inventory')) {
         await loadFeatureFlags()
         if (!featureFlags.value.inventory)
+          return { name: 'attendance-dashboard' }
+      }
+
+      // Brand-hidden routes: blocked pages redirect to the dashboard
+      if (loggedIn && routeName) {
+        await loadBranding()
+        if (brand.value.hiddenRoutes.some(hidden => routeName.startsWith(hidden)))
           return { name: 'attendance-dashboard' }
       }
 

@@ -5,6 +5,7 @@ import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import { attendanceRoleToCaslRules } from '@/utils/attendanceCasl'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { loadBranding, useBranding } from '@/composables/useBranding'
 
 definePage({
   meta: {
@@ -17,6 +18,9 @@ const authStore = useAttendanceAuthStore()
 const router = useRouter()
 const route = useRoute()
 const ability = useAbility()
+const { brand } = useBranding()
+
+loadBranding()
 
 const form = reactive({ username: '', password: '' })
 const showPassword = ref(false)
@@ -80,7 +84,7 @@ async function handleLogin() {
           icon="ri-time-line"
           class="me-2"
         />
-        AQUA Attendance
+        {{ brand.loginTitle }}
       </VCardTitle>
       <VCardSubtitle class="text-center mb-4">
         Sign in to continue
