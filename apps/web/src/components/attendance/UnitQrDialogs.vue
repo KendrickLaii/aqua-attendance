@@ -7,6 +7,7 @@ const emit = defineEmits<{
 }>()
 
 const { smAndDown } = useDisplay()
+const { t } = useBranding()
 const { width: windowWidth } = useWindowSize()
 
 const {
@@ -45,7 +46,7 @@ function unitTypeLabel(type: string | undefined) {
   if (type === 'staff')
     return 'Staff'
   if (type === 'student')
-    return 'Student'
+    return t('Student')
 
   return type ?? ''
 }

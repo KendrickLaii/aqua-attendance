@@ -220,7 +220,7 @@ async function save() {
               item-title="title"
               item-value="id"
               :label="t('Campus')"
-              hint="Display only. Invoices filter by each student's registered campus, not this."
+              :hint="t('Display only. Invoices filter by each student\'s registered campus, not this.')"
               persistent-hint
               density="comfortable"
               clearable
@@ -307,7 +307,7 @@ async function save() {
               min="0"
               step="0.01"
               prefix="HK$"
-              :hint="`Leave empty to skip this ${t('class')} at Generate — or for variable-rate ${t('classes')} like 私補, leave empty and set a per-student price on each enrollment.`"
+              :hint="t(`Leave empty to skip this ${t('class')} at Generate — or for variable-rate ${t('classes')} like 私補, leave empty and set a per-student price on each enrollment.`)"
               persistent-hint
               density="comfortable"
             />

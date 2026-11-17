@@ -104,7 +104,7 @@ const { t } = useBranding()
       <VCardSubtitle>
         {{ variant === 'credit'
           ? (allMonths ? 'All credit notes. Open a row for line items.' : 'Credit notes for this calendar month. Open a row for line items.')
-          : (allMonths ? 'All bills. Open a row for line items.' : 'Bills for this calendar month. A student gets one draft; classes added after a bill is issued go on a supplementary draft. Open a row for line items.') }}
+          : (allMonths ? 'All bills. Open a row for line items.' : t('Bills for this calendar month. A student gets one draft; classes added after a bill is issued go on a supplementary draft. Open a row for line items.')) }}
       </VCardSubtitle>
     </VCardItem>
     <VCardText>
@@ -121,12 +121,12 @@ const { t } = useBranding()
           <li>{{ BILLING_HELP_FIX }}</li>
           <li>{{ BILLING_HELP_STOP }}</li>
           <li>{{ BILLING_HELP_DONT_ONLY_CANCEL }}</li>
-          <li>One open draft per student per month. If a bill is already issued or paid, Generate puts anything new (a class joined later, a session top-up) on a separate supplementary draft — the issued bill is never changed.</li>
+          <li>{{ t('One open draft per student per month. If a bill is already issued or paid, Generate puts anything new (a class joined later, a session top-up) on a separate supplementary draft — the issued bill is never changed.') }}</li>
           <li>Monthly classes: billed once for the month, even if they miss days.</li>
           <li>Per-class packages: billed once for the package they bought — not from attendance.</li>
           <li>Private / variable-price classes: leave the class price empty. Record how many sessions were bought, then set the price on a <strong>Manual invoice</strong>.</li>
           <li>Packages with no price yet are skipped by Generate — bill them with a manual invoice.</li>
-          <li>Inactive classes and monthly classes with no price are skipped. Issued and paid bills are never changed. If a student drops a class after paying, Generate lists it under 'Needs a credit note' — write a Manual credit note.</li>
+          <li>{{ t('Inactive classes and monthly classes with no price are skipped. Issued and paid bills are never changed. If a student drops a class after paying, Generate lists it under \'Needs a credit note\' — write a Manual credit note.') }}</li>
           <li>The Location filter shows bills for that campus. All months and All locations show every bill.</li>
         </ul>
       </VAlert>
@@ -545,7 +545,7 @@ const { t } = useBranding()
                         Pick a month and generate, or create a manual invoice.
                       </template>
                       <template v-else>
-                        Join students with billed dates (and packages bought for per-class courses), then Generate.
+                        {{ t('Join students with billed dates (and packages bought for per-class courses), then Generate.') }}
                       </template>
                     </div>
                   </template>

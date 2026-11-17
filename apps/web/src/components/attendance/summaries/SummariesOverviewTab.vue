@@ -2,6 +2,8 @@
 import type { SummaryOverviewItem, SummaryOverviewStats } from '@/api/attendance/summaries'
 import { formatHours, typeColor, typeLabel } from '@/utils/summaryDisplay'
 
+const { t } = useBranding()
+
 const props = defineProps<{
   items: SummaryOverviewItem[]
   stats: SummaryOverviewStats | null
@@ -214,7 +216,7 @@ const statCards = computed(() => {
                   label
                   :prepend-icon="item.unit_type === 'staff' ? 'ri-user-line' : 'ri-graduation-cap-line'"
                 >
-                  {{ typeLabel(item.unit_type) }}
+                  {{ item.unit_type === 'student' ? t('Student') : typeLabel(item.unit_type) }}
                 </VChip>
               </td>
               <td class="text-end">

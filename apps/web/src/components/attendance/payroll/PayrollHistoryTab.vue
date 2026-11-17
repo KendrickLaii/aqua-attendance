@@ -9,6 +9,8 @@ import {
   safePayrollNumber,
 } from '@/utils/payrollDisplay'
 
+const { t } = useBranding()
+
 const props = defineProps<{
   monthLabel: string
   records: PayrollRecord[]
@@ -192,7 +194,7 @@ const statCards = computed(() => {
       >
         <VSelect
           v-model="unitTypeModel"
-          :items="[{ title: 'Staff', value: 'staff' }, { title: 'Student', value: 'student' }]"
+          :items="[{ title: 'Staff', value: 'staff' }, { title: t('Student'), value: 'student' }]"
           item-title="title"
           item-value="value"
           label="Type"

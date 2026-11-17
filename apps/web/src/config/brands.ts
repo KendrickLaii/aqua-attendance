@@ -33,7 +33,7 @@ export const brands: Record<string, Brand> = {
     loginTitle: 'AQUA Attendance',
     footerName: 'AQUA',
     logo: aquaLogo,
-    hiddenRoutes: [],
+    hiddenRoutes: ['attendance-clients', 'attendance-staff'],
     terms: {},
     manualInvoiceDefaultLines: 1,
     manualInvoiceMaxLines: 5,
@@ -48,7 +48,7 @@ export const brands: Record<string, Brand> = {
     // TODO: replace with the real CPA logo once the client provides assets
     logo: aquaLogo,
     primaryColor: '#1565C0', // placeholder until the client confirms a palette
-    hiddenRoutes: [],
+    hiddenRoutes: ['attendance-units'],
     terms: {
       'nav:Courses': 'Services',
       'Course Management': 'Service Management',
@@ -88,6 +88,15 @@ export const brands: Record<string, Brand> = {
       'Class roster · 班次名冊': 'Recurring Service',
       'Join a student': 'Enrollment',
       'Student': 'Client',
+      'Student Management': 'Client Management',
+      'student': 'client',
+      'students': 'clients',
+      'Student Profiles': 'Client Profiles',
+      'Student, staff, invoice no., class…': 'Client, staff, invoice no., line item…',
+      'Student records': 'Client records',
+      'Staff / Student in': 'Staff / Client in',
+      'nav:Student Management': 'Client Management',
+      'nav:Staff Management': 'Staff Management',
       'Find student': 'Find Client',
       'Tuition invoices': 'Invoices',
       'Location': 'Team',

@@ -28,9 +28,9 @@ const { t } = useBranding()
 const route = useRoute()
 
 const pageHint = computed(() =>
-  COURSES_PAGE_HINT
+  t(COURSES_PAGE_HINT
     .replace('Courses', t('Courses'))
-    .replace('Class Offerings', t('Class Offerings')),
+    .replace('Class Offerings', t('Class Offerings'))),
 )
 
 const loading = ref(true)
@@ -237,7 +237,7 @@ function removeSpu(spu: CourseSpu) {
 function removeSku(sku: CourseSku) {
   deleteTarget.value = {
     title: `Delete ${sku.name_zh}?`,
-    detail: `Delete ${t('class')} "${sku.name_zh}"? This only works if no student is enrolled.`,
+    detail: t(`Delete ${t('class')} "${sku.name_zh}"? This only works if no student is enrolled.`),
     run: async () => {
       await deleteCourseSku(sku.id)
       await loadAll()

@@ -59,11 +59,13 @@ const unitSearch = ref('')
 const unitOptions = ref<Unit[]>([])
 const unitSearchLoading = ref(false)
 
-const typeOptions = [
+const { t } = useBranding()
+
+const typeOptions = computed(() => [
   { title: 'All', value: '' },
-  { title: 'Student', value: 'student' },
+  { title: t('Student'), value: 'student' },
   { title: 'Staff', value: 'staff' },
-]
+])
 
 const eventTypeOptions = [
   { title: 'All', value: 'all' },
@@ -157,13 +159,13 @@ const personSearchPlaceholder = computed(() => {
   if (filters.unit_type === 'staff')
     return 'Search staff name or code'
   if (filters.unit_type === 'student')
-    return 'Search student name or code'
+    return t('Search student name or code')
 
   return 'Search name or code'
 })
 
 const selectedTypeLabel = computed(() =>
-  typeOptions.find(o => o.value === filters.unit_type)?.title ?? 'All',
+  typeOptions.value.find(o => o.value === filters.unit_type)?.title ?? 'All',
 )
 
 const hasActiveFilters = computed(() =>
@@ -210,7 +212,7 @@ const recordsTitle = computed(() => {
     return 'Staff records'
 
   if (filters.unit_type === 'student')
-    return 'Student records'
+    return t('Student records')
 
   return 'Records'
 })
@@ -235,14 +237,14 @@ const statsCaption = computed(() => {
 const dayStatCards = computed(() => {
   const s = dayStats.value
   const type = filters.unit_type
-  const typeHint = type === 'staff' ? 'staff' : type === 'student' ? 'student' : 'staff + student'
+  const typeHint = type === 'staff' ? 'staff' : type === 'student' ? t('student') : `staff + ${t('student')}`
 
   if (!s) {
     return [
       { label: 'Events', value: '—', hint: 'selected range', icon: 'ri-file-list-3-line', color: 'primary' },
       { label: 'Check in', value: '—', hint: typeHint, icon: 'ri-login-circle-line', color: 'success' },
       { label: 'Check out', value: '—', hint: typeHint, icon: 'ri-logout-circle-line', color: 'warning' },
-      { label: 'Staff / Student in', value: '—', hint: 'all types in this date range', icon: 'ri-group-line', color: 'info' },
+      { label: t('Staff / Student in'), value: '—', hint: 'all types in this date range', icon: 'ri-group-line', color: 'info' },
     ]
   }
 
@@ -271,7 +273,7 @@ const dayStatCards = computed(() => {
       value: String(checkIns),
       hint: type
         ? typeHint
-        : `${s.check_ins_staff} staff · ${s.check_ins_student} student`,
+        : `${s.check_ins_staff} staff · ${s.check_ins_student} ${t('student')}`,
       icon: 'ri-login-circle-line',
       color: 'success',
     },
@@ -280,12 +282,12 @@ const dayStatCards = computed(() => {
       value: String(checkOuts),
       hint: type
         ? typeHint
-        : `${s.check_outs_staff} staff · ${s.check_outs_student} student`,
+        : `${s.check_outs_staff} staff · ${s.check_outs_student} ${t('student')}`,
       icon: 'ri-logout-circle-line',
       color: 'warning',
     },
     {
-      label: 'Staff / Student in',
+      label: t('Staff / Student in'),
       value: `${s.check_ins_staff} / ${s.check_ins_student}`,
       hint: 'all types in this date range',
       icon: 'ri-group-line',
@@ -545,7 +547,7 @@ function eventColor(type: string) {
 
 function typeLabel(type: string) {
   if (type === 'student')
-    return 'Student'
+    return t('Student')
   if (type === 'staff')
     return 'Staff'
 
@@ -716,7 +718,7 @@ async function confirmVoid() {
             :loading="unitSearchLoading"
             item-title="title"
             item-value="value"
-            :label="filters.unit_type === 'staff' ? 'Staff' : filters.unit_type === 'student' ? 'Student' : 'Person'"
+            :label="filters.unit_type === 'staff' ? 'Staff' : filters.unit_type === 'student' ? t('Student') : 'Person'"
             :placeholder="personSearchPlaceholder"
             prepend-inner-icon="ri-search-line"
             density="compact"

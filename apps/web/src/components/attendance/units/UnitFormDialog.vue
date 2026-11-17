@@ -40,12 +40,14 @@ import {
   unitSaveValidationError,
 } from '@/utils/unitFormPayload'
 import { useToast } from '@/composables/useToast'
+import { useBranding } from '@/composables/useBranding'
 
 const props = defineProps<{
   modelValue: boolean
   editingUnit: Unit | null
   locationOptions: { title: string; value: string }[]
   defaultLocationId: string
+  lockedType?: 'student' | 'staff'
 }>()
 
 const emit = defineEmits<{
@@ -114,10 +116,12 @@ const statusOptions = [
   { title: 'Suspended', value: 'suspended' },
 ]
 
-const typeOptions = [
-  { title: 'Student', value: 'student' },
+const { t } = useBranding()
+
+const typeOptions = computed(() => [
+  { title: t('Student'), value: 'student' },
   { title: 'Staff', value: 'staff' },
-]
+])
 
 const employmentTypeOptions = [
   { title: 'Full-time', value: 'full_time' },
@@ -200,6 +204,8 @@ function resetForm() {
     registered_location_id: props.defaultLocationId,
     scan_location_ids: props.defaultLocationId ? [props.defaultLocationId] : [],
   }))
+  if (props.lockedType)
+    form.unit_type = props.lockedType
 }
 
 function fillForm(unit: Unit) {
@@ -397,7 +403,7 @@ async function handleSave() {
             item-title="title"
             item-value="value"
             label="Type *"
-            :disabled="!!editingUnit"
+            :disabled="!!editingUnit || !!lockedType"
           />
         </VCol>
         <VCol
@@ -724,7 +730,7 @@ async function handleSave() {
           v-if="!editingUnit"
           class="text-body-2 text-medium-emphasis"
         >
-          Save this student first, then enroll from Courses.
+          {{ t('Save this student first, then enroll from Courses.') }}
         </div>
         <div
           v-else-if="unitEnrollmentsLoading"

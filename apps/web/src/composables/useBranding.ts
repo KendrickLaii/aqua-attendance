@@ -60,9 +60,21 @@ export function applyBrandPrimaryColor(theme: ReturnType<typeof useTheme>, color
   theme.themes.value = updated
 }
 
+/** Label override: `terms[key] ?? key`. CPA also rewrites Student / 學生 to Client. */
+function cpaLabel(label: string): string {
+  if (brand.value.key !== 'cpa')
+    return label
+
+  return label
+    .replaceAll('學生', 'Client')
+    .replaceAll('Students', 'Clients')
+    .replaceAll('students', 'clients')
+    .replaceAll('Student', 'Client')
+    .replaceAll('student', 'client')
+}
+
 export function useBranding() {
-  /** Label override: `terms[key] ?? key` */
-  const t = (key: string) => brand.value.terms[key] ?? key
+  const t = (key: string) => cpaLabel(brand.value.terms[key] ?? key)
 
   /** Nav item title override: `terms['nav:<original>'] ?? original` */
   const navTitle = (original: string) => brand.value.terms[`nav:${original}`] ?? original

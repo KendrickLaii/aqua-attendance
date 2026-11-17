@@ -13,6 +13,7 @@ const pageSizeOptions = [10, 20, 40, 60, 100]
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
+const { t } = useBranding()
 
 const logs = ref<AuditLog[]>([])
 const totalCount = ref(0)
@@ -56,7 +57,7 @@ const tableOptions = [
   { title: 'Shift Templates', value: 'shift_templates' },
   { title: 'Shifts', value: 'shifts' },
   { title: 'Staff Profiles', value: 'staff_profiles' },
-  { title: 'Student Profiles', value: 'student_profiles' },
+  { title: t('Student Profiles'), value: 'student_profiles' },
   { title: 'Tuition Invoices', value: 'tuition_invoices' },
   { title: 'Tuition Receipts', value: 'tuition_receipts' },
   { title: 'Units', value: 'units' },

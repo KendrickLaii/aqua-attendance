@@ -10,6 +10,16 @@ export default [
     to: 'attendance-units',
   },
   {
+    title: 'Student Management',
+    icon: { icon: 'ri-user-line' },
+    to: 'attendance-clients',
+  },
+  {
+    title: 'Staff Management',
+    icon: { icon: 'ri-briefcase-line' },
+    to: 'attendance-staff',
+  },
+  {
     title: 'QR Codes',
     icon: { icon: 'ri-qr-code-line' },
     to: 'attendance-qr-codes',

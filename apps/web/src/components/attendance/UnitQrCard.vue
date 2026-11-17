@@ -11,6 +11,8 @@ const props = defineProps<{
   unit: Unit
 }>()
 
+const { t } = useBranding()
+
 const emit = defineEmits<{
   openDetail: []
 }>()
@@ -65,7 +67,7 @@ function typeLabel(type: string) {
   if (type === 'staff')
     return 'Staff'
   if (type === 'student')
-    return 'Student'
+    return t('Student')
 
   return type
 }

@@ -124,7 +124,7 @@ const renewDialogHint = computed(() => {
     ? SET_END_HINT
     : renewExtendHint(formatRosterDate(renewingEnrollment.value.start_date, '未設開始日'), formatRosterDate(renewingEnrollment.value.end_date))
 
-  return renewMode.value === 'end' ? main : `${RENEW_SUBTITLE} ${main}`
+  return t(renewMode.value === 'end' ? main : `${RENEW_SUBTITLE} ${main}`)
 })
 
 const renewSaving = ref(false)
@@ -252,7 +252,7 @@ async function loadStudentOptions(search?: string) {
   catch (e) {
     console.error('Failed to load students', e)
     if (requestId === studentSearchRequestId)
-      enrollError.value = formatApiError(e, 'Could not load students. Search by name, or pick from the list after it reloads.')
+      enrollError.value = formatApiError(e, t('Could not load students. Search by name, or pick from the list after it reloads.'))
   }
   finally {
     if (requestId === studentSearchRequestId)
@@ -517,7 +517,7 @@ async function enrollStudent() {
   if (!selectedStudentId.value || !props.skuId || rosterSku.value?.is_active === false || rosterAtCapacity.value)
     return
   if (enrollNeedsPurchasedQuantity() && !enrollPurchasedQuantity.value) {
-    enrollError.value = 'Enter how many sessions this student purchased.'
+    enrollError.value = t('Enter how many sessions this student purchased.')
 
     return
   }
@@ -553,7 +553,7 @@ async function enrollStudent() {
     if (picked)
       cacheStudents([picked])
 
-    enrollSuccess.value = `${picked?.full_name ?? 'Student'} joined ${rosterSku.value?.name_zh ?? t('class')}.`
+    enrollSuccess.value = `${picked?.full_name ?? t('Student')} joined ${rosterSku.value?.name_zh ?? t('class')}.`
     resetEnrollForm()
     rosterStatusFilter.value = 'active'
   }
@@ -568,7 +568,7 @@ async function enrollStudent() {
 async function topUpExistingEnrollment(existing: CourseEnrollment) {
   const quantity = enrollPurchasedQuantity.value
   if (!quantity || quantity < 1) {
-    enrollError.value = 'Enter how many sessions this student purchased.'
+    enrollError.value = t('Enter how many sessions this student purchased.')
 
     return
   }
@@ -585,7 +585,7 @@ async function topUpExistingEnrollment(existing: CourseEnrollment) {
   let purchasedAt = startDate || todayIsoDate()
   if (existing.start_date) {
     if (startDate && startDate < existing.start_date) {
-      enrollError.value = `Start date can't be before this student's current start (${formatRosterDate(existing.start_date)}).`
+      enrollError.value = t(`Start date can't be before this student's current start (${formatRosterDate(existing.start_date)}).`)
 
       return
     }
@@ -780,7 +780,7 @@ async function confirmDelete() {
     deleteTarget.value = null
   }
   catch (e) {
-    deleteConfirmError.value = mapEnrollmentApiError(formatApiError(e, 'Could not delete this item.'))
+    deleteConfirmError.value = t(mapEnrollmentApiError(formatApiError(e, 'Could not delete this item.')))
   }
   finally {
     deleteConfirmLoading.value = false
@@ -868,7 +868,7 @@ function cancelEnrollment(enrollment: CourseEnrollment) {
 
   openDeleteConfirm({
     title: `${t('Leave class')} — ${labelFor(enrollment)}?`,
-    detail: LEAVE_CLASS_CONFIRM + leaveClassUnbilledNote(unbilledQty),
+    detail: t(LEAVE_CLASS_CONFIRM + leaveClassUnbilledNote(unbilledQty)),
     confirmLabel: t('Leave class'),
     run: async () => {
       const updated = await updateCourseEnrollment(enrollment.id, { status: 'cancelled' })
@@ -888,7 +888,7 @@ async function reactivateEnrollment(enrollment: CourseEnrollment) {
     enrollSuccess.value = `${labelFor(enrollment)} is ${t('back in class')}.`
   }
   catch (e) {
-    enrollError.value = formatApiError(e, `Could not put this student ${t('back in class')}.`)
+    enrollError.value = formatApiError(e, `Could not put this ${t('student')} ${t('back in class')}.`)
   }
 }
 
@@ -901,7 +901,7 @@ function removeEnrollment(enrollment: CourseEnrollment) {
 
   openDeleteConfirm({
     title: 'Remove record?',
-    detail: `${REMOVE_RECORD_CONFIRM}${purchaseNote}`,
+    detail: t(`${REMOVE_RECORD_CONFIRM}${purchaseNote}`),
     confirmLabel: 'Remove',
     run: async () => {
       await deleteCourseEnrollment(enrollment.id)
@@ -1080,7 +1080,7 @@ defineExpose({ scrollIntoView })
         <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
           <span class="text-subtitle-2 d-flex align-center">
             {{ t('Join a student') }}
-            <HelpBubble :text="JOIN_CLASS_HINT" />
+            <HelpBubble :text="t(JOIN_CLASS_HINT)" />
           </span>
         </div>
         <VRow dense>
@@ -1190,7 +1190,7 @@ defineExpose({ scrollIntoView })
               step="0.01"
               prefix="HK$"
               density="comfortable"
-              :hint="enrollPriceHint(rosterSku)"
+              :hint="t(enrollPriceHint(rosterSku))"
               persistent-hint
               :disabled="!skuId"
             />
@@ -1206,7 +1206,7 @@ defineExpose({ scrollIntoView })
               height="48"
               :loading="enrolling"
               :disabled="Boolean(disabledReason)"
-              :title="disabledReason || undefined"
+              :title="disabledReason ? t(disabledReason) : undefined"
               @click="enrollStudent"
             >
               {{ enrollButtonLabel }}
@@ -1228,7 +1228,7 @@ defineExpose({ scrollIntoView })
           v-if="disabledReason && selectedStudentId && !isFieldPromptReason(disabledReason)"
           class="text-caption text-medium-emphasis mt-1"
         >
-          {{ disabledReason }}
+          {{ t(disabledReason) }}
         </div>
         <div
           v-if="existingStatus"
@@ -1466,7 +1466,7 @@ defineExpose({ scrollIntoView })
                     <div>{{ billingWindowLabel(e) }}</div>
                     <HelpBubble
                       v-if="e.status === 'active' && rosterSku?.billing_unit === 'monthly' && !e.end_date"
-                      :text="ONGOING_SET_END_HINT"
+                      :text="t(ONGOING_SET_END_HINT)"
                       inline
                     />
                   </div>
@@ -1567,12 +1567,12 @@ defineExpose({ scrollIntoView })
                     Nobody on this roll yet
                   </div>
                   <div class="text-body-2 text-medium-emphasis">
-                    {{ JOIN_FIRST_STUDENT }}
+                    {{ t(JOIN_FIRST_STUDENT) }}
                   </div>
                 </template>
                 <template v-else-if="rosterSearch.trim()">
                   <div class="text-body-2 text-medium-emphasis">
-                    No student matches “{{ rosterSearch.trim() }}”.
+                    {{ t(`No student matches “${rosterSearch.trim()}”.`) }}
                   </div>
                 </template>
                 <template v-else-if="rosterStatusFilter === 'active' && rosterStatusCounts.ended > 0">
@@ -1589,7 +1589,7 @@ defineExpose({ scrollIntoView })
                 </template>
                 <template v-else>
                   <div class="text-body-2 text-medium-emphasis">
-                    No students in this filter.
+                    {{ t('No students in this filter.') }}
                   </div>
                 </template>
               </td>

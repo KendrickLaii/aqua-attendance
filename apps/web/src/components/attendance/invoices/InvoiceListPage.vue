@@ -409,7 +409,7 @@ function leftoverSummary(result: TuitionInvoiceGenerateResult): string {
 
   const samples = (result.leftover_purchases ?? [])
     .slice(0, 5)
-    .map(p => `${p.unit_code || ''} ${p.unit_name || 'student'} — ${p.sku_code ?? ''} · ${p.purchased_at} · qty ${p.purchased_quantity}`)
+    .map(p => `${p.unit_code || ''} ${p.unit_name || t('student')} — ${p.sku_code ?? ''} · ${p.purchased_at} · qty ${p.purchased_quantity}`)
     .join(', ')
 
   return ` ${leftover} older unbilled session package${leftover === 1 ? '' : 's'} skipped — generate that month first${samples ? ` (${samples})` : ''}.`
@@ -954,7 +954,7 @@ watch(yearMonth, () => {
           <VTextField
             v-model="searchQuery"
             label="Search"
-            placeholder="Student, staff, invoice no., class…"
+            :placeholder="t('Student, staff, invoice no., class…')"
             prepend-inner-icon="ri-search-line"
             density="compact"
             hide-details
@@ -1110,7 +1110,7 @@ watch(yearMonth, () => {
             {{ c.unit_code }} {{ c.unit_name }} — {{ c.name_zh }}
             {{ formatInvoiceMoney(Number(c.amount)) }} on #{{ c.invoice_no }}
             ({{ creditStatusLabel(c.invoice_status) }}) —
-            {{ creditReasonText[c.reason] ?? c.reason }}
+            {{ t(creditReasonText[c.reason] ?? c.reason) }}
           </li>
         </ul>
         <div class="text-caption mt-1">

@@ -23,6 +23,7 @@ const {
 } = usePagedList({ pageSize: 200, pageSizeOptions: [40, 100, 200] })
 
 const { ensureAccess } = useAttendanceAdminGate()
+const { t } = useBranding()
 const { yearMonth, monthDateRange, monthLabel, changeMonth, toCurrentMonth } = useYearMonth()
 const router = useRouter()
 
@@ -57,7 +58,11 @@ const pageSubtitle = computed(() => {
   if (isDetailView.value && selectedUnit.value)
     return `${selectedUnit.value.unit_name || selectedUnit.value.unit_code} · ${monthLabel.value}`
 
-  const selectedTypeLabel = unitTypeOptions.find(o => o.value === filterUnitType.value)?.title ?? 'All types'
+  const selectedTypeLabel = (() => {
+    const title = unitTypeOptions.find(o => o.value === filterUnitType.value)?.title ?? 'All types'
+
+    return title === 'Student' ? t('Student') : title
+  })()
 
   return `${monthLabel.value} · ${selectedTypeLabel} · ${overviewTotalCount.value} unit${overviewTotalCount.value === 1 ? '' : 's'}`
 })
@@ -301,7 +306,7 @@ function openAttendanceLogForUnit() {
         </VBtn>
         <VSelect
           v-model="filterUnitType"
-          :items="unitTypeOptions"
+          :items="unitTypeOptions.map(option => option.value === 'student' ? { ...option, title: t('Student') } : option)"
           label="Type"
           density="compact"
           hide-details

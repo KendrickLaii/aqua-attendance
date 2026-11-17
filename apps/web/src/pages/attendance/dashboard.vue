@@ -16,6 +16,7 @@ const RECENT_EVENTS_LIMIT = 20
 
 const authStore = useAttendanceAuthStore()
 const router = useRouter()
+const { brand, t } = useBranding()
 
 const recentEvents = ref<AttendanceEvent[]>([])
 const presentStudentCount = ref(0)
@@ -93,7 +94,7 @@ const pageSubtitle = computed(() => {
 
 const presentStatCards = computed(() => [
   {
-    label: 'Students present',
+    label: t('Students present'),
     value: String(presentStudentCount.value),
     hint: 'currently checked in',
     icon: 'ri-graduation-cap-line',
@@ -109,14 +110,14 @@ const presentStatCards = computed(() => [
   {
     label: 'Check-ins today',
     value: String(todayCheckInsTotal.value),
-    hint: `${todayCheckInsStudent.value} students · ${todayCheckInsStaff.value} staff`,
+    hint: `${todayCheckInsStudent.value} ${t('students')} · ${todayCheckInsStaff.value} staff`,
     icon: 'ri-login-circle-line',
     color: 'primary',
   },
   {
     label: 'Check-outs today',
     value: String(todayCheckOutsTotal.value),
-    hint: `${todayCheckOutsStudent.value} students · ${todayCheckOutsStaff.value} staff`,
+    hint: `${todayCheckOutsStudent.value} ${t('students')} · ${todayCheckOutsStaff.value} staff`,
     icon: 'ri-logout-circle-line',
     color: 'warning',
   },
@@ -126,7 +127,7 @@ const summaryStatCards = computed(() => [
   {
     label: 'On site now',
     value: String(presentTotal.value),
-    hint: `${presentStudentCount.value} students · ${presentStaffCount.value} staff`,
+    hint: `${presentStudentCount.value} ${t('students')} · ${presentStaffCount.value} staff`,
     icon: 'ri-map-pin-user-line',
     color: 'success',
   },
@@ -140,7 +141,7 @@ const summaryStatCards = computed(() => [
   {
     label: 'Active units',
     value: String(activeTotal.value),
-    hint: `${activeStudentCount.value} students · ${activeStaffCount.value} staff`,
+    hint: `${activeStudentCount.value} ${t('students')} · ${activeStaffCount.value} staff`,
     icon: 'ri-group-line',
     color: 'secondary',
   },
@@ -318,7 +319,7 @@ function typeLabel(type: string) {
   if (type === 'staff')
     return 'Staff'
   if (type === 'student')
-    return 'Student'
+    return t('Student')
 
   return type
 }
@@ -758,8 +759,8 @@ async function confirmAutoCheckout() {
           Log
         </RouterLink>
         or
-        <RouterLink :to="{ name: 'attendance-units' }">
-          Units
+        <RouterLink :to="{ name: brand.key === 'cpa' ? 'attendance-clients' : 'attendance-units' }">
+          {{ brand.key === 'cpa' ? t('Student Management') : 'Units' }}
         </RouterLink>
         page so the real check-out time is recorded.
       </p>

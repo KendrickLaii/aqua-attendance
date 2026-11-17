@@ -220,7 +220,7 @@ async function loadManualStudents(search?: string) {
   }
   catch (e) {
     if (requestId === manualStudentRequestId)
-      manualError.value = formatApiError(e, 'Could not load students. Search by name, or type a walk-in name.')
+      manualError.value = formatApiError(e, t('Could not load students. Search by name, or type a walk-in name.'))
   }
   finally {
     if (requestId === manualStudentRequestId)
@@ -310,7 +310,7 @@ async function loadManualUnbilledPackages(unitId: string) {
   }
   catch (e) {
     manualUnbilledPackages.value = []
-    manualError.value = formatApiError(e, 'Could not load unbilled class packages for this student.')
+    manualError.value = formatApiError(e, t('Could not load unbilled class packages for this student.'))
   }
 }
 

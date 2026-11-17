@@ -32,10 +32,12 @@ const printError = ref('')
 
 useAutoClearAlerts(loadError, printError)
 
-const typeOptions = [
-  { title: 'Student', value: 'student' },
+const { brand, t } = useBranding()
+
+const typeOptions = computed(() => [
+  { title: t('Student'), value: 'student' },
   { title: 'Staff', value: 'staff' },
-]
+])
 
 const locationName = (location: LocationItem) =>
   [location.name_en, location.name_zh].filter(Boolean).join(' · ')
@@ -203,7 +205,7 @@ async function printSelected() {
   printing.value = true
   printError.value = ''
   try {
-    await printUnitQrs(selectedUnits.value, printWindow)
+    await printUnitQrs(selectedUnits.value, printWindow, t('Student'))
   }
   catch (e) {
     printError.value = formatApiError(e, 'Could not print selected QR codes')
@@ -240,9 +242,9 @@ async function printSelected() {
           variant="outlined"
           color="primary"
           prepend-icon="ri-group-line"
-          :to="{ name: 'attendance-units' }"
+          :to="{ name: brand.key === 'cpa' ? (filterType === 'staff' ? 'attendance-staff' : 'attendance-clients') : 'attendance-units' }"
         >
-          Manage units
+          {{ brand.key === 'cpa' ? (filterType === 'staff' ? 'Staff Management' : t('Student Management')) : 'Manage units' }}
         </VBtn>
         <VBtn
           variant="tonal"
@@ -403,9 +405,9 @@ async function printSelected() {
         v-if="showEmptyUnitsCta"
         color="primary"
         prepend-icon="ri-group-line"
-        :to="{ name: 'attendance-units' }"
+        :to="{ name: brand.key === 'cpa' ? 'attendance-clients' : 'attendance-units' }"
       >
-        Go to Unit Management
+        {{ brand.key === 'cpa' ? t('Student Management') : 'Go to Unit Management' }}
       </VBtn>
     </div>
 

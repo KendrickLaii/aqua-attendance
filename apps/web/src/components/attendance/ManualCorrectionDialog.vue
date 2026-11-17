@@ -6,6 +6,8 @@ import type { Unit } from '@/api/attendance/units'
 import { dateTimeLocalToIso, eventSourceLabel, formatAttendanceDateTime, getDateRangeIso, getTodayRangeIso } from '@/utils/attendanceDisplay'
 import { formatApiError } from '@/utils/formatApiDetail'
 
+const { t } = useBranding()
+
 type CorrectionMode = 'single' | 'full_day'
 
 const props = withDefaults(
@@ -132,7 +134,7 @@ function typeLabel(type: string) {
   if (type === 'staff')
     return 'Staff'
   if (type === 'student')
-    return 'Student'
+    return t('Student')
 
   return type
 }

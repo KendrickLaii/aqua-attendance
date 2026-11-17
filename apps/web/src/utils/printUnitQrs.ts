@@ -11,11 +11,11 @@ export interface UnitQrPrintItem {
   qrDataUrl: string
 }
 
-function typeLabel(type: string) {
+function typeLabel(type: string, studentLabel = 'Student') {
   if (type === 'staff')
     return 'Staff'
   if (type === 'student')
-    return 'Student'
+    return studentLabel
 
   return type
 }
@@ -74,7 +74,7 @@ function waitForImages(doc: Document): Promise<void> {
   ).then(() => undefined)
 }
 
-export function renderUnitQrPrintWindow(printWindow: Window, items: UnitQrPrintItem[]) {
+export function renderUnitQrPrintWindow(printWindow: Window, items: UnitQrPrintItem[], studentLabel = 'Student') {
   if (!items.length)
     return
 
@@ -83,7 +83,7 @@ export function renderUnitQrPrintWindow(printWindow: Window, items: UnitQrPrintI
       <img src="${qrDataUrl}" alt="QR for ${escapeHtml(unit.full_name)}" width="${UNIT_QR_PRINT_IMAGE_SIZE}" height="${UNIT_QR_PRINT_IMAGE_SIZE}" style="width:2.3cm;height:2.3cm" />
       <h2>${escapeHtml(unit.full_name)}</h2>
       <p class="code">${escapeHtml(unit.code)}</p>
-      <p class="meta">${escapeHtml(typeLabel(unit.unit_type))}</p>
+      <p class="meta">${escapeHtml(typeLabel(unit.unit_type, studentLabel))}</p>
     </section>
   `).join('')
 
@@ -165,14 +165,14 @@ export function renderUnitQrPrintWindow(printWindow: Window, items: UnitQrPrintI
   printWindow.document.close()
 }
 
-export async function printUnitQrs(units: Unit[], printWindow: Window) {
+export async function printUnitQrs(units: Unit[], printWindow: Window, studentLabel = 'Student') {
   if (!units.length)
     return
 
   try {
     const items = await fetchUnitQrPrintItems(units)
 
-    renderUnitQrPrintWindow(printWindow, items)
+    renderUnitQrPrintWindow(printWindow, items, studentLabel)
     await waitForImages(printWindow.document)
     printWindow.focus()
     printWindow.print()
