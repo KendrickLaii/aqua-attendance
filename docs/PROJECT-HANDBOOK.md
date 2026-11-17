@@ -269,7 +269,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 #### 手動發票
 
-- `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。`fee` 可以係負數（credit note）；綁 `purchase_id` 嘅行不准負數。新單預設行數同上限嚟自品牌：`aqua` 開 1 行、最多 5 行（同之前一樣）；`cpa` 開 1 行、最多 100 行。列印：`aqua` 用現有學費發票（補到 5 行）；`cpa` 用 DRJ debit note（BILL TO、DN NO、日期、描述、金額、總額係單上資料；信頭同付款方法係公司固定文字）。退款單兩邊都用原本嘅 credit note。
+- `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。`fee` 可以係負數（credit note）；綁 `purchase_id` 嘅行不准負數。新單預設行數同上限嚟自品牌：`aqua` 開 1 行、最多 5 行（同之前一樣）；`cpa` 開 1 行、最多 100 行。列印：`aqua` 用現有學費發票（補到 5 行）；`cpa` 用 DRJ debit note（BILL TO 係客戶地址，DN NO 係客戶編號/單號/年份，日期係日/月/年，描述、金額、總額係單上資料）。信頭用你提供的 letterhead 圖，logo 在左、信頭在右。頁尾仍是 SVG。付款方法讀該 Team 的 `details.invoice_payment`，冇填就留空。退款單兩邊都用原本嘅 credit note。
 - `PATCH /api/tuition-invoices/{id}`：未 Paid 可改 `lines`／notes／staff／退款抬頭；Generated 行會保留 `enrollment_id`／SKU。Paid 或 Cancelled 連編號、行項目都唔准改 → 422，但 `payable_to_name`／`payee_name` 仍可改。
 - purchase 檢查在派號**之前**：購買須存在、屬所選學生、未被出單；失敗不消耗編號。void 手動發票後其 purchase 回復可出單。行項目 GET 會帶 `purchase_id`（如該行結算咗一條購買），Edit 要原封交返去，唔好拆咗連結。
 

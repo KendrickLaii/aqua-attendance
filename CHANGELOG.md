@@ -6,12 +6,12 @@
 
 ### 新增
 
-- **CPA 學費發票**：品牌 registry 加 `manualInvoiceDefaultLines`、`manualInvoiceMaxLines`、`invoicePrintTemplate`。手動發票開單行數跟品牌（aqua 仍然 1 行、最多 5 行；cpa 1 行、最多 100 行）。`APP_BRAND=cpa` 時手打發票編號上限由 999999 放到 PostgreSQL INTEGER 上限 2147483647，可以入 `202611001` 呢類 YYYYMM####；aqua 上限不變。cpa 列印改用 DRJ debit note（`public/brands/drj-logo.png`）；aqua 列印模板不變。退款單兩邊都用原本版面。
+- **CPA 學費發票**：品牌 registry 加 `manualInvoiceDefaultLines`、`manualInvoiceMaxLines`、`invoicePrintTemplate`。手動發票開單行數跟品牌（aqua 仍然 1 行、最多 5 行；cpa 1 行、最多 100 行）。`APP_BRAND=cpa` 時手打發票編號上限由 999999 放到 PostgreSQL INTEGER 上限 2147483647，可以入 `202611001` 呢類 YYYYMM####；aqua 上限不變。cpa 列印改用 DRJ debit note（信頭同頁尾係 SVG）；aqua 列印模板不變。退款單兩邊都用原本版面。
 - **Per-server 品牌（runtime theming）**：API 新增 env `APP_BRAND`（預設 `aqua`）與公開端點 `GET /api/branding` → `{"brand": "<key>"}`；web 新增 `src/config/brands.ts` registry（`title`／`loginTitle`／`footerName`／`logo`／`primaryColor`／`hiddenRoutes`／`terms`／`manualInvoiceDefaultLines`／`manualInvoiceMaxLines`／`invoicePrintTemplate`）同 `useBranding` composable（fetch 一次、失敗落返 `aqua`），套用至分頁標題、navbar 標題／logo、登入頁標題、頁尾名、可選 primary 色覆寫、`hiddenRoutes` 側欄過濾＋router guard 導 dashboard。`aqua` 品牌所有覆寫係 no-op，畫面同之前完全一樣；demo 機設 `APP_BRAND=cpa`（內容暫為 placeholder）。
 
 ### 變更
 
-- QR Codes 頁可按註冊地點篩選（`GET /api/units?registered_location_id=`）。
+- CPA 借項通知單的圓形 logo、信頭同頁尾改用 DRJ 圖片，版面跟公司樣稿（表格留空行、總額貼在金額欄下面、頁尾在頁底）。付款方法只讀該 Team 的 `details.invoice_payment`，冇填就留空。BILL TO 印客戶地址，DN NO 係客戶編號/單號/年份，日期係日/月/年。Aqua 學費發票不變。
 - CPA 品牌將 Courses／Course 顯示為 Services／Service，Class／Classes 顯示為 Line item／Line items（課程管理、名冊、發票欄）。新增服務彈窗的 Subject／Chinese name／English name 顯示為 Group／Name／Sub-name。新增 line item 彈窗的 Chinese name／English name／Campus／Teacher / staff 顯示為 Name／Sub-name／Team／staff。Aqua 用字不變。名冊標題在 CPA 顯示為 Recurring Service。名冊的 Join a student／Student／Find student 顯示為 Enrollment／Client／Find Client。名冊狀態只顯示 Active 或 Inactive。發票頁標題顯示為 Invoices，帳單表 Student 顯示為 Client，地點選擇顯示為 Team，全部地點顯示為 All Teams。帳單表 Tutor 顯示為 Staff。手動發票跟同一套用字：Student name／Tutor／Location (logo) 顯示為 Client／Staff／Team，Month／Bill month 顯示為 Period，Add a class 顯示為 Add Item。手動發票價錢可以是 0。收據頁同新增收據的 Location／Student／All locations／Month 顯示為 Team／Client／All Teams／Period。地點管理頁同側欄在 CPA 顯示為 Team Management，Location 顯示為 Team。
 - 學費發票列表 Student、Classes 欄加闊（22%／32%），長名最多顯示兩行。
 - 課程管理班次表改為固定欄寬：Name 36% 並可換行，Schedule／Billing 不再食走右邊空位。

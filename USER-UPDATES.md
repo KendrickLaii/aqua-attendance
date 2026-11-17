@@ -7,6 +7,17 @@
 
 ---
 
+## 17/11/2026
+
+### 【測試機】CPA 發票付款字可以跟 Team 改
+
+<http://3.114.114.143/attendance/locations>
+
+- CPA 借項通知單的圓形 logo、信頭同頁尾都係 DRJ 的圖，版面跟公司樣稿
+- Extra Details 可以加 `invoice_payment` 改付款方法。唔寫，付款方法就留空
+- 借項通知單 BILL TO 印客戶地址，單號係「客戶編號/單號/年份」，日期係日/月/年
+- 正式機的學費發票不變
+
 ## 13/11/2026
 
 ### 【測試機】CPA 課程頁改叫 Service，班次改叫 Line item
