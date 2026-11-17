@@ -9,6 +9,14 @@
 
 ## 17/11/2026
 
+### 【測試機】CPA 人員頁拆成 Client 同 Staff
+
+<http://3.114.114.143/attendance/clients>
+
+- 側欄 Unit Management 拆成 Client Management 同 Staff Management
+- 學生相關用字改成 Client，包括「學生」
+- 正式機仍然係一個 Unit Management
+
 ### 【測試機】CPA 發票付款字可以跟 Team 改
 
 <http://3.114.114.143/attendance/locations>
