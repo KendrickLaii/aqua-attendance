@@ -191,7 +191,7 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
       margin-bottom: 2px;
     }
     .billto .addr {
-      max-width: 54mm;
+      max-width: 72mm;
       white-space: pre-wrap;
       overflow-wrap: break-word;
     }
