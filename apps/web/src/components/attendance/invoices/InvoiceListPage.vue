@@ -10,7 +10,7 @@ import {
   updateTuitionInvoice,
 } from '@/api/attendance/tuitionInvoices'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
-import { type Unit, listAllUnits } from '@/api/attendance/units'
+import { type Unit, getUnit, listAllUnits } from '@/api/attendance/units'
 import InvoiceBillsSection, { type InvoiceSortKey } from '@/components/attendance/invoices/InvoiceBillsSection.vue'
 import InvoiceManualDialog from '@/components/attendance/invoices/InvoiceManualDialog.vue'
 import StatCards from '@/components/attendance/StatCards.vue'
@@ -44,6 +44,7 @@ import {
   printTuitionInvoice,
   tuitionInvoicePrintData,
 } from '@/utils/printTuitionInvoice'
+import { debitNoteTeamCopy } from '@/utils/printTuitionDebitNote'
 import { type CancellableTableSort, type SortValue, compareSortValues, cycleSort } from '@/utils/tableSort'
 
 const props = withDefaults(defineProps<{
@@ -602,8 +603,27 @@ async function printOptionsFor(
 ) {
   const location = locations.value.find(l => l.id === invoice.location_id)
 
+  const team = location && brand.value.invoicePrintTemplate === 'debit-note'
+    ? debitNoteTeamCopy(location)
+    : null
+
+  let billTo = ''
+
+  if (brand.value.invoicePrintTemplate === 'debit-note' && invoice.unit_id) {
+    try {
+      const unit = await getUnit(invoice.unit_id)
+
+      billTo = (unit.address ?? '').trim()
+    }
+    catch {
+      billTo = ''
+    }
+  }
+
   return {
     logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
+    paymentText: team?.paymentText || undefined,
+    billTo: billTo || undefined,
     header: location ? invoicePrintHeaderFromLocation(location) : undefined,
     payableTo: names?.payableTo,
     payeeName: names?.payeeName,

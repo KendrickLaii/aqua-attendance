@@ -14,7 +14,7 @@ import {
   listAllCourseEnrollments,
   listCourseSkus,
 } from '@/api/attendance/courses'
-import { type Unit, listAllUnits, listUnits } from '@/api/attendance/units'
+import { type Unit, getUnit, listAllUnits, listUnits } from '@/api/attendance/units'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import { useBranding } from '@/composables/useBranding'
@@ -35,6 +35,7 @@ import {
   printTuitionInvoice,
   tuitionInvoicePrintData,
 } from '@/utils/printTuitionInvoice'
+import { debitNoteTeamCopy } from '@/utils/printTuitionDebitNote'
 
 const props = defineProps<{
   modelValue: boolean
@@ -549,11 +550,30 @@ const dialogTitle = computed(() => {
   return 'Manual invoice'
 })
 
-async function printOptionsFor(invoice: { location_id: string }) {
+async function printOptionsFor(invoice: { location_id: string; unit_id?: string | null }) {
   const location = props.locations.find(l => l.id === invoice.location_id)
+
+  const team = location && brand.value.invoicePrintTemplate === 'debit-note'
+    ? debitNoteTeamCopy(location)
+    : null
+
+  let billTo = ''
+
+  if (brand.value.invoicePrintTemplate === 'debit-note' && invoice.unit_id) {
+    try {
+      const unit = await getUnit(invoice.unit_id)
+
+      billTo = (unit.address ?? '').trim()
+    }
+    catch {
+      billTo = ''
+    }
+  }
 
   return {
     logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
+    paymentText: team?.paymentText || undefined,
+    billTo: billTo || undefined,
     header: location ? invoicePrintHeaderFromLocation(location) : undefined,
     template: brand.value.invoicePrintTemplate,
     payableTo: (manualForm.value.payableTo ?? '').trim(),

@@ -1,7 +1,25 @@
 import type { TuitionInvoicePrintData } from '@/utils/printTuitionInvoice'
 
-/** Served from `public/brands` and inlined before print. */
+/** Round mark and the supplied letterhead artwork, inlined before print. */
 export const DRJ_DEBIT_NOTE_LOGO = '/brands/drj-logo.png'
+
+export const DRJ_DEBIT_NOTE_LETTERHEAD = '/brands/drj-letterhead.png'
+
+export function debitNoteTeamCopy(location: {
+  details?: Record<string, unknown> | null
+}): { paymentText: string } {
+  const details = location.details ?? {}
+
+  const paymentText = typeof details.invoice_payment === 'string'
+    ? details.invoice_payment.trim()
+    : ''
+
+  return { paymentText }
+}
+
+function textBlock(value: string): string {
+  return escapeHtml(value).replace(/\n/g, '<br>')
+}
 
 function escapeHtml(value: string) {
   return value
@@ -21,24 +39,40 @@ function formatMoney(value: number | null): string {
   })
 }
 
-/** Sample debit notes use M/D/YY, for example 8/19/26. */
+/** Debit notes use D/M/YY, for example 13/11/26. */
 function formatDebitDate(date: Date): string {
   if (Number.isNaN(date.getTime()))
     return ''
 
   const year = String(date.getFullYear()).slice(2)
 
-  return `${date.getMonth() + 1}/${date.getDate()}/${year}`
+  return `${date.getDate()}/${date.getMonth() + 1}/${year}`
 }
 
+function debitNoteNumber(data: TuitionInvoicePrintData): string {
+  const year = Number.isNaN(data.issueDate.getTime())
+    ? ''
+    : String(data.issueDate.getFullYear()).slice(2)
+
+  return [data.clientCode?.trim(), data.invoiceNo.trim(), year].filter(Boolean).join('/')
+}
+
+const EMPTY_PAYMENT_HINT = 'Add invoice_payment in this Team Extra Details.'
+
+/** Blank rows keep a short bill the same height as the DRJ sample. */
+const MIN_BODY_ROWS = 15
+
 /**
- * DRJ debit note. Letterhead and payment instructions are fixed company copy.
- * Per-invoice fields are bill-to, DN number, date, description lines, amounts, and total.
+ * DRJ debit note. Logo, letterhead, and footer are the fixed company images.
+ * Payment text comes from the team JSON. An empty value prints a reminder.
  */
 export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
   const rows = data.lines.filter(line => line.course.trim() || line.amount != null)
 
-  const bodyRows = (rows.length ? rows : [{ course: '', amount: null }])
+  while (rows.length < MIN_BODY_ROWS)
+    rows.push({ month: '', course: '', fee: null, qty: null, amount: null })
+
+  const bodyRows = rows
     .map(line => `        <tr>
           <td class="desc">${escapeHtml(line.course)}</td>
           <td class="amt">${escapeHtml(formatMoney(line.amount))}</td>
@@ -47,8 +81,12 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
 
   const total = data.lines.reduce((sum, line) => sum + (line.amount ?? 0), 0)
 
-  const logo = data.logoUrl
-    ? `<img class="logo" src="${escapeHtml(data.logoUrl)}" alt="" />`
+  const logoSrc = data.logoUrl || DRJ_DEBIT_NOTE_LOGO
+
+  const letterheadSrc = data.letterheadUrl || DRJ_DEBIT_NOTE_LETTERHEAD
+
+  const payment = data.paymentText?.trim()
+    ? textBlock(data.paymentText.trim())
     : ''
 
   const year = Number.isNaN(data.issueDate.getTime())
@@ -77,65 +115,66 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
       width: 210mm;
       min-height: 297mm;
       margin: 0 auto;
-      padding: 14mm 16mm 12mm;
-    }
-    .letterhead {
+      padding: 12mm 16mm 12mm;
       display: flex;
+      flex-direction: column;
+    }
+    .brandbar {
+      display: flex;
+      justify-content: space-between;
       align-items: flex-start;
-      gap: 14px;
+      gap: 8mm;
     }
     .logo {
-      width: 72px;
-      height: 72px;
+      width: 18mm;
+      height: 18mm;
       object-fit: contain;
-      margin-top: 8px;
+      flex: 0 0 auto;
     }
-    .identity { flex: 1 1 auto; text-align: center; }
-    .brand {
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      margin: 0 0 10px;
-    }
-    .legal {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      margin: 0 0 2px;
-    }
-    .addr {
-      margin: 0;
-      line-height: 1.45;
-      color: #222;
+    .wordmark {
+      width: auto;
+      height: 42mm;
+      max-width: 78%;
+      object-fit: contain;
+      object-position: right top;
     }
     .meta {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-top: 22px;
-      gap: 24px;
+      margin-top: 8mm;
+      gap: 12mm;
+    }
+    .billto {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding-right: 8mm;
     }
     .billto .label {
       font-weight: 700;
-      letter-spacing: 0.04em;
-      margin-bottom: 6px;
+      margin-bottom: 2px;
     }
     .billto .name {
       min-height: 1.4em;
-      font-size: 14px;
+      white-space: pre-wrap;
     }
-    .refs { text-align: left; min-width: 220px; }
-    .refs div { margin: 2px 0; }
+    .refs {
+      margin-left: auto;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .refs div { margin: 1px 0; }
     .refs .k {
       display: inline-block;
-      width: 4.5em;
+      width: 16mm;
       font-weight: 700;
     }
     h1 {
       text-align: center;
-      font-size: 16px;
-      letter-spacing: 0.14em;
-      margin: 18px 0 8px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      margin: 4mm 0 3mm;
     }
     table.items {
       width: 100%;
@@ -143,84 +182,96 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
     }
     table.items th, table.items td {
       border: 1px solid #111;
-      vertical-align: top;
+    }
+    table.items tbody td {
+      border-top: none;
+      border-bottom: none;
+    }
+    table.items tbody tr:last-child td {
+      border-bottom: 1px solid #111;
     }
     table.items th {
       text-align: center;
       font-weight: 700;
-      padding: 6px 8px;
+      padding: 4px 8px;
     }
     table.items td.desc {
-      padding: 4px 8px;
+      padding: 0 8px;
       white-space: pre-wrap;
-      line-height: 1.45;
+      text-align: left;
     }
     table.items td.amt {
-      width: 28%;
       text-align: right;
-      padding: 4px 10px;
+    }
+    table.items td.amt {
+      width: 36%;
+      padding: 0 8px;
       white-space: nowrap;
     }
-    table.items tbody tr { height: 22px; }
-    .total-wrap {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 10px;
+    table.items tbody tr { height: 6.6mm; }
+    table.items td { vertical-align: middle; }
+    .after {
+      display: grid;
+      grid-template-columns: 1fr 36%;
+      align-items: start;
+      margin-top: 4mm;
     }
     .total {
-      border: 1px solid #111;
+      width: 100%;
       border-collapse: collapse;
     }
     .total td {
       border: 1px solid #111;
-      padding: 4px 10px;
+      padding: 3px 8px;
       font-weight: 700;
+      text-align: center;
     }
-    .total .amt { text-align: right; min-width: 110px; }
+    .total td:first-child {
+      border-right: none;
+    }
+    .total td.amt {
+      border-left: none;
+      text-align: right;
+    }
     .pay {
-      margin-top: 16px;
+      padding-top: 4mm;
+      padding-right: 6mm;
       line-height: 1.45;
-      max-width: 78%;
-    }
-    .pay .h { font-weight: 700; margin-bottom: 2px; }
-    .foot {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      margin-top: 28px;
-      color: #6a6a6a;
       font-size: 11px;
-      letter-spacing: 0.04em;
+    }
+    .pay.hint {
+      color: #888;
+      font-style: italic;
+    }
+    .foot {
+      margin-top: auto;
+      padding-top: 8mm;
+    }
+    .foot-svg {
+      width: 100%;
+      height: auto;
+      display: block;
     }
     @media print {
       html, body, .sheet { width: 210mm; margin: 0; }
-      .sheet { min-height: 0; }
+      .sheet { min-height: 297mm; }
     }
   </style>
 </head>
 <body>
   <div class="sheet">
-    <header class="letterhead">
-      ${logo}
-      <div class="identity">
-        <p class="brand">DRJ INTERNATIONAL | 施韋榮</p>
-        <p class="legal">DRJ LIMITED</p>
-        <p class="addr">Unit 1517, 15th Floor, Tower 2, Kowloon Commerce Centre,<br>
-        No. 51 Kwai Cheong Road, Kwai Chung, New Territories, Hong Kong</p>
-        <p class="addr">施韋榮有限公司<br>
-        香港新界葵涌葵昌路51號九龍貿易中心<br>
-        第2座15樓1517室<br>
-        T 電話 +852 3700 0300</p>
-      </div>
+    <header class="brandbar">
+      <img class="logo" src="${escapeHtml(logoSrc)}" alt="" />
+      <img class="wordmark" src="${escapeHtml(letterheadSrc)}" alt="DRJ INTERNATIONAL" />
     </header>
 
     <div class="meta">
       <div class="billto">
         <div class="label">BILL TO:</div>
-        <div class="name">${escapeHtml(data.studentName)}</div>
+        <div class="name">${escapeHtml((data.billTo ?? '').trim())}</div>
       </div>
       <div class="refs">
-        <div><span class="k">DN NO:</span> ${escapeHtml(data.invoiceNo)}</div>
+        <div><span class="k">DN NO:</span> ${escapeHtml(debitNoteNumber(data))}</div>
         <div><span class="k">DATE:</span> ${escapeHtml(formatDebitDate(data.issueDate))}</div>
       </div>
     </div>
@@ -239,7 +290,10 @@ ${bodyRows}
       </tbody>
     </table>
 
-    <div class="total-wrap">
+    <div class="after">
+      <div>${payment
+        ? `<div class="pay">${payment}</div>`
+        : `<div class="pay hint">${EMPTY_PAYMENT_HINT}</div>`}</div>
       <table class="total">
         <tr>
           <td>Total HK$</td>
@@ -248,21 +302,12 @@ ${bodyRows}
       </table>
     </div>
 
-    <div class="pay">
-      <div class="h">Method of payment:</div>
-      (1) Cheque payable to "DRJ Limited"/支票收款人請註明:「施韋榮有限公司」<br>
-      (2) Payments by bank transfer to the following bank account:<br>
-      A/C Name: DRJ Limited<br>
-      Bank's Name: The Bank of East Asia, Limited<br>
-      A/C No: 015-151-68-025137<br>
-      Bank's Address: 10 Des Voeux Road, Central, Hong Kong<br>
-      SWIFT Code: BEASHKHH<br>
-      Clearing No.: 015 (for local interbank transfers)
-    </div>
-
     <div class="foot">
-      <div>THANK YOU FOR YOUR BUSINESS</div>
-      <div>© ${year} For more information, contact DRJ</div>
+    <svg class="foot-svg" viewBox="0 0 760 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Thank you for your business">
+      <line x1="0" y1="2" x2="760" y2="2" stroke="#d5d5d5" stroke-width="1" />
+      <text x="0" y="22" fill="#9a9a9a" font-family="Arial, Helvetica, sans-serif" font-size="11" letter-spacing="0.4">THANK YOU FOR YOUR BUSINESS</text>
+      <text x="760" y="22" text-anchor="end" fill="#9a9a9a" font-family="Arial, Helvetica, sans-serif" font-size="11">© ${year} For more information, contact DRJ</text>
+    </svg>
     </div>
   </div>
 </body>

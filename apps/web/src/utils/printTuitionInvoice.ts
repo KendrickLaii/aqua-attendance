@@ -1,7 +1,7 @@
 import type { TuitionInvoice } from '@/api/attendance/tuitionInvoices'
 import type { InvoicePrintTemplate } from '@/config/brands'
 import { buildTuitionCreditNotePrintHtml, isCreditNotePrint } from '@/utils/printTuitionCreditNote'
-import { DRJ_DEBIT_NOTE_LOGO, buildDebitNotePrintHtml } from '@/utils/printTuitionDebitNote'
+import { DRJ_DEBIT_NOTE_LETTERHEAD, DRJ_DEBIT_NOTE_LOGO, buildDebitNotePrintHtml } from '@/utils/printTuitionDebitNote'
 import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/printWindow'
 
 // Hosted logo shown top-left on the printed invoice (same pattern as
@@ -28,8 +28,13 @@ export interface TuitionInvoicePrintData {
   invoiceNo: string
   issueDate: Date
   studentName: string
+  billTo?: string
+  clientCode?: string
   lines: TuitionInvoicePrintLine[]
   logoUrl?: string
+  letterheadUrl?: string
+  footerImageUrl?: string
+  paymentText?: string
   header?: TuitionInvoicePrintHeader
   remark?: string
   title?: string
@@ -93,6 +98,10 @@ export function tuitionInvoicePrintData(
   invoice: TuitionInvoice,
   options?: {
     logoUrl?: string
+    letterheadUrl?: string
+    footerImageUrl?: string
+    paymentText?: string
+    billTo?: string
     header?: TuitionInvoicePrintHeader
     payableTo?: string
     payeeName?: string
@@ -109,7 +118,12 @@ export function tuitionInvoicePrintData(
       ? new Date(`${invoice.issue_date}T00:00:00`)
       : (invoice.issued_at ? new Date(invoice.issued_at) : new Date()),
     studentName,
+    billTo: options?.billTo,
+    clientCode: invoice.unit_code ?? undefined,
     logoUrl: options?.logoUrl,
+    letterheadUrl: options?.letterheadUrl,
+    footerImageUrl: options?.footerImageUrl,
+    paymentText: options?.paymentText,
     header: options?.header,
     remark: invoice.notes ?? '',
     title: Number(invoice.total) < 0 ? 'CREDIT NOTE' : 'INVOICE',
@@ -515,12 +529,18 @@ export async function printTuitionInvoice(printWindow: Window, data: TuitionInvo
     : (data.logoUrl || INVOICE_LOGO_URL)
 
   const inlinedLogo = logoUrl ? await inlineLogoForPrint(logoUrl) : ''
+
+  const inlinedLetterhead = data.template === 'debit-note'
+    ? await inlineLogoForPrint(DRJ_DEBIT_NOTE_LETTERHEAD)
+    : ''
+
   if (printWindow.closed)
     return
 
   renderTuitionInvoicePrintWindow(printWindow, {
     ...data,
     logoUrl: inlinedLogo,
+    letterheadUrl: inlinedLetterhead || undefined,
   })
   if (printWindow.closed)
     return
