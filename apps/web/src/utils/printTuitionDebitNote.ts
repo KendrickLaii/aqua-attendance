@@ -49,6 +49,23 @@ function formatDebitDate(date: Date): string {
   return `${date.getDate()}/${date.getMonth() + 1}/${year}`
 }
 
+function billToBlock(data: TuitionInvoicePrintData): string {
+  let name = data.studentName.trim()
+
+  const code = data.clientCode?.trim()
+
+  if (code && name.endsWith(`(${code})`))
+    name = name.slice(0, -(code.length + 2)).trim()
+
+  const address = (data.billTo ?? '').trim()
+
+  const who = name ? `<div class="who">${escapeHtml(name)}</div>` : ''
+
+  const addr = address ? `<div class="addr">${escapeHtml(address)}</div>` : ''
+
+  return `${who}${addr}`
+}
+
 function debitNoteNumber(data: TuitionInvoicePrintData): string {
   const year = Number.isNaN(data.issueDate.getTime())
     ? ''
@@ -148,15 +165,17 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
     .billto {
       flex: 1 1 auto;
       min-width: 0;
+      max-width: 95mm;
       padding-right: 8mm;
     }
     .billto .label {
       font-weight: 700;
       margin-bottom: 2px;
     }
-    .billto .name {
-      min-height: 1.4em;
+    .billto .addr {
+      max-width: 54mm;
       white-space: pre-wrap;
+      overflow-wrap: break-word;
     }
     .refs {
       margin-left: auto;
@@ -268,7 +287,7 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
     <div class="meta">
       <div class="billto">
         <div class="label">BILL TO:</div>
-        <div class="name">${escapeHtml((data.billTo ?? '').trim())}</div>
+        ${billToBlock(data)}
       </div>
       <div class="refs">
         <div><span class="k">DN NO:</span> ${escapeHtml(debitNoteNumber(data))}</div>

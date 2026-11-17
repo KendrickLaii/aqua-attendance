@@ -43,12 +43,13 @@ describe('printTuitionDebitNote', () => {
   it('prints the client address, code, and day-first date on a debit note', () => {
     const html = buildDebitNotePrintHtml(debitNote({
       invoiceNo: '2221',
+      studentName: '每運宏 (ZA250204)',
       clientCode: 'ZA250204',
       billTo: '15/F, Tower 2',
       issueDate: new Date(2026, 10, 13),
     }))
 
-    assert.match(html, /15\/F, Tower 2/)
+    assert.match(html, /<div class="who">每運宏<\/div><div class="addr">15\/F, Tower 2<\/div>/)
     assert.match(html, /ZA250204\/2221\/26/)
     assert.match(html, /13\/11\/26/)
   })
