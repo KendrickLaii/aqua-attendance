@@ -21,6 +21,24 @@ function textBlock(value: string): string {
   return escapeHtml(value).replace(/\n/g, '<br>')
 }
 
+/** Keep each comma-separated phrase together. Lines may break after a comma. */
+function glueAddress(value: string): string {
+  return value.split('\n').map(glueAddressLine).join('\n')
+}
+
+function glueAddressLine(line: string): string {
+  const pieces = line.split(/([,，、])/)
+
+  const glued = pieces.map((piece, index) => {
+    if (index % 2 === 1)
+      return `${piece} `
+
+    return piece.trim().replace(/[ \t]+/g, '\u00A0')
+  }).join('')
+
+  return glued.trim()
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -61,7 +79,7 @@ function billToBlock(data: TuitionInvoicePrintData): string {
 
   const who = name ? `<div class="who">${escapeHtml(name)}</div>` : ''
 
-  const addr = address ? `<div class="addr">${escapeHtml(address)}</div>` : ''
+  const addr = address ? `<div class="addr">${escapeHtml(glueAddress(address))}</div>` : ''
 
   return `${who}${addr}`
 }

@@ -49,9 +49,17 @@ describe('printTuitionDebitNote', () => {
       issueDate: new Date(2026, 10, 13),
     }))
 
-    assert.match(html, /<div class="who">每運宏<\/div><div class="addr">15\/F, Tower 2<\/div>/)
+    assert.match(html, /<div class="who">每運宏<\/div><div class="addr">15\/F, Tower\u00A02<\/div>/)
     assert.match(html, /ZA250204\/2221\/26/)
     assert.match(html, /13\/11\/26/)
+  })
+
+  it('wraps a bill-to address after commas and keeps each phrase together', () => {
+    const html = buildDebitNotePrintHtml(debitNote({
+      billTo: 'Hung To Road, Kwun Tong, Hong Kong',
+    }))
+
+    assert.match(html, /Hung\u00A0To\u00A0Road, Kwun\u00A0Tong, Hong\u00A0Kong/)
   })
 
   it('prints team payment text and leaves the block empty when it is missing', () => {
