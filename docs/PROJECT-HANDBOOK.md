@@ -270,6 +270,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 #### 手動發票
 
 - `POST /api/tuition-invoices/manual`：自由行項目；行上加 `purchase_id` 可結算堂費購買（私補主路徑）— 行上打的 `fee` 就係實收價（購買可無價），堂數永遠用 purchase 嘅數量；建立即 `issued` 並派號，可列印、之後 Mark paid / Void。`fee` 可以係負數（credit note）；綁 `purchase_id` 嘅行不准負數。新單預設行數同上限嚟自品牌：`aqua` 開 1 行、最多 5 行（同之前一樣）；`cpa` 開 1 行、最多 100 行。列印：`aqua` 用現有學費發票（補到 5 行）；`cpa` 用 DRJ debit note（BILL TO 名稱一行、地址下一行，地址太長會在逗號後面換行，同一段地址不會被拆開，名稱不附編號，DN NO 係客戶編號/單號/年份，日期係日/月/年，描述、金額、總額係單上資料）。信頭用你提供的 letterhead 圖，logo 在左、信頭在右。頁尾仍是 SVG。付款方法讀該 Team 的 `details.invoice_payment`，冇填就留空。退款單兩邊都用原本嘅 credit note。
+- 幣種／備註（Migration **056**）：`tuition_invoices.currency`（`String(3)` NOT NULL 預設 `HKD`；schema 白名單 HKD／USD／CNY／EUR／GBP／SGD／JPY，其他 422）同 `top_notes`（Remark 1，可空；`notes` 即 Remark 2）。Manual create／PATCH 可帶兩者，PATCH 只准喺行項目可改嘅狀態（`draft`／`issued`）改；Generate 出嚟嘅單一律 HKD；由發票開 credit note 時前端預填原幣種。Web 只有 `invoicePrintTemplate === 'debit-note'`（CPA）先見 Currency、Remark 1（底部 Remark 改叫 Remark 2）同列印版本選擇；金額一律用 `formatInvoiceMoney(value, currency)`（符號 HK$／US$／RMB／€／£／S$／JP¥，兩位小數），列表統計卡用 `formatMoneyByCurrency` 按幣種合計（HKD 先、其後跟清單次序）。Debit note 列印：Remark 1 喺 `DEBIT NOTE` 標題下、Remark 2 喺明細表下；`AMOUNT (符號)`、`Total 符號`跟單幣種；真實行金額（Version 2 連單價／數量）為 0 印 `-`，空白補行維持空白。列印前彈出 `InvoicePrintVersionDialog`：Version 1 Full（DESCRIPTION／AMOUNT）、Version 2 `detailed`（DESCRIPTION／PRICE／QTY／AMOUNT）；`window.open` 必須喺版本按鈕 click 內同步呼叫。
 - `PATCH /api/tuition-invoices/{id}`：未 Paid 可改 `lines`／notes／staff／退款抬頭；Generated 行會保留 `enrollment_id`／SKU。Paid 或 Cancelled 連編號、行項目都唔准改 → 422，但 `payable_to_name`／`payee_name` 仍可改。
 - purchase 檢查在派號**之前**：購買須存在、屬所選學生、未被出單；失敗不消耗編號。void 手動發票後其 purchase 回復可出單。行項目 GET 會帶 `purchase_id`（如該行結算咗一條購買），Edit 要原封交返去，唔好拆咗連結。
 
@@ -301,6 +302,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - `POST .../void`：收條變 void，連結 `is_posted=false`，發票回復 `issued`（可以再開收條或改發票）。
 - `DELETE`：只准 voided；posted → 422。Remove 之後同一個收條號可以再用。
 - 列印：Official Receipt；負數金額標題為 CREDIT NOTE。
+- 幣種：一張收條只可合併**同一幣種**嘅發票，否則 422 `All invoices on a receipt must use the same currency`；`tuition_receipts.currency`（`String(3)` NOT NULL 預設 `HKD`）由發票帶出並隨 response 返回。新收條頁混幣顯示警告並禁止提交；收條列表統計卡按幣種合計；非 HKD 收條列印總額加幣種符號。
 
 ### 1.12 員工更表
 
@@ -378,7 +380,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 - 雙次 check_in／check_out 全部允許，計算只取首次／末次。忘記簽退用日界 **23:59** 兜底（`source=auto_checkout`），**唔係**關門時間；現況只有手動 Day-end + Generate 回填過去日，**無** 23:59 cron、**無** 00:00 `attendance_status` 重置（見 §5 #M14）。
 - 月度彙總 = 每日 slots 加總 × 0.25。`locations.business_hours` 係結構化 JSON：`{"monday": {"open": "09:00", "close": "18:00"}, …, "saturday": null}`。
 - Payroll：聚合當月 `attendance_summaries` 嘅 slots，按 `staff_profiles` 薪資率計 `base_salary`／`overtime_pay`／`holiday_pay`／`gross_pay`／`net_pay`；凍結 `hourly_rate_snapshot`／`ot_multiplier_snapshot` 防調薪影響歷史。`approved`／`paid` 記錄 Generate 會 skipped；`adjustment_1`／`adjustment_2` 係純手動調整、Generate 永不覆寫；`gross = base + OT + holiday + commission_pay + adj1`，`net = gross + adj2`。
-- 分成：`staff_profiles.commission_rate`（0–100，`NULL`＝無）嘅員工按發票級 Tutor 匹配——`tutor_unit_id` 有值只按 id 匹配（員工改名唔受影響），無值先 fallback 舊式唔分大小寫名字匹配。正數發票按**收款月**計分成（posted receipt 嘅 `receipt_date` 落喺工資月，發票 bill month 無關）；已開或已付 credit note 按 bill month 扣減；結果寫入 `commission_pay`。已有記錄用 `commission_rate_snapshot` 舊比例，要套用新比例需刪記錄再 Generate。發票未填 Tutor 唔計；搵唔到或同名唔唯一唔派發，詳情由 `commission_warnings` 回傳 + Web 提示；`GET /api/payroll-records/{id}/commission-detail` 返回分成明細。分成員工當月無考勤，只要有合資格發票都會建記錄。
+- 分成：`staff_profiles.commission_rate`（0–100，`NULL`＝無）嘅員工按發票級 Tutor 匹配——`tutor_unit_id` 有值只按 id 匹配（員工改名唔受影響），無值先 fallback 舊式唔分大小寫名字匹配。正數發票按**收款月**計分成（posted receipt 嘅 `receipt_date` 落喺工資月，發票 bill month 無關）；已開或已付 credit note 按 bill month 扣減；結果寫入 `commission_pay`。`commission_pay` 只計 **HKD** 發票；非 HKD 發票按幣種另計（同一比例）寫入 `payroll_records.commission_other`（JSON 可空，`[{currency, base_total, amount, count}]`），**不入** gross／net，每次 Generate 重算，薪資詳情、Payroll Review、薪資單列印另列 `Commission (USD)` 等行。已有記錄用 `commission_rate_snapshot` 舊比例，要套用新比例需刪記錄再 Generate。發票未填 Tutor 唔計；搵唔到或同名唔唯一唔派發，詳情由 `commission_warnings` 回傳 + Web 提示；`GET /api/payroll-records/{id}/commission-detail` 返回分成明細（每行帶 `currency`，另有 `other_currencies` 按幣種分項）。分成員工當月無考勤，只要有合資格發票都會建記錄。
 
 #### API（全部 Admin）
 
@@ -1202,6 +1204,19 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **問題**：已建立嘅單品（冇 `product_id`）喺貨品彈窗唔可以開「多個規格」；要轉換只可以新建產品再逐個 `PATCH /items/{id}` 掛上 `product_id`＋`variant_attrs`。多規格貨品亦唔可以改返單品。
 - **建議**：加轉換端點（例如 `POST /items/{id}/convert-to-product`），喺同一 transaction 建立產品、將該 item 變成第一個 SKU（保留 `id` 同庫存／單據），再補其他規格。
 
+#### #L11 手動發票彈窗嘅班價仍然寫死 `HK$`
+
+- **位置**：`apps/web/src/components/attendance/invoices/InvoiceManualDialog.vue`（`manualClassOptions` 副標題同未出單堂費包 chip 模板）
+- **問題**：「Add Item」下拉副標題同 unbilled package chip 顯示班價時寫死 `HK$`，唔跟發票所揀幣種
+- **建議**：顯示發票所選幣種；或等 SKU 有自己嘅幣種欄位後，改為顯示班價本身嘅幣種
+
+#### #L12 CPA 退款單列印唔支援版本選擇同 Remark 1
+
+- **位置**：`apps/web/src/utils/printTuitionCreditNote.ts`、`InvoiceManualDialog.vue`（`printManualInvoice`）
+- **問題**：總額為負嘅發票一律用共用 credit note 版面，所以 CPA 嘅列印版本選擇冇作用，Remark 1（`top_notes`）亦唔會印；但手動發票彈窗對退款單仍然彈出版本選擇
+- **建議**：做 debit-note 風格嘅 credit 版面，或退款單唔彈版本選擇
+
+
 ### ⚠️ 設計取捨（已知且接受）
 
 | # | 項目 | 說明 |
@@ -1311,7 +1326,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 055）
+# 最新可用版本（目前最新為 056）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -1327,7 +1342,7 @@ docker compose -f docker-compose.prod.yml exec api alembic upgrade head --sql
 | 升級中途失敗 | 先看錯誤；**升級前務必有備份**（§6.5）。必要時 `alembic downgrade -1` 回退一步後修正 |
 | 很舊的 DB（含 003 之前 `user_id` attendance 列） | 可能需手動遷移 |
 
-> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 055**（inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫同中心脫鉤；051 為 item `barcode`＋`other_cost`；050 為 staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
+> 註：Migration 編號從 013 跳到 025（中間為分支開發合併）。`032_rename_products_to_units.py` 完成 product → unit 重新命名。目前 Alembic **head 為 056**（發票／收條 `currency`、發票 `top_notes`、薪資 `commission_other`；055 為 inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫同中心脫鉤；051 為 item `barcode`＋`other_cost`；050 為 staff 掃碼權限＋`recorded_by_unit_id`；049 加商品副圖；前序為 g2a5b8c1d3e4，tuition 發票 `uq_tuition_invoices_unit_period` 收窄至 `kind='tuition' AND status='draft'`——每學生每期最多一張未出草稿，補單可與已出單並存）。在大表上建索引可能花數秒~數分鐘；期間查詢仍可用。
 >
 > 本機開發請用 `python -m alembic upgrade head`（從 `apps/api`）。生產 container 內 `alembic` 已在 PATH，可用 `docker compose ... exec api alembic upgrade head`。
 
@@ -1696,7 +1711,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**055**（inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）→ 庫存異動 effective_date（055）。
+目前 Alembic head：**056**（發票／收條 `currency`、發票 `top_notes`、薪資 `commission_other`；055 為 inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）→ 庫存異動 effective_date（055）→ 發票幣種／Remark 1／分成多幣種（056）。
 
 ### 10.2 核心 ER 圖
 
@@ -1902,7 +1917,8 @@ erDiagram
         numeric adjustment_2
         string adjustment_1_remark
         string adjustment_2_remark
-        numeric commission_pay "發票分成"
+        numeric commission_pay "發票分成（只計 HKD）"
+        json commission_other "非 HKD 分成 [{currency, base_total, amount, count}] (056)"
         numeric commission_rate_snapshot "分成比例快照"
     }
 
@@ -1984,7 +2000,9 @@ erDiagram
         uuid tutor_unit_id FK "Tutor 分成對象（可空）"
         string staff_name "開單人（佣金用，唔印喺發票）"
         numeric total
-        text notes
+        string currency "HKD/USD/CNY/EUR/GBP/SGD/JPY, default HKD (056)"
+        text top_notes "Remark 1 (056)"
+        text notes "Remark 2"
         datetime created_at
         datetime updated_at
     }
@@ -2031,6 +2049,7 @@ erDiagram
         string receipt_no
         date receipt_date
         numeric amount "發票合計＋adjustments"
+        string currency "同發票幣種, default HKD (056)"
         string status "posted / void"
         json adjustments "額外加減行"
         text description
