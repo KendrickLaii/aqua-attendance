@@ -33,6 +33,7 @@ class TuitionReceipt(Base):
     receipt_no: Mapped[str] = mapped_column(String(50), nullable=False)
     receipt_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="HKD", server_default="HKD")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=TuitionReceiptStatus.posted.value)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     adjustments: Mapped[list] = mapped_column(JSON, nullable=False, default=list)

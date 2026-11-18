@@ -1,6 +1,13 @@
 import { $attendanceApi } from '@/utils/attendanceApi'
 import { type AttendanceListResult, fetchAllAttendancePages, fetchAttendanceListWithTotal } from '@/utils/attendanceListApi'
 
+export interface PayrollCommissionOther {
+  currency: string
+  base_total: number
+  amount: number
+  count: number
+}
+
 export interface PayrollRecord {
   id: string
   unit_id: string
@@ -19,6 +26,7 @@ export interface PayrollRecord {
   ot_multiplier_snapshot: number | null
   commission_rate_snapshot: number | null
   commission_pay: number
+  commission_other?: PayrollCommissionOther[] | null
   base_salary: number
   overtime_pay: number
   holiday_pay: number
@@ -155,6 +163,7 @@ export interface PayrollCommissionPaidRow {
   invoice_no: string | null
   student_name: string | null
   total: number
+  currency: string
   receipt_no: string | null
   receipt_date: string
 }
@@ -163,6 +172,7 @@ export interface PayrollCommissionCreditRow {
   invoice_id: string
   invoice_no: string | null
   total: number
+  currency: string
   date: string
   status: string
 }
@@ -172,6 +182,7 @@ export interface PayrollCommissionAwaitingRow {
   invoice_no: string | null
   student_name: string | null
   total: number
+  currency: string
   bill_month: string
   status: string
 }
@@ -181,6 +192,7 @@ export interface PayrollCommissionDetail {
   rate_snapshot: number | null
   base_total: number
   amount: number
+  other_currencies: PayrollCommissionOther[]
   paid: PayrollCommissionPaidRow[]
   credit_notes: PayrollCommissionCreditRow[]
   awaiting_payment: PayrollCommissionAwaitingRow[]

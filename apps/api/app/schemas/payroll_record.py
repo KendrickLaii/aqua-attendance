@@ -77,6 +77,13 @@ class PayrollRecordStatsOut(BaseModel):
     pending: int
 
 
+class PayrollCommissionOtherOut(BaseModel):
+    currency: str
+    base_total: float
+    amount: float
+    count: int
+
+
 class PayrollRecordOut(BaseModel):
     id: uuid.UUID
     unit_id: uuid.UUID
@@ -101,6 +108,7 @@ class PayrollRecordOut(BaseModel):
     deduction: float
     bonus: float
     commission_pay: float = 0.0
+    commission_other: list[PayrollCommissionOtherOut] | None = None
     adjustment_1: float = 0.0
     adjustment_2: float = 0.0
     adjustment_1_remark: str | None = None

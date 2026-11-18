@@ -1,5 +1,6 @@
 import type { TuitionReceipt } from '@/api/attendance/tuitionReceipts'
 import type { TuitionInvoicePrintHeader, TuitionInvoicePrintLine } from '@/utils/printTuitionInvoice'
+import { DEFAULT_INVOICE_CURRENCY, invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
 import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/printWindow'
 
 const RECEIPT_LOGO_URL = ''
@@ -10,6 +11,7 @@ export interface TuitionReceiptPrintData {
   studentName: string
   paidBy: string
   description: string
+  currency?: string
   lines: TuitionInvoicePrintLine[]
   logoUrl?: string
   header?: TuitionInvoicePrintHeader
@@ -68,6 +70,7 @@ export function tuitionReceiptPrintData(
     studentName,
     paidBy: receipt.paid_by,
     description: receipt.description ?? '',
+    currency: receipt.currency,
     logoUrl: options?.logoUrl,
     header: options?.header,
     title: Number(receipt.amount) < 0 ? 'CREDIT NOTE' : 'OFFICIAL RECEIPT',
@@ -107,6 +110,10 @@ function receiptCopyHtml(
   centreLines: string,
   header: TuitionInvoicePrintHeader,
 ): string {
+  const totalText = data.currency && data.currency !== DEFAULT_INVOICE_CURRENCY
+    ? `${invoiceCurrencySymbol(data.currency)} ${formatMoney(total)}`
+    : formatMoney(total)
+
   return `  <article class="copy">
     <div class="copy-inner">
       <div class="header">
@@ -152,7 +159,7 @@ ${lineRows}
         </tbody>
       </table>
       <div class="total-row">
-        <div class="amount">${escapeHtml(formatMoney(total))}</div>
+        <div class="amount">${escapeHtml(totalText)}</div>
       </div>
       <div class="remark"><span class="label">備註:</span>${escapeHtml(data.description)}</div>
 

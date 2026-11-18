@@ -52,6 +52,7 @@ class TuitionReceiptOut(BaseModel):
     receipt_no: str
     receipt_date: date
     amount: float
+    currency: str = "HKD"
     status: str
     description: str | None = None
     primary_url: str | None = None

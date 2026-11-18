@@ -1,4 +1,5 @@
-import type { TuitionInvoicePrintData } from '@/utils/printTuitionInvoice'
+import { invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
+import type { TuitionInvoicePrintData, TuitionInvoicePrintLine } from '@/utils/printTuitionInvoice'
 
 /** Round mark and the supplied letterhead artwork, inlined before print. */
 export const DRJ_DEBIT_NOTE_LOGO = '/brands/drj-logo.png'
@@ -57,6 +58,32 @@ function formatMoney(value: number | null): string {
   })
 }
 
+/** Real lines print "-" for zero; blank filler rows (null) stay empty. */
+function formatMoneyOrDash(value: number | null): string {
+  if (value == null || Number.isNaN(value))
+    return ''
+
+  return Number(value) === 0 ? '-' : formatMoney(value)
+}
+
+function formatQtyOrDash(value: number | null): string {
+  if (value == null || Number.isNaN(value))
+    return ''
+
+  return Number(value) === 0
+    ? '-'
+    : Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })
+}
+
+function detailCells(line: TuitionInvoicePrintLine | null, detailed: boolean): string {
+  if (!detailed)
+    return ''
+
+  return `
+          <td class="num">${escapeHtml(formatMoneyOrDash(line?.fee ?? null))}</td>
+          <td class="qty">${escapeHtml(formatQtyOrDash(line?.qty ?? null))}</td>`
+}
+
 /** Debit notes use D/M/YY, for example 13/11/26. */
 function formatDebitDate(date: Date): string {
   if (Number.isNaN(date.getTime()))
@@ -102,19 +129,45 @@ const MIN_BODY_ROWS = 15
  * Payment text comes from the team JSON. An empty value prints a reminder.
  */
 export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
+  const symbol = invoiceCurrencySymbol(data.currency)
+
   const rows = data.lines.filter(line => line.course.trim() || line.amount != null)
 
-  while (rows.length < MIN_BODY_ROWS)
+  const topRemark = data.topRemark?.trim() ?? ''
+
+  while (rows.length + (topRemark ? 1 : 0) < MIN_BODY_ROWS)
     rows.push({ month: '', course: '', fee: null, qty: null, amount: null })
 
-  const bodyRows = rows
+  const detailed = data.printVersion === 'detailed'
+
+  const remarkRow = topRemark
+    ? `        <tr>
+          <td class="desc">${textBlock(topRemark)}</td>${detailCells(null, detailed)}
+          <td class="amt"></td>
+        </tr>
+`
+    : ''
+
+  const bodyRows = remarkRow + rows
     .map(line => `        <tr>
-          <td class="desc">${escapeHtml(line.course)}</td>
-          <td class="amt">${escapeHtml(formatMoney(line.amount))}</td>
+          <td class="desc">${escapeHtml(line.course)}</td>${detailCells(line, detailed)}
+          <td class="amt">${escapeHtml(formatMoneyOrDash(line.amount))}</td>
         </tr>`)
     .join('\n')
 
+  const headRow = detailed
+    ? `          <th>DESCRIPTION(S)</th>
+          <th class="num">PRICE</th>
+          <th class="qty">QTY</th>
+          <th class="amt">AMOUNT (${escapeHtml(symbol)})</th>`
+    : `          <th>DESCRIPTION(S)</th>
+          <th>AMOUNT (${escapeHtml(symbol)})</th>`
+
   const total = data.lines.reduce((sum, line) => sum + (line.amount ?? 0), 0)
+
+  const bottomRemark = data.remark?.trim()
+    ? `<div class="remark bottom">${textBlock(data.remark.trim())}</div>`
+    : ''
 
   const logoSrc = data.logoUrl || DRJ_DEBIT_NOTE_LOGO
 
@@ -241,15 +294,35 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
       text-align: right;
     }
     table.items td.amt {
-      width: 36%;
+      width: ${detailed ? '22%' : '36%'};
       padding: 0 8px;
       white-space: nowrap;
     }
+    table.items th.num, table.items td.num {
+      width: 18%;
+      padding: 0 8px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    table.items th.qty, table.items td.qty {
+      width: 10%;
+      padding: 0 8px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    table.items th.num, table.items th.qty, table.items th.amt {
+      text-align: center;
+    }
+    .remark {
+      line-height: 1.4;
+      overflow-wrap: break-word;
+    }
+    .remark.bottom { margin: 2mm 0 0; }
     table.items tbody tr { height: 6.6mm; }
     table.items td { vertical-align: middle; }
     .after {
       display: grid;
-      grid-template-columns: 1fr 36%;
+      grid-template-columns: 1fr ${detailed ? '22%' : '36%'};
       align-items: start;
       margin-top: 4mm;
     }
@@ -318,14 +391,14 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
     <table class="items">
       <thead>
         <tr>
-          <th>DESCRIPTION(S)</th>
-          <th>AMOUNT (HK$)</th>
+${headRow}
         </tr>
       </thead>
       <tbody>
 ${bodyRows}
       </tbody>
     </table>
+    ${bottomRemark}
 
     <div class="after">
       <div>${payment
@@ -333,8 +406,8 @@ ${bodyRows}
         : `<div class="pay hint">${EMPTY_PAYMENT_HINT}</div>`}</div>
       <table class="total">
         <tr>
-          <td>Total HK$</td>
-          <td class="amt">${escapeHtml(formatMoney(total))}</td>
+          <td>Total ${escapeHtml(symbol)}</td>
+          <td class="amt">${escapeHtml(formatMoneyOrDash(total))}</td>
         </tr>
       </table>
     </div>

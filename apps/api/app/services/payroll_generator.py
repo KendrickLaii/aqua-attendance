@@ -312,14 +312,49 @@ async def collect_commission_rows(
     return rows_by_unit, commission_staff, warnings
 
 
+PAYROLL_CURRENCY = "HKD"
+
+
 def commission_base(rows: dict | None) -> tuple[Decimal, int]:
-    """(invoice total, invoice count) for one unit's commission rows."""
+    """(HKD invoice total, invoice count) for one unit's commission rows."""
     if not rows:
         return Decimal("0"), 0
     total = Decimal("0")
+    count = 0
     for row in rows["paid"] + rows["credit_notes"]:
+        if row["invoice"].currency != PAYROLL_CURRENCY:
+            continue
         total += Decimal(str(row["invoice"].total))
-    return total, len(rows["paid"]) + len(rows["credit_notes"])
+        count += 1
+    return total, count
+
+
+def commission_base_by_currency(rows: dict | None) -> dict[str, tuple[Decimal, int]]:
+    """Non-HKD (invoice total, invoice count) per currency, sorted by code."""
+    totals: dict[str, tuple[Decimal, int]] = {}
+    if not rows:
+        return totals
+    for row in rows["paid"] + rows["credit_notes"]:
+        currency = row["invoice"].currency
+        if currency == PAYROLL_CURRENCY:
+            continue
+        total, count = totals.get(currency, (Decimal("0"), 0))
+        totals[currency] = (total + Decimal(str(row["invoice"].total)), count + 1)
+    return dict(sorted(totals.items()))
+
+
+def commission_other_entries(rows: dict | None, rate: Decimal) -> list[dict] | None:
+    """Non-HKD commission per currency, never part of gross/net pay."""
+    entries = [
+        {
+            "currency": currency,
+            "base_total": float(total),
+            "amount": float((total * rate / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+            "count": count,
+        }
+        for currency, (total, count) in commission_base_by_currency(rows).items()
+    ]
+    return entries or None
 
 
 def _pay_from_profile(
@@ -449,6 +484,7 @@ async def generate_monthly_payroll(
         # written by generate.
         commission_pay = 0.0
         commission_rate_used: float | None = None
+        commission_other: list[dict] | None = None
         if staff is not None and staff.commission_rate is not None:
             if record is not None and record.commission_rate_snapshot is not None:
                 rate = Decimal(str(record.commission_rate_snapshot))
@@ -461,6 +497,7 @@ async def generate_monthly_payroll(
                 )
             )
             commission_rate_used = float(rate)
+            commission_other = commission_other_entries(commission_rows.get(unit_id), rate)
         adjustment_1 = float(record.adjustment_1) if record and record.adjustment_1 is not None else 0.0
         adjustment_2 = float(record.adjustment_2) if record and record.adjustment_2 is not None else 0.0
 
@@ -484,6 +521,7 @@ async def generate_monthly_payroll(
             record.overtime_pay = overtime_pay
             record.holiday_pay = 0.0
             record.commission_pay = commission_pay
+            record.commission_other = commission_other
             if commission_rate_used is not None:
                 record.commission_rate_snapshot = commission_rate_used
             record.gross_pay = gross_pay
@@ -510,6 +548,7 @@ async def generate_monthly_payroll(
                 overtime_pay=overtime_pay,
                 holiday_pay=0.0,
                 commission_pay=commission_pay,
+                commission_other=commission_other,
                 gross_pay=gross_pay,
                 net_pay=net_pay,
                 status=PayrollStatus.calculated.value,

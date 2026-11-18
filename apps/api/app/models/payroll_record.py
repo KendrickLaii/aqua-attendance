@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -58,6 +58,9 @@ class PayrollRecord(Base):
 
     # Commission row (staff commission_rate × that month's paid invoices)
     commission_pay: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
+    # Non-HKD commission per currency [{currency, base_total, amount, count}];
+    # informational — never part of gross/net pay.
+    commission_other: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Compensation calculations
     base_salary: Mapped[float] = mapped_column(Numeric(10, 2), default=0)

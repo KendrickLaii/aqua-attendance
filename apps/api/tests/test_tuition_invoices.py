@@ -2943,3 +2943,51 @@ async def test_manual_invoice_accepts_yyyymm_number_on_cpa(
     )
     assert peeked.status_code == 200, peeked.text
     assert peeked.json()["invoice_no"] == "202611002"
+
+
+@pytest.mark.asyncio
+async def test_manual_invoice_currency_and_top_notes(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    def payload(**extra: object) -> dict:
+        return {
+            "date": "2026-06-10",
+            "location_id": sample_location["id"],
+            "manual_student_name": "Walk In",
+            "lines": [{"month": "Jun-26", "course": "Math", "fee": 500, "qty": 1}],
+            **extra,
+        }
+
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json=payload(currency="USD", top_notes="Remark 1", notes="Remark 2"),
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["currency"] == "USD"
+    assert body["top_notes"] == "Remark 1"
+    assert body["notes"] == "Remark 2"
+
+    resp = await client.patch(
+        f"/api/tuition-invoices/{body['id']}",
+        json={"currency": "EUR", "top_notes": "Changed"},
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["currency"] == "EUR"
+    assert resp.json()["top_notes"] == "Changed"
+
+    resp = await client.post(
+        "/api/tuition-invoices/manual", json=payload(), headers=_auth(admin_token)
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["currency"] == "HKD"
+    assert resp.json()["top_notes"] is None
+
+    resp = await client.post(
+        "/api/tuition-invoices/manual",
+        json=payload(currency="XXX"),
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422

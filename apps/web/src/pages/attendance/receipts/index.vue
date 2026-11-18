@@ -15,7 +15,7 @@ import {
   VOID_RECEIPT_HINT,
 } from '@/utils/billingStaffCopy'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
+import { formatInvoiceMoney, formatMoneyByCurrency, sumByCurrency } from '@/utils/invoiceDisplay'
 import { type CancellableTableSort, type SortValue, compareSortValues, cycleSort, sortHeaderTitle, sortIconFor } from '@/utils/tableSort'
 import {
   type TuitionInvoicePrintHeader,
@@ -84,7 +84,10 @@ function locationName(id: string): string {
 
 const postedReceipts = computed(() => receipts.value.filter(row => row.status === 'posted'))
 const voidReceipts = computed(() => receipts.value.filter(row => row.status === 'void'))
-const postedTotal = computed(() => postedReceipts.value.reduce((sum, row) => sum + Number(row.amount), 0))
+const postedTotal = computed(() => sumByCurrency(
+  postedReceipts.value,
+  row => ({ amount: Number(row.amount), currency: row.currency }),
+))
 
 const filteredReceipts = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -184,7 +187,7 @@ const scopeLabel = computed(() => {
 const statCards = computed(() => [
   {
     label: 'Collected',
-    value: formatInvoiceMoney(postedTotal.value),
+    value: formatMoneyByCurrency(postedTotal.value),
     hint: `${postedReceipts.value.length} posted receipt${postedReceipts.value.length === 1 ? '' : 's'}`,
     icon: 'ri-checkbox-circle-line',
     color: 'success',
@@ -655,7 +658,7 @@ onMounted(async () => {
                   </VChip>
                 </td>
                 <td class="text-end tabular-nums">
-                  {{ formatInvoiceMoney(Number(receipt.amount)) }}
+                  {{ formatInvoiceMoney(Number(receipt.amount), receipt.currency) }}
                 </td>
                 <td
                   class="text-end"
@@ -716,7 +719,7 @@ onMounted(async () => {
                       class="d-flex justify-space-between py-1"
                     >
                       <span>{{ [row.month, row.course].filter(Boolean).join(' · ') }}</span>
-                      <span>{{ formatInvoiceMoney(Number(row.amount)) }}</span>
+                      <span>{{ formatInvoiceMoney(Number(row.amount), receipt.currency) }}</span>
                     </div>
                   </div>
                 </td>

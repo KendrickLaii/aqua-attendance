@@ -761,6 +761,8 @@ async def create_manual_tuition_invoice(
         status=TuitionInvoiceStatus.issued.value,
         kind="manual",
         total=total,
+        currency=body.currency,
+        top_notes=body.top_notes,
         notes=body.notes,
         invoice_no=invoice_no,
         issued_at=datetime.now(timezone.utc),
@@ -826,6 +828,8 @@ async def update_tuition_invoice(
     update_data = body.model_dump(exclude_unset=True)
     line_payload = update_data.pop("lines", None)
     period = update_data.pop("period", None)
+    if update_data.get("currency") is None:
+        update_data.pop("currency", None)
     if period is not None and invoice.kind != "manual":
         raise HTTPException(status_code=422, detail="Only manual invoices have an editable month")
     if invoice.status not in _EDITABLE_STATUS:

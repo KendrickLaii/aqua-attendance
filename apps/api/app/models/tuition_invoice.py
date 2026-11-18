@@ -60,6 +60,8 @@ class TuitionInvoice(Base):
     payable_to_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     payee_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="HKD", server_default="HKD")
+    top_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     invoice_no: Mapped[str | None] = mapped_column(String(50), nullable=True)
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

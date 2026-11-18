@@ -20,6 +20,7 @@ from app.services import audit_log as audit_log_svc
 from app.services.payroll_generator import (
     collect_commission_rows,
     commission_base,
+    commission_base_by_currency,
     detect_stale_summary_units,
     generate_monthly_payroll,
 )
@@ -251,6 +252,8 @@ async def payroll_commission_detail(
         else 0.0
     )
 
+    other_by_currency = commission_base_by_currency(rows)
+
     def student_name(invoice) -> str | None:
         if invoice.unit is not None:
             return invoice.unit.full_name
@@ -265,12 +268,26 @@ async def payroll_commission_detail(
         ),
         "base_total": float(base_total),
         "amount": amount,
+        "other_currencies": [
+            {
+                "currency": currency,
+                "base_total": float(total),
+                "amount": (
+                    float((total * Decimal(str(rate)) / 100).quantize(Decimal("0.01")))
+                    if rate is not None
+                    else 0.0
+                ),
+                "count": count,
+            }
+            for currency, (total, count) in other_by_currency.items()
+        ],
         "paid": [
             {
                 "invoice_id": row["invoice"].id,
                 "invoice_no": row["invoice"].invoice_no,
                 "student_name": student_name(row["invoice"]),
                 "total": float(row["invoice"].total),
+                "currency": row["invoice"].currency,
                 "receipt_no": row["receipt_no"],
                 "receipt_date": row["receipt_date"],
             }
@@ -281,6 +298,7 @@ async def payroll_commission_detail(
                 "invoice_id": row["invoice"].id,
                 "invoice_no": row["invoice"].invoice_no,
                 "total": float(row["invoice"].total),
+                "currency": row["invoice"].currency,
                 "date": row["invoice"].issue_date or row["invoice"].period_start,
                 "status": row["invoice"].status,
             }
@@ -292,6 +310,7 @@ async def payroll_commission_detail(
                 "invoice_no": row["invoice"].invoice_no,
                 "student_name": student_name(row["invoice"]),
                 "total": float(row["invoice"].total),
+                "currency": row["invoice"].currency,
                 "bill_month": row["invoice"].period_start.strftime("%Y-%m"),
                 "status": row["invoice"].status,
             }

@@ -11,6 +11,8 @@ TuitionInvoiceStatusLiteral = Literal["draft", "issued", "paid", "void"]
 # Billing month of a manual invoice, e.g. "2026-10".
 PERIOD_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 
+InvoiceCurrencyLiteral = Literal["HKD", "USD", "CNY", "EUR", "GBP", "SGD", "JPY"]
+
 
 class TuitionInvoiceLineOut(BaseModel):
     id: uuid.UUID
@@ -48,6 +50,8 @@ class TuitionInvoiceOut(BaseModel):
     status: TuitionInvoiceStatusLiteral
     kind: str
     total: float
+    currency: str = "HKD"
+    top_notes: str | None = None
     notes: str | None = None
     invoice_no: str | None = None
     receipt_no: str | None = None
@@ -61,6 +65,8 @@ class TuitionInvoiceOut(BaseModel):
 
 class TuitionInvoiceUpdate(BaseModel):
     status: TuitionInvoiceStatusLiteral | None = None
+    currency: InvoiceCurrencyLiteral | None = None
+    top_notes: str | None = None
     notes: str | None = None
     invoice_no: str | None = Field(default=None, max_length=50)
     staff_name: str | None = Field(default=None, max_length=255)
@@ -161,6 +167,8 @@ class TuitionInvoiceManualCreate(BaseModel):
     payable_to_name: str | None = Field(default=None, max_length=255)
     payee_name: str | None = Field(default=None, max_length=255)
     invoice_no: str | None = Field(default=None, max_length=50)
+    currency: InvoiceCurrencyLiteral = "HKD"
+    top_notes: str | None = None
     notes: str | None = None
     lines: list[TuitionInvoiceManualLine] = Field(default_factory=list)
 

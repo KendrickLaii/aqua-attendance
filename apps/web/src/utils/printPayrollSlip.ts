@@ -1,4 +1,5 @@
 import type { PayrollRecord } from '@/api/attendance/payroll'
+import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
 import {
   formatPayrollCurrency,
   formatPayrollDashAmount,
@@ -61,6 +62,13 @@ export function renderPayrollSlipPrintWindow(printWindow: Window, record: Payrol
     : formatPayrollCurrency(adjustment2)
 
   const subtotal = safePayrollNumber(record.net_pay)
+
+  const otherCommissionRows = (record.commission_other ?? []).map(row => `
+      <tr>
+        <td colspan="2" class="indent">${escapeHtml(`Commission (${row.currency}) — not included above`)}</td>
+        <td class="amt">${escapeHtml(formatInvoiceMoney(safePayrollNumber(row.amount), row.currency))}</td>
+      </tr>`).join('')
+
   const chequeNumber = (record.cheque_number || '').trim()
   const chequeAmount = safePayrollNumber(record.cheque_amount)
   const cashAmount = safePayrollNumber(record.cash_amount)
@@ -230,7 +238,7 @@ export function renderPayrollSlipPrintWindow(printWindow: Window, record: Payrol
       <tr class="grand">
         <td colspan="2"></td>
         <td class="amt">${escapeHtml(formatPayrollCurrency(subtotal))}</td>
-      </tr>
+      </tr>${otherCommissionRows}
     </tbody>
   </table>
   <table class="signoff">

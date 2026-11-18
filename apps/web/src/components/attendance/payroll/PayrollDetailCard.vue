@@ -4,6 +4,7 @@ import type { AttendanceSummary } from '@/api/attendance/summaries'
 import AutoCheckoutChip from '@/components/attendance/AutoCheckoutChip.vue'
 import SummaryDateCell from '@/components/attendance/SummaryDateCell.vue'
 import { formatAttendanceDateTime, isAutoCheckoutSummaryDay } from '@/utils/attendanceDisplay'
+import { DEFAULT_INVOICE_CURRENCY, formatInvoiceMoney } from '@/utils/invoiceDisplay'
 import {
   canApprovePayroll,
   canPayPayroll,
@@ -31,6 +32,12 @@ const emit = defineEmits<{
   pay: [record: PayrollRecord]
   print: [record: PayrollRecord]
 }>()
+
+function invoiceAmount(total: number, currency: string) {
+  return currency && currency !== DEFAULT_INVOICE_CURRENCY
+    ? formatInvoiceMoney(total, currency)
+    : formatPayrollCurrency(total)
+}
 
 const detailTotals = computed(() =>
   payrollDetailTotals(
@@ -161,6 +168,13 @@ watch(() => props.record.id, async () => {
           <div class="text-caption text-medium-emphasis mt-1">
             Rate {{ record.commission_rate_snapshot }}%
           </div>
+          <div
+            v-for="other in record.commission_other ?? []"
+            :key="other.currency"
+            class="text-caption text-medium-emphasis mt-1"
+          >
+            Commission ({{ other.currency }}) {{ formatInvoiceMoney(other.amount, other.currency) }}
+          </div>
         </div>
         <div class="payroll-metric">
           <div class="text-caption text-medium-emphasis">
@@ -240,6 +254,15 @@ watch(() => props.record.id, async () => {
         Commission — {{ formatPayrollCurrency(commission.base_total) }} billed × {{ commission.rate ?? record.commission_rate_snapshot }}% =
         <span class="font-weight-medium">{{ formatPayrollCurrency(commission.amount) }}</span>
       </VCardText>
+      <VCardText
+        v-for="other in commission.other_currencies"
+        :key="other.currency"
+        class="text-caption text-medium-emphasis pb-0"
+      >
+        Commission ({{ other.currency }}) — {{ formatInvoiceMoney(other.base_total, other.currency) }} billed × {{ commission.rate ?? record.commission_rate_snapshot }}% =
+        <span class="font-weight-medium">{{ formatInvoiceMoney(other.amount, other.currency) }}</span>
+        · not included in gross or net pay
+      </VCardText>
       <div class="payroll-table-scroll">
         <VTable
           class="payroll-table"
@@ -254,7 +277,7 @@ watch(() => props.record.id, async () => {
               <td>{{ row.invoice_no || row.invoice_id }}</td>
               <td>{{ row.student_name || '—' }}</td>
               <td class="text-end">
-                {{ formatPayrollCurrency(row.total) }}
+                {{ invoiceAmount(row.total, row.currency) }}
               </td>
               <td>
                 {{ row.receipt_no || '—' }} · {{ row.receipt_date }}
@@ -269,7 +292,7 @@ watch(() => props.record.id, async () => {
                 Credit note · {{ row.status }}
               </td>
               <td class="text-end text-error">
-                {{ formatPayrollCurrency(row.total) }}
+                {{ invoiceAmount(row.total, row.currency) }}
               </td>
               <td>{{ row.date }}</td>
             </tr>
@@ -282,7 +305,7 @@ watch(() => props.record.id, async () => {
                 {{ row.student_name || '—' }} · awaiting payment
               </td>
               <td class="text-end text-medium-emphasis">
-                {{ formatPayrollCurrency(row.total) }}
+                {{ invoiceAmount(row.total, row.currency) }}
               </td>
               <td class="text-medium-emphasis">
                 Bill {{ row.bill_month }}

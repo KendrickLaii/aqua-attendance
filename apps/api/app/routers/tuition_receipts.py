@@ -143,6 +143,7 @@ def _receipt_to_out(receipt: TuitionReceipt) -> TuitionReceiptOut:
         receipt_no=receipt.receipt_no,
         receipt_date=receipt.receipt_date,
         amount=float(receipt.amount),
+        currency=receipt.currency,
         status=receipt.status,
         description=receipt.description,
         primary_url=receipt.primary_url,
@@ -301,6 +302,11 @@ async def create_tuition_receipt(
     if any(invoice.status != TuitionInvoiceStatus.issued.value for invoice in ordered):
         raise HTTPException(status_code=422, detail="Only issued invoices can be paid")
 
+    currencies = {invoice.currency for invoice in ordered}
+    if len(currencies) != 1:
+        raise HTTPException(status_code=422, detail="All invoices on a receipt must use the same currency")
+    currency = next(iter(currencies))
+
     unit_ids = {invoice.unit_id for invoice in ordered}
     if body.unit_id is not None:
         if unit_ids != {body.unit_id}:
@@ -337,6 +343,7 @@ async def create_tuition_receipt(
         receipt_no=receipt_no,
         receipt_date=body.receipt_date,
         amount=amount,
+        currency=currency,
         status=TuitionReceiptStatus.posted.value,
         description=body.description,
         adjustments=[row.model_dump() for row in adjustments],

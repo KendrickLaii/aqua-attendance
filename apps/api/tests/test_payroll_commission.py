@@ -63,8 +63,10 @@ def _invoice(
     period_start: date = FIRST_DAY,
     invoice_no: str | None = None,
     tutor_unit_id: str | None = None,
+    currency: str = "HKD",
 ) -> TuitionInvoice:
     return TuitionInvoice(
+        currency=currency,
         location_id=uuid.UUID(location_id),
         period_start=period_start,
         period_end=LAST_DAY,
@@ -826,3 +828,35 @@ async def test_invoice_update_tutor_unit_id(
     assert resp.status_code == 200, resp.text
     assert resp.json()["tutor_unit_id"] is None
     assert resp.json()["staff_name"] == "Ada Wong"
+
+
+@pytest.mark.asyncio
+async def test_non_hkd_commission_is_kept_out_of_pay(
+    client: AsyncClient, admin_token: str, sample_location: dict
+) -> None:
+    loc = sample_location["id"]
+    staff = await _staff_unit(
+        client, admin_token, loc, full_name="Ada Wong", commission_rate=50
+    )
+
+    async with TestSessionLocal() as session:
+        session.add(_summary(staff["id"], loc))
+        session.add_all(
+            _paid_invoice(loc, staff_name="Ada Wong", total=1000, invoice_no="INV-HKD")
+        )
+        session.add_all(
+            _paid_invoice(
+                loc, staff_name="Ada Wong", total=200, invoice_no="INV-USD", currency="USD"
+            )
+        )
+        await session.commit()
+        await generate_monthly_payroll(session, year=YEAR, month=MONTH, unit_type="staff")
+
+    record = await _record_for(staff["id"])
+    assert record is not None
+    assert float(record.commission_pay) == 500.0
+    assert record.commission_other == [
+        {"currency": "USD", "base_total": 200.0, "amount": 100.0, "count": 1}
+    ]
+    assert float(record.gross_pay) == float(record.base_salary) + 500.0
+    assert float(record.net_pay) == float(record.gross_pay)

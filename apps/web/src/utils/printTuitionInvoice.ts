@@ -8,6 +8,8 @@ import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/prin
 // location photo URLs). Paste the image URL here; leave empty to hide it.
 const INVOICE_LOGO_URL = ''
 
+export type TuitionInvoicePrintVersion = 'full' | 'detailed'
+
 export interface TuitionInvoicePrintLine {
   month: string
   course: string
@@ -37,6 +39,9 @@ export interface TuitionInvoicePrintData {
   paymentText?: string
   header?: TuitionInvoicePrintHeader
   remark?: string
+  topRemark?: string
+  currency?: string
+  printVersion?: TuitionInvoicePrintVersion
   title?: string
   payableTo?: string
   payeeName?: string
@@ -106,6 +111,7 @@ export function tuitionInvoicePrintData(
     payableTo?: string
     payeeName?: string
     template?: InvoicePrintTemplate
+    printVersion?: TuitionInvoicePrintVersion
   },
 ): TuitionInvoicePrintData {
   const studentName = invoice.unit_name
@@ -126,6 +132,9 @@ export function tuitionInvoicePrintData(
     paymentText: options?.paymentText,
     header: options?.header,
     remark: invoice.notes ?? '',
+    topRemark: invoice.top_notes ?? '',
+    currency: invoice.currency,
+    printVersion: options?.printVersion,
     title: Number(invoice.total) < 0 ? 'CREDIT NOTE' : 'INVOICE',
     payableTo: options?.payableTo ?? invoice.payable_to_name ?? undefined,
     payeeName: options?.payeeName ?? invoice.payee_name ?? undefined,

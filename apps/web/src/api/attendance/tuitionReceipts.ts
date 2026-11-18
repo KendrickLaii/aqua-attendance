@@ -41,6 +41,7 @@ export interface TuitionReceipt {
   receipt_no: string
   receipt_date: string
   amount: number
+  currency: string
   status: TuitionReceiptStatus
   description: string | null
   primary_url: string | null

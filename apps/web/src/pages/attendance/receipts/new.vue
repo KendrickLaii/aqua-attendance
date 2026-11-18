@@ -11,7 +11,7 @@ import { requiredValidator } from '@core/utils/validators'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { useBranding } from '@/composables/useBranding'
 import { formatApiError } from '@/utils/formatApiDetail'
-import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
+import { formatInvoiceMoney, invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
 import {
   type TuitionInvoicePrintHeader,
 } from '@/utils/printTuitionInvoice'
@@ -79,6 +79,9 @@ const locationOptions = computed(() =>
 const selectedInvoices = computed(() =>
   openInvoices.value.filter(invoice => selectedIds.value.includes(invoice.id)),
 )
+const selectedCurrencies = computed(() => [...new Set(selectedInvoices.value.map(invoice => invoice.currency))])
+const mixedCurrencies = computed(() => selectedCurrencies.value.length > 1)
+const receiptCurrency = computed(() => selectedCurrencies.value[0] ?? 'HKD')
 const invoiceTotal = computed(() =>
   selectedInvoices.value.reduce((sum, invoice) => sum + Number(invoice.total), 0),
 )
@@ -291,8 +294,12 @@ async function submit() {
     formError.value = 'Select at least one issued invoice.'
     return
   }
+  if (mixedCurrencies.value) {
+    formError.value = 'All invoices on a receipt must use the same currency.'
+    return
+  }
   if (!amountFits.value) {
-    formError.value = `Amount does not match invoices plus adjustments (expected ${formatInvoiceMoney(expectedAmount.value)}).`
+    formError.value = `Amount does not match invoices plus adjustments (expected ${formatInvoiceMoney(expectedAmount.value, receiptCurrency.value)}).`
     return
   }
 
@@ -385,6 +392,14 @@ onMounted(async () => {
       @click:close="formError = ''"
     >
       {{ formError }}
+    </VAlert>
+    <VAlert
+      v-if="mixedCurrencies"
+      type="warning"
+      variant="tonal"
+      class="mb-4"
+    >
+      The selected invoices use different currencies ({{ selectedCurrencies.join(', ') }}). A receipt can only cover one currency — select invoices of the same currency.
     </VAlert>
 
     <VCard>
@@ -491,11 +506,11 @@ onMounted(async () => {
               label="Amount"
               type="number"
               step="0.01"
-              prefix="HK$"
+              :prefix="invoiceCurrencySymbol(receiptCurrency)"
               density="compact"
               :hide-details="amountFits"
               :error="!amountFits"
-              :error-messages="amountFits ? undefined : `Must equal invoices plus adjustments (${formatInvoiceMoney(expectedAmount)})`"
+              :error-messages="amountFits ? undefined : `Must equal invoices plus adjustments (${formatInvoiceMoney(expectedAmount, receiptCurrency)})`"
               @update:model-value="onAmountInput"
             />
           </VCol>
@@ -563,7 +578,7 @@ onMounted(async () => {
               </td>
               <td>{{ classPreview(invoice) }}</td>
               <td class="text-end tabular-nums">
-                {{ formatInvoiceMoney(Number(invoice.total)) }}
+                {{ formatInvoiceMoney(Number(invoice.total), invoice.currency) }}
               </td>
             </tr>
           </tbody>
@@ -648,9 +663,9 @@ onMounted(async () => {
           </tbody>
         </VTable>
         <div class="text-caption text-medium-emphasis mb-4">
-          Invoices {{ formatInvoiceMoney(invoiceTotal) }}
-          + Adjustments {{ formatInvoiceMoney(adjustmentTotal) }}
-          = {{ formatInvoiceMoney(expectedAmount) }}
+          Invoices {{ formatInvoiceMoney(invoiceTotal, receiptCurrency) }}
+          + Adjustments {{ formatInvoiceMoney(adjustmentTotal, receiptCurrency) }}
+          = {{ formatInvoiceMoney(expectedAmount, receiptCurrency) }}
         </div>
 
         <div class="d-flex justify-end gap-2 mt-6">
@@ -663,7 +678,7 @@ onMounted(async () => {
           <VBtn
             color="primary"
             :loading="saving"
-            :disabled="!selectedIds.length || !paidByOk"
+            :disabled="!selectedIds.length || !paidByOk || mixedCurrencies"
             @click="submit"
           >
             Save and print

@@ -17,10 +17,13 @@ import {
 import { type Unit, getUnit, listAllUnits, listUnits } from '@/api/attendance/units'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import HelpBubble from '@/components/attendance/HelpBubble.vue'
+import InvoicePrintVersionDialog from '@/components/attendance/invoices/InvoicePrintVersionDialog.vue'
 import { useBranding } from '@/composables/useBranding'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { MANUAL_CREDIT_HINT } from '@/utils/billingStaffCopy'
 import {
+  DEFAULT_INVOICE_CURRENCY,
+  INVOICE_CURRENCIES,
   creditLinesFromInvoice,
   defaultCreditFee,
   formatInvoiceMoney,
@@ -30,6 +33,7 @@ import {
   periodFromMonthLabels,
 } from '@/utils/invoiceDisplay'
 import {
+  type TuitionInvoicePrintVersion,
   invoiceMonthLabel,
   openTuitionInvoicePrintPlaceholder,
   printTuitionInvoice,
@@ -88,6 +92,8 @@ const manualForm = ref<{
   period: string
   studentName: string
   staff: string
+  currency: string
+  topRemark: string
   remark: string
   payableTo: string
   payeeName: string
@@ -98,6 +104,8 @@ const manualForm = ref<{
   period: '',
   studentName: '',
   staff: '',
+  currency: DEFAULT_INVOICE_CURRENCY,
+  topRemark: '',
   remark: '',
   payableTo: '',
   payeeName: '',
@@ -129,6 +137,13 @@ watch(() => manualForm.value.staff, name => {
   manualTutorUnitId.value = manualStaffUnits.value.find(u => u.full_name === trimmed)?.id ?? null
 })
 
+const isDebitNote = computed(() => brand.value.invoicePrintTemplate === 'debit-note')
+
+const currencyItems = INVOICE_CURRENCIES.map(item => ({
+  title: `${item.code} (${item.symbol})`,
+  value: item.code,
+}))
+
 const isEdit = computed(() => Boolean(props.editingInvoice))
 const isCredit = computed(() =>
   Boolean(props.creditFromInvoice && !props.editingInvoice)
@@ -141,6 +156,18 @@ const studentLocked = computed(() => isEdit.value || Boolean(props.creditFromInv
 const showPeriod = computed(() =>
   !isCredit.value && (!props.editingInvoice || props.editingInvoice.kind === 'manual'),
 )
+
+const topRowCols = computed(() => {
+  if (isDebitNote.value) {
+    return showPeriod.value
+      ? { invoiceNo: 3, date: 2, period: 2, location: 3, currency: 2 }
+      : { invoiceNo: 3, date: 3, period: 0, location: 3, currency: 3 }
+  }
+
+  return showPeriod.value
+    ? { invoiceNo: 3, date: 3, period: 3, location: 3, currency: 0 }
+    : { invoiceNo: 4, date: 4, period: 0, location: 4, currency: 0 }
+})
 
 const linePeriod = computed(() =>
   periodFromMonthLabels(manualForm.value.rows.map(row => row.month))
@@ -459,6 +486,8 @@ function fillFromInvoice(invoice: TuitionInvoice, negateFee: boolean) {
     period,
     studentName: invoiceStudentLabel(invoice),
     staff: invoice.staff_name ?? '',
+    currency: invoice.currency || DEFAULT_INVOICE_CURRENCY,
+    topRemark: negateFee ? '' : (invoice.top_notes ?? ''),
     remark: negateFee ? '' : (invoice.notes ?? ''),
     payableTo: negateFee ? '' : (invoice.payable_to_name ?? ''),
     payeeName: negateFee ? '' : (invoice.payee_name ?? ''),
@@ -488,6 +517,8 @@ function resetForm() {
     period: '',
     studentName: '',
     staff: '',
+    currency: DEFAULT_INVOICE_CURRENCY,
+    topRemark: '',
     remark: '',
     payableTo: '',
     payeeName: '',
@@ -550,7 +581,10 @@ const dialogTitle = computed(() => {
   return 'Manual invoice'
 })
 
-async function printOptionsFor(invoice: { location_id: string; unit_id?: string | null }) {
+async function printOptionsFor(
+  invoice: { location_id: string; unit_id?: string | null },
+  printVersion?: TuitionInvoicePrintVersion,
+) {
   const location = props.locations.find(l => l.id === invoice.location_id)
 
   const team = location && brand.value.invoicePrintTemplate === 'debit-note'
@@ -576,151 +610,207 @@ async function printOptionsFor(invoice: { location_id: string; unit_id?: string 
     billTo: billTo || undefined,
     header: location ? invoicePrintHeaderFromLocation(location) : undefined,
     template: brand.value.invoicePrintTemplate,
+    printVersion,
     payableTo: (manualForm.value.payableTo ?? '').trim(),
     payeeName: (manualForm.value.payeeName ?? '').trim(),
   }
 }
 
-async function printManualInvoice() {
+interface ManualInvoiceDraft {
+  lines: ManualInvoiceLine[]
+  unitId: string | undefined
+  locationId: string
+}
+
+const versionDialogOpen = ref(false)
+const pendingDraft = ref<ManualInvoiceDraft | null>(null)
+
+function validateManualInvoice(): ManualInvoiceDraft | null {
+  if (manualForm.value.rows.some(row => row.purchaseId && (manualNumber(row.fee) ?? 0) < 0)) {
+    manualError.value = 'Session package lines cannot have a negative fee.'
+
+    return null
+  }
+
+  if (manualForm.value.rows.some(row => row.purchaseId && manualNumber(row.fee) == null)) {
+    manualError.value = 'Session package lines need a price. 0 is allowed, but it cannot be left blank.'
+
+    return null
+  }
+
+  const validLines = manualForm.value.rows
+    .map(row => {
+      const fee = manualNumber(row.fee)
+
+      return {
+        id: isEdit.value ? row.lineId : undefined,
+        month: row.month.trim(),
+        course: row.course.trim(),
+        fee: fee == null ? null : (isCredit.value ? -Math.abs(fee) : fee),
+        qty: manualNumber(row.qty),
+        staff_name: (manualForm.value.staff ?? '').trim() || null,
+        purchase_id: isCredit.value ? undefined : (row.purchaseId || undefined),
+      }
+    })
+    .filter(row => row.course && row.fee != null && Number.isFinite(row.fee) && row.qty != null && row.qty > 0)
+
+  const touchedRows = manualForm.value.rows.filter(
+    row => row.purchaseId || row.course.trim() || row.fee.trim() || row.qty.trim(),
+  ).length
+
+  if (validLines.length < touchedRows) {
+    manualError.value = 'Each filled line needs a course, a price (0 is allowed) and a quantity above 0 — fix or remove it. Use a negative price for a credit note.'
+
+    return null
+  }
+
+  if (validLines.length === 0) {
+    manualError.value = 'Add at least one line with course, fee and quantity.'
+
+    return null
+  }
+
+  const unitId = lockedUnitId.value
+    || (manualStudent.value && typeof manualStudent.value !== 'string'
+      ? manualStudent.value.id
+      : undefined)
+
+  if (!unitId && !(manualForm.value.studentName ?? '').trim()) {
+    manualError.value = t('Pick a student, or type a name for a walk-in invoice.')
+
+    return null
+  }
+
+  if (!manualLocationId.value) {
+    manualError.value = t('Please select a location for the manual invoice.')
+
+    return null
+  }
+
+  return {
+    lines: validLines as ManualInvoiceLine[],
+    unitId,
+    locationId: manualLocationId.value,
+  }
+}
+
+async function saveAndPrintManualInvoice(
+  draft: ManualInvoiceDraft,
+  printVersion?: TuitionInvoicePrintVersion,
+  openedWindow?: Window,
+) {
   manualPrinting.value = true
   manualError.value = ''
+
+  let printWindow: Window | null = openedWindow ?? null
   try {
-    if (manualForm.value.rows.some(row => row.purchaseId && (manualNumber(row.fee) ?? 0) < 0)) {
-      manualError.value = 'Session package lines cannot have a negative fee.'
-      manualPrinting.value = false
-
-      return
-    }
-
-    if (manualForm.value.rows.some(row => row.purchaseId && manualNumber(row.fee) == null)) {
-      manualError.value = 'Session package lines need a price. 0 is allowed, but it cannot be left blank.'
-      manualPrinting.value = false
-
-      return
-    }
-
-    const validLines = manualForm.value.rows
-      .map(row => {
-        const fee = manualNumber(row.fee)
-
-        return {
-          id: isEdit.value ? row.lineId : undefined,
-          month: row.month.trim(),
-          course: row.course.trim(),
-          fee: fee == null ? null : (isCredit.value ? -Math.abs(fee) : fee),
-          qty: manualNumber(row.qty),
-          staff_name: (manualForm.value.staff ?? '').trim() || null,
-          purchase_id: isCredit.value ? undefined : (row.purchaseId || undefined),
-        }
-      })
-      .filter(row => row.course && row.fee != null && Number.isFinite(row.fee) && row.qty != null && row.qty > 0)
-
-    const touchedRows = manualForm.value.rows.filter(
-      row => row.purchaseId || row.course.trim() || row.fee.trim() || row.qty.trim(),
-    ).length
-
-    if (validLines.length < touchedRows) {
-      manualError.value = 'Each filled line needs a course, a price (0 is allowed) and a quantity above 0 — fix or remove it. Use a negative price for a credit note.'
-      manualPrinting.value = false
-
-      return
-    }
-
-    if (validLines.length === 0) {
-      manualError.value = 'Add at least one line with course, fee and quantity.'
-      manualPrinting.value = false
-
-      return
-    }
-
-    const unitId = lockedUnitId.value
-      || (manualStudent.value && typeof manualStudent.value !== 'string'
-        ? manualStudent.value.id
-        : undefined)
-
-    if (!unitId && !(manualForm.value.studentName ?? '').trim()) {
-      manualError.value = t('Pick a student, or type a name for a walk-in invoice.')
-      manualPrinting.value = false
-
-      return
-    }
-
-    if (!manualLocationId.value) {
-      manualError.value = t('Please select a location for the manual invoice.')
-      manualPrinting.value = false
-
-      return
-    }
-
-    let printWindow: Window | null = null
-    if (!isEdit.value) {
+    if (!printWindow && !isEdit.value) {
       try {
         printWindow = openTuitionInvoicePrintPlaceholder()
       }
       catch (e) {
         manualError.value = formatApiError(e, 'Could not open print window.')
-        manualPrinting.value = false
 
         return
       }
     }
 
-    try {
-      const saved = isEdit.value && props.editingInvoice
-        ? await updateTuitionInvoice(props.editingInvoice.id, {
-          staff_name: (manualForm.value.staff ?? '').trim() || null,
-          tutor_unit_id: manualTutorUnitId.value,
-          payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
-          payee_name: (manualForm.value.payeeName ?? '').trim() || null,
-          notes: (manualForm.value.remark ?? '').trim() || null,
-          ...(showPeriod.value && manualForm.value.period ? { period: manualForm.value.period } : {}),
-          lines: validLines as ManualInvoiceLine[],
-        })
-        : await createManualTuitionInvoice({
-          date: manualForm.value.date,
-          period: showPeriod.value ? manualForm.value.period || undefined : undefined,
-          location_id: manualLocationId.value,
-          unit_id: unitId,
-          manual_student_name: unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
-          staff_name: (manualForm.value.staff ?? '').trim() || null,
-          tutor_unit_id: manualTutorUnitId.value,
-          payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
-          payee_name: (manualForm.value.payeeName ?? '').trim() || null,
-          invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
-          notes: (manualForm.value.remark ?? '').trim() || null,
-          lines: validLines as ManualInvoiceLine[],
-        })
+    const currency = isDebitNote.value ? manualForm.value.currency : undefined
+    const topNotes = isDebitNote.value ? ((manualForm.value.topRemark ?? '').trim() || null) : undefined
 
-      if (!printWindow) {
-        try {
-          printWindow = openTuitionInvoicePrintPlaceholder()
-        }
-        catch {
-          open.value = false
-          emit('created')
+    const saved = isEdit.value && props.editingInvoice
+      ? await updateTuitionInvoice(props.editingInvoice.id, {
+        staff_name: (manualForm.value.staff ?? '').trim() || null,
+        tutor_unit_id: manualTutorUnitId.value,
+        payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
+        payee_name: (manualForm.value.payeeName ?? '').trim() || null,
+        currency,
+        top_notes: topNotes,
+        notes: (manualForm.value.remark ?? '').trim() || null,
+        ...(showPeriod.value && manualForm.value.period ? { period: manualForm.value.period } : {}),
+        lines: draft.lines,
+      })
+      : await createManualTuitionInvoice({
+        date: manualForm.value.date,
+        period: showPeriod.value ? manualForm.value.period || undefined : undefined,
+        location_id: draft.locationId,
+        unit_id: draft.unitId,
+        manual_student_name: draft.unitId ? null : ((manualForm.value.studentName ?? '').trim() || null),
+        staff_name: (manualForm.value.staff ?? '').trim() || null,
+        tutor_unit_id: manualTutorUnitId.value,
+        payable_to_name: (manualForm.value.payableTo ?? '').trim() || null,
+        payee_name: (manualForm.value.payeeName ?? '').trim() || null,
+        invoice_no: manualNoEdited.value ? (manualForm.value.invoiceNo ?? '').trim() || undefined : undefined,
+        currency,
+        top_notes: topNotes,
+        notes: (manualForm.value.remark ?? '').trim() || null,
+        lines: draft.lines,
+      })
 
-          return
-        }
+    if (!printWindow) {
+      try {
+        printWindow = openTuitionInvoicePrintPlaceholder()
       }
+      catch {
+        open.value = false
+        emit('created')
 
-      await printTuitionInvoice(
-        printWindow,
-        tuitionInvoicePrintData(saved, await printOptionsFor(saved)),
-      )
-      open.value = false
-      emit('created')
+        return
+      }
     }
-    catch (e) {
-      printWindow?.close()
-      throw e
-    }
+
+    await printTuitionInvoice(
+      printWindow,
+      tuitionInvoicePrintData(saved, await printOptionsFor(saved, printVersion)),
+    )
+    open.value = false
+    emit('created')
   }
   catch (e) {
+    printWindow?.close()
     manualError.value = formatApiError(e, 'Could not create or print manual invoice.')
   }
   finally {
     manualPrinting.value = false
   }
+}
+
+async function printManualInvoice() {
+  manualError.value = ''
+
+  const draft = validateManualInvoice()
+  if (!draft)
+    return
+
+  if (isDebitNote.value) {
+    pendingDraft.value = draft
+    versionDialogOpen.value = true
+
+    return
+  }
+
+  await saveAndPrintManualInvoice(draft)
+}
+
+// Runs inside the version button's click, so the print window may open here.
+function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
+  const draft = pendingDraft.value
+
+  pendingDraft.value = null
+  if (!draft)
+    return
+
+  let printWindow: Window
+  try {
+    printWindow = openTuitionInvoicePrintPlaceholder()
+  }
+  catch (e) {
+    manualError.value = formatApiError(e, 'Could not open print window.')
+
+    return
+  }
+
+  void saveAndPrintManualInvoice(draft, version, printWindow)
 }
 </script>
 
@@ -751,7 +841,7 @@ async function printManualInvoice() {
         <VRow dense>
           <VCol
             cols="12"
-            :sm="showPeriod ? 3 : 4"
+            :sm="topRowCols.invoiceNo"
           >
             <VTextField
               v-model="manualForm.invoiceNo"
@@ -765,7 +855,7 @@ async function printManualInvoice() {
           </VCol>
           <VCol
             cols="12"
-            :sm="showPeriod ? 3 : 4"
+            :sm="topRowCols.date"
           >
             <VTextField
               v-model="manualForm.date"
@@ -780,7 +870,7 @@ async function printManualInvoice() {
           <VCol
             v-if="showPeriod"
             cols="12"
-            sm="3"
+            :sm="topRowCols.period"
           >
             <VTextField
               v-model="manualForm.period"
@@ -795,7 +885,7 @@ async function printManualInvoice() {
           </VCol>
           <VCol
             cols="12"
-            :sm="showPeriod ? 3 : 4"
+            :sm="topRowCols.location"
           >
             <VSelect
               v-model="manualLocationId"
@@ -805,6 +895,19 @@ async function printManualInvoice() {
               hide-details
               clearable
               :disabled="studentLocked"
+            />
+          </VCol>
+          <VCol
+            v-if="isDebitNote"
+            cols="12"
+            :sm="topRowCols.currency"
+          >
+            <VSelect
+              v-model="manualForm.currency"
+              :items="currencyItems"
+              label="Currency"
+              density="compact"
+              hide-details
             />
           </VCol>
           <VCol
@@ -848,6 +951,19 @@ async function printManualInvoice() {
               density="compact"
               hint="Applies to every line; not printed on the invoice."
               persistent-hint
+              clearable
+            />
+          </VCol>
+          <VCol
+            v-if="isDebitNote"
+            cols="12"
+          >
+            <VTextField
+              v-model="manualForm.topRemark"
+              label="Remark 1"
+              density="compact"
+              hide-details
+              placeholder="Optional — printed under the title"
               clearable
             />
           </VCol>
@@ -990,7 +1106,7 @@ async function printManualInvoice() {
                 />
               </td>
               <td class="text-end text-no-wrap">
-                {{ manualRowAmount(row) == null ? '—' : formatInvoiceMoney(manualRowAmount(row)!) }}
+                {{ manualRowAmount(row) == null ? '—' : formatInvoiceMoney(manualRowAmount(row)!, manualForm.currency) }}
               </td>
               <td class="text-end">
                 <VBtn
@@ -1039,12 +1155,12 @@ async function printManualInvoice() {
           </VAutocomplete>
           <VSpacer />
           <div class="font-weight-medium">
-            {{ manualTotal < 0 ? 'Credit' : 'Total' }}: {{ formatInvoiceMoney(manualTotal) }}
+            {{ manualTotal < 0 ? 'Credit' : 'Total' }}: {{ formatInvoiceMoney(manualTotal, manualForm.currency) }}
           </div>
         </div>
         <VTextField
           v-model="manualForm.remark"
-          label="Remark"
+          :label="isDebitNote ? 'Remark 2' : 'Remark'"
           density="compact"
           class="mt-3"
           :placeholder="isCredit ? 'Optional — printed on the credit note' : 'Optional — printed on the invoice'"
@@ -1072,6 +1188,11 @@ async function printManualInvoice() {
       </DialogFooter>
     </VCard>
   </VDialog>
+
+  <InvoicePrintVersionDialog
+    v-model="versionDialogOpen"
+    @select="onPrintVersionChosen"
+  />
 </template>
 
 <style scoped lang="scss">

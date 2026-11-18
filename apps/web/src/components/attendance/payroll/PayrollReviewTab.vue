@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PayrollRecord } from '@/api/attendance/payroll'
+import { formatInvoiceMoney } from '@/utils/invoiceDisplay'
 import {
   canApprovePayroll,
   canEditPayrollAdjustments,
@@ -379,6 +380,14 @@ function onRemarkChange(record: PayrollRecord) {
             >
               <span>Commission</span>
               <span class="font-weight-medium">{{ formatPayrollCurrency(record.commission_pay) }}</span>
+            </div>
+            <div
+              v-for="other in record.commission_other ?? []"
+              :key="other.currency"
+              class="invoice-line"
+            >
+              <span>Commission ({{ other.currency }})</span>
+              <span class="font-weight-medium">{{ formatInvoiceMoney(other.amount, other.currency) }}</span>
             </div>
             <div class="invoice-adj-row">
               <VTextField

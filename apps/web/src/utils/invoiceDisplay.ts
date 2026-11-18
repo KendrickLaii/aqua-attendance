@@ -24,14 +24,72 @@ export const invoiceStatusFilters: { title: string; value: 'all' | TuitionInvoic
   { title: 'Cancelled', value: 'void' },
 ]
 
-export function formatInvoiceMoney(value: number): string {
+export const INVOICE_CURRENCIES = [
+  { code: 'HKD', symbol: 'HK$' },
+  { code: 'USD', symbol: 'US$' },
+  { code: 'CNY', symbol: 'RMB' },
+  { code: 'EUR', symbol: '€' },
+  { code: 'GBP', symbol: '£' },
+  { code: 'SGD', symbol: 'S$' },
+  { code: 'JPY', symbol: 'JP¥' },
+] as const
+
+export const DEFAULT_INVOICE_CURRENCY = 'HKD'
+
+export function invoiceCurrencySymbol(currency: string | null | undefined): string {
+  const code = currency || DEFAULT_INVOICE_CURRENCY
+
+  return INVOICE_CURRENCIES.find(item => item.code === code)?.symbol ?? code
+}
+
+export function formatInvoiceMoney(value: number, currency: string | null | undefined = DEFAULT_INVOICE_CURRENCY): string {
   const amount = Number(value)
   const abs = Math.abs(amount).toLocaleString('en-HK', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
 
-  return amount < 0 ? `-HK$${abs}` : `HK$${abs}`
+  const symbol = invoiceCurrencySymbol(currency)
+
+  return amount < 0 ? `-${symbol}${abs}` : `${symbol}${abs}`
+}
+
+/** Currency codes in display order: HKD first, then the list order, then unknown codes. */
+export function sortedCurrencyCodes(codes: Iterable<string>): string[] {
+  const order: string[] = INVOICE_CURRENCIES.map(item => item.code)
+
+  const rank = (code: string) => {
+    const index = order.indexOf(code)
+
+    return index === -1 ? order.length : index
+  }
+
+  return [...new Set(codes)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+/** "HK$9,000.00 · US$500.00"; "HK$0.00" when there is nothing to show. */
+export function formatMoneyByCurrency(totals: Record<string, number>): string {
+  const codes = sortedCurrencyCodes(Object.keys(totals))
+  if (codes.length === 0)
+    return formatInvoiceMoney(0)
+
+  return codes.map(code => formatInvoiceMoney(totals[code], code)).join(' · ')
+}
+
+/** Adds each item's amount into its currency bucket. */
+export function sumByCurrency<T>(
+  items: Iterable<T>,
+  pick: (item: T) => { amount: number; currency: string | null | undefined },
+): Record<string, number> {
+  const totals: Record<string, number> = {}
+  for (const item of items) {
+    const { amount, currency } = pick(item)
+    const code = currency || DEFAULT_INVOICE_CURRENCY
+
+    totals[code] = (totals[code] ?? 0) + Number(amount)
+  }
+
+  return totals
 }
 
 export function isCreditInvoice(invoice: { total: number }): boolean {
@@ -75,8 +133,8 @@ export function formatInvoiceQty(line: TuitionInvoiceLine): string {
   return qty === 1 ? '1 month' : `${whole} months`
 }
 
-export function invoiceLineFormula(line: TuitionInvoiceLine): string {
-  return `${formatInvoiceQty(line)} × ${formatInvoiceMoney(Number(line.unit_price))}`
+export function invoiceLineFormula(line: TuitionInvoiceLine, currency?: string): string {
+  return `${formatInvoiceQty(line)} × ${formatInvoiceMoney(Number(line.unit_price), currency)}`
 }
 
 export function invoiceClassNames(invoice: TuitionInvoice): string[] {

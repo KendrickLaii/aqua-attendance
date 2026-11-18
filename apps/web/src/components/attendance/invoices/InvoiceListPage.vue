@@ -13,6 +13,7 @@ import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { type Unit, getUnit, listAllUnits } from '@/api/attendance/units'
 import InvoiceBillsSection, { type InvoiceSortKey } from '@/components/attendance/invoices/InvoiceBillsSection.vue'
 import InvoiceManualDialog from '@/components/attendance/invoices/InvoiceManualDialog.vue'
+import InvoicePrintVersionDialog from '@/components/attendance/invoices/InvoicePrintVersionDialog.vue'
 import StatCards from '@/components/attendance/StatCards.vue'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
 import { formatApiError } from '@/utils/formatApiDetail'
@@ -28,6 +29,7 @@ import {
   filterChargeInvoices,
   filterCreditNoteInvoices,
   formatInvoiceMoney,
+  formatMoneyByCurrency,
   invoiceOpenedBy,
   invoicePrintHeaderFromLocation,
   invoiceStatusColor,
@@ -39,6 +41,7 @@ import {
   locationTitle,
 } from '@/utils/invoiceDisplay'
 import {
+  type TuitionInvoicePrintVersion,
   invoiceMonthLabel,
   openTuitionInvoicePrintPlaceholder,
   printTuitionInvoice,
@@ -130,11 +133,11 @@ const scopedInvoices = computed(() =>
 )
 
 const statusTotals = computed(() => {
-  const totals = {
-    draft: { count: 0, amount: 0 },
-    issued: { count: 0, amount: 0 },
-    paid: { count: 0, amount: 0 },
-    void: { count: 0, amount: 0 },
+  const totals: Record<string, { count: number; amount: Record<string, number> }> = {
+    draft: { count: 0, amount: {} },
+    issued: { count: 0, amount: {} },
+    paid: { count: 0, amount: {} },
+    void: { count: 0, amount: {} },
   }
 
   for (const invoice of scopedInvoices.value) {
@@ -142,18 +145,32 @@ const statusTotals = computed(() => {
     if (!bucket)
       continue
     bucket.count += 1
-    bucket.amount += Number(invoice.total)
+    bucket.amount[invoice.currency] = (bucket.amount[invoice.currency] ?? 0) + Number(invoice.total)
   }
 
   return totals
 })
 
+function mergeCurrencyTotals(...parts: Record<string, number>[]): Record<string, number> {
+  const merged: Record<string, number> = {}
+  for (const part of parts) {
+    for (const [currency, amount] of Object.entries(part))
+      merged[currency] = (merged[currency] ?? 0) + amount
+  }
+
+  return merged
+}
+
 const collectibleTotal = computed(
-  () => statusTotals.value.draft.amount + statusTotals.value.issued.amount,
+  () => mergeCurrencyTotals(statusTotals.value.draft.amount, statusTotals.value.issued.amount),
 )
 
 const refundTotal = computed(
-  () => statusTotals.value.draft.amount + statusTotals.value.issued.amount + statusTotals.value.paid.amount,
+  () => mergeCurrencyTotals(
+    statusTotals.value.draft.amount,
+    statusTotals.value.issued.amount,
+    statusTotals.value.paid.amount,
+  ),
 )
 
 const statusCounts = computed<Record<string, number>>(() => ({
@@ -292,14 +309,14 @@ const statCards = computed(() => isCreditPage.value
   ? [
       {
         label: 'Credits',
-        value: formatInvoiceMoney(refundTotal.value),
+        value: formatMoneyByCurrency(refundTotal.value),
         hint: `${statusTotals.value.issued.count} issued · ${statusTotals.value.paid.count} paid`,
         icon: 'ri-refund-2-line',
         color: 'secondary',
       },
       {
         label: 'Issued',
-        value: formatInvoiceMoney(statusTotals.value.issued.amount),
+        value: formatMoneyByCurrency(statusTotals.value.issued.amount),
         hint: `${statusTotals.value.issued.count} credit note${statusTotals.value.issued.count === 1 ? '' : 's'}`,
         icon: 'ri-file-check-line',
         color: 'info',
@@ -307,7 +324,7 @@ const statCards = computed(() => isCreditPage.value
       {
         label: 'Drafts',
         value: String(statusTotals.value.draft.count),
-        hint: formatInvoiceMoney(statusTotals.value.draft.amount),
+        hint: formatMoneyByCurrency(statusTotals.value.draft.amount),
         icon: 'ri-draft-line',
         color: 'warning',
       },
@@ -324,14 +341,14 @@ const statCards = computed(() => isCreditPage.value
   : [
       {
         label: 'To collect',
-        value: formatInvoiceMoney(collectibleTotal.value),
+        value: formatMoneyByCurrency(collectibleTotal.value),
         hint: `${statusTotals.value.draft.count} draft · ${statusTotals.value.issued.count} issued`,
         icon: 'ri-wallet-3-line',
         color: 'primary',
       },
       {
         label: 'Paid',
-        value: formatInvoiceMoney(statusTotals.value.paid.amount),
+        value: formatMoneyByCurrency(statusTotals.value.paid.amount),
         hint: parsedYearMonth.value
           ? `${statusTotals.value.paid.count} paid this month`
           : `${statusTotals.value.paid.count} paid`,
@@ -341,7 +358,7 @@ const statCards = computed(() => isCreditPage.value
       {
         label: 'Drafts',
         value: String(statusTotals.value.draft.count),
-        hint: formatInvoiceMoney(statusTotals.value.draft.amount),
+        hint: formatMoneyByCurrency(statusTotals.value.draft.amount),
         icon: 'ri-draft-line',
         color: 'warning',
       },
@@ -600,6 +617,7 @@ function locationName(id: string): string {
 async function printOptionsFor(
   invoice: TuitionInvoice,
   names?: { payableTo?: string; payeeName?: string },
+  printVersion?: TuitionInvoicePrintVersion,
 ) {
   const location = locations.value.find(l => l.id === invoice.location_id)
 
@@ -628,6 +646,7 @@ async function printOptionsFor(
     payableTo: names?.payableTo,
     payeeName: names?.payeeName,
     template: brand.value.invoicePrintTemplate,
+    printVersion,
   }
 }
 
@@ -656,13 +675,30 @@ async function loadLocations() {
 async function printWithNames(
   invoice: TuitionInvoice,
   names?: { payableTo?: string; payeeName?: string },
+  printVersion?: TuitionInvoicePrintVersion,
 ) {
   const printWindow = openTuitionInvoicePrintPlaceholder()
 
   await printTuitionInvoice(
     printWindow,
-    tuitionInvoicePrintData(invoice, await printOptionsFor(invoice, names)),
+    tuitionInvoicePrintData(invoice, await printOptionsFor(invoice, names, printVersion)),
   )
+}
+
+const versionInvoice = ref<TuitionInvoice | null>(null)
+const versionDialogOpen = ref(false)
+
+// Runs inside the version button's click, so the print window may open here.
+function printWithVersion(version: TuitionInvoicePrintVersion) {
+  const invoice = versionInvoice.value
+
+  versionInvoice.value = null
+  if (!invoice)
+    return
+
+  printWithNames(invoice, undefined, version).catch(e => {
+    generateError.value = formatApiError(e, 'Could not open print window.')
+  })
 }
 
 function printInvoice(invoice: TuitionInvoice) {
@@ -670,6 +706,13 @@ function printInvoice(invoice: TuitionInvoice) {
     pendingPrint.value = invoice
     printPayableTo.value = invoice.payable_to_name ?? ''
     printPayeeName.value = invoice.payee_name ?? ''
+
+    return
+  }
+
+  if (brand.value.invoicePrintTemplate === 'debit-note') {
+    versionInvoice.value = invoice
+    versionDialogOpen.value = true
 
     return
   }
@@ -852,7 +895,7 @@ watch(yearMonth, () => {
           <span v-if="scopedInvoices.length">
             · {{ scopedInvoices.length }}
             {{ isCreditPage ? `credit note${scopedInvoices.length === 1 ? '' : 's'}` : `bill${scopedInvoices.length === 1 ? '' : 's'}` }}
-            · {{ isCreditPage ? formatInvoiceMoney(refundTotal) : `${formatInvoiceMoney(collectibleTotal)} to collect` }}
+            · {{ isCreditPage ? formatMoneyByCurrency(refundTotal) : `${formatMoneyByCurrency(collectibleTotal)} to collect` }}
           </span>
         </div>
       </VCol>
@@ -1179,7 +1222,7 @@ watch(yearMonth, () => {
       <template v-if="pendingStatus?.status === 'issued'">
         <p class="text-body-2 mb-4">
           Issuing locks <strong>{{ invoiceStudentLabel(pendingStatus.invoice) }}</strong>
-          at <strong>{{ formatInvoiceMoney(Number(pendingStatus.invoice.total)) }}</strong>.
+          at <strong>{{ formatInvoiceMoney(Number(pendingStatus.invoice.total), pendingStatus.invoice.currency) }}</strong>.
           Generate will not change this bill after that.
         </p>
         <VTextField
@@ -1315,6 +1358,11 @@ watch(yearMonth, () => {
       :credit-mode="isCreditPage"
       @update:model-value="value => { if (!value) closeManualInvoice() }"
       @created="onManualCreated"
+    />
+
+    <InvoicePrintVersionDialog
+      v-model="versionDialogOpen"
+      @select="printWithVersion"
     />
   </VContainer>
 </template>

@@ -361,7 +361,7 @@ const { t } = useBranding()
                   </VChip>
                 </td>
                 <td class="col-total text-end font-weight-medium tabular-nums">
-                  {{ formatInvoiceMoney(Number(invoice.total)) }}
+                  {{ formatInvoiceMoney(Number(invoice.total), invoice.currency) }}
                 </td>
                 <td
                   class="col-actions text-end"
@@ -498,10 +498,10 @@ const { t } = useBranding()
                             </VChip>
                           </td>
                           <td class="text-medium-emphasis tabular-nums">
-                            {{ invoiceLineFormula(line) }}
+                            {{ invoiceLineFormula(line, invoice.currency) }}
                           </td>
                           <td class="text-end font-weight-medium text-no-wrap tabular-nums">
-                            {{ formatInvoiceMoney(Number(line.amount)) }}
+                            {{ formatInvoiceMoney(Number(line.amount), invoice.currency) }}
                           </td>
                         </tr>
                         <tr v-if="invoice.lines.length === 0">

@@ -43,6 +43,8 @@ export interface TuitionInvoice {
   status: TuitionInvoiceStatus
   kind: TuitionInvoiceKind
   total: number
+  currency: string
+  top_notes: string | null
   notes: string | null
   invoice_no: string | null
   receipt_no?: string | null
@@ -188,6 +190,8 @@ export interface ManualInvoicePayload {
   payable_to_name?: string | null
   payee_name?: string | null
   invoice_no?: string | null
+  currency?: string
+  top_notes?: string | null
   notes?: string | null
   lines: ManualInvoiceLine[]
 }
@@ -200,6 +204,8 @@ export async function updateTuitionInvoice(
   invoiceId: string,
   payload: {
     status?: TuitionInvoiceStatus
+    currency?: string
+    top_notes?: string | null
     notes?: string | null
     invoice_no?: string | null
     staff_name?: string | null

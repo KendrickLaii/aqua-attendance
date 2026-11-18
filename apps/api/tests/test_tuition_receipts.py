@@ -40,12 +40,15 @@ async def _manual_invoice(
     name: str | None = None,
     date: str = "2026-09-02",
     fee: float = 100,
+    currency: str | None = None,
 ) -> dict:
     payload: dict = {
         "date": date,
         "location_id": location_id,
         "lines": [{"month": "Sept-26", "course": "私補", "fee": fee, "qty": 1}],
     }
+    if currency:
+        payload["currency"] = currency
     if unit_id:
         payload["unit_id"] = unit_id
     else:
@@ -856,3 +859,50 @@ async def test_receipt_nets_positive_and_negative_invoices(
     )
     assert resp.status_code == 201, resp.text
     assert float(resp.json()["amount"]) == 300
+
+
+@pytest.mark.asyncio
+async def test_receipt_rejects_mixed_currencies(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    hkd = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"]
+    )
+    usd = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], currency="USD"
+    )
+    resp = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-03",
+            "invoice_ids": [hkd["id"], usd["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "All invoices on a receipt must use the same currency"
+
+
+@pytest.mark.asyncio
+async def test_receipt_inherits_invoice_currency(
+    client: AsyncClient, admin_token: str, sample_unit: dict, sample_location: dict
+) -> None:
+    usd = await _manual_invoice(
+        client, admin_token, sample_location["id"], unit_id=sample_unit["id"], currency="USD"
+    )
+    resp = await client.post(
+        "/api/tuition-receipts",
+        json={
+            "location_id": sample_location["id"],
+            "unit_id": sample_unit["id"],
+            "paid_by": "Cash",
+            "receipt_date": "2026-09-03",
+            "invoice_ids": [usd["id"]],
+        },
+        headers=_auth(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["currency"] == "USD"
