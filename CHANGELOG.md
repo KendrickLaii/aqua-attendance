@@ -17,6 +17,7 @@
 
 ### 變更
 
+- 服務頁列出 line item 時，上課日存成 `{}` 的舊資料會令整頁 500。讀取時把非清單當成沒有上課日，Migration **059** 把這些列改回 `[]`。
 - `user` 登入後可以打開自己 Team 的客戶、出席、QR、服務、發票和收據頁。之前這些頁面一律要求 `admin`，所以會被送回 Dashboard。
 - `admin` 可以刪除自己 Team 的薪資紀錄。其他 Team 的紀錄回 403。`superadmin` 仍然可以刪任何 Team 的紀錄。
 - `admin` 可以建立和修改自己 Team 的 `user` 登入帳號（重設密碼、停用、指派自己已有的 Team）。不能建立或改成 `admin`／`superadmin`，不能刪帳號，也不能拿走這個帳號在其他 Team 的指派。`superadmin` 仍然管理全部帳號。
