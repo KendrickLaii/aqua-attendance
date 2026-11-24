@@ -9,40 +9,47 @@
 
 ## 24/11/2026
 
-### 【測試機】admin 可以管理自己 Team 的 user 帳號
+### 【測試機】superadmin、admin、user 點分
 
 <http://3.114.114.143/attendance/users>
 
-- admin 可以為自己的 Team 開 user 帳號，以及改資料、改密碼、停用登入
-- 不能開 admin 或 superadmin，不能刪帳號。刪帳號仍然要 superadmin
-- 這個 user 如果還屬於其他 Team，那些指派會保留
-- admin 可以刪除自己 Team 的薪資紀錄。其他 Team 的薪資刪不到
-- user 登入後可以進入客戶、QR、出席、服務、發票、收據和 Team。薪資、更表、員工管理和帳號頁仍然進不到
-- 服務頁的 line item 清單不再因為舊的上課日格式而整頁失敗
-- 每個 Team 的 line item 編號改回原本的編號，不再在後面加上 Team 編號
+角色名稱三邊都係 superadmin、admin、user。補習社畫面寫地點、學生；CPA 寫 Team、Client。下面用 Team 來講，補習社就係地點。
+
+**superadmin**（整體帳號，類似 IT support）
+
+- 睇到全部 Team，唔使指派
+- 開帳號、改角色、指派每個帳號可以睇邊啲 Team
+- 可以刪 Team、刪登入帳號、睇 Audit Logs
+
+**admin**（一個 Team 的負責人，可以負責多過一個 Team）
+
+- 只睇到被指派的 Team。可以處理客戶、出席、QR、發票、收據、服務、更表同薪資
+- 可以計薪、批核、出糧，亦可以刪自己 Team 的薪資紀錄。其他 Team 的薪資睇唔到、刪唔到
+- 可以為自己的 Team 開 user 帳號，以及改資料、改密碼、停用登入
+- 不能開 admin 或 superadmin，不能刪帳號。這個 user 如果仲屬於其他 Team，那些指派會保留
+- 不能睇 Audit Logs，不能刪 Team
+
+**user**（日常操作）
+
+- 只睇到被指派的 Team。可以開、改、作廢、刪除客戶、出席、QR、服務、發票、收據
+- 睇唔到薪資、時薪同分成。更表管理、員工管理、帳號頁同 Audit Logs 都入唔到
+
+**未指派**
+
+- admin 同 user 未指派 Team 仍然可以登入
+- 每頁會顯示「未指派 Team，請聯絡 superadmin」（補習社係「未指派地點，請聯絡 superadmin」）
+- 指派之前睇唔到任何 Team 的資料
+
+**其他**
+
+- 服務、發票 Job、更表模板而家每個 Team 各有一份。舊資料已複製到每一個現有 Team。新 Team 由空白開始
+- 每個 Team 的 line item 編號已改回原本編號，唔會再喺後面加 Team 編號
+- 就算知道報名編號或員工編號，都唔可以改另一個 Team 的報名，亦唔可以睇另一個 Team 的員工薪資
+- 發票頁唔揀 Team 就出單時，只會出自己被指派的 Team。其他 Team 唔會被出到
+- 手機 PIN 登入不變，仍然只睇自己的更
+- 正式機未改。更新正式機之前要先備份
 
 ## 23/11/2026
-
-### 【測試機】畫面用字
-
-<http://3.114.114.143/attendance/users>
-
-- 角色名稱是 superadmin、admin、user。補習社同 CPA 都係呢三個名
-- 未指派時，CPA 顯示「未指派 Team，請聯絡 superadmin」；補習社顯示「未指派地點，請聯絡 superadmin」。可以登入，但未指派前看不到資料
-- 提示跟品牌：補習社寫地點、學生；CPA 寫 Team、Client
-- CPA 加發票 Job 會問「for this team」，只加入這個 Team。補習社的月份欄不變
-- 加服務時會寫明只屬於所選的地點（CPA 顯示 Team）。新 Team 由空白開始
-- 更表只會見到被指派的地點（CPA 顯示 Team）
-
-### 【測試機】帳號要先指派 Team
-
-<http://3.114.114.143/attendance/users>
-
-- superadmin 在 User Management 開帳號，並揀這個帳號可以看哪些 Team
-- admin 可以處理自己 Team 的客戶、出席、發票、收據、服務、更表和薪資，也可以刪自己 Team 的薪資紀錄。不能看 Audit Logs、不能刪 Team。開 user 帳號見 24/11/2026
-- user 可以處理自己 Team 的客戶、出席、QR、發票、收據（包括作廢和刪除）。看不到薪資、時薪和分成，也沒有更表管理
-- 服務、發票 Job、更表模板改成每個 Team 各有一份。舊資料已複製到每一個現有 Team。新 Team 由空白開始
-- 手機 PIN 登入不變，仍然只看自己的更
 
 ### 【測試機】年費、收據版面、發票 JOB
 

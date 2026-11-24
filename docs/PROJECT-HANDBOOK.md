@@ -134,15 +134,15 @@ QR Codes 頁（`/attendance/qr-codes`）可按註冊地點篩選。`GET /api/uni
 | `GET /api/audit-logs` | Superadmin |
 | `POST /api/auto-checkout/run` | Admin（**手動** Day-end；尚無 23:59 cron） |
 | `GET /api/auto-checkout/status` | Admin |
-| `GET/POST/PATCH /api/staff-profiles` | Admin |
+| `GET/POST/PATCH /api/staff-profiles` | Admin；只限自己 Team（含用員工編號直接讀寫薪資） |
 | `POST /api/staff-shifts/attendance/scan` | Staff PIN + `can_take_attendance` |
 | `POST /api/staff-shifts/attendance/scan/preview` | Staff PIN + `can_take_attendance` |
 | `GET /api/staff-shifts/attendance` | Staff PIN + `can_take_attendance` |
 | `GET/POST/PATCH /api/student-profiles` | Admin |
 | `GET/POST/PATCH/DELETE /api/course-spus` | Admin |
 | `GET/POST/PATCH/DELETE /api/course-skus` | Admin |
-| `GET/POST/PATCH/DELETE /api/course-enrollments` | Admin |
-| `GET/POST /api/course-enrollments/{id}/purchases` | Admin（堂費 top-up） |
+| `GET/POST/PATCH/DELETE /api/course-enrollments` | 辦公室帳號；只限自己 Team（含用報名編號直接讀寫） |
+| `GET/POST /api/course-enrollments/{id}/purchases` | 辦公室帳號、自己 Team（堂費 top-up） |
 | `GET/PATCH /api/tuition-invoices` | Admin |
 | `POST /api/tuition-invoices/generate` | Admin |
 | `POST /api/tuition-invoices/manual` | Admin（手動發票，建立即 issued） |
@@ -257,7 +257,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 
 #### 產生規則
 
-- `POST /api/tuition-invoices/generate?year=&month=`：納入該月與 **active** 或 **completed**（讀完／自動 Leave）報名日期視窗重疊的列；跳過 cancelled（員工 Leave）、完全落在該月外、未啟用 SKU；月費行另跳過 SKU `price` 為空（堂費不受 SKU 價限制，價錢在 purchase）。
+- `POST /api/tuition-invoices/generate?year=&month=`：可加 `location_id`。冇揀 Team 時，superadmin 出全部，admin／user 只出自己被指派的 Team。納入該月與 **active** 或 **completed**（讀完／自動 Leave）報名日期視窗重疊的列；跳過 cancelled（員工 Leave）、完全落在該月外、未啟用 SKU；月費行另跳過 SKU `price` 為空（堂費不受 SKU 價限制，價錢在 purchase）。
 - 已 `issued`／`paid` 的該月發票跳過；`draft` 可重產（替換行項目）。沒有有效報名的 `draft` 會刪除。
 - **未 Paid 可 Edit**（`draft`／`issued`）：PATCH `lines` 重算 `total`，編號預設不變。Generated 行保留 `enrollment_id`／SKU，避免 Edit 之後可以刪走仍有帳單的報名。Edit **不會**改 Courses：唔會改班價、學生價錢、入班日期，亦**不會** Join class。在單上 Add a class 只係多一行收費，名冊同 In class 人數不變。要入班必須去 Courses 撳 Join class，再 Generate。堂費 package 原本無價時，第一次出單寫入的 fee 會記在該次購買（`enrollment_purchases.unit_price`），唔係改 SKU。`paid`／`void` 連編號、備註、開單人、行項目都唔准改 → 422。例外：`payable_to_name`／`payee_name` 即使已 Paid 仍可改（補印退款抬頭）。Paid 之後用負數 Manual invoice（credit note）或先 Void receipt 變返 Issued。
 - `void`：PATCH 不能改回 draft。再 Generate 時，若仍有重疊的 active 報名則復活成 draft（清走舊 `invoice_no`／`issued_at`，再 Issue 派新號）；若已無有效報名則保持 void。要張單唔出返嚟：**先 Leave class／改 Courses，再 Generate**。
