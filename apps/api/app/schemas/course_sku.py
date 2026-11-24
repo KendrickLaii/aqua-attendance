@@ -83,3 +83,11 @@ class CourseSkuOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("meeting_weekdays", mode="before")
+    @classmethod
+    def weekdays_as_list(cls, value: object) -> object:
+        # Older rows stored an empty object instead of an empty list.
+        if value is None or isinstance(value, dict):
+            return []
+        return value
