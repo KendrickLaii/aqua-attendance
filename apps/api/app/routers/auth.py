@@ -103,5 +103,7 @@ async def logout(request: Request, response: Response, db: DB, body: TokenRefres
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> User:
-    return user
+async def me(user: CurrentUser, db: DB) -> UserOut:
+    from app.routers.users import _to_out
+
+    return await _to_out(db, user)

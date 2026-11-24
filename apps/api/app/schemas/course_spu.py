@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class CourseSpuCreate(BaseModel):
+    location_id: uuid.UUID
     code: str = Field(min_length=1, max_length=100)
     name_zh: str = Field(min_length=1, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
@@ -14,6 +15,7 @@ class CourseSpuCreate(BaseModel):
 
 
 class CourseSpuUpdate(BaseModel):
+    location_id: uuid.UUID | None = None
     code: str | None = Field(default=None, min_length=1, max_length=100)
     name_zh: str | None = Field(default=None, min_length=1, max_length=255)
     name_en: str | None = Field(default=None, max_length=255)
@@ -24,6 +26,7 @@ class CourseSpuUpdate(BaseModel):
 
 class CourseSpuOut(BaseModel):
     id: uuid.UUID
+    location_id: uuid.UUID
     code: str
     name_zh: str
     name_en: str | None = None

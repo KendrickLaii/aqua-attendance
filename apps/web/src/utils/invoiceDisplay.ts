@@ -115,6 +115,8 @@ export function invoiceLinesEditable(status: string): boolean {
 export function billingLabel(unit: string): string {
   if (unit === 'per_session')
     return 'Per class'
+  if (unit === 'yearly')
+    return 'Yearly'
   if (unit === 'manual')
     return 'Manual'
 

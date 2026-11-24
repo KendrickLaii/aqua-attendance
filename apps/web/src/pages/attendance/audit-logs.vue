@@ -6,7 +6,7 @@ import { formatAttendanceDateTime, getDateRangeIso } from '@/utils/attendanceDis
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 
-definePage({ meta: {} })
+definePage({ meta: { action: 'manage', subject: 'AuditLog' } })
 
 const pageSize = ref(40)
 const pageSizeOptions = [10, 20, 40, 60, 100]

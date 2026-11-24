@@ -1,8 +1,8 @@
 /** Staff-facing Cantonese hints. Button labels stay English. */
 
-export const COURSES_PAGE_HINT = '展開 Courses 揀科目，再開 Class Offerings 揀班。下面個名冊就係呢班嘅學生。'
+export const COURSES_PAGE_HINT = '每個地點有自己的科目同班次，其他地點睇唔到。展開 Courses 揀科目，再開 Class Offerings 揀班。下面個名冊就係呢班嘅學生。'
 
-export const JOIN_CLASS_HINT = '將學生加呢堂。之後去 Invoices 撳 Generate 先會出單。揀咗已經喺班嘅學生：堂費班變加堂，月費班變改計費日期。每次加堂係一筆新嘅買堂紀錄，分開出單。'
+export const JOIN_CLASS_HINT = '將學生加呢堂。之後去 Invoices 撳 Generate 先會出單。揀咗已經喺班嘅學生：堂費班變加堂，月費班同年費班變改計費日期。年費每年只在開始月份出一次（冇開始日就在 1 月）。每次加堂係一筆新嘅買堂紀錄，分開出單。'
 
 export const RENEW_SUBTITLE = '同一筆報名。發票只顯示月份，例如 Sept-26，唔會印開始同結束日。'
 

@@ -81,7 +81,7 @@ async def test_login_wrong_password(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_user_email_case_insensitive_duplicate(
-    client: AsyncClient, admin_token: str
+    client: AsyncClient,
 ) -> None:
     base = uuid.uuid4().hex[:8]
     await _insert_test_user(
@@ -89,6 +89,9 @@ async def test_create_user_email_case_insensitive_duplicate(
         email=f"Owner@{base}.test.com",
         password="testpass123",
     )
+    sa = f"sa_{uuid.uuid4().hex[:8]}"
+    await _insert_test_user(username=sa, email=f"{sa}@test.com", password="testpass123", role="superadmin")
+    login = await client.post("/api/auth/login", json={"username": sa, "password": "testpass123"})
     resp = await client.post(
         "/api/users",
         json={
@@ -98,15 +101,18 @@ async def test_create_user_email_case_insensitive_duplicate(
             "full_name": "Duplicate Email",
             "role": "admin",
         },
-        headers={"Authorization": f"Bearer {admin_token}"},
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     )
     assert resp.status_code == 409
     assert "email" in resp.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_create_user_email_stored_lowercase(client: AsyncClient, admin_token: str) -> None:
+async def test_create_user_email_stored_lowercase(client: AsyncClient) -> None:
     base = uuid.uuid4().hex[:8]
+    sa = f"sa_{uuid.uuid4().hex[:8]}"
+    await _insert_test_user(username=sa, email=f"{sa}@test.com", password="testpass123", role="superadmin")
+    login = await client.post("/api/auth/login", json={"username": sa, "password": "testpass123"})
     resp = await client.post(
         "/api/users",
         json={
@@ -116,7 +122,7 @@ async def test_create_user_email_stored_lowercase(client: AsyncClient, admin_tok
             "full_name": "Mixed Case",
             "role": "admin",
         },
-        headers={"Authorization": f"Bearer {admin_token}"},
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     )
     assert resp.status_code == 201
     assert resp.json()["email"] == f"mixedcase@{base}.test.com"

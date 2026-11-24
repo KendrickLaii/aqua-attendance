@@ -7,6 +7,7 @@ import {
   updateShiftTemplate,
 } from '@/api/attendance/shifts'
 import HelpBubble from '@/components/attendance/HelpBubble.vue'
+import { useBranding } from '@/composables/useBranding'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { SHIFT_COLORS, hhmm, timeToMinutes } from '@/utils/shiftDisplay'
 import { SHIFT_TEMPLATES_DIALOG_HINT } from '@/utils/shiftStaffCopy'
@@ -14,6 +15,7 @@ import { SHIFT_TEMPLATES_DIALOG_HINT } from '@/utils/shiftStaffCopy'
 const props = defineProps<{
   modelValue: boolean
   templates: ShiftTemplate[]
+  locationId: string | null
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +23,7 @@ const emit = defineEmits<{
   changed: []
 }>()
 
+const { t } = useBranding()
 const saving = ref(false)
 const error = ref('')
 const editingId = ref<string | null>(null)
@@ -66,7 +69,7 @@ async function save() {
     if (editingId.value)
       await updateShiftTemplate(editingId.value, payload)
     else
-      await createShiftTemplate({ ...payload, sort_order: props.templates.length })
+      await createShiftTemplate({ ...payload, location_id: props.locationId ?? undefined, sort_order: props.templates.length })
     resetForm()
     emit('changed')
   }
@@ -108,9 +111,15 @@ async function confirmDelete() {
     <VCard>
       <VCardTitle class="d-flex align-center">
         Shift templates
-        <HelpBubble :text="SHIFT_TEMPLATES_DIALOG_HINT" />
+        <HelpBubble :text="t(SHIFT_TEMPLATES_DIALOG_HINT)" />
       </VCardTitle>
       <VCardText>
+        <p
+          v-if="!locationId"
+          class="text-body-2 text-medium-emphasis mb-4"
+        >
+          Select a {{ t('location') }} on the shift board first. Templates belong to that {{ t('location') }} only.
+        </p>
         <VList
           v-if="templates.length"
           density="compact"

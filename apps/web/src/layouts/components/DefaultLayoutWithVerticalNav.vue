@@ -4,6 +4,7 @@ import rawNavItems, { filterNavByFeatures } from '@/navigation/vertical'
 import { loadFeatureFlags, useFeatureFlags } from '@/composables/useFeatureFlags'
 import { applyBrandPrimaryColor, loadBranding, useBranding } from '@/composables/useBranding'
 import { themeConfig } from '@themeConfig'
+import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 
 // Components
 import Footer from '@/layouts/components/Footer.vue'
@@ -18,7 +19,7 @@ import NavBarI18n from '@core/components/I18n.vue'
 import { VerticalNavLayout } from '@layouts'
 
 const { featureFlags } = useFeatureFlags()
-const { brand, applyNavTitles } = useBranding()
+const { brand, applyNavTitles, t } = useBranding()
 
 loadFeatureFlags()
 loadBranding()
@@ -33,10 +34,26 @@ watch(brand, b => {
 
 const navItems = computed(() =>
   applyNavTitles(filterNavByFeatures(rawNavItems, featureFlags.value, brand.value.hiddenRoutes)))
+
+const auth = useAttendanceAuthStore()
+const needsTeam = computed(() => {
+  const role = auth.role
+  if (role !== 'admin' && role !== 'user')
+    return false
+
+  return !(auth.user?.location_ids?.length)
+})
 </script>
 
 <template>
   <VerticalNavLayout :nav-items="navItems">
+    <VAlert
+      v-if="needsTeam"
+      type="warning"
+      variant="tonal"
+      class="ma-4"
+      :text="t('未指派地點，請聯絡 superadmin')"
+    />
     <!-- 👉 navbar -->
     <template #navbar="{ toggleVerticalOverlayNavActive }">
       <div class="d-flex h-100 align-center">

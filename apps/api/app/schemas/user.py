@@ -51,6 +51,7 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=6, max_length=128)
     full_name: str = Field(default="", max_length=255)
     role: Role = Role.admin
+    location_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class UserUpdate(BaseModel):
@@ -69,6 +70,7 @@ class UserUpdate(BaseModel):
     full_name: str | None = None
     role: Role | None = None
     is_active: bool | None = None
+    location_ids: list[uuid.UUID] | None = None
 
 
 class UserOut(BaseModel):
@@ -78,6 +80,8 @@ class UserOut(BaseModel):
     full_name: str
     role: str
     is_active: bool
+    location_ids: list[uuid.UUID] = Field(default_factory=list)
+    sees_all_teams: bool = False
     created_at: datetime
     updated_at: datetime
 

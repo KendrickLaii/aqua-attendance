@@ -4,6 +4,7 @@ import { fetchAllAttendancePages } from '@/utils/attendanceListApi'
 /** SPU — course subject/curriculum, e.g. "Primary Math". */
 export interface CourseSpu {
   id: string
+  location_id: string
   code: string
   name_zh: string
   name_en: string | null
@@ -15,6 +16,7 @@ export interface CourseSpu {
 }
 
 export interface CourseSpuPayload {
+  location_id?: string
   code: string
   name_zh: string
   name_en?: string | null
@@ -23,7 +25,7 @@ export interface CourseSpuPayload {
   is_active?: boolean
 }
 
-export type BillingUnit = 'monthly' | 'per_session'
+export type BillingUnit = 'monthly' | 'yearly' | 'per_session'
 
 export type Weekday =
   | 'monday'

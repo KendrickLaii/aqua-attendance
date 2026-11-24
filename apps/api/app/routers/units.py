@@ -4,7 +4,9 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
-from app.deps import DB, AdminOnly
+from app.deps import DB, OfficeOnly
+from app.models.user import Role
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.attendance import AttendanceEvent
 from app.models.course_enrollment import CourseEnrollment
 from app.models.payroll_record import PayrollRecord
@@ -18,6 +20,28 @@ from app.services import audit_log as audit_svc
 from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/units", tags=["units"])
+
+_PAY_FIELDS = (
+    "salary_grade",
+    "pay_type",
+    "hourly_rate",
+    "monthly_salary",
+    "ot_multiplier",
+    "commission_rate",
+)
+
+
+def _present(unit: Unit, viewer) -> UnitOut:
+    out = UnitOut.from_unit(unit)
+    if viewer.role == Role.user.value and out.staff_profile is not None:
+        for field in _PAY_FIELDS:
+            setattr(out.staff_profile, field, None)
+    return out
+
+
+def _reject_staff_write(viewer, unit_type: str) -> None:
+    if viewer.role == Role.user.value and unit_type == "staff":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff records are managed by a store manager")
 
 _VALID_ATTENDANCE_STATUSES = frozenset({"checked_in", "checked_out"})
 _VALID_EMPLOYMENT_TYPES = frozenset({"part_time", "full_time"})
@@ -63,7 +87,7 @@ def _unit_filters(
 
 @router.get("", response_model=list[UnitOut])
 async def list_units(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     unit_type: str | None = None,
@@ -94,6 +118,9 @@ async def list_units(
         employment_type=employment_type,
         registered_location_id=registered_location_id,
     )
+    limited = team_filter(Unit.registered_location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        clauses.append(limited)
 
     count_q = select(func.count()).select_from(Unit)
     q = select(Unit).options(*_UNIT_LOAD_OPTIONS)
@@ -108,13 +135,17 @@ async def list_units(
     q = q.order_by(Unit.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return [UnitOut.from_unit(unit) for unit in result.scalars().all()]
+    return [_present(unit, _admin) for unit in result.scalars().all()]
 
 
 @router.post("", response_model=UnitOut, status_code=status.HTTP_201_CREATED)
 async def create_unit(
-    body: UnitCreate, admin: AdminOnly, db: DB, request: Request
+    body: UnitCreate, admin: OfficeOnly, db: DB, request: Request
 ) -> UnitOut:
+    _reject_staff_write(admin, body.unit_type)
+    await require_team(db, admin, body.registered_location_id)
+    for scan_location_id in body.scan_location_ids:
+        await require_team(db, admin, scan_location_id)
     existing = await db.execute(select(Unit).where(Unit.code == body.code))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Unit code already exists")
@@ -155,19 +186,20 @@ async def create_unit(
 
     loaded = await unit_svc.load_unit_with_locations(db, unit.id)
     assert loaded is not None
-    return UnitOut.from_unit(loaded)
+    return _present(loaded, admin)
 
 
 @router.get("/{unit_id}", response_model=UnitOut)
-async def get_unit(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> UnitOut:
+async def get_unit(unit_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> UnitOut:
     unit = await unit_svc.load_unit_with_locations(db, unit_id)
     if not unit:
         raise HTTPException(status_code=404, detail="Unit not found")
-    return UnitOut.from_unit(unit)
+    await require_team(db, _admin, unit.registered_location_id)
+    return _present(unit, _admin)
 
 
 @router.patch("/{unit_id}", response_model=UnitOut)
-async def update_unit(unit_id: uuid.UUID, body: UnitUpdate, _admin: AdminOnly, db: DB) -> UnitOut:
+async def update_unit(unit_id: uuid.UUID, body: UnitUpdate, _admin: OfficeOnly, db: DB) -> UnitOut:
     result = await db.execute(
         select(Unit)
         .options(*_UNIT_LOAD_OPTIONS)
@@ -176,10 +208,17 @@ async def update_unit(unit_id: uuid.UUID, body: UnitUpdate, _admin: AdminOnly, d
     unit = result.scalar_one_or_none()
     if not unit:
         raise HTTPException(status_code=404, detail="Unit not found")
+    _reject_staff_write(_admin, unit.unit_type)
+    await require_team(db, _admin, unit.registered_location_id)
 
     update_data = body.model_dump(exclude_unset=True)
     scan_ids = update_data.pop("scan_location_ids", None)
     registered_location_id = update_data.pop("registered_location_id", None)
+    if registered_location_id is not None:
+        await require_team(db, _admin, registered_location_id)
+    if scan_ids is not None:
+        for scan_location_id in scan_ids:
+            await require_team(db, _admin, scan_location_id)
 
     if "code" in update_data:
         dup = await db.execute(
@@ -223,15 +262,17 @@ async def update_unit(unit_id: uuid.UUID, body: UnitUpdate, _admin: AdminOnly, d
 
     loaded = await unit_svc.load_unit_with_locations(db, unit_id)
     assert loaded is not None
-    return UnitOut.from_unit(loaded)
+    return _present(loaded, _admin)
 
 
 @router.delete("/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_unit(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+async def delete_unit(unit_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> None:
     result = await db.execute(select(Unit).where(Unit.id == unit_id))
     unit = result.scalar_one_or_none()
     if not unit:
         raise HTTPException(status_code=404, detail="Unit not found")
+    _reject_staff_write(_admin, unit.unit_type)
+    await require_team(db, _admin, unit.registered_location_id)
 
     has_events = await db.execute(
         select(AttendanceEvent.id).where(AttendanceEvent.unit_id == unit_id).limit(1)

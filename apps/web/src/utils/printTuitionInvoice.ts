@@ -43,6 +43,7 @@ export interface TuitionInvoicePrintData {
   currency?: string
   printVersion?: TuitionInvoicePrintVersion
   title?: string
+  numberLabel?: string
   payableTo?: string
   payeeName?: string
   template?: InvoicePrintTemplate

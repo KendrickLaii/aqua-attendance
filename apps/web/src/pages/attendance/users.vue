@@ -7,10 +7,12 @@ import {
   requiredValidator,
   usernameAttendanceValidator,
 } from '@core/utils/validators'
+import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { createUser, deleteUser, listUsersWithTotal, updateUser } from '@/api/attendance/users'
 import type { AttendanceUser } from '@/api/attendance/auth'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
+import { useBranding } from '@/composables/useBranding'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
 
@@ -19,6 +21,7 @@ const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
 
 const { authStore, ensureAccess } = useAttendanceAdminGate()
+const { t } = useBranding()
 
 const users = ref<AttendanceUser[]>([])
 const totalCount = ref(0)
@@ -39,8 +42,10 @@ const form = reactive({
   full_name: '',
   role: 'admin' as string,
   is_active: true,
+  location_ids: [] as string[],
 })
 
+const teamOptions = ref<LocationItem[]>([])
 const saving = ref(false)
 const saveError = ref('')
 const searchQuery = ref('')
@@ -92,18 +97,19 @@ const showEmptyCreateCta = computed(() => !searchQuery.value.trim())
 const roleSelectItems = computed(() => {
   if (authStore.isSuperAdmin) {
     return [
-      { title: 'Admin', value: 'admin' },
-      { title: 'Super Admin', value: 'superadmin' },
+      { title: 'user', value: 'user' },
+      { title: 'admin', value: 'admin' },
+      { title: 'superadmin', value: 'superadmin' },
     ]
   }
 
-  return [{ title: 'Admin', value: 'admin' }]
+  return [{ title: 'user', value: 'user' }]
 })
 
 onMounted(async () => {
   if (!(await ensureAccess()))
     return
-  await loadUsers()
+  await Promise.all([loadUsers(), listLocations().then(rows => { teamOptions.value = rows }).catch(() => { teamOptions.value = [] })])
 })
 
 async function loadUsers(isRefresh = false, resetPage = false) {
@@ -128,7 +134,7 @@ async function loadUsers(isRefresh = false, resetPage = false) {
   }
   catch (e) {
     console.error('Failed to load users', e)
-    loadError.value = formatApiError(e, 'Failed to load admin users. Please try again.')
+    loadError.value = formatApiError(e, 'Failed to load accounts. Please try again.')
   }
   finally {
     loading.value = false
@@ -161,8 +167,9 @@ function openCreate() {
     email: '',
     password: '',
     full_name: '',
-    role: 'admin',
+    role: authStore.isSuperAdmin ? 'admin' : 'user',
     is_active: true,
+    location_ids: [],
   })
   dialogOpen.value = true
   nextTick(() => userFormRef.value?.resetValidation())
@@ -179,6 +186,9 @@ function openEdit(u: AttendanceUser) {
     full_name: u.full_name,
     role: u.role,
     is_active: u.is_active,
+    location_ids: authStore.isSuperAdmin
+      ? [...(u.location_ids ?? [])]
+      : (u.location_ids ?? []).filter(id => teamOptions.value.some(team => team.id === id)),
   })
   dialogOpen.value = true
   nextTick(() => userFormRef.value?.resetValidation())
@@ -199,12 +209,14 @@ async function handleSave() {
         full_name: string
         role: string
         is_active: boolean
+        location_ids: string[]
         password?: string
       } = {
         email: form.email.trim(),
         full_name: form.full_name.trim(),
         role: form.role,
         is_active: form.is_active,
+        location_ids: form.role === 'superadmin' ? [] : [...form.location_ids],
       }
 
       if (form.password.trim())
@@ -218,6 +230,7 @@ async function handleSave() {
         password: form.password,
         full_name: form.full_name.trim(),
         role: form.role,
+        location_ids: form.role === 'superadmin' ? [] : [...form.location_ids],
       })
     }
     closeEditDialog()
@@ -270,17 +283,26 @@ function roleColor(role: string) {
 }
 
 function roleLabel(role: string) {
-  if (role === 'superadmin')
-    return 'Super Admin'
-  if (role === 'admin')
-    return 'Admin'
-
   return role
 }
 
-/** Admins may edit admin accounts only; superadmins may manage all. */
+const roleHint = computed(() => {
+  const place = t('location')
+  const places = t('locations')
+  if (form.role === 'superadmin')
+    return `Sees every ${place}. Can manage accounts, audit logs, and delete a ${place}. No ${place} assignment.`
+  if (form.role === 'admin')
+    return `admin for the ${places} below. Can run and delete payroll, use the shift board, and manage user accounts in these ${places}. Cannot edit admin accounts, delete accounts, delete a ${place}, or open audit logs.`
+
+  return `user for the ${places} below. Can handle ${t('students')}, attendance, QR, invoices, and receipts. Cannot see pay or the shift board.`
+})
+
+/** superadmin manages every account. admin manages user accounts only. */
 function canManageUser(u: AttendanceUser) {
-  return authStore.isSuperAdmin || u.role === 'admin'
+  if (authStore.isSuperAdmin)
+    return true
+
+  return authStore.user?.role === 'admin' && u.role === 'user'
 }
 
 function canDeleteUser(u: AttendanceUser) {
@@ -299,7 +321,7 @@ function canDeleteUser(u: AttendanceUser) {
         sm="8"
       >
         <div class="text-h5 font-weight-medium">
-          Admin Users
+          Login accounts
         </div>
         <div class="text-body-2 text-medium-emphasis">
           {{ pageSubtitle }}
@@ -324,7 +346,7 @@ function canDeleteUser(u: AttendanceUser) {
           prepend-icon="ri-add-line"
           @click="openCreate"
         >
-          Add Admin User
+          Add account
         </VBtn>
       </VCol>
     </VRow>
@@ -339,7 +361,7 @@ function canDeleteUser(u: AttendanceUser) {
       >
         <VTextField
           v-model="searchQuery"
-          placeholder="Search admin users..."
+          placeholder="Search accounts..."
           prepend-inner-icon="ri-search-line"
           density="compact"
           hide-details
@@ -383,7 +405,7 @@ function canDeleteUser(u: AttendanceUser) {
       class="mb-4"
       icon="ri-information-line"
     >
-      You can manage admin accounts only. Super admin accounts require a super admin to edit or delete.
+      You can create and edit user accounts for your {{ t('locations') }}. admin and superadmin accounts stay with a superadmin. You cannot delete an account.
     </VAlert>
 
     <VCard :loading="loading && !refreshing">
@@ -466,7 +488,7 @@ function canDeleteUser(u: AttendanceUser) {
                 class="text-center text-medium-emphasis py-6"
               >
                 <template v-if="showEmptyCreateCta">
-                  No admin users yet. Click <strong>Add Admin User</strong> to create one.
+                  No accounts yet. Click <strong>Add account</strong> to create one.
                 </template>
                 <template v-else>
                   No users match your search.
@@ -508,7 +530,7 @@ function canDeleteUser(u: AttendanceUser) {
 
     <AttendanceFormDialog
       v-model="dialogOpen"
-      :title="editingUser ? 'Edit Admin User' : 'Create Admin User'"
+      :title="editingUser ? 'Edit account' : 'Create account'"
       icon="ri-admin-line"
       :saving="saving"
       :error="saveError"
@@ -572,8 +594,26 @@ function canDeleteUser(u: AttendanceUser) {
           v-model="form.role"
           :items="roleSelectItems"
           label="Role"
+          :hint="roleHint"
+          persistent-hint
           density="compact"
           variant="outlined"
+          class="mb-3"
+        />
+        <VSelect
+          v-if="form.role !== 'superadmin'"
+          v-model="form.location_ids"
+          :items="teamOptions"
+          item-title="name_en"
+          item-value="id"
+          :label="t('Locations')"
+          multiple
+          chips
+          closable-chips
+          density="compact"
+          variant="outlined"
+          :hint="`Leave this empty and the account can sign in, but every page stays empty until a superadmin assigns a ${t('location')}.`"
+          persistent-hint
           class="mb-3"
         />
         <VSwitch
@@ -597,7 +637,7 @@ function canDeleteUser(u: AttendanceUser) {
       @clear-error="deleteError = ''"
     >
       <template v-if="deleteTarget">
-        This will permanently remove admin user
+        This will permanently remove the account
         <strong>{{ deleteTarget.username }}</strong> ({{ deleteTarget.full_name }}).
         This action cannot be undone.
       </template>

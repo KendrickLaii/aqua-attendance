@@ -127,7 +127,7 @@ const { t } = useBranding()
           <li>Private / variable-price classes: leave the class price empty. Record how many sessions were bought, then set the price on a <strong>Manual invoice</strong>.</li>
           <li>Packages with no price yet are skipped by Generate — bill them with a manual invoice.</li>
           <li>{{ t('Inactive classes and monthly classes with no price are skipped. Issued and paid bills are never changed. If a student drops a class after paying, Generate lists it under \'Needs a credit note\' — write a Manual credit note.') }}</li>
-          <li>The Location filter shows bills for that campus. All months and All locations show every bill.</li>
+          <li>The {{ t('location') }} filter shows bills for that {{ t('location') }}. You only see {{ t('locations') }} assigned to you. All months shows every bill in those {{ t('locations') }}.</li>
         </ul>
       </VAlert>
 

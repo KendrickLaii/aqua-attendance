@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.deps import AdminOnly, DB
+from app.deps import DB, OfficeOnly
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.location import Location
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
 from app.models.tuition_receipt import TuitionReceipt, TuitionReceiptInvoice, TuitionReceiptStatus
@@ -178,7 +179,7 @@ async def _get_receipt(db: DB, receipt_id: uuid.UUID, *, for_update: bool = Fals
 
 @router.get("", response_model=list[TuitionReceiptOut])
 async def list_tuition_receipts(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     year: int | None = None,
@@ -189,6 +190,12 @@ async def list_tuition_receipts(
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[TuitionReceiptOut]:
     clauses = []
+    if location_id is not None:
+        await require_team(db, _admin, location_id)
+    else:
+        limited = team_filter(TuitionReceipt.location_id, await assigned_team_ids(db, _admin))
+        if limited is not None:
+            clauses.append(limited)
     if year is not None and month is not None:
         if not (1 <= month <= 12):
             raise HTTPException(status_code=422, detail="month must be 1-12")
@@ -215,7 +222,7 @@ async def list_tuition_receipts(
 
 @router.get("/open-invoices", response_model=list[TuitionInvoiceOut])
 async def list_open_invoices(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     location_id: uuid.UUID,
     unit_id: uuid.UUID | None = None,
@@ -254,7 +261,7 @@ async def list_open_invoices(
 
 @router.get("/next-no", response_model=dict[str, str])
 async def next_receipt_no(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     location_id: uuid.UUID,
     date_value: date = Query(alias="date"),
@@ -263,14 +270,16 @@ async def next_receipt_no(
 
 
 @router.get("/{receipt_id}", response_model=TuitionReceiptOut)
-async def get_tuition_receipt(receipt_id: uuid.UUID, _admin: AdminOnly, db: DB) -> TuitionReceiptOut:
-    return _receipt_to_out(await _get_receipt(db, receipt_id))
+async def get_tuition_receipt(receipt_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> TuitionReceiptOut:
+    receipt = await _get_receipt(db, receipt_id)
+    await require_team(db, _admin, receipt.location_id)
+    return _receipt_to_out(receipt)
 
 
 @router.post("", response_model=TuitionReceiptOut, status_code=status.HTTP_201_CREATED)
 async def create_tuition_receipt(
     body: TuitionReceiptCreate,
-    admin: AdminOnly,
+    admin: OfficeOnly,
     db: DB,
 ) -> TuitionReceiptOut:
     location_result = await db.execute(
@@ -279,6 +288,7 @@ async def create_tuition_receipt(
     location = location_result.scalar_one_or_none()
     if not location:
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+    await require_team(db, admin, body.location_id)
 
     if body.unit_id is not None:
         unit = await db.get(Unit, body.unit_id)
@@ -380,10 +390,11 @@ async def create_tuition_receipt(
 @router.post("/{receipt_id}/void", response_model=TuitionReceiptOut)
 async def void_tuition_receipt(
     receipt_id: uuid.UUID,
-    admin: AdminOnly,
+    admin: OfficeOnly,
     db: DB,
 ) -> TuitionReceiptOut:
     receipt = await _get_receipt(db, receipt_id, for_update=True)
+    await require_team(db, admin, receipt.location_id)
     if receipt.status != TuitionReceiptStatus.posted.value:
         raise HTTPException(status_code=422, detail="Receipt is already void")
 
@@ -412,8 +423,9 @@ async def void_tuition_receipt(
 
 
 @router.delete("/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tuition_receipt(receipt_id: uuid.UUID, admin: AdminOnly, db: DB) -> None:
+async def delete_tuition_receipt(receipt_id: uuid.UUID, admin: OfficeOnly, db: DB) -> None:
     receipt = await _get_receipt(db, receipt_id, for_update=True)
+    await require_team(db, admin, receipt.location_id)
     if receipt.status != TuitionReceiptStatus.void.value:
         raise HTTPException(status_code=422, detail="Only voided receipts can be deleted")
     receipt_no = receipt.receipt_no

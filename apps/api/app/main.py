@@ -23,6 +23,7 @@ from app.routers import (
     course_skus,
     course_spus,
     inventory,
+    invoice_jobs,
     inventory_invoicing,
     inventory_purchasing,
     inventory_reports,
@@ -140,6 +141,7 @@ app.include_router(inventory_sales.router, prefix="/api", dependencies=[Depends(
 app.include_router(inventory_invoicing.router, prefix="/api", dependencies=[Depends(require_inventory_enabled)])
 app.include_router(inventory_reports.router, prefix="/api", dependencies=[Depends(require_inventory_enabled)])
 app.include_router(tuition_invoices.router, prefix="/api")
+app.include_router(invoice_jobs.router, prefix="/api")
 app.include_router(tuition_receipts.router, prefix="/api")  # receipts settle issued invoices
 app.include_router(shifts.templates_router, prefix="/api")
 app.include_router(shifts.router, prefix="/api")

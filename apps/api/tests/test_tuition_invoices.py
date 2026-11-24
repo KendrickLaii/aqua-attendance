@@ -31,10 +31,19 @@ def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _create_spu(client: AsyncClient, admin_token: str) -> dict:
+async def _create_spu(client: AsyncClient, admin_token: str, location_id: str | None = None) -> dict:
+    if location_id is None:
+        loc = await client.post(
+            "/api/locations",
+            json={"name_en": f"Team {uuid.uuid4().hex[:4]}"},
+            headers=_auth(admin_token),
+        )
+        assert loc.status_code == 201, loc.text
+        location_id = loc.json()["id"]
     resp = await client.post(
         "/api/course-spus",
         json={
+            "location_id": location_id,
             "code": f"ENG-{uuid.uuid4().hex[:6]}",
             "name_zh": "英文進修班",
             "subject": "english",
@@ -307,6 +316,31 @@ def test_line_from_enrollment_per_session_skips_prior_month_purchase() -> None:
     purchase = _purchase(purchased_at=date(2026, 5, 20))
     enrollment = SimpleNamespace(id=uuid.uuid4(), sku=sku, unit_price=None, purchases=[purchase])
     assert _one_line(enrollment, _ctx(first_day=date(2026, 6, 1), last_day=date(2026, 6, 30))) is None
+
+
+def test_line_from_enrollment_yearly_bills_only_in_start_month() -> None:
+    sku = SimpleNamespace(id=uuid.uuid4(), code="YR", name_zh="年費", price=1200, billing_unit="yearly")
+    enrollment = SimpleNamespace(
+        id=uuid.uuid4(), sku=sku, unit_price=None, purchases=[], start_date=date(2024, 11, 3),
+    )
+    november = _ctx(first_day=date(2026, 11, 1), last_day=date(2026, 11, 30))
+    june = _ctx(first_day=date(2026, 6, 1), last_day=date(2026, 6, 30))
+    line = _one_line(enrollment, november)
+    assert line is not None
+    assert line.billing_unit == "yearly"
+    assert float(line.amount) == 1200
+    assert _one_line(enrollment, june) is None
+
+
+def test_line_from_enrollment_yearly_without_start_bills_in_january() -> None:
+    sku = SimpleNamespace(id=uuid.uuid4(), code="YR", name_zh="年費", price=900, billing_unit="yearly")
+    enrollment = SimpleNamespace(
+        id=uuid.uuid4(), sku=sku, unit_price=None, purchases=[], start_date=None,
+    )
+    january = _ctx(first_day=date(2026, 1, 1), last_day=date(2026, 1, 31))
+    february = _ctx(first_day=date(2026, 2, 1), last_day=date(2026, 2, 28))
+    assert _one_line(enrollment, january) is not None
+    assert _one_line(enrollment, february) is None
 
 
 def test_line_from_enrollment_monthly_ignores_purchased_quantity() -> None:

@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import selectinload
 
-from app.deps import AdminOnly, DB, SuperAdminOnly
+from app.deps import AdminOnly, DB
 from app.models.payroll_record import PayrollRecord, PayrollStatus
 from app.models.unit import Unit
 from app.schemas.payroll_record import (
@@ -25,6 +25,7 @@ from app.services.payroll_generator import (
     generate_monthly_payroll,
 )
 from app.services.payroll_status import can_transition_payroll_status
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 
 router = APIRouter(prefix="/payroll-records", tags=["payroll-records"])
 
@@ -71,6 +72,9 @@ async def list_payroll_records(
     count_q = select(func.count()).select_from(PayrollRecord)
 
     clauses = []
+    limited = team_filter(Unit.registered_location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        clauses.append(PayrollRecord.unit_id.in_(select(Unit.id).where(limited)))
     if unit_id:
         clauses.append(PayrollRecord.unit_id == unit_id)
     if status:
@@ -117,6 +121,9 @@ async def payroll_record_stats(
 ) -> PayrollRecordStatsOut:
     """Month-wide payroll totals matching list filters (not paginated)."""
     clauses = []
+    limited = team_filter(Unit.registered_location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        clauses.append(PayrollRecord.unit_id.in_(select(Unit.id).where(limited)))
     if unit_id:
         clauses.append(PayrollRecord.unit_id == unit_id)
     if status:
@@ -215,6 +222,8 @@ async def get_payroll_record(
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Payroll record not found")
+    if record.unit is not None:
+        await require_team(db, _admin, record.unit.registered_location_id)
     return _record_to_out(record)
 
 
@@ -226,6 +235,9 @@ async def payroll_commission_detail(
     record = await db.get(PayrollRecord, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Payroll record not found")
+    unit = await db.get(Unit, record.unit_id)
+    if unit is not None:
+        await require_team(db, _admin, unit.registered_location_id)
 
     rows_by_unit, commission_staff, _ = await collect_commission_rows(
         db,
@@ -324,11 +336,15 @@ async def update_payroll_record(
     record_id: uuid.UUID, body: PayrollRecordUpdate, admin: AdminOnly, db: DB
 ) -> PayrollRecordOut:
     result = await db.execute(
-        select(PayrollRecord).where(PayrollRecord.id == record_id)
+        select(PayrollRecord)
+        .options(selectinload(PayrollRecord.unit))
+        .where(PayrollRecord.id == record_id)
     )
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Payroll record not found")
+    if record.unit is not None:
+        await require_team(db, admin, record.unit.registered_location_id)
 
     update_data = body.model_dump(exclude_unset=True)
     old_status = record.status
@@ -426,6 +442,18 @@ async def generate_payroll_records(
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
 
+    teams = await assigned_team_ids(db, admin)
+    if teams is not None:
+        allowed = set((await db.scalars(
+            select(Unit.id).where(team_filter(Unit.registered_location_id, teams))
+        )).all())
+        if unit_ids is None:
+            unit_ids = list(allowed)
+        elif any(unit_id not in allowed for unit_id in unit_ids):
+            raise HTTPException(status_code=403, detail="Not assigned to this team")
+        if not unit_ids:
+            return {"created": 0, "updated": 0, "skipped": 0}
+
     stale = await detect_stale_summary_units(
         db, year=year, month=month, unit_type=unit_type, unit_ids=unit_ids
     )
@@ -459,12 +487,18 @@ async def generate_payroll_records(
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_payroll_record(record_id: uuid.UUID, _admin: SuperAdminOnly, db: DB) -> None:
+async def delete_payroll_record(record_id: uuid.UUID, admin: AdminOnly, db: DB) -> None:
     result = await db.execute(
-        select(PayrollRecord).where(PayrollRecord.id == record_id)
+        select(PayrollRecord)
+        .options(selectinload(PayrollRecord.unit))
+        .where(PayrollRecord.id == record_id)
     )
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Payroll record not found")
+    if admin.role != "superadmin":
+        if record.unit is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not assigned to this team")
+        await require_team(db, admin, record.unit.registered_location_id)
     await db.delete(record)
     await db.commit()

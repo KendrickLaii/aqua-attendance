@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { type CourseSpu, type CourseSpuPayload, createCourseSpu, updateCourseSpu } from '@/api/attendance/courses'
+import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useBranding } from '@/composables/useBranding'
 
@@ -17,16 +18,20 @@ const { t } = useBranding()
 
 const saving = ref(false)
 const saveError = ref('')
-const form = reactive({ code: '', name_zh: '', name_en: '', subject: '', description: '', is_active: true })
-const canSave = computed(() => form.code.trim().length > 0 && form.name_zh.trim().length > 0)
+const locations = ref<LocationItem[]>([])
+const form = reactive({ location_id: '', code: '', name_zh: '', name_en: '', subject: '', description: '', is_active: true })
+const canSave = computed(() => form.location_id.length > 0 && form.code.trim().length > 0 && form.name_zh.trim().length > 0)
 
-watch(() => props.modelValue, open => {
+watch(() => props.modelValue, async open => {
   if (!open)
     return
   saveError.value = ''
+  if (!locations.value.length)
+    locations.value = await listLocations().catch(() => [])
   const spu = props.editingSpu
   if (spu) {
     Object.assign(form, {
+      location_id: spu.location_id,
       code: spu.code,
       name_zh: spu.name_zh,
       name_en: spu.name_en ?? '',
@@ -36,7 +41,7 @@ watch(() => props.modelValue, open => {
     })
   }
   else {
-    Object.assign(form, { code: '', name_zh: '', name_en: '', subject: '', description: '', is_active: true })
+    Object.assign(form, { location_id: locations.value.length === 1 ? locations.value[0].id : '', code: '', name_zh: '', name_en: '', subject: '', description: '', is_active: true })
   }
 })
 
@@ -46,6 +51,7 @@ async function save() {
   saving.value = true
   saveError.value = ''
   const payload: CourseSpuPayload = {
+    location_id: form.location_id,
     code: form.code.trim(),
     name_zh: form.name_zh.trim(),
     name_en: form.name_en.trim() || null,
@@ -91,12 +97,24 @@ async function save() {
           A {{ t('course') }} is the subject family (SPU). {{ t('Class offerings') }} (SKU) sit underneath it.
         </p>
         <VRow>
+          <VCol cols="12">
+            <VSelect
+              v-model="form.location_id"
+              :items="locations"
+              item-title="name_en"
+              item-value="id"
+              :label="t('location')"
+              :hint="`Only this ${t('location')} can see and edit this ${t('course')}. A new ${t('location')} starts with an empty list.`"
+              persistent-hint
+              density="comfortable"
+            />
+          </VCol>
           <VCol cols="6">
             <VTextField
               v-model="form.code"
               label="Code"
               placeholder="MATH"
-              hint="Short unique id. Required."
+              :hint="`Short id, unique inside this ${t('location')}. Required.`"
               persistent-hint
               density="comfortable"
             />

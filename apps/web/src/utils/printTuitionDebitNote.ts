@@ -181,11 +181,17 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
     ? new Date().getFullYear()
     : data.issueDate.getFullYear()
 
+  const heading = data.title?.trim() || 'DEBIT NOTE'
+
+  const numberLabel = data.numberLabel?.trim() || 'DN NO:'
+
+  const numberText = data.numberLabel ? data.invoiceNo.trim() : debitNoteNumber(data)
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Debit note ${escapeHtml(data.invoiceNo)} — ${escapeHtml(data.studentName)}</title>
+  <title>${escapeHtml(heading)} ${escapeHtml(data.invoiceNo)} — ${escapeHtml(data.studentName)}</title>
   <style>
     * { box-sizing: border-box; }
     @page { size: A4 portrait; margin: 0; }
@@ -381,12 +387,12 @@ export function buildDebitNotePrintHtml(data: TuitionInvoicePrintData): string {
         ${billToBlock(data)}
       </div>
       <div class="refs">
-        <div><span class="k">DN NO:</span> ${escapeHtml(debitNoteNumber(data))}</div>
+        <div><span class="k">${escapeHtml(numberLabel)}</span> ${escapeHtml(numberText)}</div>
         <div><span class="k">DATE:</span> ${escapeHtml(formatDebitDate(data.issueDate))}</div>
       </div>
     </div>
 
-    <h1>DEBIT NOTE</h1>
+    <h1>${escapeHtml(heading)}</h1>
 
     <table class="items">
       <thead>

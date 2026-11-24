@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-BillingUnit = Literal["monthly", "per_session"]
+BillingUnit = Literal["monthly", "yearly", "per_session"]
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 

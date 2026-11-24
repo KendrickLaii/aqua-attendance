@@ -55,6 +55,7 @@ def require_roles(*roles: Role):
 
 
 AdminOnly = Annotated[User, Depends(require_roles(Role.admin, Role.superadmin))]
+OfficeOnly = Annotated[User, Depends(require_roles(Role.user, Role.admin, Role.superadmin))]
 SuperAdminOnly = Annotated[User, Depends(require_roles(Role.superadmin))]
 
 

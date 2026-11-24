@@ -1,7 +1,9 @@
 import type { BillingUnit, CourseEnrollment, CourseSku, EnrollmentPurchase, Weekday } from '../api/attendance/courses'
+import { billingUnitShortLabel } from './courseEnrollmentDisplay'
 
 export const billingUnitOptions: { title: string; value: BillingUnit }[] = [
   { title: 'Monthly (月費)', value: 'monthly' },
+  { title: 'Yearly (年費)', value: 'yearly' },
   { title: 'Per session (堂費)', value: 'per_session' },
 ]
 
@@ -41,7 +43,12 @@ export function rosterPriceLabel(sku: Pick<CourseSku, 'price' | 'billing_unit'>)
     return 'No price — Generate will skip this class'
   const amount = `HK$${Number(sku.price).toFixed(2)}`
 
-  return sku.billing_unit === 'per_session' ? `${amount} / session` : `${amount} / month`
+  if (sku.billing_unit === 'per_session')
+    return `${amount} / session`
+  if (sku.billing_unit === 'yearly')
+    return `${amount} / year`
+
+  return `${amount} / month`
 }
 
 export function skuBillingPreview(billingUnit: BillingUnit, price: number | null): string {
@@ -49,6 +56,8 @@ export function skuBillingPreview(billingUnit: BillingUnit, price: number | null
   const priceText = hasPrice ? `HK$${Number(price).toFixed(2)}` : 'no price (Generate skips this class)'
   if (billingUnit === 'per_session')
     return `Bills ${priceText} × sessions purchased, once, when the student is enrolled. Not affected by attendance.`
+  if (billingUnit === 'yearly')
+    return `Bills ${priceText} once a year, in the enrollment start month (January if there is no start date).`
 
   return `Bills ${priceText} once for each overlapping month. Class days are shown on the roster only.`
 }
@@ -125,7 +134,11 @@ export function enrollmentPriceParts(
   if (sku?.price != null) {
     return {
       amount: `HK$${Number(sku.price).toFixed(2)}`,
-      hint: sku.billing_unit === 'per_session' ? 'class / session' : 'class / month',
+      hint: sku.billing_unit === 'per_session'
+        ? 'class / session'
+        : sku.billing_unit === 'yearly'
+          ? 'class / year'
+          : 'class / month',
     }
   }
 
@@ -165,14 +178,20 @@ export function matchesRosterSearch(
 export function enrollPriceHint(sku: Pick<CourseSku, 'price' | 'billing_unit'> | null): string {
   if (!sku)
     return ''
-  if (sku.price == null)
-    return '呢班未有價錢。請填呢個學生嘅月費，否則 Generate 會跳過。'
+  if (sku.price == null) {
+    const feeName = sku.billing_unit === 'yearly' ? '年費' : '月費'
+
+    return `呢班未有價錢。請填呢個學生嘅${feeName}，否則 Generate 會跳過。`
+  }
 
   const amount = `HK$${Number(sku.price).toFixed(2)}`
 
-  return sku.billing_unit === 'per_session'
-    ? `留空就用呢班嘅堂費（${amount}）。`
-    : `留空就用呢班嘅月費（${amount}）。`
+  if (sku.billing_unit === 'per_session')
+    return `留空就用呢班嘅堂費（${amount}）。`
+  if (sku.billing_unit === 'yearly')
+    return `留空就用呢班嘅年費（${amount}）。`
+
+  return `留空就用呢班嘅月費（${amount}）。`
 }
 
 export function enrollBillPreview(input: {
@@ -195,6 +214,8 @@ export function enrollBillPreview(input: {
   }
   if (price == null)
     return 'No class price — this student will be skipped at Generate until a price is set.'
+  if (sku.billing_unit === 'yearly')
+    return `Bills HK$${price.toFixed(2)} once a year, in the start month (January if none).`
 
   return `Bills HK$${price.toFixed(2)} every month that overlaps the billed window.`
 }
@@ -281,6 +302,6 @@ export function rosterMetaLine(input: {
     sku.meeting_weekdays?.length ? meetingDaysLabel(sku.meeting_weekdays) : '',
     input.staffName,
     sku.location_id ? input.locationName : '',
-    `${sku.billing_unit === 'per_session' ? '堂費' : '月費'} · ${rosterPriceLabel(sku)}`,
+    `${billingUnitShortLabel(sku.billing_unit)} · ${rosterPriceLabel(sku)}`,
   ].filter(Boolean).join(' · ')
 }

@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.deps import AdminOnly, DB
+from app.deps import DB, OfficeOnly
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase
 from app.models.course_sku import CourseSku
 from app.models.credit_note_counter import CreditNoteCounter
@@ -108,7 +109,7 @@ _INVOICE_LOAD = (
 
 @router.get("", response_model=list[TuitionInvoiceOut])
 async def list_tuition_invoices(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     year: int | None = None,
@@ -119,6 +120,12 @@ async def list_tuition_invoices(
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> list[TuitionInvoiceOut]:
     clauses = []
+    if location_id is not None:
+        await require_team(db, _admin, location_id)
+    else:
+        limited = team_filter(TuitionInvoice.location_id, await assigned_team_ids(db, _admin))
+        if limited is not None:
+            clauses.append(limited)
     if year is not None and month is not None:
         if not (1 <= month <= 12):
             raise HTTPException(status_code=422, detail="month must be 1-12")
@@ -148,7 +155,7 @@ async def list_tuition_invoices(
 
 @router.post("/generate", response_model=TuitionInvoiceGenerateResult)
 async def generate_tuition_invoices(
-    admin: AdminOnly,
+    admin: OfficeOnly,
     db: DB,
     year: int,
     month: int,
@@ -156,6 +163,10 @@ async def generate_tuition_invoices(
 ) -> TuitionInvoiceGenerateResult:
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
+    if location_id is not None:
+        await require_team(db, admin, location_id)
+    elif admin.role != "superadmin":
+        raise HTTPException(status_code=422, detail="Choose a team")
 
     try:
         result = await generate_monthly_tuition_invoices(
@@ -475,7 +486,7 @@ def _normalize_credit_no(value: str) -> str:
 
 @router.get("/next-no", response_model=TuitionInvoiceNextNo)
 async def next_invoice_no(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     location_id: uuid.UUID | None = Query(default=None),
     series: str = Query(default="invoice"),
@@ -489,7 +500,7 @@ async def next_invoice_no(
 
 @router.post("/allocate-no", response_model=TuitionInvoiceNextNo)
 async def allocate_invoice_no(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     location_id: uuid.UUID | None = Query(default=None),
 ) -> TuitionInvoiceNextNo:
@@ -696,13 +707,14 @@ def _manual_period(
 @router.post("/manual", response_model=TuitionInvoiceOut, status_code=status.HTTP_201_CREATED)
 async def create_manual_tuition_invoice(
     body: TuitionInvoiceManualCreate,
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
 ) -> TuitionInvoiceOut:
     """Create and issue a manual (ad-hoc) invoice, storing it for reprint/payment tracking."""
     location = await db.get(Location, body.location_id)
     if not location:
         raise HTTPException(status_code=422, detail="location_id does not reference an existing location")
+    await require_team(db, _admin, body.location_id)
 
     tutor_unit: Unit | None = None
     if body.tutor_unit_id is not None:
@@ -801,19 +813,20 @@ async def create_manual_tuition_invoice(
 
 
 @router.get("/{invoice_id}", response_model=TuitionInvoiceOut)
-async def get_tuition_invoice(invoice_id: uuid.UUID, _admin: AdminOnly, db: DB) -> TuitionInvoiceOut:
+async def get_tuition_invoice(invoice_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> TuitionInvoiceOut:
     result = await db.execute(
         select(TuitionInvoice).options(*_INVOICE_LOAD).where(TuitionInvoice.id == invoice_id)
     )
     invoice = result.scalar_one_or_none()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    await require_team(db, _admin, invoice.location_id)
     return (await _invoices_to_out(db, [invoice]))[0]
 
 
 @router.patch("/{invoice_id}", response_model=TuitionInvoiceOut)
 async def update_tuition_invoice(
-    invoice_id: uuid.UUID, body: TuitionInvoiceUpdate, admin: AdminOnly, db: DB
+    invoice_id: uuid.UUID, body: TuitionInvoiceUpdate, admin: OfficeOnly, db: DB
 ) -> TuitionInvoiceOut:
     result = await db.execute(
         select(TuitionInvoice)
@@ -824,6 +837,7 @@ async def update_tuition_invoice(
     invoice = result.scalar_one_or_none()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    await require_team(db, admin, invoice.location_id)
 
     update_data = body.model_dump(exclude_unset=True)
     line_payload = update_data.pop("lines", None)
@@ -981,13 +995,14 @@ async def update_tuition_invoice(
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tuition_invoice(invoice_id: uuid.UUID, admin: AdminOnly, db: DB) -> None:
+async def delete_tuition_invoice(invoice_id: uuid.UUID, admin: OfficeOnly, db: DB) -> None:
     result = await db.execute(
         select(TuitionInvoice).where(TuitionInvoice.id == invoice_id).with_for_update()
     )
     invoice = result.scalar_one_or_none()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    await require_team(db, admin, invoice.location_id)
     if invoice.status != TuitionInvoiceStatus.void.value:
         raise HTTPException(status_code=422, detail="Only cancelled invoices can be deleted")
 

@@ -1,5 +1,10 @@
 import type { TuitionReceipt } from '@/api/attendance/tuitionReceipts'
-import type { TuitionInvoicePrintHeader, TuitionInvoicePrintLine } from '@/utils/printTuitionInvoice'
+import { getUnit } from '@/api/attendance/units'
+import type { LocationItem } from '@/api/attendance/locations'
+import type { InvoicePrintTemplate } from '@/config/brands'
+import type { TuitionInvoicePrintData, TuitionInvoicePrintHeader, TuitionInvoicePrintLine } from '@/utils/printTuitionInvoice'
+import { printTuitionInvoice } from '@/utils/printTuitionInvoice'
+import { debitNoteTeamCopy } from '@/utils/printTuitionDebitNote'
 import { DEFAULT_INVOICE_CURRENCY, invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
 import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/printWindow'
 
@@ -16,6 +21,10 @@ export interface TuitionReceiptPrintData {
   logoUrl?: string
   header?: TuitionInvoicePrintHeader
   title?: string
+  template?: InvoicePrintTemplate
+  paymentText?: string
+  billTo?: string
+  clientCode?: string
 }
 
 const DEFAULT_HEADER: TuitionInvoicePrintHeader = {
@@ -58,9 +67,56 @@ function formatReceiptDate(date: Date): string {
   return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`
 }
 
+export async function debitNoteReceiptOptions(
+  receipt: TuitionReceipt,
+  location: LocationItem | undefined,
+): Promise<Pick<TuitionReceiptPrintData, 'template' | 'paymentText' | 'billTo' | 'clientCode'>> {
+  const team = location ? debitNoteTeamCopy(location) : { paymentText: '' }
+  let billTo = ''
+
+  if (receipt.unit_id) {
+    try {
+      const unit = await getUnit(receipt.unit_id)
+
+      billTo = (unit.address ?? '').trim()
+    }
+    catch {
+      billTo = ''
+    }
+  }
+
+  return {
+    template: 'debit-note',
+    paymentText: team.paymentText,
+    billTo,
+    clientCode: receipt.unit_code ?? '',
+  }
+}
+
+function receiptAsDebitNote(data: TuitionReceiptPrintData): TuitionInvoicePrintData {
+  const paidBy = data.paidBy.trim()
+  const paymentText = [data.paymentText?.trim(), paidBy ? `PAID BY: ${paidBy}` : ''].filter(Boolean).join('\n')
+
+  return {
+    template: 'debit-note',
+    invoiceNo: data.receiptNo,
+    issueDate: data.receiptDate,
+    studentName: data.studentName,
+    clientCode: data.clientCode,
+    billTo: data.billTo,
+    lines: data.lines,
+    currency: data.currency,
+    remark: data.description,
+    paymentText,
+    title: data.title || 'OFFICIAL RECEIPT',
+    numberLabel: 'NO.',
+    printVersion: 'full',
+  }
+}
+
 export function tuitionReceiptPrintData(
   receipt: TuitionReceipt,
-  options?: { logoUrl?: string; header?: TuitionInvoicePrintHeader },
+  options?: Partial<Pick<TuitionReceiptPrintData, 'logoUrl' | 'header' | 'template' | 'paymentText' | 'billTo' | 'clientCode'>>,
 ): TuitionReceiptPrintData {
   const studentName = receipt.payer_name || receipt.unit_name || ''
 
@@ -71,6 +127,10 @@ export function tuitionReceiptPrintData(
     paidBy: receipt.paid_by,
     description: receipt.description ?? '',
     currency: receipt.currency,
+    template: options?.template,
+    paymentText: options?.paymentText,
+    billTo: options?.billTo,
+    clientCode: options?.clientCode,
     logoUrl: options?.logoUrl,
     header: options?.header,
     title: Number(receipt.amount) < 0 ? 'CREDIT NOTE' : 'OFFICIAL RECEIPT',
@@ -316,6 +376,12 @@ ${copies}
 }
 
 export async function printTuitionReceipt(printWindow: Window, data: TuitionReceiptPrintData): Promise<void> {
+  if (data.template === 'debit-note') {
+    await printTuitionInvoice(printWindow, receiptAsDebitNote(data))
+
+    return
+  }
+
   const logoUrl = data.logoUrl || RECEIPT_LOGO_URL
   const inlinedLogo = logoUrl ? await inlineLogoForPrint(logoUrl) : ''
   if (printWindow.closed)

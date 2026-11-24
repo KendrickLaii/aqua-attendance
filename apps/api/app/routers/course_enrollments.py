@@ -5,7 +5,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.deps import AdminOnly, DB
+from app.deps import DB, OfficeOnly
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.course_enrollment import CourseEnrollment, EnrollmentPurchase, EnrollmentStatus
 from app.models.course_sku import CourseSku
 from app.models.tuition_invoice import TuitionInvoice, TuitionInvoiceLine, TuitionInvoiceStatus
@@ -95,7 +96,7 @@ def _require_purchased_quantity_for_per_session(sku: CourseSku, purchased_quanti
 
 @router.get("", response_model=list[CourseEnrollmentOut])
 async def list_course_enrollments(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     unit_id: uuid.UUID | None = None,
@@ -108,6 +109,9 @@ async def list_course_enrollments(
     await db.commit()
 
     clauses = []
+    limited = team_filter(CourseSku.location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        clauses.append(CourseEnrollment.sku_id.in_(select(CourseSku.id).where(limited)))
     if unit_id is not None:
         clauses.append(CourseEnrollment.unit_id == unit_id)
     if sku_id is not None:
@@ -130,7 +134,7 @@ async def list_course_enrollments(
 
 
 @router.post("", response_model=CourseEnrollmentOut, status_code=status.HTTP_201_CREATED)
-async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOnly, db: DB) -> CourseEnrollmentOut:
+async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: OfficeOnly, db: DB) -> CourseEnrollmentOut:
     unit_result = await db.execute(select(Unit).where(Unit.id == body.unit_id))
     unit = unit_result.scalar_one_or_none()
     if not unit:
@@ -141,6 +145,7 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
     sku = sku_result.scalar_one_or_none()
     if not sku:
         raise HTTPException(status_code=404, detail="Course SKU not found")
+    await require_team(db, _admin, sku.location_id)
     await _require_enrollable_sku(db, sku)
     await _require_single_active_enrollment(db, unit_id=body.unit_id, sku_id=body.sku_id)
     _require_purchased_quantity_for_per_session(sku, body.purchased_quantity)
@@ -185,7 +190,7 @@ async def create_course_enrollment(body: CourseEnrollmentCreate, _admin: AdminOn
 
 
 @router.get("/{enrollment_id}", response_model=CourseEnrollmentOut)
-async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB) -> CourseEnrollmentOut:
+async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> CourseEnrollmentOut:
     await expire_past_end_date_enrollments(db, enrollment_id=enrollment_id)
     await db.commit()
     result = await db.execute(
@@ -201,7 +206,7 @@ async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db:
 
 @router.patch("/{enrollment_id}", response_model=CourseEnrollmentOut)
 async def update_course_enrollment(
-    enrollment_id: uuid.UUID, body: CourseEnrollmentUpdate, _admin: AdminOnly, db: DB
+    enrollment_id: uuid.UUID, body: CourseEnrollmentUpdate, _admin: OfficeOnly, db: DB
 ) -> CourseEnrollmentOut:
     result = await db.execute(
         select(CourseEnrollment)
@@ -278,7 +283,7 @@ async def update_course_enrollment(
 
 
 @router.delete("/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+async def delete_course_enrollment(enrollment_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> None:
     result = await db.execute(select(CourseEnrollment).where(CourseEnrollment.id == enrollment_id))
     enrollment = result.scalar_one_or_none()
     if not enrollment:
@@ -314,7 +319,7 @@ async def delete_course_enrollment(enrollment_id: uuid.UUID, _admin: AdminOnly, 
 
 @router.post("/{enrollment_id}/purchases", response_model=EnrollmentPurchaseOut, status_code=status.HTTP_201_CREATED)
 async def create_enrollment_purchase(
-    enrollment_id: uuid.UUID, body: EnrollmentPurchaseCreate, _admin: AdminOnly, db: DB
+    enrollment_id: uuid.UUID, body: EnrollmentPurchaseCreate, _admin: OfficeOnly, db: DB
 ) -> EnrollmentPurchase:
     result = await db.execute(
         select(CourseEnrollment).options(selectinload(CourseEnrollment.purchases)).where(CourseEnrollment.id == enrollment_id)
@@ -355,7 +360,7 @@ async def create_enrollment_purchase(
 
 @router.get("/{enrollment_id}/purchases", response_model=list[EnrollmentPurchaseOut])
 async def list_enrollment_purchases(
-    enrollment_id: uuid.UUID, _admin: AdminOnly, db: DB
+    enrollment_id: uuid.UUID, _admin: OfficeOnly, db: DB
 ) -> list[EnrollmentPurchase]:
     result = await db.execute(
         select(EnrollmentPurchase).where(EnrollmentPurchase.enrollment_id == enrollment_id)

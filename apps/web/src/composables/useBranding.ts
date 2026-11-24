@@ -66,6 +66,7 @@ function cpaLabel(label: string): string {
     return label
 
   return label
+    .replaceAll('地點', 'Team')
     .replaceAll('學生', 'Client')
     .replaceAll('Students', 'Clients')
     .replaceAll('students', 'clients')

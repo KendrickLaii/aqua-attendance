@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.deps import DB, AdminOnly
+from app.deps import DB, OfficeOnly
+from app.services.team_access import assigned_team_ids, require_team
 from app.limiter import limiter
 from app.models.attendance import AttendanceEvent
 from app.models.unit import Unit
@@ -35,13 +36,14 @@ router = APIRouter(prefix="/attendance", tags=["attendance"])
 
 
 @router.post("/scan/preview", response_model=ScanPreviewOut)
-async def scan_preview(body: ScanPreviewRequest, _admin: AdminOnly, db: DB) -> ScanPreviewOut:
+async def scan_preview(body: ScanPreviewRequest, _admin: OfficeOnly, db: DB) -> ScanPreviewOut:
     """Resolve QR to unit identity without recording attendance (for confirm UI)."""
     unit, _location_id, location_name, _payload = await resolve_unit_for_scan(
         db,
         qr_token=body.qr_token,
         location_id=body.location_id,
     )
+    await require_team(db, _admin, _location_id)
     return ScanPreviewOut(
         unit_id=unit.id,
         unit_code=unit.code,
@@ -54,7 +56,7 @@ async def scan_preview(body: ScanPreviewRequest, _admin: AdminOnly, db: DB) -> S
 
 @router.post("/scan", response_model=AttendanceOut)
 @limiter.limit(settings.SCAN_RATE_LIMIT)
-async def scan(request: Request, body: ScanRequest, admin: AdminOnly, db: DB) -> AttendanceOut:
+async def scan(request: Request, body: ScanRequest, admin: OfficeOnly, db: DB) -> AttendanceOut:
     """Scan a unit's QR.
 
     Pass ``event_type`` (``check_in`` or ``check_out``) to record that
@@ -68,6 +70,7 @@ async def scan(request: Request, body: ScanRequest, admin: AdminOnly, db: DB) ->
         location_id=body.location_id,
         location_text=body.location,
     )
+    await require_team(db, admin, location_id)
 
     explicit_type = body.event_type.value if body.event_type is not None else None
 
@@ -88,7 +91,7 @@ async def scan(request: Request, body: ScanRequest, admin: AdminOnly, db: DB) ->
 
 @router.get("/stats", response_model=AttendanceDayStatsOut)
 async def attendance_day_stats(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
@@ -100,13 +103,14 @@ async def attendance_day_stats(
         date_from=date_from,
         date_to=date_to,
         include_voided=include_voided,
+        location_ids=await assigned_team_ids(db, _admin),
     )
     return AttendanceDayStatsOut(**stats)
 
 
 @router.get("", response_model=list[AttendanceOut])
 async def list_attendance(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     unit_id: uuid.UUID | None = None,
@@ -129,6 +133,7 @@ async def list_attendance(
         event_type=event_type,
         source=source,
         include_voided=include_voided,
+        location_ids=await assigned_team_ids(db, _admin),
         page=page,
         page_size=page_size,
     )
@@ -138,7 +143,7 @@ async def list_attendance(
 
 @router.post("/manual", response_model=AttendanceOut, status_code=status.HTTP_201_CREATED)
 async def create_manual_correction(
-    body: ManualCorrectionRequest, admin: AdminOnly, db: DB, request: Request
+    body: ManualCorrectionRequest, admin: OfficeOnly, db: DB, request: Request
 ) -> AttendanceOut:
     result = await db.execute(select(Unit).where(Unit.id == body.unit_id))
     unit = result.scalar_one_or_none()
@@ -146,6 +151,7 @@ async def create_manual_correction(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
     ensure_attendance_eligible(unit)
     location_id, location_name = await resolve_location(db, body.location_id, body.location)
+    await require_team(db, admin, location_id)
 
     event = await att_svc.manual_correction(
         db,
@@ -174,7 +180,7 @@ async def create_manual_correction(
 
 @router.get("/export/csv")
 async def export_csv(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     unit_id: uuid.UUID | None = None,
     unit_type: str | None = None,
@@ -195,6 +201,7 @@ async def export_csv(
         date_from=date_from,
         date_to=date_to,
         include_voided=include_voided,
+        location_ids=await assigned_team_ids(db, _admin),
     )
     buf = StringIO()
     writer = csv.writer(buf)
@@ -248,7 +255,7 @@ async def export_csv(
 
 @router.post("/{event_id}/void", response_model=AttendanceOut)
 async def void_attendance_event(
-    event_id: uuid.UUID, admin: AdminOnly, db: DB, request: Request
+    event_id: uuid.UUID, admin: OfficeOnly, db: DB, request: Request
 ) -> AttendanceOut:
     """Void (soft-delete) an attendance event. Sets voided_at timestamp."""
     result = await db.execute(
@@ -259,6 +266,7 @@ async def void_attendance_event(
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Attendance event not found")
+    await require_team(db, admin, event.location_id)
     if event.voided_at is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

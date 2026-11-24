@@ -16,6 +16,7 @@ import {
 } from '@/api/attendance/courses'
 import { type Unit, getUnit, listAllUnits, listUnits } from '@/api/attendance/units'
 import { resolvePrintLogoUrl } from '@/api/attendance/uploads'
+import AttendanceConfirmDialog from '@/components/attendance/AttendanceConfirmDialog.vue'
 import HelpBubble from '@/components/attendance/HelpBubble.vue'
 import InvoicePrintVersionDialog from '@/components/attendance/invoices/InvoicePrintVersionDialog.vue'
 import { useBranding } from '@/composables/useBranding'
@@ -40,6 +41,12 @@ import {
   tuitionInvoicePrintData,
 } from '@/utils/printTuitionInvoice'
 import { debitNoteTeamCopy } from '@/utils/printTuitionDebitNote'
+import {
+  type InvoiceJobOption,
+  createInvoiceJob,
+  deleteInvoiceJob,
+  listInvoiceJobs,
+} from '@/api/attendance/invoiceJobs'
 
 const props = defineProps<{
   modelValue: boolean
@@ -138,6 +145,11 @@ watch(() => manualForm.value.staff, name => {
 })
 
 const isDebitNote = computed(() => brand.value.invoicePrintTemplate === 'debit-note')
+const jobs = ref<InvoiceJobOption[]>([])
+const jobSearches = reactive<Record<number, string>>({})
+const jobNames = computed(() => jobs.value.map(job => job.name))
+const jobToDelete = ref<InvoiceJobOption | null>(null)
+const deletingJob = ref(false)
 
 const currencyItems = INVOICE_CURRENCIES.map(item => ({
   title: `${item.code} (${item.symbol})`,
@@ -189,9 +201,87 @@ function suggestManualStaff(staffId: string | null | undefined) {
     manualForm.value.staff = staffName(staffId)
 }
 
+async function loadJobs() {
+  if (!isDebitNote.value || !manualLocationId.value)
+    return
+  try {
+    jobs.value = await listInvoiceJobs(manualLocationId.value)
+  }
+  catch (e) {
+    manualError.value = formatApiError(e, 'Could not load jobs.')
+  }
+}
+
+function savedJob(name: string) {
+  return jobs.value.find(job => job.name.toLowerCase() === name.trim().toLowerCase())
+}
+
+function pendingJobName(row: ManualInvoiceRow) {
+  const name = row.month.trim()
+  if (!name || savedJob(name))
+    return ''
+
+  return name
+}
+
+function settleJob(row: ManualInvoiceRow) {
+  const existing = savedJob(row.month)
+  if (existing)
+    row.month = existing.name
+}
+
+function stageNewJob(idx: number) {
+  const name = (jobSearches[idx] || '').trim()
+  const row = manualForm.value.rows[idx]
+  if (!name || !row)
+    return
+  row.month = savedJob(name)?.name ?? name
+}
+
+function dismissNewJob(row: ManualInvoiceRow) {
+  row.month = ''
+}
+
+async function confirmAddJob(row: ManualInvoiceRow) {
+  const name = pendingJobName(row)
+  if (!name || !manualLocationId.value)
+    return
+  try {
+    const created = await createInvoiceJob(name, manualLocationId.value)
+    if (!jobs.value.some(job => job.id === created.id))
+      jobs.value = [...jobs.value, created]
+    row.month = created.name
+  }
+  catch (e) {
+    manualError.value = formatApiError(e, 'Could not save this job.')
+  }
+}
+
+function askRemoveJob(name: string) {
+  jobToDelete.value = jobs.value.find(item => item.name === name) ?? null
+}
+
+async function confirmRemoveJob() {
+  const job = jobToDelete.value
+  if (!job)
+    return
+  deletingJob.value = true
+  try {
+    await deleteInvoiceJob(job.id)
+    jobs.value = jobs.value.filter(item => item.id !== job.id)
+    jobToDelete.value = null
+  }
+  catch (e) {
+    manualError.value = formatApiError(e, 'Could not delete this job.')
+  }
+  finally {
+    deletingJob.value = false
+  }
+}
+
 function blankManualRow(): ManualInvoiceRow {
   return {
-    month: props.defaultMonthLabel,
+    month: isDebitNote.value ? '' : props.defaultMonthLabel,
     course: '',
     fee: '',
     qty: '',
@@ -385,7 +475,7 @@ const manualClassOptions = computed(() =>
     .map(k => ({
       ...k,
       title: `${k.code} · ${k.name_zh}`,
-      subtitle: `${k.billing_unit === 'per_session' ? `Per ${t('class')}` : 'Monthly'}${k.price != null ? ` · HK$${Number(k.price).toFixed(2)}` : ''}`,
+      subtitle: `${k.billing_unit === 'per_session' ? `Per ${t('class')}` : k.billing_unit === 'yearly' ? 'Yearly' : 'Monthly'}${k.price != null ? ` · HK$${Number(k.price).toFixed(2)}` : ''}`,
     })),
 )
 
@@ -438,6 +528,8 @@ async function suggestManualInvoiceNo() {
 watch(manualLocationId, () => {
   if (open.value && !isEdit.value)
     suggestManualInvoiceNo()
+  if (open.value)
+    loadJobs()
 })
 
 function rowsFromInvoice(invoice: TuitionInvoice, negateFee: boolean): ManualInvoiceRow[] {
@@ -546,6 +638,7 @@ watch(open, value => {
   loadManualStudents()
   loadManualSkus()
   loadManualStaff()
+  loadJobs()
   if (!isEdit.value)
     suggestManualInvoiceNo()
 })
@@ -1035,7 +1128,7 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
         >
           <thead>
             <tr>
-              <th>{{ t('Month') }}</th>
+              <th>{{ isDebitNote ? 'Job' : t('Month') }}</th>
               <th>{{ t('Class') }}</th>
               <th style="width: 110px;">
                 Price
@@ -1058,7 +1151,65 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
               :key="idx"
             >
               <td>
+                <VCombobox
+                  v-if="isDebitNote"
+                  v-model="row.month"
+                  :items="jobNames"
+                  :search="jobSearches[idx] ?? ''"
+                  density="compact"
+                  hide-details
+                  placeholder="Job"
+                  @update:search="jobSearches[idx] = $event"
+                  @blur="settleJob(row)"
+                >
+                  <template #item="{ props: itemProps, item }">
+                    <VListItem v-bind="itemProps">
+                      <template #append>
+                        <VBtn
+                          icon="ri-close-line"
+                          size="x-small"
+                          variant="text"
+                          aria-label="Delete job"
+                          @mousedown.prevent
+                          @click.stop="askRemoveJob(String(item.title))"
+                        />
+                      </template>
+                    </VListItem>
+                  </template>
+                  <template #no-data>
+                    <VListItem
+                      v-if="(jobSearches[idx] || '').trim()"
+                      :title="`Use ${(jobSearches[idx] || '').trim()}`"
+                      @mousedown.prevent
+                      @click="stageNewJob(idx)"
+                    />
+                  </template>
+                </VCombobox>
+                <div
+                  v-if="isDebitNote && pendingJobName(row)"
+                  class="d-flex align-center flex-wrap gap-1 mt-1"
+                >
+                  <span class="text-caption">Add “{{ pendingJobName(row) }}” for this {{ t('location') }}?</span>
+                  <VBtn
+                    size="x-small"
+                    color="primary"
+                    variant="tonal"
+                    @mousedown.prevent
+                    @click="confirmAddJob(row)"
+                  >
+                    Add
+                  </VBtn>
+                  <VBtn
+                    size="x-small"
+                    variant="text"
+                    @mousedown.prevent
+                    @click="dismissNewJob(row)"
+                  >
+                    Cancel
+                  </VBtn>
+                </div>
                 <VTextField
+                  v-if="!isDebitNote"
                   v-model="row.month"
                   density="compact"
                   hide-details
@@ -1193,6 +1344,18 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
     v-model="versionDialogOpen"
     @select="onPrintVersionChosen"
   />
+
+  <AttendanceConfirmDialog
+    :model-value="Boolean(jobToDelete)"
+    :title="jobToDelete ? `Delete ${jobToDelete.name}?` : 'Delete job?'"
+    confirm-label="Delete"
+    confirm-color="error"
+    :loading="deletingJob"
+    @confirm="confirmRemoveJob"
+    @cancel="jobToDelete = null"
+  >
+    This removes it from this {{ t('location') }}'s list. Invoices that already use this job keep the name.
+  </AttendanceConfirmDialog>
 </template>
 
 <style scoped lang="scss">

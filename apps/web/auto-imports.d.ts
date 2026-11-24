@@ -20,10 +20,17 @@ declare global {
   const BILLING_HELP_STOP: typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']
   const COOKIE_MAX_AGE_1_YEAR: typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']
   const COURSES_PAGE_HINT: typeof import('./src/utils/billingStaffCopy')['COURSES_PAGE_HINT']
+  const DEFAULT_INVOICE_CURRENCY: typeof import('./src/utils/invoiceDisplay')['DEFAULT_INVOICE_CURRENCY']
+  const DRJ_DEBIT_NOTE_FOOTER: typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_FOOTER']
+  const DRJ_DEBIT_NOTE_HEADER: typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_HEADER']
+  const DRJ_DEBIT_NOTE_LETTERHEAD: typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_LETTERHEAD']
   const DRJ_DEBIT_NOTE_LOGO: typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_LOGO']
   const EffectScope: typeof import('vue')['EffectScope']
   const GENERATE_CONFIRM: typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']
   const INVOICE_CANCEL_GENERATED: typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']
+  const INVOICE_CURRENCIES: typeof import('./src/utils/invoiceDisplay')['INVOICE_CURRENCIES']
+  const INVOICE_LETTERHEAD_CAPTION: typeof import('./src/utils/printTuitionDebitNote')['INVOICE_LETTERHEAD_CAPTION']
+  const INVOICE_LOGO_CAPTION: typeof import('./src/utils/printTuitionDebitNote')['INVOICE_LOGO_CAPTION']
   const JOIN_CLASS_HINT: typeof import('./src/utils/billingStaffCopy')['JOIN_CLASS_HINT']
   const JOIN_FIRST_STUDENT: typeof import('./src/utils/billingStaffCopy')['JOIN_FIRST_STUDENT']
   const LEAVE_CLASS_CONFIRM: typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']
@@ -132,6 +139,8 @@ declare global {
   const customRef: typeof import('vue')['customRef']
   const cycleSort: typeof import('./src/utils/tableSort')['cycleSort']
   const dateTimeLocalToIso: typeof import('./src/utils/attendanceDisplay')['dateTimeLocalToIso']
+  const debitNoteReceiptOptions: typeof import('./src/utils/printTuitionReceipt')['debitNoteReceiptOptions']
+  const debitNoteTeamCopy: typeof import('./src/utils/printTuitionDebitNote')['debitNoteTeamCopy']
   const debouncedRef: typeof import('@vueuse/core')['debouncedRef']
   const debouncedWatch: typeof import('@vueuse/core')['debouncedWatch']
   const defaultCreditFee: typeof import('./src/utils/invoiceDisplay')['defaultCreditFee']
@@ -189,6 +198,7 @@ declare global {
   const formatKeyLabel: typeof import('./src/utils/review-format')['formatKeyLabel']
   const formatLastAttendance: typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']
   const formatMoney: typeof import('./src/utils/inventoryDisplay')['formatMoney']
+  const formatMoneyByCurrency: typeof import('./src/utils/invoiceDisplay')['formatMoneyByCurrency']
   const formatMonthLabel: typeof import('./src/utils/shiftDisplay')['formatMonthLabel']
   const formatNumber: typeof import('./src/utils/formatters')['formatNumber']
   const formatPayrollChequeNumber: typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']
@@ -225,6 +235,7 @@ declare global {
   const integerValidator: typeof import('./src/@core/utils/validators')['integerValidator']
   const internalEmailValidator: typeof import('./src/@core/utils/validators')['internalEmailValidator']
   const invoiceClassNames: typeof import('./src/utils/invoiceDisplay')['invoiceClassNames']
+  const invoiceCurrencySymbol: typeof import('./src/utils/invoiceDisplay')['invoiceCurrencySymbol']
   const invoiceLineFormula: typeof import('./src/utils/invoiceDisplay')['invoiceLineFormula']
   const invoiceLinesEditable: typeof import('./src/utils/invoiceDisplay')['invoiceLinesEditable']
   const invoiceMonthLabel: typeof import('./src/utils/printTuitionInvoice')['invoiceMonthLabel']
@@ -400,12 +411,14 @@ declare global {
   const skuIdFromRouteQuery: typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']
   const sortHeaderTitle: typeof import('./src/utils/tableSort')['sortHeaderTitle']
   const sortIconFor: typeof import('./src/utils/tableSort')['sortIconFor']
+  const sortedCurrencyCodes: typeof import('./src/utils/invoiceDisplay')['sortedCurrencyCodes']
   const sortedPurchases: typeof import('./src/utils/courseRosterDisplay')['sortedPurchases']
   const staffInitials: typeof import('./src/utils/shiftDisplay')['staffInitials']
   const staffRowsForLocation: typeof import('./src/utils/shiftDisplay')['staffRowsForLocation']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const studentCode: typeof import('./src/utils/courseRosterDisplay')['studentCode']
   const studentLabel: typeof import('./src/utils/courseRosterDisplay')['studentLabel']
+  const sumByCurrency: typeof import('./src/utils/invoiceDisplay')['sumByCurrency']
   const summaryStatusColor: typeof import('./src/utils/summaryDisplay')['summaryStatusColor']
   const summaryStatusIcon: typeof import('./src/utils/summaryDisplay')['summaryStatusIcon']
   const summaryStatusLabel: typeof import('./src/utils/summaryDisplay')['summaryStatusLabel']
@@ -693,10 +706,13 @@ declare module 'vue' {
     readonly BILLING_HELP_STOP: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['BILLING_HELP_STOP']>
     readonly COOKIE_MAX_AGE_1_YEAR: UnwrapRef<typeof import('./src/utils/constants')['COOKIE_MAX_AGE_1_YEAR']>
     readonly COURSES_PAGE_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['COURSES_PAGE_HINT']>
+    readonly DEFAULT_INVOICE_CURRENCY: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['DEFAULT_INVOICE_CURRENCY']>
+    readonly DRJ_DEBIT_NOTE_LETTERHEAD: UnwrapRef<typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_LETTERHEAD']>
     readonly DRJ_DEBIT_NOTE_LOGO: UnwrapRef<typeof import('./src/utils/printTuitionDebitNote')['DRJ_DEBIT_NOTE_LOGO']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly GENERATE_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['GENERATE_CONFIRM']>
     readonly INVOICE_CANCEL_GENERATED: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['INVOICE_CANCEL_GENERATED']>
+    readonly INVOICE_CURRENCIES: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['INVOICE_CURRENCIES']>
     readonly JOIN_CLASS_HINT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['JOIN_CLASS_HINT']>
     readonly JOIN_FIRST_STUDENT: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['JOIN_FIRST_STUDENT']>
     readonly LEAVE_CLASS_CONFIRM: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['LEAVE_CLASS_CONFIRM']>
@@ -804,6 +820,8 @@ declare module 'vue' {
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
     readonly cycleSort: UnwrapRef<typeof import('./src/utils/tableSort')['cycleSort']>
     readonly dateTimeLocalToIso: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['dateTimeLocalToIso']>
+    readonly debitNoteReceiptOptions: UnwrapRef<typeof import('./src/utils/printTuitionReceipt')['debitNoteReceiptOptions']>
+    readonly debitNoteTeamCopy: UnwrapRef<typeof import('./src/utils/printTuitionDebitNote')['debitNoteTeamCopy']>
     readonly debouncedRef: UnwrapRef<typeof import('@vueuse/core')['debouncedRef']>
     readonly debouncedWatch: UnwrapRef<typeof import('@vueuse/core')['debouncedWatch']>
     readonly defaultCreditFee: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['defaultCreditFee']>
@@ -860,6 +878,7 @@ declare module 'vue' {
     readonly formatKeyLabel: UnwrapRef<typeof import('./src/utils/review-format')['formatKeyLabel']>
     readonly formatLastAttendance: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatLastAttendance']>
     readonly formatMoney: UnwrapRef<typeof import('./src/utils/inventoryDisplay')['formatMoney']>
+    readonly formatMoneyByCurrency: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['formatMoneyByCurrency']>
     readonly formatMonthLabel: UnwrapRef<typeof import('./src/utils/shiftDisplay')['formatMonthLabel']>
     readonly formatNumber: UnwrapRef<typeof import('./src/utils/formatters')['formatNumber']>
     readonly formatPayrollChequeNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['formatPayrollChequeNumber']>
@@ -896,6 +915,7 @@ declare module 'vue' {
     readonly integerValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['integerValidator']>
     readonly internalEmailValidator: UnwrapRef<typeof import('./src/@core/utils/validators')['internalEmailValidator']>
     readonly invoiceClassNames: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceClassNames']>
+    readonly invoiceCurrencySymbol: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceCurrencySymbol']>
     readonly invoiceLineFormula: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceLineFormula']>
     readonly invoiceLinesEditable: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['invoiceLinesEditable']>
     readonly invoiceMonthLabel: UnwrapRef<typeof import('./src/utils/printTuitionInvoice')['invoiceMonthLabel']>
@@ -1069,12 +1089,14 @@ declare module 'vue' {
     readonly skuIdFromRouteQuery: UnwrapRef<typeof import('./src/utils/courseEnrollmentDisplay')['skuIdFromRouteQuery']>
     readonly sortHeaderTitle: UnwrapRef<typeof import('./src/utils/tableSort')['sortHeaderTitle']>
     readonly sortIconFor: UnwrapRef<typeof import('./src/utils/tableSort')['sortIconFor']>
+    readonly sortedCurrencyCodes: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['sortedCurrencyCodes']>
     readonly sortedPurchases: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['sortedPurchases']>
     readonly staffInitials: UnwrapRef<typeof import('./src/utils/shiftDisplay')['staffInitials']>
     readonly staffRowsForLocation: UnwrapRef<typeof import('./src/utils/shiftDisplay')['staffRowsForLocation']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly studentCode: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['studentCode']>
     readonly studentLabel: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['studentLabel']>
+    readonly sumByCurrency: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['sumByCurrency']>
     readonly summaryStatusColor: UnwrapRef<typeof import('./src/utils/summaryDisplay')['summaryStatusColor']>
     readonly summaryStatusIcon: UnwrapRef<typeof import('./src/utils/summaryDisplay')['summaryStatusIcon']>
     readonly summaryStatusLabel: UnwrapRef<typeof import('./src/utils/summaryDisplay')['summaryStatusLabel']>

@@ -16,6 +16,7 @@ import {
   type TuitionInvoicePrintHeader,
 } from '@/utils/printTuitionInvoice'
 import {
+  debitNoteReceiptOptions,
   openTuitionReceiptPrintPlaceholder,
   printTuitionReceipt,
   tuitionReceiptPrintData,
@@ -25,7 +26,7 @@ definePage({ meta: {} })
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useBranding()
+const { brand, t } = useBranding()
 const { ensureAccess } = useAttendanceAdminGate()
 
 const LOCATION_FILTER_KEY = 'tuition-receipt-location'
@@ -329,10 +330,16 @@ async function submit() {
       description: description.value.trim() || null,
     })
     const location = locations.value.find(item => item.id === created.location_id)
-    await printTuitionReceipt(printWindow, tuitionReceiptPrintData(created, {
-      logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
-      header: location ? headerFromLocation(location) : undefined,
-    }))
+    const debitNote = brand.value.invoicePrintTemplate === 'debit-note'
+
+    const printOptions = debitNote
+      ? await debitNoteReceiptOptions(created, location)
+      : {
+        logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
+        header: location ? headerFromLocation(location) : undefined,
+      }
+
+    await printTuitionReceipt(printWindow, tuitionReceiptPrintData(created, printOptions))
     await router.push('/attendance/receipts')
   }
   catch (e) {

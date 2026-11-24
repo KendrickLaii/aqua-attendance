@@ -335,7 +335,7 @@ const enrollButtonLabel = computed(() => {
 
 watch(selectedStudentId, () => {
   const existing = existingEnrollment.value
-  if (existing && rosterSku.value?.billing_unit === 'monthly') {
+  if (existing && rosterSku.value?.billing_unit !== 'per_session') {
     // Prefill so submitting doesn't wipe the current window. Per-session
     // top-ups and non-roster picks keep whatever was typed.
     enrollStartDate.value = existing.start_date ?? ''
@@ -1154,8 +1154,10 @@ defineExpose({ scrollIntoView })
             >
               <template #append-inner>
                 <HelpBubble
-                  v-if="rosterSku?.billing_unit === 'monthly'"
-                  :text="ONGOING_END_DATE_HINT"
+                  v-if="rosterSku?.billing_unit !== 'per_session'"
+                  :text="rosterSku?.billing_unit === 'yearly'
+                    ? '年費每年在開始月份出一次。留空就繼續計，過咗結束日會自動 Leave。'
+                    : ONGOING_END_DATE_HINT"
                   inline
                 />
               </template>
@@ -1184,7 +1186,7 @@ defineExpose({ scrollIntoView })
           >
             <VTextField
               v-model.number="enrollUnitPrice"
-              label="Price / month"
+              :label="rosterSku?.billing_unit === 'yearly' ? 'Price / year' : 'Price / month'"
               type="number"
               min="0"
               step="0.01"

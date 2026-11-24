@@ -30,6 +30,7 @@ export async function createUser(payload: {
   password: string
   full_name: string
   role?: string
+  location_ids?: string[]
 }): Promise<AttendanceUser> {
   return await $attendanceApi('/users', { method: 'POST', body: payload })
 }
@@ -40,6 +41,7 @@ export async function updateUser(userId: string, payload: {
   full_name?: string
   role?: string
   is_active?: boolean
+  location_ids?: string[]
 }): Promise<AttendanceUser> {
   return await $attendanceApi(`/users/${userId}`, { method: 'PATCH', body: payload })
 }

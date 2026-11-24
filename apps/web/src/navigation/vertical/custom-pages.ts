@@ -18,6 +18,8 @@ export default [
     title: 'Staff Management',
     icon: { icon: 'ri-briefcase-line' },
     to: 'attendance-staff',
+    action: 'manage',
+    subject: 'StaffAdmin',
   },
   {
     title: 'QR Codes',
@@ -38,11 +40,15 @@ export default [
     title: 'Shifts',
     icon: { icon: 'ri-calendar-schedule-line' },
     to: 'attendance-shifts',
+    action: 'manage',
+    subject: 'Shift',
   },
   {
     title: 'Payroll',
     icon: { icon: 'ri-money-cny-circle-line' },
     to: 'attendance-payroll',
+    action: 'manage',
+    subject: 'Payroll',
   },
   {
     title: 'Courses',

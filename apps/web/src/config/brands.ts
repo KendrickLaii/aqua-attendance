@@ -48,7 +48,7 @@ export const brands: Record<string, Brand> = {
     // TODO: replace with the real CPA logo once the client provides assets
     logo: aquaLogo,
     primaryColor: '#1565C0', // placeholder until the client confirms a palette
-    hiddenRoutes: ['attendance-units'],
+    hiddenRoutes: ['attendance-units', 'attendance-inventory'],
     terms: {
       'nav:Courses': 'Services',
       'Course Management': 'Service Management',
@@ -106,6 +106,7 @@ export const brands: Record<string, Brand> = {
       'Create Location': 'Create Team',
       'location': 'team',
       'locations': 'teams',
+      'Locations': 'Teams',
       'Search locations...': 'Search teams...',
       'No locations match your filters.': 'No teams match your filters.',
       'Failed to load locations. Please try again.': 'Failed to load teams. Please try again.',

@@ -120,7 +120,7 @@ async def test_generator_deleting_stale_invoices_is_logged(
     spu = (
         await client.post(
             "/api/course-spus",
-            json={"code": f"SPU-{uuid.uuid4().hex[:5]}", "name_zh": "課"},
+            json={"location_id": sample_unit["registered_location_id"], "code": f"SPU-{uuid.uuid4().hex[:5]}", "name_zh": "課"},
             headers=_h(admin_token),
         )
     ).json()
@@ -203,7 +203,7 @@ async def test_shift_template_and_shift_with_time_values_are_logged(
 
     template = await client.post(
         "/api/shift-templates",
-        json={"name": "AM", "start_time": "09:00", "end_time": "13:00", "color": "#4CAF50"},
+        json={"location_id": sample_location["id"], "name": "AM", "start_time": "09:00", "end_time": "13:00", "color": "#4CAF50"},
         headers=_h(admin_token),
     )
     assert template.status_code == 201, template.text
@@ -321,7 +321,7 @@ async def test_location_course_and_unit_crud_are_logged(
     assert (await client.patch(f"/api/locations/{loc_id}", json={"name_en": "Renamed"}, headers=_h(admin_token))).status_code == 200
 
     spu = await client.post(
-        "/api/course-spus", json={"code": f"SPU-{uuid.uuid4().hex[:5]}", "name_zh": "課", "name_en": "Course"},
+        "/api/course-spus", json={"location_id": loc_id, "code": f"SPU-{uuid.uuid4().hex[:5]}", "name_zh": "課", "name_en": "Course"},
         headers=_h(admin_token),
     )
     assert spu.status_code == 201, spu.text
@@ -352,7 +352,7 @@ async def test_location_course_and_unit_crud_are_logged(
     assert (await client.delete(f"/api/units/{unit_id}", headers=_h(admin_token))).status_code == 204
     assert (await client.delete(f"/api/course-skus/{sku_id}", headers=_h(admin_token))).status_code == 204
     assert (await client.delete(f"/api/course-spus/{spu_id}", headers=_h(admin_token))).status_code == 204
-    assert (await client.delete(f"/api/locations/{loc_id}", headers=_h(admin_token))).status_code == 204
+    assert (await client.delete(f"/api/locations/{loc_id}", headers=_h(sa))).status_code == 204
 
     for table, record_id in (
         ("locations", loc_id),
@@ -377,7 +377,7 @@ async def test_enrollment_notification_and_profile_changes_are_logged(
     spu = (
         await client.post(
             "/api/course-spus",
-            json={"code": f"SPU-{uuid.uuid4().hex[:5]}", "name_zh": "課"},
+            json={"location_id": sample_location["id"], "code": f"SPU-{uuid.uuid4().hex[:5]}", "name_zh": "課"},
             headers=_h(admin_token),
         )
     ).json()

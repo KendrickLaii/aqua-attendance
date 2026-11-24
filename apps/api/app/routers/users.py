@@ -1,28 +1,74 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 
-from app.deps import DB, AdminOnly, SuperAdminOnly
+from app.deps import AdminOnly, DB, SuperAdminOnly
+from app.models.location import Location
 from app.models.user import Role, User
+from app.models.user_location import UserLocation
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.services.auth import hash_password
 from app.services import audit_log as audit_svc
+from app.services.team_access import assigned_team_ids
 from app.utils.search import ilike_contains
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-def _role_value(role: object) -> str:
-    return role.value if hasattr(role, "value") else str(role)
+async def _to_out(db: DB, user: User) -> UserOut:
+    out = UserOut.model_validate(user)
+    out.sees_all_teams = user.role == Role.superadmin.value
+    rows = await db.scalars(select(UserLocation.location_id).where(UserLocation.user_id == user.id))
+    out.location_ids = list(rows.all())
+    return out
 
 
-def _forbid_admin_managing_superadmin(actor: User, *, target_role: str | None = None, new_role: str | None = None) -> None:
-    """Admins may manage admin accounts only; superadmins may manage anyone."""
+def _role_name(role: object) -> str:
+    return role.value if isinstance(role, Role) else str(role)
+
+
+async def _location_ids_for(db: DB, user_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = await db.scalars(select(UserLocation.location_id).where(UserLocation.user_id == user_id))
+    return list(rows.all())
+
+
+async def _admin_team_ids(db: DB, actor: User) -> set[uuid.UUID] | None:
+    """None means superadmin. An empty set means this admin has no teams."""
     if actor.role == Role.superadmin.value:
+        return None
+    return await assigned_team_ids(db, actor) or set()
+
+
+def _reject_outside_teams(requested: list[uuid.UUID], allowed: set[uuid.UUID]) -> None:
+    if any(location_id not in allowed for location_id in requested):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only assign your own teams")
+
+
+async def _assert_manageable_user(db: DB, actor: User, user: User) -> set[uuid.UUID] | None:
+    allowed = await _admin_team_ids(db, actor)
+    if allowed is None:
+        return None
+    if user.role != Role.user.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage user accounts")
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to a team")
+    if not set(await _location_ids_for(db, user.id)) & allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only manage user accounts in your teams",
+        )
+    return allowed
+
+
+async def _replace_locations(db: DB, user: User, location_ids: list[uuid.UUID]) -> None:
+    await db.execute(delete(UserLocation).where(UserLocation.user_id == user.id))
+    if user.role == Role.superadmin.value:
         return
-    if target_role == Role.superadmin.value or new_role == Role.superadmin.value:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    for location_id in dict.fromkeys(location_ids):
+        if await db.get(Location, location_id) is None:
+            raise HTTPException(status_code=422, detail="One of the teams does not exist")
+        db.add(UserLocation(user_id=user.id, location_id=location_id))
 
 
 @router.get("", response_model=list[UserOut])
@@ -35,17 +81,20 @@ async def list_users(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-) -> list[User]:
-    if actor.role != Role.superadmin.value and role == Role.superadmin.value:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Insufficient permissions to filter by superadmin role.",
-        )
-
+) -> list[UserOut]:
     clauses = []
-    if actor.role != Role.superadmin.value:
-        clauses.append(User.role != Role.superadmin.value)
-    if role:
+    allowed = await _admin_team_ids(db, actor)
+    if allowed is not None:
+        if role and role != Role.user.value:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage user accounts")
+        if not allowed:
+            response.headers["X-Total-Count"] = "0"
+            return []
+        clauses.append(User.role == Role.user.value)
+        clauses.append(
+            User.id.in_(select(UserLocation.user_id).where(UserLocation.location_id.in_(allowed)))
+        )
+    elif role:
         clauses.append(User.role == role)
     if is_active is not None:
         clauses.append(User.is_active == is_active)
@@ -68,13 +117,11 @@ async def list_users(
     q = q.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(q)
     response.headers["X-Total-Count"] = str(total)
-    return list(result.scalars().all())
+    return [await _to_out(db, user) for user in result.scalars().all()]
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(body: UserCreate, actor: AdminOnly, db: DB, request: Request) -> User:
-    _forbid_admin_managing_superadmin(actor, new_role=_role_value(body.role))
-
+async def create_user(body: UserCreate, actor: AdminOnly, db: DB, request: Request) -> UserOut:
     existing = await db.execute(
         select(User).where(
             (func.lower(User.username) == body.username.lower())
@@ -84,14 +131,27 @@ async def create_user(body: UserCreate, actor: AdminOnly, db: DB, request: Reque
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Username or email already exists")
 
+    allowed = await _admin_team_ids(db, actor)
+    role_name = _role_name(body.role)
+    if allowed is not None:
+        if role_name != Role.user.value:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only create user accounts")
+        if not allowed:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to a team")
+        if not body.location_ids:
+            raise HTTPException(status_code=422, detail="Choose one of your teams")
+        _reject_outside_teams(body.location_ids, allowed)
+
     user = User(
         username=body.username,
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
-        role=body.role.value if hasattr(body.role, 'value') else body.role,
+        role=role_name,
     )
     db.add(user)
+    await db.flush()
+    await _replace_locations(db, user, body.location_ids)
     await db.commit()
     await db.refresh(user)
 
@@ -101,33 +161,52 @@ async def create_user(body: UserCreate, actor: AdminOnly, db: DB, request: Reque
         action="CREATE",
         table_name="users",
         record_id=user.id,
-        new_values=body.model_dump(exclude={"password"}),
+        new_values=body.model_dump(exclude={"password"}, mode="json"),
         description=f"Created user {user.username} with role {user.role}",
         request=request,
     )
-    return user
+    return await _to_out(db, user)
 
 
 @router.get("/{user_id}", response_model=UserOut)
-async def get_user(user_id: uuid.UUID, actor: AdminOnly, db: DB) -> User:
+async def get_user(user_id: uuid.UUID, actor: AdminOnly, db: DB) -> UserOut:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    _forbid_admin_managing_superadmin(actor, target_role=user.role)
-    return user
+    await _assert_manageable_user(db, actor, user)
+    return await _to_out(db, user)
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db: DB, request: Request) -> User:
+async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db: DB, request: Request) -> UserOut:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    allowed = await _assert_manageable_user(db, actor, user)
     update_data = body.model_dump(exclude_unset=True)
-    new_role = _role_value(update_data["role"]) if "role" in update_data else None
-    _forbid_admin_managing_superadmin(actor, target_role=user.role, new_role=new_role)
+    location_ids = update_data.pop("location_ids", None)
+    if allowed is not None:
+        if "role" in update_data and _role_name(update_data["role"]) != Role.user.value:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot change this account to another role",
+            )
+        if location_ids is not None:
+            current = await _location_ids_for(db, user.id)
+            current_set = set(current)
+            added_outside = [
+                location_id
+                for location_id in location_ids
+                if location_id not in allowed and location_id not in current_set
+            ]
+            if added_outside:
+                _reject_outside_teams(added_outside, allowed)
+            kept = [location_id for location_id in current if location_id not in allowed]
+            chosen = [location_id for location_id in dict.fromkeys(location_ids) if location_id in allowed]
+            location_ids = kept + chosen
 
     if "email" in update_data:
         dup = await db.execute(
@@ -147,6 +226,8 @@ async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db
         if field == 'role' and hasattr(value, 'value'):
             value = value.value
         setattr(user, field, value)
+    if location_ids is not None or user.role == Role.superadmin.value:
+        await _replace_locations(db, user, location_ids or [])
     await db.commit()
     await db.refresh(user)
 
@@ -160,7 +241,7 @@ async def update_user(user_id: uuid.UUID, body: UserUpdate, actor: AdminOnly, db
         description=f"Updated user {user.username}",
         request=request,
     )
-    return user
+    return await _to_out(db, user)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

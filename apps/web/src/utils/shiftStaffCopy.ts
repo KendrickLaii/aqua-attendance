@@ -12,10 +12,10 @@ export const STAFF_SHIFT_REQUEST_DIALOG_HINT =
   '交出去之後係 Pending。辦公室 Approve 之後先算正式更。'
 
 export const SHIFT_TEMPLATES_DIALOG_HINT =
-  '預設時間同顏色，之後一撳就排到更。改或者刪模板唔會影響已經排咗嘅更。'
+  '呢個地點自己嘅預設時間同顏色，其他地點睇唔到。改或者刪模板唔會影響已經排咗嘅更。'
 
 export const ADMIN_SHIFT_PAGE_HINT =
-  '撳格仔加更 · 撳更可以改或者刪 · 拖放搬更（撳住 Ctrl 拖就係複製）。上面 Pending 係員工自己交嘅，要 Approve 先入更表。'
+  '只會見到你被指派嘅地點。撳格仔加更 · 撳更可以改或者刪 · 拖放搬更（撳住 Ctrl 拖就係複製）。上面 Pending 係員工自己交嘅，要 Approve 先入更表。'
 
 export const ADMIN_PENDING_REQUESTS_HINT =
   '員工自己交嘅更。Approve 先入下面嘅正式更表；Reject 可以留一句原因俾員工睇。'

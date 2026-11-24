@@ -15,6 +15,7 @@ import {
 } from '@/api/attendance/shifts'
 import { type Unit, listAllUnits } from '@/api/attendance/units'
 import HelpBubble from '@/components/attendance/HelpBubble.vue'
+import { useBranding } from '@/composables/useBranding'
 import ShiftDialog from '@/components/attendance/shifts/ShiftDialog.vue'
 import ShiftPrintDialog from '@/components/attendance/shifts/ShiftPrintDialog.vue'
 import ShiftTemplatesDialog from '@/components/attendance/shifts/ShiftTemplatesDialog.vue'
@@ -50,7 +51,7 @@ import {
   weekFromQuery,
 } from '@/utils/shiftDisplay'
 
-definePage({ meta: {} })
+definePage({ meta: { action: 'manage', subject: 'Shift' } })
 
 const { ensureAccess } = useAttendanceAdminGate()
 const toast = useToast()
@@ -85,12 +86,13 @@ const isThisWeek = computed(() => weekStart.value === thisWeek)
 const locationName = (l: LocationItem) => [l.name_en, l.name_zh].filter(Boolean).join(' · ')
 const locationById = computed(() => new Map(locations.value.map(l => [l.id, l])))
 const locationOptions = computed(() => locations.value.map(l => ({ value: l.id, title: locationName(l) })))
-const locationFilterItems = computed(() => [{ value: null, title: 'All locations' }, ...locationOptions.value])
+const { t } = useBranding()
+const locationFilterItems = computed(() => [{ value: null, title: t('All locations') }, ...locationOptions.value])
 
 const locationLabel = computed(() => {
   const loc = locationId.value ? locationById.value.get(locationId.value) : null
 
-  return loc ? locationName(loc) : 'All locations'
+  return loc ? locationName(loc) : t('All locations')
 })
 
 const staffOptions = computed(() =>
@@ -128,7 +130,7 @@ onMounted(async () => {
 })
 
 async function loadTemplates() {
-  templates.value = await listShiftTemplates()
+  templates.value = await listShiftTemplates(locationId.value)
 }
 
 async function loadAll() {
@@ -184,8 +186,10 @@ async function loadShifts() {
 
 watch([weekStart, locationId], ([week, location]) => {
   router.replace({ query: { ...route.query, week, location: location ?? undefined } })
-  if (!loading.value)
+  if (!loading.value) {
     loadShifts()
+    loadTemplates()
+  }
 })
 
 function shiftWeek(delta: number) {
@@ -511,7 +515,7 @@ function exportCsv() {
       <div class="me-auto">
         <div class="text-h5 font-weight-medium d-flex align-center">
           Shift Schedule
-          <HelpBubble :text="ADMIN_SHIFT_PAGE_HINT" />
+          <HelpBubble :text="t(ADMIN_SHIFT_PAGE_HINT)" />
         </div>
       </div>
       <VBtn
@@ -910,6 +914,7 @@ function exportCsv() {
     />
     <ShiftTemplatesDialog
       v-model="templatesDialogOpen"
+      :location-id="locationId"
       :templates="templates"
       @changed="onTemplatesChanged"
     />

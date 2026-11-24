@@ -41,6 +41,7 @@ import {
 } from '@/utils/unitFormPayload'
 import { useToast } from '@/composables/useToast'
 import { useBranding } from '@/composables/useBranding'
+import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 
 const props = defineProps<{
   modelValue: boolean
@@ -93,6 +94,7 @@ const open = computed({
 })
 
 const form = reactive<UnitFormState>(emptyUnitForm())
+const canSeePay = computed(() => useAttendanceAuthStore().role !== 'user')
 
 const commissionEnabled = computed({
   get: () => form.staff_profile.commission_rate !== '',
@@ -887,6 +889,7 @@ async function handleSave() {
           </VCol>
         </VRow>
 
+        <template v-if="canSeePay">
         <h5 class="text-caption text-medium-emphasis mb-2 mt-4">
           Compensation
         </h5>
@@ -975,6 +978,7 @@ async function handleSave() {
             />
           </VCol>
         </VRow>
+        </template>
       </template>
 
       <h4 class="text-subtitle-2 text-medium-emphasis mb-2 mt-4">

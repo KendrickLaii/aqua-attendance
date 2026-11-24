@@ -16,8 +16,10 @@ export interface AttendanceUser {
   username: string
   email: string
   full_name: string
-  role: 'admin' | 'superadmin'
+  role: 'user' | 'admin' | 'superadmin'
   is_active: boolean
+  location_ids?: string[]
+  sees_all_teams?: boolean
   created_at: string
   updated_at: string
 }

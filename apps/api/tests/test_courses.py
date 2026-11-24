@@ -20,7 +20,16 @@ def spu_payload() -> dict:
 
 
 async def _create_spu(client: AsyncClient, admin_token: str, payload: dict) -> dict:
-    resp = await client.post("/api/course-spus", json=payload, headers=_auth(admin_token))
+    body = dict(payload)
+    if not body.get("location_id"):
+        loc = await client.post(
+            "/api/locations",
+            json={"name_en": f"Team {uuid.uuid4().hex[:4]}"},
+            headers=_auth(admin_token),
+        )
+        assert loc.status_code == 201, loc.text
+        body["location_id"] = loc.json()["id"]
+    resp = await client.post("/api/course-spus", json=body, headers=_auth(admin_token))
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -66,8 +75,12 @@ async def test_create_course_spu(client: AsyncClient, admin_token: str, spu_payl
 
 @pytest.mark.asyncio
 async def test_duplicate_spu_code_rejected(client: AsyncClient, admin_token: str, spu_payload: dict) -> None:
-    await _create_spu(client, admin_token, spu_payload)
-    resp = await client.post("/api/course-spus", json=spu_payload, headers=_auth(admin_token))
+    first = await _create_spu(client, admin_token, spu_payload)
+    resp = await client.post(
+        "/api/course-spus",
+        json={**spu_payload, "location_id": first["location_id"]},
+        headers=_auth(admin_token),
+    )
     assert resp.status_code == 409
 
 
@@ -75,7 +88,7 @@ async def test_duplicate_spu_code_rejected(client: AsyncClient, admin_token: str
 async def test_create_sku_under_spu_with_location(
     client: AsyncClient, admin_token: str, spu_payload: dict, sample_location: dict
 ) -> None:
-    spu = await _create_spu(client, admin_token, spu_payload)
+    spu = await _create_spu(client, admin_token, {**spu_payload, "location_id": sample_location["id"]})
     sku = await _create_sku(client, admin_token, spu["id"], location_id=sample_location["id"])
     assert sku["spu_id"] == spu["id"]
     assert sku["location_id"] == sample_location["id"]

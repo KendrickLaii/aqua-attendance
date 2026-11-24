@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 
-from app.deps import AdminOnly, DB
+from app.deps import DB, OfficeOnly
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.course_enrollment import CourseEnrollment
 from app.models.course_sku import CourseSku
 from app.models.course_spu import CourseSpu
@@ -40,7 +41,7 @@ async def _assert_staff_exists(db: DB, staff_id: uuid.UUID | None) -> None:
 
 @router.get("", response_model=list[CourseSkuOut])
 async def list_course_skus(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     spu_id: uuid.UUID | None = None,
@@ -50,6 +51,9 @@ async def list_course_skus(
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[CourseSku]:
     clauses = []
+    limited = team_filter(CourseSku.location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        clauses.append(limited)
     if spu_id is not None:
         clauses.append(CourseSku.spu_id == spu_id)
     if is_active is not None:
@@ -79,16 +83,21 @@ async def list_course_skus(
 
 
 @router.post("", response_model=CourseSkuOut, status_code=status.HTTP_201_CREATED)
-async def create_course_sku(body: CourseSkuCreate, _admin: AdminOnly, db: DB) -> CourseSku:
-    await _assert_spu_exists(db, body.spu_id)
-    await _assert_location_exists(db, body.location_id)
+async def create_course_sku(body: CourseSkuCreate, _admin: OfficeOnly, db: DB) -> CourseSku:
+    spu = await db.get(CourseSpu, body.spu_id)
+    if spu is None:
+        raise HTTPException(status_code=422, detail="spu_id does not reference an existing course")
+    location_id = body.location_id or spu.location_id
+    if location_id != spu.location_id:
+        raise HTTPException(status_code=422, detail="Line item must use the same team as its service")
+    await require_team(db, _admin, location_id)
     await _assert_staff_exists(db, body.staff_id)
 
     exists = await db.execute(select(CourseSku).where(CourseSku.code == body.code))
     if exists.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="SKU code already exists")
 
-    sku = CourseSku(**body.model_dump())
+    sku = CourseSku(**{**body.model_dump(), "location_id": location_id})
     db.add(sku)
     await db.commit()
     await db.refresh(sku)
@@ -105,22 +114,26 @@ async def create_course_sku(body: CourseSkuCreate, _admin: AdminOnly, db: DB) ->
 
 
 @router.get("/{sku_id}", response_model=CourseSkuOut)
-async def get_course_sku(sku_id: uuid.UUID, _admin: AdminOnly, db: DB) -> CourseSku:
+async def get_course_sku(sku_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> CourseSku:
     result = await db.execute(select(CourseSku).where(CourseSku.id == sku_id))
     sku = result.scalar_one_or_none()
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
+    await require_team(db, _admin, sku.location_id)
     return sku
 
 
 @router.patch("/{sku_id}", response_model=CourseSkuOut)
-async def update_course_sku(sku_id: uuid.UUID, body: CourseSkuUpdate, _admin: AdminOnly, db: DB) -> CourseSku:
+async def update_course_sku(sku_id: uuid.UUID, body: CourseSkuUpdate, _admin: OfficeOnly, db: DB) -> CourseSku:
     result = await db.execute(select(CourseSku).where(CourseSku.id == sku_id))
     sku = result.scalar_one_or_none()
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
+    await require_team(db, _admin, sku.location_id)
 
     update_data = body.model_dump(exclude_unset=True)
+    if "location_id" in update_data and update_data["location_id"] != sku.location_id:
+        raise HTTPException(status_code=422, detail="Line item must use the same team as its service")
     if "spu_id" in update_data:
         await _assert_spu_exists(db, update_data["spu_id"])
     if "location_id" in update_data:
@@ -153,11 +166,12 @@ async def update_course_sku(sku_id: uuid.UUID, body: CourseSkuUpdate, _admin: Ad
 
 
 @router.delete("/{sku_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_course_sku(sku_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+async def delete_course_sku(sku_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> None:
     result = await db.execute(select(CourseSku).where(CourseSku.id == sku_id))
     sku = result.scalar_one_or_none()
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
+    await require_team(db, _admin, sku.location_id)
 
     has_enrollments = await db.execute(
         select(CourseEnrollment.id).where(CourseEnrollment.sku_id == sku_id).limit(1)

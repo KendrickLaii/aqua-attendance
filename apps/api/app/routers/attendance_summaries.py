@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from app.deps import AdminOnly, DB
+from app.deps import DB, OfficeOnly
+from app.services.team_access import assigned_team_ids, team_filter
 from app.models.attendance_summary import AttendanceSummary
 from app.models.unit import Unit
 from app.schemas.attendance_summary import (
@@ -31,7 +32,7 @@ def _summary_to_out(summary: AttendanceSummary) -> AttendanceSummaryOut:
 
 @router.get("", response_model=list[AttendanceSummaryOut])
 async def list_attendance_summaries(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     unit_id: uuid.UUID | None = None,
@@ -47,6 +48,9 @@ async def list_attendance_summaries(
     count_q = select(func.count()).select_from(AttendanceSummary)
 
     clauses = []
+    limited = team_filter(Unit.registered_location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        clauses.append(AttendanceSummary.unit_id.in_(select(Unit.id).where(limited)))
     if unit_id:
         clauses.append(AttendanceSummary.unit_id == unit_id)
     if summary_date:
@@ -79,7 +83,7 @@ async def list_attendance_summaries(
 
 @router.get("/overview", response_model=list[AttendanceSummaryOverviewOut])
 async def list_attendance_summary_overview(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     response: Response,
     date_from: date,
@@ -93,6 +97,9 @@ async def list_attendance_summary_overview(
         AttendanceSummary.summary_date >= date_from,
         AttendanceSummary.summary_date <= date_to,
     ]
+    limited = team_filter(Unit.registered_location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        clauses.append(limited)
 
     q = (
         select(
@@ -177,7 +184,7 @@ async def list_attendance_summary_overview(
 
 @router.get("/overview/stats", response_model=AttendanceSummaryOverviewStatsOut)
 async def attendance_summary_overview_stats(
-    _admin: AdminOnly,
+    _admin: OfficeOnly,
     db: DB,
     date_from: date,
     date_to: date,
@@ -244,7 +251,7 @@ async def attendance_summary_overview_stats(
 
 @router.post("", response_model=AttendanceSummaryOut, status_code=status.HTTP_201_CREATED)
 async def create_attendance_summary(
-    _body: AttendanceSummaryCreate, _admin: AdminOnly, _db: DB
+    _body: AttendanceSummaryCreate, _admin: OfficeOnly, _db: DB
 ) -> AttendanceSummaryOut:
     raise HTTPException(
         status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
@@ -254,7 +261,7 @@ async def create_attendance_summary(
 
 @router.get("/{summary_id}", response_model=AttendanceSummaryOut)
 async def get_attendance_summary(
-    summary_id: uuid.UUID, _admin: AdminOnly, db: DB
+    summary_id: uuid.UUID, _admin: OfficeOnly, db: DB
 ) -> AttendanceSummaryOut:
     result = await db.execute(
         select(AttendanceSummary)
@@ -269,7 +276,7 @@ async def get_attendance_summary(
 
 @router.post("/generate", status_code=status.HTTP_200_OK)
 async def generate_summaries(
-    admin: AdminOnly,
+    admin: OfficeOnly,
     db: DB,
     year: int,
     month: int,

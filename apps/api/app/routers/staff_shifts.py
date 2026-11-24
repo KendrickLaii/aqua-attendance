@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import false, func, select
 from app.auth_cookies import clear_staff_shift_cookie, set_staff_shift_cookie
 from app.config import settings
 from app.deps import AdminOnly, CurrentStaff, DB
@@ -26,6 +26,7 @@ from app.schemas.shift import (
 from app.services import audit_log as audit_log_svc
 from app.services.auth import create_staff_shift_token, hash_password, verify_password
 from app.services.staff_shifts import assert_request_slot, copy_request_to_shift, mark_reviewed
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 
 router = APIRouter(prefix="/staff-shifts", tags=["staff-shifts"])
 admin_router = APIRouter(prefix="/shift-requests", tags=["shift-requests"])
@@ -101,10 +102,13 @@ async def staff_me(staff: CurrentStaff, db: DB) -> StaffShiftMe:
 
 
 @router.get("/templates", response_model=list[ShiftTemplateOut])
-async def staff_templates(_staff: CurrentStaff, db: DB) -> list[ShiftTemplate]:
-    result = await db.execute(
-        select(ShiftTemplate).order_by(ShiftTemplate.sort_order, ShiftTemplate.start_time, ShiftTemplate.name)
-    )
+async def staff_templates(staff: CurrentStaff, db: DB) -> list[ShiftTemplate]:
+    from app.services.staff_shifts import allowed_location_ids
+
+    ids = await allowed_location_ids(db, staff)
+    query = select(ShiftTemplate).order_by(ShiftTemplate.sort_order, ShiftTemplate.start_time, ShiftTemplate.name)
+    query = query.where(ShiftTemplate.location_id.in_(ids) if ids else false())
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 
@@ -215,6 +219,9 @@ async def list_shift_requests(
     )
     if status_filter:
         q = q.where(ShiftRequest.status == status_filter)
+    limited = team_filter(ShiftRequest.location_id, await assigned_team_ids(db, _admin))
+    if limited is not None:
+        q = q.where(limited)
     result = await db.execute(q)
     return [_request_out(row, unit) for row, unit in result.all()]
 
@@ -222,6 +229,7 @@ async def list_shift_requests(
 @admin_router.post("/{request_id}/approve", response_model=ShiftRequestOut)
 async def approve_shift_request(request_id: uuid.UUID, admin: AdminOnly, db: DB) -> ShiftRequestOut:
     row, unit = await _load_request(db, request_id)
+    await require_team(db, admin, row.location_id)
     if row.status != ShiftRequestStatus.pending.value:
         raise HTTPException(status_code=409, detail="Only a pending request can be approved")
     try:
@@ -264,6 +272,7 @@ async def reject_shift_request(
     request_id: uuid.UUID, body: ShiftRequestReject, admin: AdminOnly, db: DB
 ) -> ShiftRequestOut:
     row, unit = await _load_request(db, request_id)
+    await require_team(db, admin, row.location_id)
     if row.status != ShiftRequestStatus.pending.value:
         raise HTTPException(status_code=409, detail="Only a pending request can be rejected")
     reason = body.reason.strip() if body.reason else None

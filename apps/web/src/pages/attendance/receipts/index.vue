@@ -21,6 +21,7 @@ import {
   type TuitionInvoicePrintHeader,
 } from '@/utils/printTuitionInvoice'
 import {
+  debitNoteReceiptOptions,
   openTuitionReceiptPrintPlaceholder,
   printTuitionReceipt,
   tuitionReceiptPrintData,
@@ -29,7 +30,7 @@ import {
 definePage({ meta: {} })
 
 const router = useRouter()
-const { t } = useBranding()
+const { brand, t } = useBranding()
 const { ensureAccess } = useAttendanceAdminGate()
 
 const {
@@ -263,10 +264,16 @@ async function printReceipt(receipt: TuitionReceipt) {
   try {
     const printWindow = openTuitionReceiptPrintPlaceholder()
     const location = locations.value.find(item => item.id === receipt.location_id)
-    await printTuitionReceipt(printWindow, tuitionReceiptPrintData(receipt, {
-      logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
-      header: location ? headerFromLocation(location) : undefined,
-    }))
+    const debitNote = brand.value.invoicePrintTemplate === 'debit-note'
+
+    const printOptions = debitNote
+      ? await debitNoteReceiptOptions(receipt, location)
+      : {
+        logoUrl: await resolvePrintLogoUrl(location?.icon_url || location?.main_photo_url || ''),
+        header: location ? headerFromLocation(location) : undefined,
+      }
+
+    await printTuitionReceipt(printWindow, tuitionReceiptPrintData(receipt, printOptions))
   }
   catch (e) {
     actionError.value = formatApiError(e, 'Could not open print window.')

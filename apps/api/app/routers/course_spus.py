@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 
-from app.deps import AdminOnly, DB
+from app.deps import DB, OfficeOnly
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.course_spu import CourseSpu
 from app.models.course_sku import CourseSku
 from app.schemas.course_spu import CourseSpuCreate, CourseSpuOut, CourseSpuUpdate
@@ -15,15 +16,23 @@ router = APIRouter(prefix="/course-spus", tags=["courses"])
 
 @router.get("", response_model=list[CourseSpuOut])
 async def list_course_spus(
-    _admin: AdminOnly,
+    actor: OfficeOnly,
     db: DB,
     response: Response,
+    location_id: uuid.UUID | None = None,
     is_active: bool | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[CourseSpu]:
     clauses = []
+    if location_id is not None:
+        await require_team(db, actor, location_id)
+        clauses.append(CourseSpu.location_id == location_id)
+    else:
+        limited = team_filter(CourseSpu.location_id, await assigned_team_ids(db, actor))
+        if limited is not None:
+            clauses.append(limited)
     if is_active is not None:
         clauses.append(CourseSpu.is_active == is_active)
     if search:
@@ -51,8 +60,11 @@ async def list_course_spus(
 
 
 @router.post("", response_model=CourseSpuOut, status_code=status.HTTP_201_CREATED)
-async def create_course_spu(body: CourseSpuCreate, _admin: AdminOnly, db: DB) -> CourseSpu:
-    exists = await db.execute(select(CourseSpu).where(CourseSpu.code == body.code))
+async def create_course_spu(body: CourseSpuCreate, _admin: OfficeOnly, db: DB) -> CourseSpu:
+    await require_team(db, _admin, body.location_id)
+    exists = await db.execute(
+        select(CourseSpu).where(CourseSpu.location_id == body.location_id, CourseSpu.code == body.code)
+    )
     if exists.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Course code already exists")
 
@@ -73,25 +85,36 @@ async def create_course_spu(body: CourseSpuCreate, _admin: AdminOnly, db: DB) ->
 
 
 @router.get("/{spu_id}", response_model=CourseSpuOut)
-async def get_course_spu(spu_id: uuid.UUID, _admin: AdminOnly, db: DB) -> CourseSpu:
+async def get_course_spu(spu_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> CourseSpu:
     result = await db.execute(select(CourseSpu).where(CourseSpu.id == spu_id))
     spu = result.scalar_one_or_none()
     if not spu:
         raise HTTPException(status_code=404, detail="Course not found")
+    await require_team(db, _admin, spu.location_id)
     return spu
 
 
 @router.patch("/{spu_id}", response_model=CourseSpuOut)
-async def update_course_spu(spu_id: uuid.UUID, body: CourseSpuUpdate, _admin: AdminOnly, db: DB) -> CourseSpu:
+async def update_course_spu(spu_id: uuid.UUID, body: CourseSpuUpdate, _admin: OfficeOnly, db: DB) -> CourseSpu:
     result = await db.execute(select(CourseSpu).where(CourseSpu.id == spu_id))
     spu = result.scalar_one_or_none()
     if not spu:
         raise HTTPException(status_code=404, detail="Course not found")
+    await require_team(db, _admin, spu.location_id)
 
     update_data = body.model_dump(exclude_unset=True)
-    new_code = update_data.get("code")
-    if new_code:
-        exists = await db.execute(select(CourseSpu).where(CourseSpu.code == new_code, CourseSpu.id != spu_id))
+    if "location_id" in update_data:
+        await require_team(db, _admin, update_data["location_id"])
+    next_code = update_data.get("code", spu.code)
+    next_location = update_data.get("location_id", spu.location_id)
+    if "code" in update_data or "location_id" in update_data:
+        exists = await db.execute(
+            select(CourseSpu).where(
+                CourseSpu.code == next_code,
+                CourseSpu.location_id == next_location,
+                CourseSpu.id != spu_id,
+            )
+        )
         if exists.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="Course code already exists")
 
@@ -114,11 +137,12 @@ async def update_course_spu(spu_id: uuid.UUID, body: CourseSpuUpdate, _admin: Ad
 
 
 @router.delete("/{spu_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_course_spu(spu_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+async def delete_course_spu(spu_id: uuid.UUID, _admin: OfficeOnly, db: DB) -> None:
     result = await db.execute(select(CourseSpu).where(CourseSpu.id == spu_id))
     spu = result.scalar_one_or_none()
     if not spu:
         raise HTTPException(status_code=404, detail="Course not found")
+    await require_team(db, _admin, spu.location_id)
 
     has_skus = await db.execute(select(CourseSku.id).where(CourseSku.spu_id == spu_id).limit(1))
     if has_skus.scalar_one_or_none():

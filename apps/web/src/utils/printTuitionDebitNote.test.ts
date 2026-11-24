@@ -85,4 +85,17 @@ describe('printTuitionDebitNote', () => {
 
     assert.match(empty, /Add invoice_payment/)
   })
+
+  it('uses a receipt heading and number when asked', () => {
+    const html = buildDebitNotePrintHtml(debitNote({
+      title: 'OFFICIAL RECEIPT',
+      numberLabel: 'NO.',
+      invoiceNo: 'R-18',
+    }))
+
+    assert.match(html, /OFFICIAL RECEIPT/)
+    assert.match(html, /NO\./)
+    assert.match(html, /R-18/)
+    assert.doesNotMatch(html, /DN NO:/)
+  })
 })

@@ -3,6 +3,7 @@ import { $attendanceApi } from '@/utils/attendanceApi'
 /** Reusable preset, e.g. "Morning 09:00–13:00". Times are "HH:MM:SS" from the API. */
 export interface ShiftTemplate {
   id: string
+  location_id: string
   name: string
   start_time: string
   end_time: string
@@ -13,6 +14,7 @@ export interface ShiftTemplate {
 }
 
 export interface ShiftTemplatePayload {
+  location_id?: string
   name: string
   start_time: string
   end_time: string
@@ -52,8 +54,8 @@ export interface ShiftPayload {
 
 // ---- Templates ----
 
-export async function listShiftTemplates(): Promise<ShiftTemplate[]> {
-  return await $attendanceApi('/shift-templates')
+export async function listShiftTemplates(locationId?: string | null): Promise<ShiftTemplate[]> {
+  return await $attendanceApi('/shift-templates', { params: locationId ? { location_id: locationId } : {} })
 }
 
 export async function createShiftTemplate(payload: ShiftTemplatePayload): Promise<ShiftTemplate> {

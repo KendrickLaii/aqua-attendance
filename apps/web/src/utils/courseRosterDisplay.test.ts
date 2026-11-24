@@ -78,12 +78,14 @@ describe('rosterPriceLabel / skuBillingPreview', () => {
   it('labels monthly vs per-session prices', () => {
     assert.equal(rosterPriceLabel(sku()), 'HK$800.00 / month')
     assert.equal(rosterPriceLabel(sku({ billing_unit: 'per_session', price: 120 })), 'HK$120.00 / session')
+    assert.equal(rosterPriceLabel(sku({ billing_unit: 'yearly', price: 2400 })), 'HK$2400.00 / year')
     assert.equal(rosterPriceLabel(sku({ price: null })), 'No price — Generate will skip this class')
   })
 
   it('explains generate skip when the class has no price', () => {
     assert.match(skuBillingPreview('monthly', null), /no price/i)
     assert.match(skuBillingPreview('per_session', 120), /sessions purchased/)
+    assert.match(skuBillingPreview('yearly', 2400), /once a year/)
   })
 })
 

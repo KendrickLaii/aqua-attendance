@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.deps import DB, AdminOnly
 from app.models.unit import Unit
+from app.services.team_access import require_team
 from app.models.staff_profile import StaffProfile
 from app.schemas.staff_profile import StaffProfileCreate, StaffProfileOut, StaffProfileUpdate, ShiftPinResetOut
 from app.services import audit_log as audit_log_svc
@@ -101,6 +102,7 @@ async def reset_shift_pin(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> Shif
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
     if unit.unit_type != "staff":
         raise HTTPException(status_code=422, detail="Unit must be of type 'staff'")
+    await require_team(db, _admin, unit.registered_location_id)
 
     profile = await db.get(StaffProfile, unit_id)
     if not profile:

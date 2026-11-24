@@ -3,6 +3,8 @@
 Billing is derived purely from CourseEnrollment + CourseSku, not attendance:
 
 - monthly (月費): flat unit_price, quantity 1, billed every active month.
+- yearly (年費): same amount, once a year, in the enrollment start month
+  (January when the enrollment has no start date).
 - price: enrollment.unit_price overrides the SKU price when set — lets
   price-less classes (e.g. 私補) be billed per student.
 - per_session (堂費): each EnrollmentPurchase (initial purchase or top-up)
@@ -75,6 +77,11 @@ def _new_line(
     )
 
 
+def yearly_bill_month(start: date | None) -> int:
+    """Yearly fees bill once a year, in the enrollment start month (January if none)."""
+    return start.month if start is not None else 1
+
+
 def _lines_from_enrollment(
     enrollment: CourseEnrollment,
     ctx: _BillingContext,
@@ -112,6 +119,9 @@ def _lines_from_enrollment(
             lines.append(line)
             purchase_links.append((line, p))
         return lines, purchase_links
+
+    if sku.billing_unit == "yearly" and ctx.first_day.month != yearly_bill_month(enrollment.start_date):
+        return [], []
 
     unit_price = _enrollment_price(enrollment, sku)
     if unit_price is None:

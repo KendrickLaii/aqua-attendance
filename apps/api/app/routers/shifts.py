@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.deps import AdminOnly, DB
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.location import Location
 from app.models.shift import Shift, ShiftTemplate
 from app.models.unit import Unit
@@ -61,15 +62,26 @@ async def _assert_refs(
 
 
 @templates_router.get("", response_model=list[ShiftTemplateOut])
-async def list_shift_templates(_admin: AdminOnly, db: DB) -> list[ShiftTemplate]:
-    result = await db.execute(
-        select(ShiftTemplate).order_by(ShiftTemplate.sort_order, ShiftTemplate.start_time, ShiftTemplate.name)
-    )
+async def list_shift_templates(
+    _admin: AdminOnly,
+    db: DB,
+    location_id: uuid.UUID | None = None,
+) -> list[ShiftTemplate]:
+    query = select(ShiftTemplate).order_by(ShiftTemplate.sort_order, ShiftTemplate.start_time, ShiftTemplate.name)
+    if location_id is not None:
+        await require_team(db, _admin, location_id)
+        query = query.where(ShiftTemplate.location_id == location_id)
+    else:
+        limited = team_filter(ShiftTemplate.location_id, await assigned_team_ids(db, _admin))
+        if limited is not None:
+            query = query.where(limited)
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 
 @templates_router.post("", response_model=ShiftTemplateOut, status_code=status.HTTP_201_CREATED)
 async def create_shift_template(body: ShiftTemplateCreate, _admin: AdminOnly, db: DB) -> ShiftTemplate:
+    await require_team(db, _admin, body.location_id)
     template = ShiftTemplate(**body.model_dump())
     db.add(template)
     await db.commit()
@@ -91,6 +103,7 @@ async def update_shift_template(
     template_id: uuid.UUID, body: ShiftTemplateUpdate, _admin: AdminOnly, db: DB
 ) -> ShiftTemplate:
     template = await _get_template(db, template_id)
+    await require_team(db, _admin, template.location_id)
     update_data = body.model_dump(exclude_unset=True)
     old_values = {field: getattr(template, field) for field in update_data}
     for field, value in update_data.items():
@@ -116,6 +129,7 @@ async def update_shift_template(
 @templates_router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_shift_template(template_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
     template = await _get_template(db, template_id)
+    await require_team(db, _admin, template.location_id)
     await db.delete(template)
     await db.commit()
     await audit_log_svc.log_audit(
@@ -147,6 +161,12 @@ async def list_shifts(
 
     q = select(Shift).where(Shift.shift_date >= start, Shift.shift_date <= end)
     if location_id:
+        await require_team(db, _admin, location_id)
+    else:
+        limited = team_filter(Shift.location_id, await assigned_team_ids(db, _admin))
+        if limited is not None:
+            q = q.where(limited)
+    if location_id:
         q = q.where(Shift.location_id == location_id)
     if unit_id:
         q = q.where(Shift.unit_id == unit_id)
@@ -157,6 +177,7 @@ async def list_shifts(
 @router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)
 async def create_shift(body: ShiftCreate, admin: AdminOnly, db: DB) -> Shift:
     await _assert_refs(db, body.unit_id, body.location_id, body.template_id)
+    await require_team(db, admin, body.location_id)
     shift = Shift(**body.model_dump(), created_by_id=admin.id, updated_by_id=admin.id)
     db.add(shift)
     await db.commit()
@@ -186,8 +207,14 @@ async def copy_week(body: ShiftCopyWeek, admin: AdminOnly, db: DB) -> ShiftCopyW
     )
     target_q = select(Shift).where(Shift.shift_date >= body.target_week_start, Shift.shift_date <= target_end)
     if body.location_id:
+        await require_team(db, admin, body.location_id)
         source_q = source_q.where(Shift.location_id == body.location_id)
         target_q = target_q.where(Shift.location_id == body.location_id)
+    else:
+        limited = team_filter(Shift.location_id, await assigned_team_ids(db, admin))
+        if limited is not None:
+            source_q = source_q.where(limited)
+            target_q = target_q.where(limited)
 
     existing = {
         (s.unit_id, s.location_id, s.shift_date, s.start_time, s.end_time)
@@ -234,6 +261,7 @@ async def copy_week(body: ShiftCopyWeek, admin: AdminOnly, db: DB) -> ShiftCopyW
 @router.patch("/{shift_id}", response_model=ShiftOut)
 async def update_shift(shift_id: uuid.UUID, body: ShiftUpdate, admin: AdminOnly, db: DB) -> Shift:
     shift = await _get_shift(db, shift_id)
+    await require_team(db, admin, shift.location_id)
     nullable = {"title", "notes", "template_id"}
     update_data = body.model_dump(exclude_unset=True)
     old_values = {field: getattr(shift, field) for field in update_data}
@@ -243,6 +271,7 @@ async def update_shift(shift_id: uuid.UUID, body: ShiftUpdate, admin: AdminOnly,
         setattr(shift, field, value)
     _assert_times(shift.start_time, shift.end_time)
     await _assert_refs(db, shift.unit_id, shift.location_id, shift.template_id)
+    await require_team(db, admin, shift.location_id)
     shift.updated_by_id = admin.id
     await db.commit()
     await db.refresh(shift)
@@ -262,6 +291,7 @@ async def update_shift(shift_id: uuid.UUID, body: ShiftUpdate, admin: AdminOnly,
 @router.delete("/{shift_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_shift(shift_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
     shift = await _get_shift(db, shift_id)
+    await require_team(db, _admin, shift.location_id)
     await db.delete(shift)
     await db.commit()
     await audit_log_svc.log_audit(

@@ -77,7 +77,7 @@ async def test_delete_unit_with_enrollment_blocked(
     headers = {"Authorization": f"Bearer {admin_token}"}
     spu = await client.post(
         "/api/course-spus",
-        json={"code": f"DEL-{uuid.uuid4().hex[:6]}", "name_zh": "刪除保護課"},
+        json={"location_id": sample_unit["registered_location_id"], "code": f"DEL-{uuid.uuid4().hex[:6]}", "name_zh": "刪除保護課"},
         headers=headers,
     )
     assert spu.status_code == 201, spu.text
@@ -283,7 +283,7 @@ async def test_admin_list_users_superadmin_role_filter_422(client: AsyncClient) 
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
     resp = await client.get("/api/users", params={"role": "superadmin"}, headers=headers)
-    assert resp.status_code == 422
+    assert resp.status_code == 403
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,8 @@ export interface LocationContactForm {
 defineProps<{
   form: LocationContactForm
 }>()
+
+const { brand } = useBranding()
 </script>
 
 <template>
@@ -22,9 +24,20 @@ defineProps<{
     </VCol>
     <VCol
       cols="12"
-      sm="4"
+      :sm="brand.key === 'cpa' ? 12 : 4"
     >
+      <VTextarea
+        v-if="brand.key === 'cpa'"
+        v-model="form.contact_person"
+        label="Contact Person"
+        prepend-inner-icon="ri-user-line"
+        rows="5"
+        maxlength="255"
+        counter
+        no-resize
+      />
       <VTextField
+        v-else
         v-model="form.contact_person"
         label="Contact Person"
         prepend-inner-icon="ri-user-line"
@@ -32,7 +45,7 @@ defineProps<{
     </VCol>
     <VCol
       cols="12"
-      sm="4"
+      :sm="brand.key === 'cpa' ? 6 : 4"
     >
       <VTextField
         v-model="form.phone"
@@ -42,7 +55,7 @@ defineProps<{
     </VCol>
     <VCol
       cols="12"
-      sm="4"
+      :sm="brand.key === 'cpa' ? 6 : 4"
     >
       <VTextField
         v-model="form.email"

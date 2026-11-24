@@ -21,7 +21,7 @@ import {
   safePayrollNumber,
 } from '@/utils/payrollDisplay'
 
-definePage({ meta: {} })
+definePage({ meta: { action: 'manage', subject: 'Payroll' } })
 
 const { authStore, ensureAccess } = useAttendanceAdminGate()
 
@@ -729,7 +729,7 @@ async function handleGenerate() {
       :error="reviewError"
       :search="reviewSearch"
       :status="reviewStatus"
-      :can-delete="authStore.isSuperAdmin"
+      :can-delete="authStore.isAdmin"
       @update:search="reviewSearch = $event"
       @update:status="reviewStatus = $event"
       @refresh="refresh"
@@ -776,7 +776,7 @@ async function handleGenerate() {
       :total-count="totalCount"
       :total-pages="totalPages"
       :list-caption="listCaption"
-      :can-delete="authStore.isSuperAdmin"
+      :can-delete="authStore.isAdmin"
       @update:search="historySearch = $event"
       @update:filter-status="filterStatus = $event"
       @update:unit-type="historyUnitType = $event"

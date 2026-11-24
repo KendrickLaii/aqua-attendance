@@ -11,7 +11,12 @@ const STATUS_ORDER: Record<string, number> = {
 }
 
 export function billingUnitShortLabel(unit: string | null | undefined): string {
-  return unit === 'per_session' ? '堂費' : '月費'
+  if (unit === 'per_session')
+    return '堂費'
+  if (unit === 'yearly')
+    return '年費'
+
+  return '月費'
 }
 
 export function formatEnrollmentRange(

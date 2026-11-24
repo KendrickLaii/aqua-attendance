@@ -12,7 +12,7 @@ class CourseSku(Base):
 
     Belongs to one CourseSpu (subject). Carries the variable attributes a
     student actually picks: level, schedule, location, capacity, price,
-    billing_unit (monthly 月費 or per_session 堂費), and meeting_weekdays
+    billing_unit (monthly 月費, yearly 年費, or per_session 堂費), and meeting_weekdays
     (roster display only — billing uses enrollment purchased_quantity).
     """
 
@@ -27,8 +27,8 @@ class CourseSku(Base):
     name_en: Mapped[str | None] = mapped_column(String(255), nullable=True)
     level: Mapped[str | None] = mapped_column(String(100), nullable=True)
     schedule_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    location_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True
+    location_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     staff_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("units.id", ondelete="SET NULL"), nullable=True, index=True

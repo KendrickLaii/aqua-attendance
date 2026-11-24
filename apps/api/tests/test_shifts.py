@@ -56,7 +56,7 @@ async def test_shifts_require_auth(client: AsyncClient):
 async def test_template_crud_and_delete_keeps_shift(client: AsyncClient, admin_token: str, sample_location: dict):
     resp = await client.post(
         "/api/shift-templates",
-        json={"name": "Morning", "start_time": "09:00", "end_time": "13:00", "color": "#4CAF50"},
+        json={"location_id": sample_location["id"], "name": "Morning", "start_time": "09:00", "end_time": "13:00", "color": "#4CAF50"},
         headers=_auth(admin_token),
     )
     assert resp.status_code == 201, resp.text

@@ -3,7 +3,10 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 
-from app.deps import AdminOnly, DB
+from app.deps import AdminOnly, DB, OfficeOnly, SuperAdminOnly
+from app.models.user import Role
+from app.models.user_location import UserLocation
+from app.services.team_access import assigned_team_ids, require_team, team_filter
 from app.models.attendance import AttendanceEvent
 from app.models.location import Location
 from app.models.location_attachment import LocationAttachment
@@ -28,7 +31,7 @@ def _normalize_location_names(data: dict) -> dict:
 
 @router.get("", response_model=list[LocationOut])
 async def list_locations(
-    _admin: AdminOnly,
+    actor: OfficeOnly,
     db: DB,
     response: Response,
     is_active: bool | None = None,
@@ -37,6 +40,9 @@ async def list_locations(
     page_size: int = Query(default=100, ge=1, le=200),
 ) -> list[Location]:
     clauses = []
+    limited = team_filter(Location.id, await assigned_team_ids(db, actor))
+    if limited is not None:
+        clauses.append(limited)
     if is_active is not None:
         clauses.append(Location.is_active == is_active)
     if search:
@@ -73,6 +79,9 @@ async def create_location(body: LocationCreate, _admin: AdminOnly, db: DB) -> Lo
     data = _normalize_location_names(body.model_dump())
     location = Location(**data)
     db.add(location)
+    await db.flush()
+    if _admin.role != Role.superadmin.value:
+        db.add(UserLocation(user_id=_admin.id, location_id=location.id))
     await db.commit()
     await db.refresh(location)
     await audit_log_svc.log_audit(
@@ -88,11 +97,12 @@ async def create_location(body: LocationCreate, _admin: AdminOnly, db: DB) -> Lo
 
 
 @router.get("/{location_id}", response_model=LocationOut)
-async def get_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> Location:
+async def get_location(location_id: uuid.UUID, actor: OfficeOnly, db: DB) -> Location:
     result = await db.execute(select(Location).where(Location.id == location_id))
     location = result.scalar_one_or_none()
     if not location:
         raise HTTPException(status_code=404, detail="Location not found")
+    await require_team(db, actor, location.id)
     return location
 
 
@@ -102,6 +112,7 @@ async def update_location(location_id: uuid.UUID, body: LocationUpdate, _admin: 
     location = result.scalar_one_or_none()
     if not location:
         raise HTTPException(status_code=404, detail="Location not found")
+    await require_team(db, _admin, location.id)
 
     update_data = body.model_dump(exclude_unset=True)
     new_code = update_data.get("code")
@@ -137,7 +148,7 @@ async def update_location(location_id: uuid.UUID, body: LocationUpdate, _admin: 
 
 
 @router.delete("/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_location(location_id: uuid.UUID, _admin: AdminOnly, db: DB) -> None:
+async def delete_location(location_id: uuid.UUID, _admin: SuperAdminOnly, db: DB) -> None:
     result = await db.execute(select(Location).where(Location.id == location_id))
     location = result.scalar_one_or_none()
     if not location:

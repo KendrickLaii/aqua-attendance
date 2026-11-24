@@ -31,6 +31,8 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
         username: me.username,
         role: me.role,
         fullName: me.full_name,
+        location_ids: me.location_ids ?? [],
+        sees_all_teams: me.sees_all_teams ?? false,
       })
     },
     async logout() {
@@ -85,6 +87,8 @@ export const useAttendanceAuthStore = defineStore('attendanceAuth', {
           username: me.username,
           role: me.role,
           fullName: me.full_name,
+          location_ids: me.location_ids ?? [],
+          sees_all_teams: me.sees_all_teams ?? false,
         })
 
         return true

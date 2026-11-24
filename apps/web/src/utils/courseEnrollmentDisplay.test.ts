@@ -13,6 +13,10 @@ describe('billingUnitShortLabel', () => {
     assert.equal(billingUnitShortLabel('per_session'), '堂費')
   })
 
+  it('labels yearly as 年費', () => {
+    assert.equal(billingUnitShortLabel('yearly'), '年費')
+  })
+
   it('labels monthly and unknown as 月費', () => {
     assert.equal(billingUnitShortLabel('monthly'), '月費')
     assert.equal(billingUnitShortLabel(undefined), '月費')

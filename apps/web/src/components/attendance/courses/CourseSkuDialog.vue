@@ -160,7 +160,7 @@ async function save() {
               v-model="form.code"
               :label="t('Class code')"
               placeholder="MATH-P3-TUE"
-              hint="Unique. Required."
+              :hint="`Unique inside this ${t('location')}. Required.`"
               persistent-hint
               density="comfortable"
             />
@@ -220,7 +220,7 @@ async function save() {
               item-title="title"
               item-value="id"
               :label="t('Campus')"
-              :hint="t('Display only. Invoices filter by each student\'s registered campus, not this.')"
+              :hint="`Must match this ${t('course')}'s ${t('location')}. Leave empty to use that ${t('location')} automatically.`"
               persistent-hint
               density="comfortable"
               clearable
@@ -294,7 +294,7 @@ async function save() {
               item-title="title"
               item-value="value"
               :label="`How this ${t('class')} is charged`"
-              :hint="`One method per ${t('class')}.`"
+              :hint="form.billing_unit === 'yearly' ? 'Bills once a year, in the start month.' : `One method per ${t('class')}.`"
               persistent-hint
               density="comfortable"
             />
@@ -302,12 +302,14 @@ async function save() {
           <VCol cols="6">
             <VTextField
               v-model.number="form.price"
-              :label="form.billing_unit === 'per_session' ? 'Price per session' : 'Monthly price'"
+              :label="form.billing_unit === 'per_session' ? 'Price per session' : form.billing_unit === 'yearly' ? 'Price per year' : 'Monthly price'"
               type="number"
               min="0"
               step="0.01"
               prefix="HK$"
-              :hint="t(`Leave empty to skip this ${t('class')} at Generate — or for variable-rate ${t('classes')} like 私補, leave empty and set a per-student price on each enrollment.`)"
+              :hint="form.billing_unit === 'yearly'
+                ? 'Yearly fee. Generate bills this once a year, in the enrollment start month (January if there is no start date). Leave empty to set each enrollment’s fee on the roster.'
+                : t(`Leave empty to skip this ${t('class')} at Generate — or for variable-rate ${t('classes')} like 私補, leave empty and set a per-student price on each enrollment.`)"
               persistent-hint
               density="comfortable"
             />

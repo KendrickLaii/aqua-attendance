@@ -7,7 +7,6 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    __head_roster: typeof import('./src/components/attendance/courses/__head_roster.vue')['default']
     AddAuthenticatorAppDialog: typeof import('./src/components/dialogs/AddAuthenticatorAppDialog.vue')['default']
     AddEditAddressDialog: typeof import('./src/components/dialogs/AddEditAddressDialog.vue')['default']
     AddEditPermissionDialog: typeof import('./src/components/dialogs/AddEditPermissionDialog.vue')['default']
@@ -402,6 +401,7 @@ declare module 'vue' {
     InvoiceBillsSection: typeof import('./src/components/attendance/invoices/InvoiceBillsSection.vue')['default']
     InvoiceListPage: typeof import('./src/components/attendance/invoices/InvoiceListPage.vue')['default']
     InvoiceManualDialog: typeof import('./src/components/attendance/invoices/InvoiceManualDialog.vue')['default']
+    InvoicePrintVersionDialog: typeof import('./src/components/attendance/invoices/InvoicePrintVersionDialog.vue')['default']
     LocationAttachmentsTab: typeof import('./src/components/attendance/locations/LocationAttachmentsTab.vue')['default']
     LocationBasicTab: typeof import('./src/components/attendance/locations/LocationBasicTab.vue')['default']
     LocationCard: typeof import('./src/components/attendance/locations/LocationCard.vue')['default']
@@ -447,11 +447,11 @@ declare module 'vue' {
     TiptapEditor: typeof import('./src/@core/components/TiptapEditor.vue')['default']
     TwoFactorAuthDialog: typeof import('./src/components/dialogs/TwoFactorAuthDialog.vue')['default']
     UnitFormDialog: typeof import('./src/components/attendance/units/UnitFormDialog.vue')['default']
+    UnitListPage: typeof import('./src/components/attendance/units/UnitListPage.vue')['default']
     UnitQrCard: typeof import('./src/components/attendance/UnitQrCard.vue')['default']
     UnitQrDialogs: typeof import('./src/components/attendance/UnitQrDialogs.vue')['default']
     UserInfoEditDialog: typeof import('./src/components/dialogs/UserInfoEditDialog.vue')['default']
     UserUpgradePlanDialog: typeof import('./src/components/dialogs/UserUpgradePlanDialog.vue')['default']
-    VueApexCharts: typeof import('vue3-apexcharts')['default']
     WorkingSectionDialog: typeof import('./src/components/dialogs/tax/WorkingSectionDialog.vue')['default']
   }
 }

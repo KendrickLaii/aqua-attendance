@@ -13,6 +13,7 @@ def _check_times(start: time | None, end: time | None) -> None:
 
 
 class ShiftTemplateCreate(BaseModel):
+    location_id: uuid.UUID
     name: str = Field(min_length=1, max_length=100)
     start_time: time
     end_time: time
@@ -35,6 +36,7 @@ class ShiftTemplateUpdate(BaseModel):
 
 class ShiftTemplateOut(BaseModel):
     id: uuid.UUID
+    location_id: uuid.UUID
     name: str
     start_time: time
     end_time: time

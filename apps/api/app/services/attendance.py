@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -171,6 +171,7 @@ async def list_events(
     source: str | None = None,
     recorded_by_unit_id: uuid.UUID | None = None,
     include_voided: bool = False,
+    location_ids: set[uuid.UUID] | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[AttendanceEvent], int]:
@@ -200,6 +201,8 @@ async def list_events(
         conditions.append(AttendanceEvent.source == source)
     if recorded_by_unit_id:
         conditions.append(AttendanceEvent.recorded_by_unit_id == recorded_by_unit_id)
+    if location_ids is not None:
+        conditions.append(AttendanceEvent.location_id.in_(location_ids) if location_ids else false())
     if not include_voided:
         conditions.append(AttendanceEvent.voided_at.is_(None))
 
@@ -239,6 +242,7 @@ async def event_day_stats(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     include_voided: bool = False,
+    location_ids: set[uuid.UUID] | None = None,
 ) -> dict[str, int]:
     """Aggregate today's event counts for dashboard (all rows, not paginated)."""
     conditions = _event_stats_conditions(
@@ -246,6 +250,8 @@ async def event_day_stats(
         date_to=date_to,
         include_voided=include_voided,
     )
+    if location_ids is not None:
+        conditions.append(AttendanceEvent.location_id.in_(location_ids) if location_ids else false())
 
     total_q = select(func.count()).select_from(AttendanceEvent)
     if conditions:
@@ -301,6 +307,7 @@ async def list_events_for_export(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     include_voided: bool = False,
+    location_ids: set[uuid.UUID] | None = None,
 ) -> tuple[list[AttendanceEvent], bool]:
     """Load events for CSV export in pages, capped at ``CSV_EXPORT_MAX_ROWS``."""
     max_rows = settings.CSV_EXPORT_MAX_ROWS
@@ -317,6 +324,7 @@ async def list_events_for_export(
             date_from=date_from,
             date_to=date_to,
             include_voided=include_voided,
+            location_ids=location_ids,
             page=page,
             page_size=page_size,
         )
