@@ -6,6 +6,9 @@
 
 ### 新增
 
+- **Team 權限**（Migration **058**）：登入角色加 `user`（一般員工）。`user_locations` 記錄店長（`admin`）和一般員工可以開哪些 Team。GM（`superadmin`）不用指派，看全部。沒有指派的店長和一般員工登入後每頁顯示「未指派 Team，請聯絡 superadmin」（Aqua 顯示地點），API 不返回其他 Team 的資料。一般員工可以在被指派的 Team 開、改、作廢、刪除客戶、出席、QR、發票、收據；看不到薪資、時薪、分成、更表管理、帳號和 Audit Logs。店長在被指派的 Team 另外可以計薪、刪自己 Team 的薪資紀錄、批更、改更、重設 PIN，以及建立和修改自己 Team 的 `user` 帳號。刪 Team、刪帳號、看 Audit Logs 只限 `superadmin`。服務（`course_spus.location_id`）、line item（`course_skus.location_id` 必填）、發票 Job、更表模板改成每個 Team 一份。舊資料會複製到每一個現有 Team，新 Team 從空白開始。列印圖樣這次不拆。
+- **年費**：`course_skus.billing_unit` 加 `yearly`。服務可以揀 Yearly (年費)。Generate 每年只在報名開始月份出一行（冇開始日就 1 月），其他月份跳過。
+- **CPA 發票 JOB**（Migration **057**，**058** 改為每個 Team 一份）：`invoice_job_options`。手動發票行第一欄由 Period 改為 Job，下拉用該 Team 的清單（預設 AT、Discount、Non recurring、OT、OT - 6 months、OT - Monthly、OT - Odd、OT - Quarterly、PB、Recurring）。可以新增，確認後只加入這個 Team；可以刪除選項，只影響這個 Team，已經寫在舊單上的字保留。Aqua 的月份欄不變。
 - **CPA 發票：Remark 1／2、幣種、列印版本、分幣種合計、分成分幣種**（Migration **056**）：`tuition_invoices.top_notes`（Remark 1，可空）、`tuition_invoices.currency`（`String(3)`，預設 `HKD`，允許 HKD／USD／CNY／EUR／GBP／SGD／JPY，其他值回 422）、`tuition_receipts.currency`、`payroll_records.commission_other`（JSON，可空）。手動發票建立／PATCH 可帶 `currency`、`top_notes`（未 Paid 先可改）；自動 Generate 嘅單一律 HKD；由發票開 credit note 時前端帶返原幣種。收條只可合併同一幣種嘅發票，混幣 422 `All invoices on a receipt must use the same currency`，收條 `currency` 由發票帶出。薪資分成：`commission_pay` 只計 HKD 發票，非 HKD 按幣種寫入 `commission_other`（`{currency, base_total, amount, count}`），**不**入 gross／net；`GET /payroll-records/{id}/commission-detail` 每行加 `currency`，另有 `other_currencies`。Web（CPA 先見）：手動發票加 Remark 1、Currency；底部 Remark 改叫 Remark 2；列印前（發票對話框 Create & Print／Save & Print、發票列表列印圖示）彈出版本選擇：Version 1 Full（DESCRIPTION／AMOUNT）或 Version 2（DESCRIPTION／PRICE／QTY／AMOUNT）；debit note 列印 Remark 1 喺標題下、Remark 2 喺明細表下，金額欄同 Total 用該單幣種符號，金額 0 印 `-`。發票列表統計卡、收條統計卡按幣種合計（`HK$9,000.00 · US$500.00`）；新收條頁混幣有警告並禁止提交；收條列印、薪資詳情、Payroll Review、薪資單列印顯示其他幣種分成。Aqua 畫面同列印不變。
 - CPA debit note 嘅 Remark 1 改為印喺明細表第一行（喺描述欄，計入最少行數，表格高度不變），Remark 2 仍然喺表下面。新收條頁 Amount 欄前綴跟所選發票幣種符號，唔再寫死 `HK$`。
 
@@ -14,6 +17,13 @@
 
 ### 變更
 
+- `admin` 可以刪除自己 Team 的薪資紀錄。其他 Team 的紀錄回 403。`superadmin` 仍然可以刪任何 Team 的紀錄。
+- `admin` 可以建立和修改自己 Team 的 `user` 登入帳號（重設密碼、停用、指派自己已有的 Team）。不能建立或改成 `admin`／`superadmin`，不能刪帳號，也不能拿走這個帳號在其他 Team 的指派。`superadmin` 仍然管理全部帳號。
+- 帳號頁角色顯示 superadmin／admin／user。提示跟品牌用字：Aqua 用 location／student／地點，CPA 用 team／client／Team。畫面配置不變。
+- 測試機同本地關掉 Inventory（`INVENTORY_ENABLED=false`，CPA 側欄隱藏）。模組暫時留住，之後會移除。
+- CPA 收據列印改用 debit note 同一版面，標題是 OFFICIAL RECEIPT，編號標成 NO.。Aqua 收據版面不變。
+- 年費的價錢欄提示寫明每年出一次、在開始月份（沒有開始日就在 1 月）。CPA 發票 Job 要先確認先會加入清單；刪除選項會再問一次。打錯的字不會自動存進清單。
+- CPA 地點（Team）編輯的 Contact Person 改為 5 行文字框（最長 255 字）。Aqua 仍然是單行。
 - CPA 借項通知單的圓形 logo、信頭同頁尾改用 DRJ 圖片，版面跟公司樣稿（表格留空行、總額貼在金額欄下面、頁尾在頁底）。付款方法只讀該 Team 的 `details.invoice_payment`，冇填就留空。BILL TO 名稱一行、地址下一行，地址太長會在逗號後面換行，同一段地址不會被拆開，名稱不附編號。DN NO 係客戶編號/單號/年份，日期係日/月/年。Aqua 學費發票不變。
 - CPA 品牌將 Courses／Course 顯示為 Services／Service，Class／Classes 顯示為 Line item／Line items（課程管理、名冊、發票欄）。新增服務彈窗的 Subject／Chinese name／English name 顯示為 Group／Name／Sub-name。新增 line item 彈窗的 Chinese name／English name／Campus／Teacher / staff 顯示為 Name／Sub-name／Team／staff。Aqua 用字不變。名冊標題在 CPA 顯示為 Recurring Service。名冊的 Join a student／Student／Find student 顯示為 Enrollment／Client／Find Client。名冊狀態只顯示 Active 或 Inactive。發票頁標題顯示為 Invoices，帳單表 Student 顯示為 Client，地點選擇顯示為 Team，全部地點顯示為 All Teams。帳單表 Tutor 顯示為 Staff。手動發票跟同一套用字：Student name／Tutor／Location (logo) 顯示為 Client／Staff／Team，Month／Bill month 顯示為 Period，Add a class 顯示為 Add Item。手動發票價錢可以是 0。收據頁同新增收據的 Location／Student／All locations／Month 顯示為 Team／Client／All Teams／Period。地點管理頁同側欄在 CPA 顯示為 Team Management，Location 顯示為 Team。CPA 畫面凡是 Student、students 或「學生」都顯示為 Client。Aqua 用字不變。
 - 學費發票列表 Student、Classes 欄加闊（22%／32%），長名最多顯示兩行。

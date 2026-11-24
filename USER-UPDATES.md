@@ -7,6 +7,60 @@
 
 ---
 
+## 24/11/2026
+
+### 【測試機】admin 可以管理自己 Team 的 user 帳號
+
+<http://3.114.114.143/attendance/users>
+
+- admin 可以為自己的 Team 開 user 帳號，以及改資料、改密碼、停用登入
+- 不能開 admin 或 superadmin，不能刪帳號。刪帳號仍然要 superadmin
+- 這個 user 如果還屬於其他 Team，那些指派會保留
+- admin 可以刪除自己 Team 的薪資紀錄。其他 Team 的薪資刪不到
+
+## 23/11/2026
+
+### 【測試機】畫面用字
+
+<http://3.114.114.143/attendance/users>
+
+- 角色名稱是 superadmin、admin、user。補習社同 CPA 都係呢三個名
+- 未指派時，CPA 顯示「未指派 Team，請聯絡 superadmin」；補習社顯示「未指派地點，請聯絡 superadmin」。可以登入，但未指派前看不到資料
+- 提示跟品牌：補習社寫地點、學生；CPA 寫 Team、Client
+- CPA 加發票 Job 會問「for this team」，只加入這個 Team。補習社的月份欄不變
+- 加服務時會寫明只屬於所選的地點（CPA 顯示 Team）。新 Team 由空白開始
+- 更表只會見到被指派的地點（CPA 顯示 Team）
+
+### 【測試機】帳號要先指派 Team
+
+<http://3.114.114.143/attendance/users>
+
+- superadmin 在 User Management 開帳號，並揀這個帳號可以看哪些 Team
+- admin 可以處理自己 Team 的客戶、出席、發票、收據、服務、更表和薪資，也可以刪自己 Team 的薪資紀錄。不能看 Audit Logs、不能刪 Team。開 user 帳號見 24/11/2026
+- user 可以處理自己 Team 的客戶、出席、QR、發票、收據（包括作廢和刪除）。看不到薪資、時薪和分成，也沒有更表管理
+- 服務、發票 Job、更表模板改成每個 Team 各有一份。舊資料已複製到每一個現有 Team。新 Team 由空白開始
+- 手機 PIN 登入不變，仍然只看自己的更
+
+### 【測試機】年費、收據版面、發票 JOB
+
+<http://3.114.114.143/attendance/courses>
+
+- 服務可以揀年費。有開始日期就每年在那一個月出一次；沒有開始日期就在 1 月出
+- CPA 開發票時，每一行的 Period 改叫 Job。選已有項目就直接用。打新名稱時，該行會問要不要加入這個 Team 的清單，確認後這個 Team 才看得到。刪除項目會再問一次，只影響這個 Team。補習社的月份欄不變
+- 服務揀了年費之後，價錢下面會寫明每年出一次，在開始的那一個月（沒有開始日期就在 1 月）
+- 收據列印跟借項通知單同一種版面
+- 側欄的 Inventory 先收起，之後會拿掉
+- 正式機的月費、堂費、收據和月份欄不變
+
+## 20/11/2026
+
+### 【測試機】Team 聯絡人可以寫五行
+
+<http://3.114.114.143/attendance/locations>
+
+- 新增或編輯 Team，Contact 分頁的 Contact Person 變成 5 行，可以分行寫多過一個聯絡人
+- 正式機的地點聯絡人仍然是一行
+
 ## 18/11/2026
 
 ### 【測試機】CPA 發票加 Remark、幣種同列印版本

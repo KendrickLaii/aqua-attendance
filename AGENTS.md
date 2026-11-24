@@ -33,7 +33,7 @@
 ## 部署要點
 
 - 兩台 Lightsail 都拉同一個 `:main` image。**push 到 `main` = 兩台下次跑 `update.sh` 都會拿到**。
-- 測試機 `Ubuntu-testing-deploy`：git clone 在 `~/juku-attendance`，`git pull` 更新 compose，`INVENTORY_ENABLED=true`。
+- 測試機 `Ubuntu-testing-deploy`：git clone 在 `~/juku-attendance`，`git pull` 更新 compose，`INVENTORY_ENABLED=false`。Inventory 之後會從這個 repo 移除，測試機同本地先關掉。
 - 正式機 `Ubuntu-Aqua-Attendance`：手動複製在 `~/aqua-attendance/deploy`，compose 不會自動更新，`INVENTORY_ENABLED` 不設（預設 false）。
 - 只給測試機的功能用 runtime flag（見 `/api/features`、`useFeatureFlags`），不要用 build-time `VITE_*` 變數。
 - 先更新測試機確認，再更新正式機；正式機更新前跑 `./backup.sh`。

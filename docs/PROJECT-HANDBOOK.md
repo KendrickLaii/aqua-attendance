@@ -58,7 +58,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 
 | 概念 | 說明 |
 | ------ | ------ |
-| **User** (`users`) | 登入帳號：`admin` 或 `superadmin` |
+| **User** (`users`) | 登入帳號：`user`、`admin` 或 `superadmin`。`admin` 和 `user` 要在 `user_locations` 指派 Team，未指派看不到資料。`admin` 是該 Team 的負責人：可以建立和修改自己 Team 的 `user` 帳號，也可以刪自己 Team 的薪資紀錄。刪帳號、刪 Team、Audit Logs 只限 `superadmin` |
 | **Unit** (`units`) | 可簽到的實體。目前可建立／出勤：`staff`、`student`。`device`、`goods` 為 schema／未來擴充，API 與 UI **尚未開放建立**；出勤端點有 `unit_type` 白名單 |
 | **Location** (`locations`) | 據點／分校；掃描必須帶 `location_id`，且 Unit 須在該據點的允許名單內 |
 | **Profile** (`student_profiles` / `staff_profiles`) | 類型專屬資料：學生（學校、監護人）／員工（雇用類型、薪資） |
@@ -67,7 +67,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | **Payroll record** | 薪資計算結果快照（`payroll_records`） |
 | **Audit log** | 資料異動稽核記錄（`audit_logs`） |
 | **Course SPU** | 課程科目（`course_spus`）。課程家族的「概念層」，例如「小學數學」 |
-| **Course SKU** | 可報名的具體開班／場次（`course_skus`），隸屬於一個 SPU；含 `price`、`billing_unit`（`monthly` 月費／`per_session` 堂費）、`meeting_weekdays` |
+| **Course SKU** | 可報名的具體開班／場次（`course_skus`），隸屬於一個 SPU；含 `price`、`billing_unit`（`monthly` 月費／`yearly` 年費／`per_session` 堂費）、`meeting_weekdays` |
 | **Course enrollment** | 學生 unit 與 SKU 的報名記錄（`course_enrollments`）；同一學生同一 SKU 目前僅能一筆（含起迄日） |
 | **Tuition invoice** | 學生某月學費單（`tuition_invoices` + `tuition_invoice_lines`）。**不是** Vuexy `/apps/invoice` 模板 |
 
@@ -112,8 +112,7 @@ QR Codes 頁（`/attendance/qr-codes`）可按註冊地點篩選。`GET /api/uni
 | `POST /api/auth/register` | 無（一律 **403** — 使用 User Management） |
 | `POST /api/auth/login`, `/refresh` | 無 |
 | `GET /api/auth/me` | Bearer |
-| `GET/PATCH /api/users` | Admin |
-| `POST /api/users` | Admin |
+| `GET/POST/PATCH /api/users` | `admin` 只可建立和修改自己 Team 的 `user` 帳號（不能改成 `admin`／`superadmin`，不能指派自己沒有的 Team，其他 Team 的指派會保留）；`superadmin` 管理全部帳號 |
 | `DELETE /api/users/:id` | **Superadmin** |
 | `GET/POST/PATCH/DELETE /api/units` | Admin |
 | `GET/POST/PATCH/DELETE /api/locations` | Admin |
@@ -129,6 +128,7 @@ QR Codes 頁（`/attendance/qr-codes`）可按註冊地點篩選。`GET /api/uni
 | `GET /api/attendance-summaries/overview` | Admin |
 | `POST /api/attendance-summaries/generate` | Admin |
 | `GET/POST/PATCH /api/payroll-records` | Admin |
+| `DELETE /api/payroll-records/:id` | `admin` 只可刪自己 Team 的紀錄；`superadmin` 可刪任何 Team |
 | `POST /api/payroll-records/generate` | Admin |
 | `GET/PATCH /api/notifications` | Admin |
 | `GET /api/audit-logs` | Superadmin |
@@ -157,6 +157,7 @@ QR Codes 頁（`/attendance/qr-codes`）可按註冊地點篩選。`GET /api/uni
 | `GET /api/health` | 無 |
 | `GET /api/features` | 無（feature flags；`{"inventory": bool}`） |
 | `GET /api/branding` | 無（per-server 品牌；`{"brand": "aqua"}`，見 §1.15） |
+| `GET/POST /api/invoice-jobs`、`DELETE /api/invoice-jobs/{id}` | Admin。CPA 發票行 JOB 下拉。同名（不分大小寫）POST 回已有列；刪除只移走選項，已印發票的字保留 |
 | `GET/POST/PATCH/DELETE /api/inventory/...` | Admin（`admin`／`superadmin`，同其他 Admin 端點一致）；`INVENTORY_ENABLED=false` 時全部 **404** |
 | `GET/POST /api/inventory/warehouses`、`PATCH/DELETE /api/inventory/warehouses/{id}` | Admin；被引用時 DELETE **409**（改為停用）；code 重複 **409** |
 | `GET/POST /api/inventory/brands`、`PATCH /api/inventory/brands/{id}`、`GET/POST /api/inventory/categories`、`PATCH /api/inventory/categories/{id}` | Admin；品牌名重複 **409**；分類上層不存在／超過兩層／自己做上層／有子分類仲掛上層 **422**；同層重名 **409**；無 DELETE |
@@ -199,7 +200,7 @@ QR Codes 頁（`/attendance/qr-codes`）可按註冊地點篩選。`GET /api/uni
 | 欄位 | 說明 |
 | ------ | ------ |
 | 預設帳號 | 使用者名稱與密碼見 `apps/api/seed.py`（**勿寫入公開文件**） |
-| 角色 | `admin`、`superadmin` |
+| 角色 | `user`（被指派 Team 的日常資料）、`admin`（該 Team 的負責人：薪資含刪除、更表、自己 Team 的 `user` 登入帳號）、`superadmin`（全部 Team 的支援：全部帳號、Audit Logs、刪 Team、刪帳號） |
 | 示範據點 | 例如香港分校（`HK-CWB`、`HK-MK` 等，以 `seed.py` 為準） |
 | 示範人員 | 例如 `STAFF-001`（staff）、`STU-001`（student）；另含彙總／薪資測試資料 |
 
@@ -212,14 +213,14 @@ QR Codes 頁（`/attendance/qr-codes`）可按註冊地點篩選。`GET /api/uni
 | 層級 | 資料表 | 說明 |
 | ------ | ------ | ------ |
 | SPU | `course_spus` | 課程科目／課程家族（例如「小學數學」）。只有靜態描述，不含開班細節。 |
-| SKU | `course_skus` | 具體可報名場次（例如「小學數學 P3 週二班」）。包含年級、時間、地點、容量、`price`、`billing_unit`（`monthly`／`per_session`）、`meeting_weekdays`。 |
+| SKU | `course_skus` | 具體可報名場次（例如「小學數學 P3 週二班」）。包含年級、時間、地點、容量、`price`、`billing_unit`（`monthly`／`yearly`／`per_session`）、`meeting_weekdays`。 |
 | Enrollment | `course_enrollments` | 學生 unit 與 SKU 的報名記錄；支援 `active`/`completed`/`cancelled` 狀態與起訖日期。 |
 
 #### 關鍵業務規則
 
 - SPU 下可有多個 SKU；SKU 屬於唯一 SPU。
 - SKU 可選掛載到 `locations`（`location_id`）。
-- **計價在 SKU**：一班一種收法（月費或堂費），單一 `price`。功課輔導／A1／F5 共用這兩個單位。
+- **計價在 SKU**：一班一種收法（月費、年費或堂費），單一 `price`。年費在報名開始月份出一次（冇開始日就喺 1 月），其他月份 Generate 唔會再出。
 - 只有 `unit_type == student` 的 unit 能被報名；`staff`/`device`/`goods` 會回傳 422。
 - 同一學生（`unit_id`）與同一 SKU（`sku_id`）同時只准一筆 `active`；第二筆在讀回傳 409。`cancelled`／`completed` 留低。離開後再 Join 開新報名；Back in class 重開舊報名（已有另一筆在讀則 409）。見 §5 ~~#M22~~。
 - 刪除 SPU 時，若底下仍有 SKU，會因 `ondelete="RESTRICT"` 回傳 409；刪除 SKU 時若仍有報名記錄，同樣回傳 409。
@@ -241,7 +242,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - **已在班學生唔佔新位**：揀已在班學生時容量（In class 人數上限）唔會鎖掣；只在揀新學生時先檢查。
 - 名冊新增學生時填 **Start / End** 日期；列上可改日期並 Save（不必刪掉重報）。留空 End = Ongoing。
 - 學生搜尋仍為分頁（`page_size: 20`）+ 伺服器搜尋，不是一次載入全校。
-- SKU 表單含計價單位（月費／堂費）、上課日（Mon–Sun，僅供顯示）與負責教師（`staff_id`）。
+- SKU 表單含計價單位（月費／年費／堂費）、上課日（Mon–Sun，僅供顯示）與負責教師（`staff_id`）。
 - 堂費班名冊有 Sessions 欄顯示購買堂數與 unbilled chip；堂費出單主要經 Manual invoice 結算未出單購買（私補），Generate 亦會補收。
 
 ### 1.10 學費發票
@@ -263,7 +264,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - `DELETE /tuition-invoices/{id}`：只准 `void`；有 posted receipt 連結 → 409；否則刪非 posted 連結再刪單，編號釋放。
 - `DELETE /tuition-receipts/{id}`：只准 voided receipt；posted → 422。Void 後 Remove 先可以重用收條編號。
 - 兩人同時 Generate 撞唯一約束回 **409**（不是 500）。
-- **堂費** = `enrollment_purchases` 中 `billed_invoice_line_id` 為空（或所連行屬 void/本期重產）且 `purchased_at <=` 月末的購買，每條一行、行與 purchase 連結防止重複收費；月費每 enrollment 一行，數量 1。
+- **堂費** = `enrollment_purchases` 中 `billed_invoice_line_id` 為空（或所連行屬 void/本期重產）且 `purchased_at <=` 月末的購買，每條一行、行與 purchase 連結防止重複收費；月費每 enrollment 一行，數量 1。年費同樣一行數量 1，只在開始月份（冇開始日就 1 月）出。CPA 手動發票行的第一欄係 JOB（`invoice_job_options` 每個 Team 一份，可新增同刪除，舊單保留已寫低的字），Aqua 仍然係月份。服務和更表模板同樣每個 Team 一份。CPA 收條列印用 debit note 同一版面，標題係 OFFICIAL RECEIPT。
 - 發票編號：Issue 或 Manual 建立時按 `location_id` 從 `invoice_counters` 取下一號。`invoice_no` 係字串，但純數字會當整數推進該中心 counter，自動派號跳過已佔用號碼。上限按 `APP_BRAND`：`aqua` 維持 **1–999999**；`cpa` 放到 PostgreSQL INTEGER 上限 **2147483647**，所以可以手打 `202611001` 呢類 YYYYMM####（`2026110001` 都入到）。唔用 9999999999，因為 `invoice_counters.next_no` 係 INTEGER，超過 2147483647 要改欄位。帶字母或斜線嘅編號（例如 `KYS003/0404/26`）唔當數字，唔會推進 counter。手打一個大數字之後，下一張自動編號會跟住嗰個數，唔會自己變返下一個月份。
 - Web：`/attendance/invoices` 只顯示收費單（`total >= 0`）；`/attendance/credit-notes` 只顯示退款單（`total < 0`）。兩邊共用 `InvoiceListPage`。收費單：選月份 → Generate → Issue / Mark paid / Edit / Void。退款單：Manual credit note、列印退款單（REFUND REQUEST + REFUND ACKNOWLEDGEMENT）。Issue 後自動開列印；手動發票可選學生並一鍵加入其未出單堂費 package。Courses 名冊掣名 **Join class / Leave class / Back in class / Remove record**；hint 同確認框用粵語。
 
@@ -396,7 +397,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 
 - `/attendance/summaries` 主從式：工具列（月份箭頭、Type 篩選預設 **Staff**、Generate、Refresh）→ 統計卡（整月聚合）→ 總覽（每人一行月度彙總）→ 點列入每日明細（Regular / Reg slots / OT / OT slots + 狀態 chips）。Generate 成功提示喺 `src/utils/formatGenerateResult.ts`（區分首次／重算／無事件但有舊彙總／無事件無彙總）。
 - `/attendance/payroll` 主從式：月度薪資總覽 → 點列入明細（直接讀該 unit 當月 `attendance_summaries`，同 Summaries 明細同一資料源）；可編輯 Adjustment 1/2 與 remark。分成員工喺 Unit 編輯表單 **Compensation** 區開 `Commission / sharing`（預設 70%）；明細頁有 **Commission** 區（已收發票連收條號碼／日期、credit notes、awaiting payment）。
-- 狀態流程：`draft`／`calculated` → Approve → `approved` → Pay → `paid`（不可刪、不可重算）；superadmin 可刪 `draft`／`calculated`／`approved`。
+- 狀態流程：`draft`／`calculated` → Approve → `approved` → Pay → `paid`。`admin` 可刪自己 Team 的薪資紀錄，`superadmin` 可刪任何 Team 的紀錄。
 
 #### Seed 與常見問題
 
@@ -409,7 +410,7 @@ payroll_records（每人每月一筆；聚合 slots 並依薪資率計算金額�
 
 ### 1.14 Inventory 模組（2026-10-27 推翻原決定）
 
-~~2026-09-04 曾拍板「ERP／庫存不在本 repo 做，是獨立新專案」（#F1）。~~ **2026-10-27 該決定被推翻**：Inventory 模組已在 `juku-attendance` 落地，由 runtime feature flag `INVENTORY_ENABLED`（API env，預設 `false`）把關。已部署（2026-10-27）：測試伺服器（Lightsail `Ubuntu-testing-deploy`）`INVENTORY_ENABLED=true`；生產（`Ubuntu-Aqua-Attendance`）保持關。「唔好把家具塞進 `course_skus`／`units`／`attendance_events`」嘅隔離原則仍然有效。
+~~2026-09-04 曾拍板「ERP／庫存不在本 repo 做，是獨立新專案」（#F1）。~~ **2026-10-27 該決定被推翻**：Inventory 模組已在 `juku-attendance` 落地，由 runtime feature flag `INVENTORY_ENABLED`（API env，預設 `false`）把關。**2026-11-23 再關掉**：測試機同本地設 `INVENTORY_ENABLED=false`，CPA 側欄另外隱藏 `attendance-inventory`。模組暫時留住，之後會從這個 repo 移除（見 §5 #L13）。生產本來就關。「唔好把家具塞進 `course_skus`／`units`／`attendance_events`」嘅隔離原則仍然有效。
 
 #### 模組範圍
 
@@ -504,7 +505,7 @@ API（AdminOnly，仍受 `INVENTORY_ENABLED` 把關）：
 
 ### 1.15 品牌（Per-server Brand）
 
-同一個 web image 可以按伺服器顯示唔同品牌。API env `APP_BRAND`（預設 `aqua`）經公開端點 `GET /api/branding` → `{"brand": "<key>"}` 話俾 web 知用邊個品牌（登入頁未登入都要讀，所以無 auth）。Web 端 `src/composables/useBranding.ts` fetch 一次（失敗／未知 key 一律落返 `aqua`），品牌定義喺 `src/config/brands.ts` registry：`title`（分頁標題／navbar）、`loginTitle`（登入頁）、`footerName`、`logo`、`primaryColor`（可選，覆寫 Vuetify `primary`，aqua／light／dark 全部 theme 一齊改）、`hiddenRoutes`（route name 前綴，側欄 `filterNavByFeatures` 過濾＋router guard 導去 `attendance-dashboard`；cpa 隱藏 `attendance-units`，側欄改為 Client Management `/attendance/clients` 同 Staff Management `/attendance/staff`，aqua 隱藏呢兩個新頁）、`terms`（label 覆寫，cpa 亦把 Student／學生顯示成 Client；`nav:<原標題>` 改側欄項目名；cpa 把 Courses／Course 顯示成 Services／Service，Class／Classes 顯示成 Line item／Line items；新增服務彈窗 Subject／Chinese name／English name 顯示成 Group／Name／Sub-name；新增 line item 彈窗 Chinese name／English name／Campus／Teacher / staff 顯示成 Name／Sub-name／Team／staff；名冊標題顯示成 Recurring Service；Join a student／Student／Find student 顯示成 Enrollment／Client／Find Client；名冊狀態顯示成 Active／Inactive。發票頁標題顯示成 Invoices，帳單表 Student 顯示成 Client，Location 選擇顯示成 Team，All locations 顯示成 All Teams；帳單表 Tutor 顯示成 Staff。手動發票 Student name／Tutor／Location (logo) 顯示成 Client／Staff／Team，Month／Bill month 顯示成 Period，Add a class 顯示成 Add Item；行價錢可以是 0。收據頁同新增收據 Location／Student／All locations／Month 顯示成 Team／Client／All Teams／Period；地點管理頁同側欄顯示成 Team Management）、`manualInvoiceDefaultLines`／`manualInvoiceMaxLines`（手動發票開單行數同上限）、`invoicePrintTemplate`（`aqua` 現有學費發票，或 `debit-note` DRJ 借項通知單）。`aqua` 係生產外觀，所有覆寫對 aqua 係 no-op，畫面同以前完全一樣；demo 機設 `APP_BRAND=cpa`（而家係 placeholder，logo／用字待客戶提供）。`index.html` 嘅 pre-JS splash（title／loader／favicon）維持 aqua，品牌要 JS 跑咗先生效。
+同一個 web image 可以按伺服器顯示唔同品牌。API env `APP_BRAND`（預設 `aqua`）經公開端點 `GET /api/branding` → `{"brand": "<key>"}` 話俾 web 知用邊個品牌（登入頁未登入都要讀，所以無 auth）。Web 端 `src/composables/useBranding.ts` fetch 一次（失敗／未知 key 一律落返 `aqua`），品牌定義喺 `src/config/brands.ts` registry：`title`（分頁標題／navbar）、`loginTitle`（登入頁）、`footerName`、`logo`、`primaryColor`（可選，覆寫 Vuetify `primary`，aqua／light／dark 全部 theme 一齊改）、`hiddenRoutes`（route name 前綴，側欄 `filterNavByFeatures` 過濾＋router guard 導去 `attendance-dashboard`；cpa 隱藏 `attendance-units`，側欄改為 Client Management `/attendance/clients` 同 Staff Management `/attendance/staff`，aqua 隱藏呢兩個新頁）、`terms`（label 覆寫，cpa 亦把 Student／學生顯示成 Client；`nav:<原標題>` 改側欄項目名；cpa 把 Courses／Course 顯示成 Services／Service，Class／Classes 顯示成 Line item／Line items；新增服務彈窗 Subject／Chinese name／English name 顯示成 Group／Name／Sub-name；新增 line item 彈窗 Chinese name／English name／Campus／Teacher / staff 顯示成 Name／Sub-name／Team／staff；名冊標題顯示成 Recurring Service；Join a student／Student／Find student 顯示成 Enrollment／Client／Find Client；名冊狀態顯示成 Active／Inactive。發票頁標題顯示成 Invoices，帳單表 Student 顯示成 Client，Location 選擇顯示成 Team，All locations 顯示成 All Teams；帳單表 Tutor 顯示成 Staff。手動發票 Student name／Tutor／Location (logo) 顯示成 Client／Staff／Team，Month／Bill month 顯示成 Period，Add a class 顯示成 Add Item；行價錢可以是 0。收據頁同新增收據 Location／Student／All locations／Month 顯示成 Team／Client／All Teams／Period；地點管理頁同側欄顯示成 Team Management）、`manualInvoiceDefaultLines`／`manualInvoiceMaxLines`（手動發票開單行數同上限）、`invoicePrintTemplate`（`aqua` 現有學費發票，或 `debit-note` DRJ 借項通知單）。地點編輯 Contact 分頁：cpa 的 Contact Person 係 5 行文字框（`locations.contact_person` 仍然 `String(255)`），aqua 仍然係單行。`aqua` 係生產外觀，所有覆寫對 aqua 係 no-op，畫面同以前完全一樣；demo 機設 `APP_BRAND=cpa`（而家係 placeholder，logo／用字待客戶提供）。`index.html` 嘅 pre-JS splash（title／loader／favicon）維持 aqua，品牌要 JS 跑咗先生效。
 
 ---
 
@@ -672,7 +673,7 @@ Windows 無 OpenSSL：使用 WSL/Git Bash，或 PowerShell：
 | `POSTGRES_PASSWORD` | 強密碼 |
 | `SECRET_KEY` / `QR_SECRET` | 兩組 `openssl rand -hex 32` |
 | `CORS_ORIGINS` | `https://app.yourdomain.com` |
-| `INVENTORY_ENABLED` | （可選，預設 `false`）設 `true` 先開 Inventory 模組——**只應喺測試伺服器開**；生產唔使設（預設關） |
+| `INVENTORY_ENABLED` | （可選，預設 `false`）Inventory 已在測試機同本地關掉，之後會移除（§5 #L13）。生產維持唔設 |
 
 API 會把上傳圖片寫進 Docker volume `uploads`（container 內 `/data/uploads`）。重新套用 `docker-compose.prod.yml` 後才會掛上；未掛 volume 則下次佈署圖會消失。
 
@@ -1138,12 +1139,6 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ### 🟢 Low — 前端改善
 
-#### #L1 CASL admin 與 superadmin 權限相同
-
-- **位置**：`apps/web/src/utils/attendanceCasl.ts`
-- **問題**：CASL 規則兩者都回 `manage all`（UI 層有局部區分：僅 superadmin 見 Super Admin 選項、可刪使用者、Audit Logs 限 superadmin）。
-- **建議**：前端區分 superadmin-only 功能。
-
 #### #L2 硬刷新 CASL ability 短暫遺失
 
 - **位置**：`apps/web/src/composables/useAttendanceCaslSync.ts`
@@ -1210,6 +1205,12 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **問題**：「Add Item」下拉副標題同 unbilled package chip 顯示班價時寫死 `HK$`，唔跟發票所揀幣種
 - **建議**：顯示發票所選幣種；或等 SKU 有自己嘅幣種欄位後，改為顯示班價本身嘅幣種
 
+#### #L13 Inventory 之後會移走
+
+- **位置**：Inventory 模組（`apps/api/app/models/inventory*.py`、`apps/web/src/pages/attendance/inventory/`）
+- **問題**：測試機同本地已關掉（`INVENTORY_ENABLED=false`，CPA 側欄隱藏）。程式同資料表仍然留住，未刪。
+- **建議**：確認冇人再用之後，再拆路由、頁面同 042 起的 inventory migrations。未拆之前唔好再加功能。
+
 #### #L12 CPA 退款單列印唔支援版本選擇同 Remark 1
 
 - **位置**：`apps/web/src/utils/printTuitionCreditNote.ts`、`InvoiceManualDialog.vue`（`printManualInvoice`）
@@ -1246,7 +1247,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 **第三階段 — 可延後（Low）**
 12. Refresh token 改 HttpOnly cookie ⬜（#M6）
-13. 前端區分 admin/superadmin ⬜（#L1）
+13. 前端區分 admin/superadmin ✅（店長可以管自己 Team 的 `user` 帳號，看不到 Audit Logs，不能刪帳號；一般員工另外看不到薪資和更表）
 14. QR 錯誤訊息、密碼長度、mobile EAS build/release automation ⬜
 
 **其他未解技術債**：AQUA 模板死代碼（deferred）；Mobile My QR tab 為說明 placeholder（deferred）；Mobile M3.5 unit QR 待排；S3/R2 圖片儲存延後。
@@ -1326,7 +1327,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 056）
+# 最新可用版本（目前最新為 058）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -1383,7 +1384,7 @@ cd deploy
 | 429 Too many requests | 命中限流（login 5/min、scan 30/min） | 正常防護；可在 `.env` 調限流值 |
 | 掃 QR 回 `Invalid QR: token has been rotated` | QR 已被輪替（版本不符） | 在 Web 重新產生該 unit 的 QR |
 
-重設某用戶密碼（無自助流程）：由 superadmin 在 Web User Management，或直接改 DB（最後手段）。
+重設某用戶密碼（無自助流程）：`superadmin` 可重設任何帳號；`admin` 可重設自己 Team 裡的 `user` 帳號。最後手段才直接改 DB。
 
 ### 6.7 磁碟 / volume / 日誌膨脹
 
@@ -1711,7 +1712,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**056**（發票／收條 `currency`、發票 `top_notes`、薪資 `commission_other`；055 為 inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）→ 庫存異動 effective_date（055）→ 發票幣種／Remark 1／分成多幣種（056）。
+目前 Alembic head：**058**（Team 指派、服務／Job／更表模板按 Team 分開；057 為 `invoice_job_options`；056 為發票／收條 `currency`、發票 `top_notes`、薪資 `commission_other`；055 為 inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）→ 庫存異動 effective_date（055）→ 發票幣種／Remark 1／分成多幣種（056）→ 發票 JOB 清單（057）。
 
 ### 10.2 核心 ER 圖
 
@@ -1723,7 +1724,7 @@ erDiagram
         string email
         string hashed_password
         string full_name
-        string role "admin / superadmin"
+        string role "user / admin / superadmin"
         boolean is_active
         datetime last_login_at
         datetime created_at
@@ -1941,7 +1942,8 @@ erDiagram
 
     course_spus {
         uuid id PK
-        string code "唯一科目編碼"
+        uuid location_id FK "每個 Team 一份"
+        string code "同一 Team 內唯一"
         string name_zh
         string name_en
         string subject
@@ -1962,7 +1964,7 @@ erDiagram
         uuid location_id FK
         int capacity
         numeric price
-        string billing_unit "monthly / per_session"
+        string billing_unit "monthly / yearly / per_session"
         json meeting_weekdays "monday–sunday；僅供課表顯示"
         uuid staff_id FK "負責教師 unit（可空）"
         boolean is_active
@@ -2007,6 +2009,13 @@ erDiagram
         datetime updated_at
     }
 
+    invoice_job_options {
+        uuid id PK
+        uuid location_id FK "每個 Team 一份"
+        string name "同一 Team 內不重複"
+        datetime created_at
+    }
+
     tuition_invoice_lines {
         uuid id PK
         uuid invoice_id FK
@@ -2015,7 +2024,7 @@ erDiagram
         string sku_code
         string name_zh
         string staff_name "快照班次負責老師"
-        string month_label "手動行月份標籤"
+        string month_label "Aqua 月份標籤；CPA 存 JOB 名稱"
         string billing_unit
         numeric unit_price
         numeric quantity
