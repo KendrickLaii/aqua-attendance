@@ -17,6 +17,7 @@
 - 不能開 admin 或 superadmin，不能刪帳號。刪帳號仍然要 superadmin
 - 這個 user 如果還屬於其他 Team，那些指派會保留
 - admin 可以刪除自己 Team 的薪資紀錄。其他 Team 的薪資刪不到
+- user 登入後可以進入客戶、QR、出席、服務、發票、收據和 Team。薪資、更表、員工管理和帳號頁仍然進不到
 
 ## 23/11/2026
 
