@@ -1327,7 +1327,7 @@ docker compose -f docker-compose.prod.yml logs -n 100 db
 # 目前 DB 版本
 docker compose -f docker-compose.prod.yml exec api alembic current
 
-# 最新可用版本（目前最新為 059）
+# 最新可用版本（目前最新為 060）
 docker compose -f docker-compose.prod.yml exec api alembic heads
 
 # 手動升級到最新
@@ -1712,7 +1712,7 @@ Locations 仍只存 **image URL 字串**（資料庫不存圖檔）。Admin 在 
 
 #### Migration 狀態
 
-目前 Alembic head：**059**（line item 上課日 `{}` 改回 `[]`；058 為 Team 指派、服務／Job／更表模板按 Team 分開；057 為 `invoice_job_options`；056 為發票／收條 `currency`、發票 `top_notes`、薪資 `commission_other`；055 為 inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）→ 庫存異動 effective_date（055）→ 發票幣種／Remark 1／分成多幣種（056）→ 發票 JOB 清單（057）。
+目前 Alembic head：**060**（line item 編號改回每個 Team 各自唯一，並去掉複製時加上的 Team 字尾；059 為上課日 `{}` 改回 `[]`；058 為 Team 指派、服務／Job／更表模板按 Team 分開；057 為 `invoice_job_options`；056 為發票／收條 `currency`、發票 `top_notes`、薪資 `commission_other`；055 為 inventory 庫存異動 `effective_date`；054 為 inventory 品牌＋兩層分類；053 為 inventory 產品 SPU；052 為 inventory 倉庫脫鉤；051 為 item `barcode`＋`other_cost`；050 為 `can_take_attendance`＋`recorded_by_unit_id`）。Migration 編號從 013 跳到 025（分支開發合併）；032 做咗 `products` → `units` 重新命名（部分 legacy constraint/index 名未清理，見 §5 #M21）；`f8e65b7cf82b`/`033` 對齊 profile 欄位；042–049 為 Inventory 模組（049 加商品副圖；042 前序 `g2a5b8c1d3e4`＝每生每期一張未出草稿發票）。完整鏈見 `apps/api/alembic/versions/`；milestone：users/tokens 強化 → units 欄位 → `business_hours` JSON → 多型重構 → 核心三表 → `voided_at` → `audit_logs` → slot 薪資（026）→ product→unit（032–033）→ 課程（034–035）→ 學費發票（036–039）→ 每中心編號／堂費購買（f5d44789754d／7d340d0ce7de）→ 堂數單一來源（c3e7a95b2d10）→ 收條／credit note 抬頭（a7f3c1e8d4b2–d4b8e2a1c7f0）→ 更表／自助報更（f2a6c8d0b4e1／b7c1e9a4d2f6）→ 在讀唯一（a4e8c1d9b6f2）→ 分成快照（b9e4d2a7c1f5／d1f6b3e8a9c2）→ 補單索引（g2a5b8c1d3e4）→ Inventory（042–048）→ 商品副圖（049）→ staff 掃碼權限（050）→ 商品 barcode／other_cost（051）→ 倉庫脫鉤（052）→ 產品 SPU（053）→ 品牌／子分類（054）→ 庫存異動 effective_date（055）→ 發票幣種／Remark 1／分成多幣種（056）→ 發票 JOB 清單（057）。
 
 ### 10.2 核心 ER 圖
 
