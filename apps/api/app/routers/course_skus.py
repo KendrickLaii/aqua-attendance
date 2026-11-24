@@ -93,9 +93,11 @@ async def create_course_sku(body: CourseSkuCreate, _admin: OfficeOnly, db: DB) -
     await require_team(db, _admin, location_id)
     await _assert_staff_exists(db, body.staff_id)
 
-    exists = await db.execute(select(CourseSku).where(CourseSku.code == body.code))
+    exists = await db.execute(
+        select(CourseSku.id).where(CourseSku.code == body.code, CourseSku.location_id == location_id)
+    )
     if exists.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="SKU code already exists")
+        raise HTTPException(status_code=409, detail="SKU code already exists on this team")
 
     sku = CourseSku(**{**body.model_dump(), "location_id": location_id})
     db.add(sku)
@@ -143,9 +145,15 @@ async def update_course_sku(sku_id: uuid.UUID, body: CourseSkuUpdate, _admin: Of
 
     new_code = update_data.get("code")
     if new_code:
-        exists = await db.execute(select(CourseSku).where(CourseSku.code == new_code, CourseSku.id != sku_id))
+        exists = await db.execute(
+            select(CourseSku.id).where(
+                CourseSku.code == new_code,
+                CourseSku.location_id == sku.location_id,
+                CourseSku.id != sku_id,
+            )
+        )
         if exists.scalar_one_or_none():
-            raise HTTPException(status_code=409, detail="SKU code already exists")
+            raise HTTPException(status_code=409, detail="SKU code already exists on this team")
 
     old_values = {field: getattr(sku, field) for field in update_data}
     for field, value in update_data.items():
