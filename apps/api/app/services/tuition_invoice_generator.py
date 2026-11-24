@@ -24,7 +24,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import false, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -179,12 +179,24 @@ def _credit_reason(
     return "not_billable"
 
 
+def _location_limit(column, location_id: UUID | None, location_ids: set[UUID] | None):
+    """One team, the caller's teams, or no extra filter."""
+    if location_id is not None:
+        return column == location_id
+    if location_ids is not None:
+        if not location_ids:
+            return false()
+        return column.in_(location_ids)
+    return None
+
+
 async def generate_monthly_tuition_invoices(
     db: AsyncSession,
     *,
     year: int,
     month: int,
     location_id: UUID | None = None,
+    location_ids: set[UUID] | None = None,
     user_id: UUID | None = None,
 ) -> dict[str, object]:
     first_day = date(year, month, 1)
@@ -204,8 +216,9 @@ async def generate_monthly_tuition_invoices(
         Unit.is_active.is_(True),
         Unit.status == UnitStatus.active.value,
     ]
-    if location_id is not None:
-        enrollment_clauses.append(Unit.registered_location_id == location_id)
+    enrollment_limit = _location_limit(Unit.registered_location_id, location_id, location_ids)
+    if enrollment_limit is not None:
+        enrollment_clauses.append(enrollment_limit)
 
     result = await db.execute(
         select(CourseEnrollment)
@@ -252,8 +265,9 @@ async def generate_monthly_tuition_invoices(
         EnrollmentPurchase.purchased_at < first_day,
         EnrollmentPurchase.billed_invoice_line_id.is_(None),
     ]
-    if location_id is not None:
-        leftover_clauses.append(Unit.registered_location_id == location_id)
+    leftover_limit = _location_limit(Unit.registered_location_id, location_id, location_ids)
+    if leftover_limit is not None:
+        leftover_clauses.append(leftover_limit)
     leftover_result = await db.execute(
         select(EnrollmentPurchase, Unit, CourseSku)
         .join(CourseEnrollment, EnrollmentPurchase.enrollment_id == CourseEnrollment.id)
@@ -278,8 +292,9 @@ async def generate_monthly_tuition_invoices(
         TuitionInvoice.period_end == last_day,
         TuitionInvoice.kind == "tuition",
     ]
-    if location_id is not None:
-        existing_clauses.append(TuitionInvoice.location_id == location_id)
+    existing_limit = _location_limit(TuitionInvoice.location_id, location_id, location_ids)
+    if existing_limit is not None:
+        existing_clauses.append(existing_limit)
 
     existing_result = await db.execute(
         select(TuitionInvoice)

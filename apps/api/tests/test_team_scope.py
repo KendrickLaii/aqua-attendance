@@ -176,6 +176,91 @@ async def test_admin_deletes_payroll_only_for_own_team(client: AsyncClient) -> N
     assert deleted.status_code == 204, deleted.text
 
 
+async def test_other_team_enrollment_and_staff_pay_are_blocked(client: AsyncClient) -> None:
+    gm = await _login(client, "superadmin")
+    manager = await _login(client, "admin")
+    mine = (await client.post("/api/locations", json={"name_en": "Scope Mine"}, headers=_h(gm))).json()["id"]
+    other = (await client.post("/api/locations", json={"name_en": "Scope Other"}, headers=_h(gm))).json()["id"]
+    manager_id = (await client.get("/api/auth/me", headers=_h(manager))).json()["id"]
+    assert (await client.patch(
+        f"/api/users/{manager_id}",
+        json={"location_ids": [mine]},
+        headers=_h(gm),
+    )).status_code == 200
+
+    spu = await client.post(
+        "/api/course-spus",
+        json={"location_id": other, "code": f"SVC-{uuid.uuid4().hex[:5]}", "name_zh": "數學"},
+        headers=_h(gm),
+    )
+    assert spu.status_code == 201, spu.text
+    sku = await client.post(
+        "/api/course-skus",
+        json={"spu_id": spu.json()["id"], "code": f"LI-{uuid.uuid4().hex[:5]}", "name_zh": "班", "price": 100},
+        headers=_h(gm),
+    )
+    assert sku.status_code == 201, sku.text
+    student = await client.post(
+        "/api/units",
+        json={
+            "code": f"STU-{uuid.uuid4().hex[:6]}",
+            "full_name": "Other Student",
+            "unit_type": "student",
+            "registered_location_id": other,
+            "scan_location_ids": [other],
+        },
+        headers=_h(gm),
+    )
+    assert student.status_code == 201, student.text
+    enrolled = await client.post(
+        "/api/course-enrollments",
+        json={"unit_id": student.json()["id"], "sku_id": sku.json()["id"], "start_date": "2026-06-01", "end_date": "2026-06-30"},
+        headers=_h(gm),
+    )
+    assert enrolled.status_code == 201, enrolled.text
+    enrollment_id = enrolled.json()["id"]
+    assert (await client.get(f"/api/course-enrollments/{enrollment_id}", headers=_h(manager))).status_code == 403
+    edited = await client.patch(
+        f"/api/course-enrollments/{enrollment_id}",
+        json={"notes": "cross team"},
+        headers=_h(manager),
+    )
+    assert edited.status_code == 403
+
+    staff = await client.post(
+        "/api/units",
+        json={
+            "code": f"STF-{uuid.uuid4().hex[:6]}",
+            "full_name": "Other Staff",
+            "unit_type": "staff",
+            "registered_location_id": other,
+            "scan_location_ids": [other],
+        },
+        headers=_h(gm),
+    )
+    assert staff.status_code == 201, staff.text
+    profile = await client.post(
+        f"/api/staff-profiles/{staff.json()['id']}",
+        json={"hourly_rate": 80},
+        headers=_h(gm),
+    )
+    assert profile.status_code == 201, profile.text
+    hidden = await client.get(f"/api/staff-profiles/{staff.json()['id']}", headers=_h(manager))
+    assert hidden.status_code == 403
+
+    blocked = await client.post(
+        f"/api/tuition-invoices/generate?year=2026&month=6&location_id={other}",
+        headers=_h(manager),
+    )
+    assert blocked.status_code == 403
+    own_only = await client.post(
+        "/api/tuition-invoices/generate?year=2026&month=6",
+        headers=_h(manager),
+    )
+    assert own_only.status_code == 200, own_only.text
+    assert own_only.json()["created"] == 0
+
+
 async def test_staff_web_account_cannot_open_payroll(client: AsyncClient) -> None:
     token = await _login(client, "user")
     resp = await client.get("/api/payroll-records", headers=_h(token))

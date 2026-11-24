@@ -163,14 +163,22 @@ async def generate_tuition_invoices(
 ) -> TuitionInvoiceGenerateResult:
     if not (1 <= month <= 12):
         raise HTTPException(status_code=422, detail="month must be 1-12")
+    location_ids = None
     if location_id is not None:
         await require_team(db, admin, location_id)
-    elif admin.role != "superadmin":
-        raise HTTPException(status_code=422, detail="Choose a team")
+    else:
+        location_ids = await assigned_team_ids(db, admin)
+        if location_ids is not None and not location_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not assigned to this team")
 
     try:
         result = await generate_monthly_tuition_invoices(
-            db, year=year, month=month, location_id=location_id, user_id=admin.id
+            db,
+            year=year,
+            month=month,
+            location_id=location_id,
+            location_ids=location_ids,
+            user_id=admin.id,
         )
     except IntegrityError:
         await db.rollback()

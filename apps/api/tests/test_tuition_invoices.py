@@ -1160,6 +1160,12 @@ async def test_generate_returns_409_on_unique_conflict(
         raise IntegrityError("INSERT", {}, Exception("uq_tuition_invoices_unit_period"))
 
     monkeypatch.setattr(tuition_router, "generate_monthly_tuition_invoices", _boom)
+    assigned = await client.post(
+        "/api/locations",
+        json={"name_en": "Generate team"},
+        headers=_auth(admin_token),
+    )
+    assert assigned.status_code == 201, assigned.text
 
     resp = await client.post(
         "/api/tuition-invoices/generate?year=2026&month=6",

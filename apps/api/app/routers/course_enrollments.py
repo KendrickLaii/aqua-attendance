@@ -33,6 +33,11 @@ _ENROLLMENT_LOAD = (
 )
 
 
+async def _require_enrollment_team(db: DB, actor, enrollment: CourseEnrollment) -> None:
+    sku = await db.get(CourseSku, enrollment.sku_id)
+    await require_team(db, actor, sku.location_id if sku is not None else None)
+
+
 def _enrollment_to_out(enrollment: CourseEnrollment) -> CourseEnrollmentOut:
     out = CourseEnrollmentOut.model_validate(enrollment)
     if enrollment.unit is not None:
@@ -201,6 +206,7 @@ async def get_course_enrollment(enrollment_id: uuid.UUID, _admin: OfficeOnly, db
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    await _require_enrollment_team(db, _admin, enrollment)
     return _enrollment_to_out(enrollment)
 
 
@@ -216,6 +222,7 @@ async def update_course_enrollment(
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    await _require_enrollment_team(db, _admin, enrollment)
 
     update_data = body.model_dump(exclude_unset=True)
     new_start = update_data["start_date"] if "start_date" in update_data else enrollment.start_date
@@ -288,6 +295,7 @@ async def delete_course_enrollment(enrollment_id: uuid.UUID, _admin: OfficeOnly,
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    await _require_enrollment_team(db, _admin, enrollment)
 
     billed = await db.scalar(
         select(TuitionInvoiceLine.id)
@@ -327,6 +335,7 @@ async def create_enrollment_purchase(
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    await _require_enrollment_team(db, _admin, enrollment)
     if enrollment.status != EnrollmentStatus.active.value:
         raise HTTPException(status_code=422, detail="Cannot top up a non-active enrollment")
 
@@ -362,6 +371,10 @@ async def create_enrollment_purchase(
 async def list_enrollment_purchases(
     enrollment_id: uuid.UUID, _admin: OfficeOnly, db: DB
 ) -> list[EnrollmentPurchase]:
+    enrollment = await db.get(CourseEnrollment, enrollment_id)
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    await _require_enrollment_team(db, _admin, enrollment)
     result = await db.execute(
         select(EnrollmentPurchase).where(EnrollmentPurchase.enrollment_id == enrollment_id)
     )

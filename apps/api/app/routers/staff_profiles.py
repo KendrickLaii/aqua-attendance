@@ -27,6 +27,7 @@ async def get_staff_profile(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) -> St
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff profile not found")
+    await require_team(db, _admin, profile.unit.registered_location_id if profile.unit else None)
     return StaffProfileOut.model_validate(profile)
 
 
@@ -43,6 +44,7 @@ async def create_staff_profile(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Unit must be of type 'staff'",
         )
+    await require_team(db, _admin, unit.registered_location_id)
 
     existing = await db.execute(select(StaffProfile).where(StaffProfile.id == unit_id))
     if existing.scalar_one_or_none():
@@ -72,6 +74,8 @@ async def update_staff_profile(
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff profile not found")
+    unit = await db.get(Unit, unit_id)
+    await require_team(db, _admin, unit.registered_location_id if unit else None)
 
     update_data = body.model_dump(exclude_unset=True)
     if update_data.get("can_take_attendance") is None:
@@ -131,6 +135,8 @@ async def delete_staff_profile(unit_id: uuid.UUID, _admin: AdminOnly, db: DB) ->
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff profile not found")
+    unit = await db.get(Unit, unit_id)
+    await require_team(db, _admin, unit.registered_location_id if unit else None)
     await db.delete(profile)
     await db.commit()
     await audit_log_svc.log_audit(

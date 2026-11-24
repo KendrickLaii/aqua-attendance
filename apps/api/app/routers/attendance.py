@@ -151,6 +151,8 @@ async def create_manual_correction(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
     ensure_attendance_eligible(unit)
     location_id, location_name = await resolve_location(db, body.location_id, body.location)
+    if location_id is None and not body.location and unit.registered_location_id is not None:
+        location_id, location_name = await resolve_location(db, unit.registered_location_id, None)
     await require_team(db, admin, location_id)
 
     event = await att_svc.manual_correction(
