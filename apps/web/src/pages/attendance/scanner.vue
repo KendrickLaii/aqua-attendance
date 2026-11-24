@@ -84,7 +84,7 @@ async function loadLocations() {
 }
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
 
   if (typeof sessionStorage === 'undefined' || !sessionStorage.getItem(SCAN_ENTRY_SESSION_KEY)) {

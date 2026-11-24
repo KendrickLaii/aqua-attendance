@@ -352,7 +352,7 @@ async function submit() {
 }
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
   try {
     await loadLocations()

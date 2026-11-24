@@ -356,7 +356,7 @@ watch([searchQuery, statusFilter], () => {
 })
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
   await loadLocations()
   if (!yearMonth.value)

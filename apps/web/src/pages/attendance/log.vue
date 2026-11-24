@@ -300,7 +300,7 @@ const filtersReady = ref(false)
 const route = useRoute()
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
 
   const unitFromQuery = typeof route.query.unit_id === 'string' ? route.query.unit_id : ''
@@ -1002,7 +1002,7 @@ async function confirmVoid() {
               </td>
               <td class="col-actions">
                 <VBtn
-                  v-if="!evt.voided_at && authStore.isAdmin"
+                  v-if="!evt.voided_at"
                   icon
                   size="small"
                   variant="text"

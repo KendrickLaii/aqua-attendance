@@ -93,7 +93,7 @@ const emptyStateMessage = computed(() =>
 const showEmptyUnitsCta = computed(() => !hasFilters.value)
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
   await Promise.all([loadUnits(), loadLocations()])
 })

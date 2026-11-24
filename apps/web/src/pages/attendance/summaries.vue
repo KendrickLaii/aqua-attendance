@@ -76,7 +76,7 @@ const detailTotals = computed(() => computeDetailTotals(visibleSummaries.value))
 const needsReviewReminder = computed(() => summaries.value.filter(s => needsManualReview(s)).length)
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
 
   toCurrentMonth()

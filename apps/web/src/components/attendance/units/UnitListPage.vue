@@ -144,7 +144,7 @@ const showEmptyCreateCta = computed(() =>
 )
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: props.fixedType === 'staff' })))
     return
   await loadLocations()
   await loadUnits()

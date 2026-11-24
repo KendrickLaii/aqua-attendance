@@ -115,7 +115,7 @@ const listCaption = computed(() => {
 const showEmptyCreateCta = computed(() => !search.value.trim() && !showInactive.value)
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
   await loadLocations()
 })

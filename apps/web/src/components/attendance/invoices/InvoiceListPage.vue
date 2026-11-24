@@ -862,7 +862,7 @@ function showAllMonths() {
 }
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
   loadLocations()
   if (!yearMonth.value)

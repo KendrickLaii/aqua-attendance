@@ -78,7 +78,7 @@ const deleteConfirmError = ref('')
 const deleteTarget = ref<{ title: string; detail: string; run: () => Promise<void> } | null>(null)
 
 onMounted(async () => {
-  if (!(await ensureAccess()))
+  if (!(await ensureAccess({ requireAdmin: false })))
     return
   await loadAll()
   applySkuFromRoute()
