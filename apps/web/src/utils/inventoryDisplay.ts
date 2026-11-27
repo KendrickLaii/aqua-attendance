@@ -11,6 +11,10 @@ export function formatMoney(value: number | string | null | undefined): string {
     return '—'
 
   const n = Number(value)
+  if (!Number.isFinite(n))
+    return '—'
 
-  return Number.isFinite(n) ? hkdFormatter.format(n) : '—'
+  const formatted = hkdFormatter.format(Math.abs(n))
+
+  return n < 0 ? `(${formatted})` : formatted
 }

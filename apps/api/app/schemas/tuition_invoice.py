@@ -137,7 +137,7 @@ class TuitionInvoiceManualLine(BaseModel):
     month: str = Field(..., max_length=50)
     course: str = Field(..., max_length=255)
     fee: float
-    qty: float = Field(..., gt=0)
+    qty: float = Field(..., ge=0)
     staff_name: str | None = Field(default=None, max_length=255)
     # Set when this line settles an unbilled per-session EnrollmentPurchase:
     # the typed `fee` is the charged price (purchases may have no price yet);

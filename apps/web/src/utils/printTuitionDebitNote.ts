@@ -1,4 +1,4 @@
-import { invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
+import { formatAccountingNumber, invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
 import type { TuitionInvoicePrintData, TuitionInvoicePrintLine } from '@/utils/printTuitionInvoice'
 
 /** Round mark and the supplied letterhead artwork, inlined before print. */
@@ -52,10 +52,7 @@ function formatMoney(value: number | null): string {
   if (value == null || Number.isNaN(value))
     return ''
 
-  return Number(value).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+  return formatAccountingNumber(Number(value))
 }
 
 /** Real lines print "-" for zero; blank filler rows (null) stay empty. */

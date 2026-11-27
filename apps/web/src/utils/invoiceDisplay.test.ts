@@ -76,12 +76,12 @@ function invoice(over: Partial<TuitionInvoice> = {}): TuitionInvoice {
 describe('invoiceDisplay', () => {
   it('formats Hong Kong dollar amounts', () => {
     assert.equal(formatInvoiceMoney(800), 'HK$800.00')
-    assert.equal(formatInvoiceMoney(-200), '-HK$200.00')
+    assert.equal(formatInvoiceMoney(-200), '(HK$200.00)')
   })
 
   it('formats other currencies and totals by currency', () => {
     assert.equal(formatInvoiceMoney(500, 'USD'), 'US$500.00')
-    assert.equal(formatInvoiceMoney(-20, 'JPY'), '-JP¥20.00')
+    assert.equal(formatInvoiceMoney(-20, 'JPY'), '(JP¥20.00)')
     assert.equal(formatMoneyByCurrency({}), 'HK$0.00')
     assert.equal(
       formatMoneyByCurrency({ USD: 500, HKD: 9000 }),

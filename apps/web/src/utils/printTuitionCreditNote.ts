@@ -1,3 +1,4 @@
+import { formatAccountingNumber } from '@/utils/invoiceDisplay'
 import type { TuitionInvoicePrintData, TuitionInvoicePrintHeader } from '@/utils/printTuitionInvoice'
 
 const CREDIT_LOGO_URL = ''
@@ -29,10 +30,7 @@ function formatMoney(value: number | null): string {
   if (value == null || Number.isNaN(value))
     return ''
 
-  return Number(value).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+  return formatAccountingNumber(Number(value))
 }
 
 function formatCreditDate(date: Date): string {

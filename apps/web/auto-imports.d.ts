@@ -179,6 +179,7 @@ declare global {
   const filterSummariesByDetailStatus: typeof import('./src/utils/summaryDisplay')['filterSummariesByDetailStatus']
   const filterTuitionInvoices: typeof import('./src/utils/invoiceDisplay')['filterTuitionInvoices']
   const findOverlaps: typeof import('./src/utils/shiftDisplay')['findOverlaps']
+  const formatAccountingNumber: typeof import('./src/utils/invoiceDisplay')['formatAccountingNumber']
   const formatAmount: typeof import('./src/utils/review-format')['formatAmount']
   const formatApiDetail: typeof import('./src/utils/formatApiDetail')['formatApiDetail']
   const formatApiError: typeof import('./src/utils/formatApiDetail')['formatApiError']
@@ -859,6 +860,7 @@ declare module 'vue' {
     readonly filterSummariesByDetailStatus: UnwrapRef<typeof import('./src/utils/summaryDisplay')['filterSummariesByDetailStatus']>
     readonly filterTuitionInvoices: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['filterTuitionInvoices']>
     readonly findOverlaps: UnwrapRef<typeof import('./src/utils/shiftDisplay')['findOverlaps']>
+    readonly formatAccountingNumber: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['formatAccountingNumber']>
     readonly formatAmount: UnwrapRef<typeof import('./src/utils/review-format')['formatAmount']>
     readonly formatApiDetail: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiDetail']>
     readonly formatApiError: UnwrapRef<typeof import('./src/utils/formatApiDetail')['formatApiError']>

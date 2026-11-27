@@ -65,12 +65,21 @@ const emit = defineEmits<{
 }>()
 
 interface ManualInvoiceRow {
+  key: number
   month: string
   course: string
   fee: string
   qty: string
   lineId?: string
   purchaseId?: string
+}
+
+let manualRowKey = 0
+
+function nextManualRowKey(): number {
+  manualRowKey += 1
+
+  return manualRowKey
 }
 
 interface UnbilledPackage {
@@ -279,8 +288,42 @@ async function confirmRemoveJob() {
   }
 }
 
+const dragFrom = ref<number | null>(null)
+
+function moveManualRow(from: number, to: number) {
+  const rows = manualForm.value.rows
+  if (to < 0 || to >= rows.length || from === to)
+    return
+  const searches = rows.map((_, index) => jobSearches[index] ?? '')
+  const [row] = rows.splice(from, 1)
+  const [search] = searches.splice(from, 1)
+
+  rows.splice(to, 0, row)
+  searches.splice(to, 0, search)
+  searches.forEach((value, index) => {
+    jobSearches[index] = value
+  })
+}
+
+function onRowDragStart(index: number, event: DragEvent) {
+  dragFrom.value = index
+  event.dataTransfer?.setData('text/plain', String(index))
+  if (event.dataTransfer)
+    event.dataTransfer.effectAllowed = 'move'
+}
+
+function onRowDrop(index: number) {
+  const from = dragFrom.value
+
+  dragFrom.value = null
+  if (from == null)
+    return
+  moveManualRow(from, index)
+}
+
 function blankManualRow(): ManualInvoiceRow {
   return {
+    key: nextManualRowKey(),
     month: isDebitNote.value ? '' : props.defaultMonthLabel,
     course: '',
     fee: '',
@@ -535,6 +578,7 @@ watch(manualLocationId, () => {
 function rowsFromInvoice(invoice: TuitionInvoice, negateFee: boolean): ManualInvoiceRow[] {
   if (negateFee) {
     const creditRows = creditLinesFromInvoice(invoice).map(line => ({
+      key: nextManualRowKey(),
       month: line.month || props.defaultMonthLabel,
       course: line.course,
       fee: String(line.fee),
@@ -545,7 +589,8 @@ function rowsFromInvoice(invoice: TuitionInvoice, negateFee: boolean): ManualInv
   }
 
   const rows = invoice.lines.map(line => ({
-    month: line.month_label || props.defaultMonthLabel,
+    key: nextManualRowKey(),
+    month: line.month_label || (isDebitNote.value ? '' : props.defaultMonthLabel),
     course: line.name_zh,
     fee: String(line.unit_price),
     qty: String(line.quantity),
@@ -745,14 +790,14 @@ function validateManualInvoice(): ManualInvoiceDraft | null {
         purchase_id: isCredit.value ? undefined : (row.purchaseId || undefined),
       }
     })
-    .filter(row => row.course && row.fee != null && Number.isFinite(row.fee) && row.qty != null && row.qty > 0)
+    .filter(row => row.course && row.fee != null && Number.isFinite(row.fee) && row.qty != null && row.qty >= 0)
 
   const touchedRows = manualForm.value.rows.filter(
     row => row.purchaseId || row.course.trim() || row.fee.trim() || row.qty.trim(),
   ).length
 
   if (validLines.length < touchedRows) {
-    manualError.value = 'Each filled line needs a course, a price (0 is allowed) and a quantity above 0 — fix or remove it. Use a negative price for a credit note.'
+    manualError.value = 'Each filled line needs a course, a price and a quantity. 0 is allowed. Fix or remove the line. Use a negative price for a credit note.'
 
     return null
   }
@@ -910,16 +955,17 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
 <template>
   <VDialog
     v-model="open"
-    max-width="960"
+    max-width="96vw"
+    width="96vw"
     persistent
   >
-    <VCard>
+    <VCard class="invoice-manual-card d-flex flex-column">
       <VCardTitle class="text-h6 py-4 d-flex align-center">
         {{ dialogTitle }}
         <HelpBubble :text="MANUAL_CREDIT_HINT" />
       </VCardTitle>
       <VDivider />
-      <VCardText class="pa-4">
+      <VCardText class="pa-4 invoice-manual-body">
         <VAlert
           v-if="manualError"
           type="error"
@@ -1128,7 +1174,10 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
         >
           <thead>
             <tr>
-              <th>{{ isDebitNote ? 'Job' : t('Month') }}</th>
+              <th style="width: 72px;" />
+              <th style="width: 180px;">
+                {{ isDebitNote ? 'Job' : t('Month') }}
+              </th>
               <th>{{ t('Class') }}</th>
               <th style="width: 110px;">
                 Price
@@ -1148,17 +1197,49 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
           <tbody>
             <tr
               v-for="(row, idx) in manualForm.rows"
-              :key="idx"
+              :key="row.key"
+              @dragover.prevent
+              @drop="onRowDrop(idx)"
             >
+              <td class="text-no-wrap">
+                <VBtn
+                  icon="ri-draggable"
+                  size="x-small"
+                  variant="text"
+                  aria-label="Drag to reorder"
+                  draggable="true"
+                  class="invoice-row-handle"
+                  @dragstart="onRowDragStart(idx, $event)"
+                  @dragend="dragFrom = null"
+                />
+                <VBtn
+                  icon="ri-arrow-up-line"
+                  size="x-small"
+                  variant="text"
+                  aria-label="Move line up"
+                  :disabled="idx === 0"
+                  @click="moveManualRow(idx, idx - 1)"
+                />
+                <VBtn
+                  icon="ri-arrow-down-line"
+                  size="x-small"
+                  variant="text"
+                  aria-label="Move line down"
+                  :disabled="idx === manualForm.rows.length - 1"
+                  @click="moveManualRow(idx, idx + 1)"
+                />
+              </td>
               <td>
                 <VCombobox
                   v-if="isDebitNote"
-                  v-model="row.month"
+                  :model-value="row.month"
                   :items="jobNames"
                   :search="jobSearches[idx] ?? ''"
                   density="compact"
                   hide-details
-                  placeholder="Job"
+                  clearable
+                  placeholder="Optional"
+                  @update:model-value="row.month = $event == null ? '' : String($event)"
                   @update:search="jobSearches[idx] = $event"
                   @blur="settleJob(row)"
                 >
@@ -1216,12 +1297,16 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
                   placeholder="Sept-26…"
                 />
               </td>
-              <td>
-                <div class="d-flex align-center">
-                  <VTextField
+              <td class="invoice-line-item">
+                <div class="d-flex align-start">
+                  <VTextarea
                     v-model="row.course"
                     density="compact"
                     hide-details
+                    auto-grow
+                    rows="1"
+                    max-rows="8"
+                    maxlength="255"
                     :placeholder="`Homework ${t('class')}…`"
                   />
                   <VChip
@@ -1368,5 +1453,25 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
 .no-number-spin :deep(input[type='number']::-webkit-inner-spin-button) {
   -webkit-appearance: none;
   margin: 0;
+}
+
+.invoice-row-handle {
+  cursor: grab;
+}
+
+.invoice-manual-card {
+  height: 90vh;
+}
+
+.invoice-manual-body {
+  overflow-y: auto;
+}
+
+.invoice-line-item {
+  min-width: 28rem;
+}
+
+.invoice-line-item :deep(textarea) {
+  line-height: 1.4;
 }
 </style>
