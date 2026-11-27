@@ -302,7 +302,7 @@ async function save() {
           <VCol cols="6">
             <VTextField
               v-model.number="form.price"
-              :label="form.billing_unit === 'per_session' ? 'Price per session' : form.billing_unit === 'yearly' ? 'Price per year' : 'Monthly price'"
+              :label="form.billing_unit === 'per_session' ? 'One-off price' : form.billing_unit === 'yearly' ? 'Price per year' : 'Monthly price'"
               type="number"
               min="0"
               step="0.01"

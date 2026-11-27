@@ -4,7 +4,7 @@ import { billingUnitShortLabel } from './courseEnrollmentDisplay'
 export const billingUnitOptions: { title: string; value: BillingUnit }[] = [
   { title: 'Monthly (月費)', value: 'monthly' },
   { title: 'Yearly (年費)', value: 'yearly' },
-  { title: 'Per session (堂費)', value: 'per_session' },
+  { title: 'One-off (一次性)', value: 'per_session' },
 ]
 
 export const weekdayOptions: { title: string; value: Weekday }[] = [

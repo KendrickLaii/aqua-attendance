@@ -69,6 +69,7 @@ const requestForm = reactive({
   end_time: '13:00',
   title: '',
   color: '#1565C0',
+  notes: '',
 })
 
 function locationOf(id: string) {
@@ -175,6 +176,7 @@ function openRequest(date: string) {
   requestForm.end_time = template ? hhmm(template.end_time) : '13:00'
   requestForm.title = template?.name ?? ''
   requestForm.color = template?.color ?? '#1565C0'
+  requestForm.notes = ''
   requestOpen.value = true
 }
 
@@ -197,6 +199,7 @@ async function submitRequest() {
       end_time: requestForm.end_time,
       title: requestForm.title || null,
       color: requestForm.color,
+      notes: requestForm.notes.trim() || null,
       template_id: requestForm.template_id || null,
     })
     requestOpen.value = false
@@ -518,6 +521,13 @@ async function cancelRequest(id: string) {
               type="time"
             />
           </div>
+          <VTextarea
+            v-model="requestForm.notes"
+            class="mt-2"
+            label="Notes"
+            rows="2"
+            density="comfortable"
+          />
         </VCardText>
         <VCardActions>
           <VSpacer />
