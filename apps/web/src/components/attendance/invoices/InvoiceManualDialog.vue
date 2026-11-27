@@ -957,8 +957,8 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
 <template>
   <VDialog
     v-model="open"
-    :max-width="isDebitNote ? '96vw' : 960"
-    :width="isDebitNote ? '96vw' : undefined"
+    :fullscreen="isDebitNote"
+    :max-width="isDebitNote ? undefined : 960"
     persistent
   >
     <VCard :class="isDebitNote ? 'invoice-manual-card d-flex flex-column' : undefined">
@@ -1170,9 +1170,11 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
           </VCol>
         </VRow>
 
+        <div :class="isDebitNote ? 'invoice-lines' : undefined">
         <VTable
           density="compact"
-          class="mt-4 no-number-spin"
+          class="no-number-spin"
+          :class="isDebitNote ? undefined : 'mt-4'"
         >
           <thead>
             <tr>
@@ -1180,7 +1182,10 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
                 v-if="isDebitNote"
                 style="width: 72px;"
               />
-              <th style="width: 180px;">
+              <th
+                :class="isDebitNote ? 'invoice-job-col' : undefined"
+                :style="isDebitNote ? undefined : { width: '180px' }"
+              >
                 {{ isDebitNote ? 'Job' : t('Month') }}
               </th>
               <th>{{ t('Class') }}</th>
@@ -1237,9 +1242,10 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
                   @click="moveManualRow(idx, idx + 1)"
                 />
               </td>
-              <td>
+              <td :class="isDebitNote ? 'invoice-job-col' : undefined">
                 <VCombobox
                   v-if="isDebitNote"
+                  class="invoice-job"
                   :model-value="row.month"
                   :items="jobNames"
                   :search="jobSearches[idx] ?? ''"
@@ -1410,6 +1416,7 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
             {{ manualTotal < 0 ? 'Credit' : 'Total' }}: {{ formatInvoiceMoney(manualTotal, manualForm.currency) }}
           </div>
         </div>
+        </div>
         <VTextField
           v-model="manualForm.remark"
           :label="isDebitNote ? 'Remark 2' : 'Remark'"
@@ -1476,11 +1483,32 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
 }
 
 .invoice-manual-card {
-  height: 90vh;
+  height: 100%;
+  max-height: 100dvh;
+  border-radius: 0;
 }
 
 .invoice-manual-body {
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.invoice-lines {
+  flex: 1 1 auto;
+  min-height: 16rem;
+  margin-top: 16px;
+  overflow: auto;
+}
+
+.invoice-job-col {
+  width: 16rem;
+  min-width: 16rem;
+}
+
+.invoice-job :deep(input) {
+  text-overflow: clip;
 }
 
 .invoice-line-item {
