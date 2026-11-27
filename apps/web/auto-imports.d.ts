@@ -210,6 +210,7 @@ declare global {
   const formatPrimitive: typeof import('./src/utils/review-format')['formatPrimitive']
   const formatRosterDate: typeof import('./src/utils/courseRosterDisplay')['formatRosterDate']
   const formatShiftHours: typeof import('./src/utils/shiftDisplay')['formatShiftHours']
+  const formatSignedDecimal: typeof import('./src/utils/invoiceDisplay')['formatSignedDecimal']
   const formatSummaryDateWithWeekday: typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']
   const formatSummaryGenerateMessage: typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']
   const formatTotalHours: typeof import('./src/utils/summaryDisplay')['formatTotalHours']
@@ -399,6 +400,7 @@ declare global {
   const rosterPriceLabel: typeof import('./src/utils/courseRosterDisplay')['rosterPriceLabel']
   const safeNumber: typeof import('./src/utils/summaryDisplay')['safeNumber']
   const safePayrollNumber: typeof import('./src/utils/payrollDisplay')['safePayrollNumber']
+  const setAccountingNegatives: typeof import('./src/utils/invoiceDisplay')['setAccountingNegatives']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setEndSavedHint: typeof import('./src/utils/billingStaffCopy')['setEndSavedHint']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
@@ -891,6 +893,7 @@ declare module 'vue' {
     readonly formatPrimitive: UnwrapRef<typeof import('./src/utils/review-format')['formatPrimitive']>
     readonly formatRosterDate: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['formatRosterDate']>
     readonly formatShiftHours: UnwrapRef<typeof import('./src/utils/shiftDisplay')['formatShiftHours']>
+    readonly formatSignedDecimal: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['formatSignedDecimal']>
     readonly formatSummaryDateWithWeekday: UnwrapRef<typeof import('./src/utils/attendanceDisplay')['formatSummaryDateWithWeekday']>
     readonly formatSummaryGenerateMessage: UnwrapRef<typeof import('./src/utils/formatGenerateResult')['formatSummaryGenerateMessage']>
     readonly formatTotalHours: UnwrapRef<typeof import('./src/utils/summaryDisplay')['formatTotalHours']>
@@ -1078,6 +1081,7 @@ declare module 'vue' {
     readonly rosterPriceLabel: UnwrapRef<typeof import('./src/utils/courseRosterDisplay')['rosterPriceLabel']>
     readonly safeNumber: UnwrapRef<typeof import('./src/utils/summaryDisplay')['safeNumber']>
     readonly safePayrollNumber: UnwrapRef<typeof import('./src/utils/payrollDisplay')['safePayrollNumber']>
+    readonly setAccountingNegatives: UnwrapRef<typeof import('./src/utils/invoiceDisplay')['setAccountingNegatives']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setEndSavedHint: UnwrapRef<typeof import('./src/utils/billingStaffCopy')['setEndSavedHint']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>

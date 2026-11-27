@@ -71,6 +71,7 @@ const emit = defineEmits<{
 }>()
 
 const { brand, t } = useBranding()
+const isCpa = computed(() => brand.value.key === 'cpa')
 
 const rosterSection = ref<HTMLElement | null>(null)
 const compareCodes = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })
@@ -400,6 +401,7 @@ const metaLine = computed(() => {
     sku,
     staffName: staffName(sku.staff_id),
     locationName: sku.location_id ? locationName(sku.location_id) : '',
+    cpa: isCpa.value,
   })
 })
 
@@ -1013,7 +1015,7 @@ defineExpose({ scrollIntoView })
               <VListItem
                 v-bind="itemProps"
                 :title="`${item.raw.code} · ${item.raw.name_zh}`"
-                :subtitle="`${spuName(item.raw.spu_id)} · ${billingUnitShortLabel(item.raw.billing_unit ?? 'monthly')}`"
+                :subtitle="`${spuName(item.raw.spu_id)} · ${billingUnitShortLabel(item.raw.billing_unit ?? 'monthly', isCpa)}`"
               >
                 <template
                   v-if="!item.raw.is_active"
@@ -1080,7 +1082,7 @@ defineExpose({ scrollIntoView })
         <div class="d-flex align-baseline flex-wrap ga-2 mb-3">
           <span class="text-subtitle-2 d-flex align-center">
             {{ t('Join a student') }}
-            <HelpBubble :text="t(JOIN_CLASS_HINT)" />
+            <HelpBubble :text="t(isCpa ? JOIN_CLASS_HINT.replace('堂費', 'One-off (一次性)') : JOIN_CLASS_HINT)" />
           </span>
         </div>
         <VRow dense>
@@ -1192,7 +1194,7 @@ defineExpose({ scrollIntoView })
               step="0.01"
               prefix="HK$"
               density="comfortable"
-              :hint="t(enrollPriceHint(rosterSku))"
+              :hint="t(enrollPriceHint(rosterSku, isCpa))"
               persistent-hint
               :disabled="!skuId"
             />

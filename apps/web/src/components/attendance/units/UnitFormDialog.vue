@@ -118,7 +118,8 @@ const statusOptions = [
   { title: 'Suspended', value: 'suspended' },
 ]
 
-const { t } = useBranding()
+const { brand, t } = useBranding()
+const isCpa = computed(() => brand.value.key === 'cpa')
 
 const typeOptions = computed(() => [
   { title: t('Student'), value: 'student' },
@@ -781,7 +782,7 @@ async function handleSave() {
                 </VChip>
               </div>
               <div class="text-caption text-medium-emphasis">
-                {{ row.sku ? `${row.sku.code} · ${billingUnitShortLabel(row.sku.billing_unit)}` : row.enrollment.sku_id }}
+                {{ row.sku ? `${row.sku.code} · ${billingUnitShortLabel(row.sku.billing_unit, isCpa)}` : row.enrollment.sku_id }}
                 · {{ formatEnrollmentRange(row.enrollment.start_date, row.enrollment.end_date) }}
               </div>
             </div>

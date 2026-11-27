@@ -10,9 +10,9 @@ const STATUS_ORDER: Record<string, number> = {
   cancelled: 2,
 }
 
-export function billingUnitShortLabel(unit: string | null | undefined): string {
+export function billingUnitShortLabel(unit: string | null | undefined, cpa = false): string {
   if (unit === 'per_session')
-    return '堂費'
+    return cpa ? 'One-off (一次性)' : '堂費'
   if (unit === 'yearly')
     return '年費'
 

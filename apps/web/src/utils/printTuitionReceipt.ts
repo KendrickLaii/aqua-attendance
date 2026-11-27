@@ -5,7 +5,7 @@ import type { InvoicePrintTemplate } from '@/config/brands'
 import type { TuitionInvoicePrintData, TuitionInvoicePrintHeader, TuitionInvoicePrintLine } from '@/utils/printTuitionInvoice'
 import { printTuitionInvoice } from '@/utils/printTuitionInvoice'
 import { debitNoteTeamCopy } from '@/utils/printTuitionDebitNote'
-import { DEFAULT_INVOICE_CURRENCY, formatAccountingNumber, invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
+import { DEFAULT_INVOICE_CURRENCY, formatSignedDecimal, invoiceCurrencySymbol } from '@/utils/invoiceDisplay'
 import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/printWindow'
 
 const RECEIPT_LOGO_URL = ''
@@ -54,7 +54,7 @@ function formatMoney(value: number | null): string {
   if (value == null || Number.isNaN(value))
     return ''
 
-  return formatAccountingNumber(Number(value))
+  return formatSignedDecimal(Number(value))
 }
 
 function formatReceiptDate(date: Date): string {

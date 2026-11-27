@@ -2,7 +2,7 @@ import type { TuitionInvoice } from '@/api/attendance/tuitionInvoices'
 import type { InvoicePrintTemplate } from '@/config/brands'
 import { buildTuitionCreditNotePrintHtml, isCreditNotePrint } from '@/utils/printTuitionCreditNote'
 import { DRJ_DEBIT_NOTE_LETTERHEAD, DRJ_DEBIT_NOTE_LOGO, buildDebitNotePrintHtml } from '@/utils/printTuitionDebitNote'
-import { formatAccountingNumber } from '@/utils/invoiceDisplay'
+import { formatSignedDecimal } from '@/utils/invoiceDisplay'
 import { inlineLogoForPrint, printFromWindow, waitForImages } from '@/utils/printWindow'
 
 // Hosted logo shown top-left on the printed invoice (same pattern as
@@ -79,7 +79,7 @@ function formatMoney(value: number | null): string {
   if (value == null || Number.isNaN(value))
     return ''
 
-  return formatAccountingNumber(Number(value))
+  return formatSignedDecimal(Number(value))
 }
 
 function formatInvoiceDate(date: Date): string {

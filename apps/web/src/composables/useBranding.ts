@@ -2,6 +2,7 @@ import { ofetch } from 'ofetch'
 import { h, readonly, ref } from 'vue'
 import type { useTheme } from 'vuetify'
 import { resolveBrand } from '@/config/brands'
+import { setAccountingNegatives } from '@/utils/invoiceDisplay'
 import type { Brand } from '@/config/brands'
 import { layoutConfig } from '@layouts'
 import type { VerticalNavItems } from '@layouts/types'
@@ -14,6 +15,7 @@ let loadPromise: Promise<void> | null = null
 
 /** Push the resolved brand into static template values (document title, navbar title/logo). */
 function applyBrandToShell() {
+  setAccountingNegatives(brand.value.key === 'cpa')
   document.title = brand.value.title
 
   // layoutConfig is the non-reactive source VerticalNav reads for the navbar

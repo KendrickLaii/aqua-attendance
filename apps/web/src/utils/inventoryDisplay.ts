@@ -14,7 +14,5 @@ export function formatMoney(value: number | string | null | undefined): string {
   if (!Number.isFinite(n))
     return '—'
 
-  const formatted = hkdFormatter.format(Math.abs(n))
-
-  return n < 0 ? `(${formatted})` : formatted
+  return hkdFormatter.format(n)
 }

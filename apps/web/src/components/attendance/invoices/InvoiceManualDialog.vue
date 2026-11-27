@@ -790,14 +790,16 @@ function validateManualInvoice(): ManualInvoiceDraft | null {
         purchase_id: isCredit.value ? undefined : (row.purchaseId || undefined),
       }
     })
-    .filter(row => row.course && row.fee != null && Number.isFinite(row.fee) && row.qty != null && row.qty >= 0)
+    .filter(row => row.course && row.fee != null && Number.isFinite(row.fee) && row.qty != null && (isDebitNote.value ? row.qty >= 0 : row.qty > 0))
 
   const touchedRows = manualForm.value.rows.filter(
     row => row.purchaseId || row.course.trim() || row.fee.trim() || row.qty.trim(),
   ).length
 
   if (validLines.length < touchedRows) {
-    manualError.value = 'Each filled line needs a course, a price and a quantity. 0 is allowed. Fix or remove the line. Use a negative price for a credit note.'
+    manualError.value = isDebitNote.value
+      ? 'Each filled line needs a course, a price and a quantity. 0 is allowed. Fix or remove the line. Use a negative price for a credit note.'
+      : 'Each filled line needs a course, a price (0 is allowed) and a quantity above 0 — fix or remove it. Use a negative price for a credit note.'
 
     return null
   }
@@ -955,17 +957,17 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
 <template>
   <VDialog
     v-model="open"
-    max-width="96vw"
-    width="96vw"
+    :max-width="isDebitNote ? '96vw' : 960"
+    :width="isDebitNote ? '96vw' : undefined"
     persistent
   >
-    <VCard class="invoice-manual-card d-flex flex-column">
+    <VCard :class="isDebitNote ? 'invoice-manual-card d-flex flex-column' : undefined">
       <VCardTitle class="text-h6 py-4 d-flex align-center">
         {{ dialogTitle }}
         <HelpBubble :text="MANUAL_CREDIT_HINT" />
       </VCardTitle>
       <VDivider />
-      <VCardText class="pa-4 invoice-manual-body">
+      <VCardText :class="isDebitNote ? 'pa-4 invoice-manual-body' : 'pa-4'">
         <VAlert
           v-if="manualError"
           type="error"
@@ -1174,7 +1176,10 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
         >
           <thead>
             <tr>
-              <th style="width: 72px;" />
+              <th
+                v-if="isDebitNote"
+                style="width: 72px;"
+              />
               <th style="width: 180px;">
                 {{ isDebitNote ? 'Job' : t('Month') }}
               </th>
@@ -1199,9 +1204,12 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
               v-for="(row, idx) in manualForm.rows"
               :key="row.key"
               @dragover.prevent
-              @drop="onRowDrop(idx)"
+              @drop="isDebitNote ? onRowDrop(idx) : undefined"
             >
-              <td class="text-no-wrap">
+              <td
+                v-if="isDebitNote"
+                class="text-no-wrap"
+              >
                 <VBtn
                   icon="ri-draggable"
                   size="x-small"
@@ -1297,9 +1305,10 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
                   placeholder="Sept-26…"
                 />
               </td>
-              <td class="invoice-line-item">
+              <td :class="isDebitNote ? 'invoice-line-item' : undefined">
                 <div class="d-flex align-start">
                   <VTextarea
+                    v-if="isDebitNote"
                     v-model="row.course"
                     density="compact"
                     hide-details
@@ -1307,6 +1316,13 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
                     rows="1"
                     max-rows="8"
                     maxlength="255"
+                    :placeholder="`Homework ${t('class')}…`"
+                  />
+                  <VTextField
+                    v-else
+                    v-model="row.course"
+                    density="compact"
+                    hide-details
                     :placeholder="`Homework ${t('class')}…`"
                   />
                   <VChip

@@ -24,7 +24,9 @@ const emit = defineEmits<{
   saved: []
 }>()
 
-const { t } = useBranding()
+const { brand, t } = useBranding()
+const isCpa = computed(() => brand.value.key === 'cpa')
+const billingItems = computed(() => billingUnitOptions(isCpa.value))
 
 const saving = ref(false)
 const saveError = ref('')
@@ -290,7 +292,7 @@ async function save() {
           <VCol cols="6">
             <VSelect
               v-model="form.billing_unit"
-              :items="billingUnitOptions"
+              :items="billingItems"
               item-title="title"
               item-value="value"
               :label="`How this ${t('class')} is charged`"
@@ -302,7 +304,7 @@ async function save() {
           <VCol cols="6">
             <VTextField
               v-model.number="form.price"
-              :label="form.billing_unit === 'per_session' ? 'One-off price' : form.billing_unit === 'yearly' ? 'Price per year' : 'Monthly price'"
+              :label="form.billing_unit === 'per_session' ? (isCpa ? 'One-off price' : 'Price per session') : form.billing_unit === 'yearly' ? 'Price per year' : 'Monthly price'"
               type="number"
               min="0"
               step="0.01"

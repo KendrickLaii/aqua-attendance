@@ -11,6 +11,7 @@ import {
 describe('billingUnitShortLabel', () => {
   it('labels per_session as 堂費', () => {
     assert.equal(billingUnitShortLabel('per_session'), '堂費')
+    assert.equal(billingUnitShortLabel('per_session', true), 'One-off (一次性)')
   })
 
   it('labels yearly as 年費', () => {

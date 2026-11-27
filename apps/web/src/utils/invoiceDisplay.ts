@@ -42,6 +42,13 @@ export function invoiceCurrencySymbol(currency: string | null | undefined): stri
   return INVOICE_CURRENCIES.find(item => item.code === code)?.symbol ?? code
 }
 
+/** CPA shows negatives as `(800.00)`. Aqua keeps a minus sign. */
+let accountingNegatives = false
+
+export function setAccountingNegatives(enabled: boolean) {
+  accountingNegatives = enabled
+}
+
 /** `800.00` or `(800.00)`. Zero stays `0.00`. */
 export function formatAccountingNumber(value: number): string {
   const abs = Math.abs(value).toLocaleString('en-US', {
@@ -52,15 +59,28 @@ export function formatAccountingNumber(value: number): string {
   return value < 0 ? `(${abs})` : abs
 }
 
+/** Aqua print amounts, including the minus sign. */
+export function formatSignedDecimal(value: number): string {
+  if (accountingNegatives)
+    return formatAccountingNumber(value)
+
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 export function formatInvoiceMoney(value: number, currency: string | null | undefined = DEFAULT_INVOICE_CURRENCY): string {
   const amount = Number(value)
   const abs = Math.abs(amount).toLocaleString('en-HK', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
-  const text = `${invoiceCurrencySymbol(currency)}${abs}`
+  const symbol = invoiceCurrencySymbol(currency)
+  if (amount < 0 && accountingNegatives)
+    return `(${symbol}${abs})`
 
-  return amount < 0 ? `(${text})` : text
+  return amount < 0 ? `-${symbol}${abs}` : `${symbol}${abs}`
 }
 
 /** Currency codes in display order: HKD first, then the list order, then unknown codes. */

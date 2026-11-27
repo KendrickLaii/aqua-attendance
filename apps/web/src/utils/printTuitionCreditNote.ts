@@ -1,4 +1,4 @@
-import { formatAccountingNumber } from '@/utils/invoiceDisplay'
+import { formatSignedDecimal } from '@/utils/invoiceDisplay'
 import type { TuitionInvoicePrintData, TuitionInvoicePrintHeader } from '@/utils/printTuitionInvoice'
 
 const CREDIT_LOGO_URL = ''
@@ -30,7 +30,7 @@ function formatMoney(value: number | null): string {
   if (value == null || Number.isNaN(value))
     return ''
 
-  return formatAccountingNumber(Number(value))
+  return formatSignedDecimal(Number(value))
 }
 
 function formatCreditDate(date: Date): string {

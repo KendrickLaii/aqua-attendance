@@ -1,11 +1,13 @@
 import type { BillingUnit, CourseEnrollment, CourseSku, EnrollmentPurchase, Weekday } from '../api/attendance/courses'
 import { billingUnitShortLabel } from './courseEnrollmentDisplay'
 
-export const billingUnitOptions: { title: string; value: BillingUnit }[] = [
-  { title: 'Monthly (月費)', value: 'monthly' },
-  { title: 'Yearly (年費)', value: 'yearly' },
-  { title: 'One-off (一次性)', value: 'per_session' },
-]
+export function billingUnitOptions(cpa = false): { title: string; value: BillingUnit }[] {
+  return [
+    { title: 'Monthly (月費)', value: 'monthly' },
+    { title: 'Yearly (年費)', value: 'yearly' },
+    { title: cpa ? 'One-off (一次性)' : 'Per session (堂費)', value: 'per_session' },
+  ]
+}
 
 export const weekdayOptions: { title: string; value: Weekday }[] = [
   { title: 'Mon', value: 'monday' },
@@ -175,7 +177,7 @@ export function matchesRosterSearch(
   return name.includes(q) || code.includes(q)
 }
 
-export function enrollPriceHint(sku: Pick<CourseSku, 'price' | 'billing_unit'> | null): string {
+export function enrollPriceHint(sku: Pick<CourseSku, 'price' | 'billing_unit'> | null, cpa = false): string {
   if (!sku)
     return ''
   if (sku.price == null) {
@@ -187,7 +189,7 @@ export function enrollPriceHint(sku: Pick<CourseSku, 'price' | 'billing_unit'> |
   const amount = `HK$${Number(sku.price).toFixed(2)}`
 
   if (sku.billing_unit === 'per_session')
-    return `留空就用呢班嘅堂費（${amount}）。`
+    return cpa ? `留空就用呢班嘅 One-off (一次性)（${amount}）。` : `留空就用呢班嘅堂費（${amount}）。`
   if (sku.billing_unit === 'yearly')
     return `留空就用呢班嘅年費（${amount}）。`
 
@@ -294,6 +296,7 @@ export function rosterMetaLine(input: {
   sku: Pick<CourseSku, 'schedule_note' | 'meeting_weekdays' | 'staff_id' | 'location_id' | 'billing_unit' | 'price'>
   staffName: string
   locationName: string
+  cpa?: boolean
 }): string {
   const { sku } = input
 
@@ -302,6 +305,6 @@ export function rosterMetaLine(input: {
     sku.meeting_weekdays?.length ? meetingDaysLabel(sku.meeting_weekdays) : '',
     input.staffName,
     sku.location_id ? input.locationName : '',
-    `${billingUnitShortLabel(sku.billing_unit)} · ${rosterPriceLabel(sku)}`,
+    `${billingUnitShortLabel(sku.billing_unit, input.cpa)} · ${rosterPriceLabel(sku)}`,
   ].filter(Boolean).join(' · ')
 }

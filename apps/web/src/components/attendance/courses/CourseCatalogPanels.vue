@@ -29,7 +29,8 @@ const emit = defineEmits<{
   'delete-sku': [sku: CourseSku]
 }>()
 
-const { t } = useBranding()
+const { brand, t } = useBranding()
+const isCpa = computed(() => brand.value.key === 'cpa')
 
 const coursesScroll = ref<HTMLElement | null>(null)
 const offeringsScroll = ref<HTMLElement | null>(null)
@@ -415,7 +416,7 @@ defineExpose({ scrollCatalogSelection })
                   </div>
                 </td>
                 <td class="col-billing">
-                  {{ billingUnitShortLabel(sku.billing_unit ?? 'monthly') }}
+                  {{ billingUnitShortLabel(sku.billing_unit ?? 'monthly', isCpa) }}
                 </td>
                 <td
                   class="text-end tabular-nums col-inclass"
