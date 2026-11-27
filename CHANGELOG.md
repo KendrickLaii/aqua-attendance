@@ -6,6 +6,7 @@
 
 ### 新增
 
+- 登入帳號可以改自己的密碼。右上角帳號選單，以及 User Management 的「Change my password」。要先輸入現在的密碼。`user` 仍然不能打開 User Management，也不能改別人的密碼。
 - **Team 權限**（Migration **058**）：登入角色加 `user`（一般員工）。`user_locations` 記錄店長（`admin`）和一般員工可以開哪些 Team。GM（`superadmin`）不用指派，看全部。沒有指派的店長和一般員工登入後每頁顯示「未指派 Team，請聯絡 superadmin」（Aqua 顯示地點），API 不返回其他 Team 的資料。一般員工可以在被指派的 Team 開、改、作廢、刪除客戶、出席、QR、發票、收據；看不到薪資、時薪、分成、更表管理、帳號和 Audit Logs。店長在被指派的 Team 另外可以計薪、刪自己 Team 的薪資紀錄、批更、改更、重設 PIN，以及建立和修改自己 Team 的 `user` 帳號。刪 Team、刪帳號、看 Audit Logs 只限 `superadmin`。服務（`course_spus.location_id`）、line item（`course_skus.location_id` 必填）、發票 Job、更表模板改成每個 Team 一份。舊資料會複製到每一個現有 Team，新 Team 從空白開始。列印圖樣這次不拆。
 - **年費**：`course_skus.billing_unit` 加 `yearly`。服務可以揀 Yearly (年費)。Generate 每年只在報名開始月份出一行（冇開始日就 1 月），其他月份跳過。
 - **CPA 發票 JOB**（Migration **057**，**058** 改為每個 Team 一份）：`invoice_job_options`。手動發票行第一欄由 Period 改為 Job，下拉用該 Team 的清單（預設 AT、Discount、Non recurring、OT、OT - 6 months、OT - Monthly、OT - Odd、OT - Quarterly、PB、Recurring）。可以新增，確認後只加入這個 Team；可以刪除選項，只影響這個 Team，已經寫在舊單上的字保留。Aqua 的月份欄不變。
@@ -17,6 +18,8 @@
 
 ### 變更
 
+- 手動發票可以拖行或用上下箭嘴改次序。Job 可以留空。視窗加闊加高，明細欄自動換行，最長 255 字。價錢和數量可以是 0。負數銀碼改為括號，例如 `(HK$800.00)`，畫面和列印都一樣。
+- 員工申請更可以填 Notes。服務計費方式「Per session (堂費)」改顯示為「One-off (一次性)」。
 - 用報名編號或員工編號直接讀寫時，也會檢查 Team。不屬於自己 Team 的報名和員工薪資回 403。
 - admin 或 user 不選 Team 出單時，只處理自己被指派的 Team。手動簽到沒填地點時，用學生所屬 Team 做檢查。
 - 複製到各 Team 的 line item 編號不再帶 Team 字尾（例如 `A001-37fc18` 改回 `A001`）。編號改為每個 Team 內唯一。
