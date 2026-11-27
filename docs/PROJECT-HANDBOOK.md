@@ -67,7 +67,7 @@ AQUA Attendance 是一款**多據點 QR 簽到／簽退**系統：教職員與�
 | **Payroll record** | 薪資計算結果快照（`payroll_records`） |
 | **Audit log** | 資料異動稽核記錄（`audit_logs`） |
 | **Course SPU** | 課程科目（`course_spus`）。課程家族的「概念層」，例如「小學數學」 |
-| **Course SKU** | 可報名的具體開班／場次（`course_skus`），隸屬於一個 SPU；含 `price`、`billing_unit`（`monthly` 月費／`yearly` 年費／`per_session`，畫面顯示 One-off (一次性)）、`meeting_weekdays` |
+| **Course SKU** | 可報名的具體開班／場次（`course_skus`），隸屬於一個 SPU；含 `price`、`billing_unit`（`monthly` 月費／`yearly` 年費／`per_session`；Aqua 顯示堂費，CPA 顯示 One-off (一次性)）、`meeting_weekdays` |
 | **Course enrollment** | 學生 unit 與 SKU 的報名記錄（`course_enrollments`）；同一學生同一 SKU 目前僅能一筆（含起迄日） |
 | **Tuition invoice** | 學生某月學費單（`tuition_invoices` + `tuition_invoice_lines`）。**不是** Vuexy `/apps/invoice` 模板 |
 
@@ -243,7 +243,7 @@ Web 管理後台於 `/attendance/courses` 為**班次優先**：
 - **已在班學生唔佔新位**：揀已在班學生時容量（In class 人數上限）唔會鎖掣；只在揀新學生時先檢查。
 - 名冊新增學生時填 **Start / End** 日期；列上可改日期並 Save（不必刪掉重報）。留空 End = Ongoing。
 - 學生搜尋仍為分頁（`page_size: 20`）+ 伺服器搜尋，不是一次載入全校。
-- SKU 表單含計價單位（月費／年費／One-off (一次性)）、上課日（Mon–Sun，僅供顯示）與負責教師（`staff_id`）。
+- SKU 表單含計價單位（月費／年費／堂費；CPA 的堂費顯示為 One-off (一次性)）、上課日（Mon–Sun，僅供顯示）與負責教師（`staff_id`）。
 - 堂費班名冊有 Sessions 欄顯示購買堂數與 unbilled chip；堂費出單主要經 Manual invoice 結算未出單購買（私補），Generate 亦會補收。
 
 ### 1.10 學費發票
