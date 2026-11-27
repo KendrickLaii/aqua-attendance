@@ -43,7 +43,6 @@ import {
 import { debitNoteTeamCopy } from '@/utils/printTuitionDebitNote'
 import {
   type InvoiceJobOption,
-  createInvoiceJob,
   deleteInvoiceJob,
   listInvoiceJobs,
 } from '@/api/attendance/invoiceJobs'
@@ -225,45 +224,28 @@ function savedJob(name: string) {
   return jobs.value.find(job => job.name.toLowerCase() === name.trim().toLowerCase())
 }
 
-function pendingJobName(row: ManualInvoiceRow) {
-  const name = row.month.trim()
-  if (!name || savedJob(name))
-    return ''
-
-  return name
-}
-
 function settleJob(row: ManualInvoiceRow) {
   const existing = savedJob(row.month)
   if (existing)
     row.month = existing.name
 }
 
-function stageNewJob(idx: number) {
-  const name = (jobSearches[idx] || '').trim()
+function onJobValue(idx: number, value: unknown) {
   const row = manualForm.value.rows[idx]
-  if (!name || !row)
+  if (!row)
     return
-  row.month = savedJob(name)?.name ?? name
+  row.month = value == null ? '' : String(value)
+  nextTick(() => {
+    jobSearches[idx] = ''
+  })
 }
 
-function dismissNewJob(row: ManualInvoiceRow) {
-  row.month = ''
-}
-
-async function confirmAddJob(row: ManualInvoiceRow) {
-  const name = pendingJobName(row)
-  if (!name || !manualLocationId.value)
-    return
-  try {
-    const created = await createInvoiceJob(name, manualLocationId.value)
-    if (!jobs.value.some(job => job.id === created.id))
-      jobs.value = [...jobs.value, created]
-    row.month = created.name
-  }
-  catch (e) {
-    manualError.value = formatApiError(e, 'Could not save this job.')
-  }
+function commitJob(idx: number, row: ManualInvoiceRow) {
+  const typed = (jobSearches[idx] || '').trim()
+  if (typed)
+    row.month = savedJob(typed)?.name ?? typed
+  jobSearches[idx] = ''
+  settleJob(row)
 }
 
 function askRemoveJob(name: string) {
@@ -1249,13 +1231,14 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
                   :model-value="row.month"
                   :items="jobNames"
                   :search="jobSearches[idx] ?? ''"
+                  :menu="Boolean((jobSearches[idx] || '').trim())"
                   density="compact"
                   hide-details
                   clearable
                   placeholder="Optional"
-                  @update:model-value="row.month = $event == null ? '' : String($event)"
+                  @update:model-value="onJobValue(idx, $event)"
                   @update:search="jobSearches[idx] = $event"
-                  @blur="settleJob(row)"
+                  @blur="commitJob(idx, row)"
                 >
                   <template #item="{ props: itemProps, item }">
                     <VListItem v-bind="itemProps">
@@ -1276,33 +1259,10 @@ function onPrintVersionChosen(version: TuitionInvoicePrintVersion) {
                       v-if="(jobSearches[idx] || '').trim()"
                       :title="`Use ${(jobSearches[idx] || '').trim()}`"
                       @mousedown.prevent
-                      @click="stageNewJob(idx)"
+                      @click="commitJob(idx, row)"
                     />
                   </template>
                 </VCombobox>
-                <div
-                  v-if="isDebitNote && pendingJobName(row)"
-                  class="d-flex align-center flex-wrap gap-1 mt-1"
-                >
-                  <span class="text-caption">Add “{{ pendingJobName(row) }}” for this {{ t('location') }}?</span>
-                  <VBtn
-                    size="x-small"
-                    color="primary"
-                    variant="tonal"
-                    @mousedown.prevent
-                    @click="confirmAddJob(row)"
-                  >
-                    Add
-                  </VBtn>
-                  <VBtn
-                    size="x-small"
-                    variant="text"
-                    @mousedown.prevent
-                    @click="dismissNewJob(row)"
-                  >
-                    Cancel
-                  </VBtn>
-                </div>
                 <VTextField
                   v-if="!isDebitNote"
                   v-model="row.month"
