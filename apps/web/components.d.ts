@@ -36,6 +36,7 @@ declare module 'vue' {
     CardStatisticsVertical: typeof import('./src/@core/components/cards/CardStatisticsVertical.vue')['default']
     CardStatisticsWithIcon: typeof import('./src/@core/components/cards/CardStatisticsWithIcon.vue')['default']
     CardStatisticsWithImages: typeof import('./src/@core/components/cards/CardStatisticsWithImages.vue')['default']
+    ChangePasswordDialog: typeof import('./src/components/attendance/ChangePasswordDialog.vue')['default']
     ClientAssignmentDialog: typeof import('./src/components/dialogs/tax/ClientAssignmentDialog.vue')['default']
     ClientDialog: typeof import('./src/components/dialogs/tax/ClientDialog.vue')['default']
     ComSecTiptapEditor: typeof import('./src/@core/components/ComSecTiptapEditor.vue')['default']

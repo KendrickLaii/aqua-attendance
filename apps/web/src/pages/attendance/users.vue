@@ -7,15 +7,17 @@ import {
   requiredValidator,
   usernameAttendanceValidator,
 } from '@core/utils/validators'
+import type { AttendanceUser } from '@/api/attendance/auth'
 import { type LocationItem, listLocations } from '@/api/attendance/locations'
 import { createUser, deleteUser, listUsersWithTotal, updateUser } from '@/api/attendance/users'
-import type { AttendanceUser } from '@/api/attendance/auth'
+import ChangePasswordDialog from '@/components/attendance/ChangePasswordDialog.vue'
 import { formatApiError } from '@/utils/formatApiDetail'
 import { useAutoClearAlerts } from '@/composables/useAutoClearAlert'
 import { useBranding } from '@/composables/useBranding'
 
 definePage({ meta: { action: 'manage', subject: 'User' } })
 
+const passwordOpen = ref(false)
 const pageSize = ref(40)
 const pageSizeOptions = [10, 20, 40, 60, 100]
 const SEARCH_DEBOUNCE_MS = 300
@@ -417,6 +419,15 @@ function canDeleteUser(u: AttendanceUser) {
         >
           {{ listCaption }}
         </span>
+        <VBtn
+          size="small"
+          variant="tonal"
+          class="ms-auto"
+          prepend-icon="ri-lock-password-line"
+          @click="passwordOpen = true"
+        >
+          Change my password
+        </VBtn>
       </VCardTitle>
       <div class="users-table-scroll">
         <VTable class="users-table">
@@ -642,6 +653,7 @@ function canDeleteUser(u: AttendanceUser) {
         This action cannot be undone.
       </template>
     </AttendanceConfirmDialog>
+    <ChangePasswordDialog v-model="passwordOpen" />
   </VContainer>
 </template>
 

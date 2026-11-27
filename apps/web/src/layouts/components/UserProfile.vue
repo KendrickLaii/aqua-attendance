@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { PerfectScrollbar } from 'vue3-perfect-scrollbar'
+import ChangePasswordDialog from '@/components/attendance/ChangePasswordDialog.vue'
 import { useAttendanceAuthStore } from '@/stores/useAttendanceAuthStore'
 import { clearAttendanceSessionCookies, isAttendanceLoggedIn } from '@/utils/attendanceSession'
 
 const router = useRouter()
 const ability = useAbility()
 const attendanceAuth = useAttendanceAuthStore()
+const passwordOpen = ref(false)
 
 // TODO: Get type from backend
 const userData = useCookie<any>('userData')
@@ -195,6 +197,19 @@ const logout = async () => {
               />
             </template>
 
+            <VListItem
+              v-if="isAttendanceMode"
+              @click="passwordOpen = true"
+            >
+              <template #prepend>
+                <VIcon
+                  icon="ri-lock-password-line"
+                  size="22"
+                />
+              </template>
+              <VListItemTitle>Change password</VListItemTitle>
+            </VListItem>
+
             <VListItem>
               <VBtn
                 block
@@ -212,4 +227,5 @@ const logout = async () => {
       <!-- !SECTION -->
     </VAvatar>
   </VBadge>
+  <ChangePasswordDialog v-model="passwordOpen" />
 </template>

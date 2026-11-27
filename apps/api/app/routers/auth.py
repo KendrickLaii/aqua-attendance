@@ -9,11 +9,13 @@ from app.config import settings
 from app.deps import DB, CurrentUser
 from app.limiter import limiter
 from app.models.user import User
-from app.schemas.auth import TokenPair, TokenRefresh
+from app.schemas.auth import ChangePassword, TokenPair, TokenRefresh
 from app.schemas.user import UserLogin, UserOut
+from app.services import audit_log as audit_svc
 from app.services.auth import (
     consume_refresh_token,
     decode_token,
+    hash_password,
     issue_token_pair,
     purge_expired_refresh_tokens,
     revoke_all_refresh_tokens_for_user,
@@ -100,6 +102,24 @@ async def logout(request: Request, response: Response, db: DB, body: TokenRefres
         except jwt.PyJWTError:
             pass  # expired / invalid token — nothing to revoke
     clear_auth_cookies(response)
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/minute")
+async def change_password(request: Request, body: ChangePassword, user: CurrentUser, db: DB) -> None:
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is wrong")
+    user.hashed_password = hash_password(body.new_password)
+    await db.commit()
+    await audit_svc.log_audit(
+        db,
+        user_id=user.id,
+        action="UPDATE",
+        table_name="users",
+        record_id=user.id,
+        description=f"Changed own password ({user.username})",
+        request=request,
+    )
 
 
 @router.get("/me", response_model=UserOut)

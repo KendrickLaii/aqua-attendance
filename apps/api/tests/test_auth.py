@@ -72,6 +72,42 @@ async def test_login_username_case_insensitive(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_change_own_password(client: AsyncClient):
+    uname = f"user_{uuid.uuid4().hex[:8]}"
+    await _insert_test_user(username=uname, email=f"{uname}@test.com", password="testpass123", role="user")
+    login = await client.post("/api/auth/login", json={"username": uname, "password": "testpass123"})
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    wrong = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "nope", "new_password": "newpass123"},
+        headers=headers,
+    )
+    assert wrong.status_code == 401
+
+    short = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "testpass123", "new_password": "123"},
+        headers=headers,
+    )
+    assert short.status_code == 422
+
+    ok = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "testpass123", "new_password": "newpass123"},
+        headers=headers,
+    )
+    assert ok.status_code == 204
+
+    old = await client.post("/api/auth/login", json={"username": uname, "password": "testpass123"})
+    assert old.status_code == 401
+    new = await client.post("/api/auth/login", json={"username": uname, "password": "newpass123"})
+    assert new.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_login_wrong_password(client: AsyncClient):
     uname = f"user_{uuid.uuid4().hex[:8]}"
     await _insert_test_user(username=uname, email=f"{uname}@test.com", password="testpass123")

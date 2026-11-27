@@ -28,6 +28,13 @@ export async function attendanceLogin(payload: AttendanceLoginPayload): Promise<
   return await $attendanceApi('/auth/login', { method: 'POST', body: payload })
 }
 
+export async function attendanceChangePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await $attendanceApi('/auth/change-password', {
+    method: 'POST',
+    body: { current_password: currentPassword, new_password: newPassword },
+  })
+}
+
 export async function attendanceGetMe(): Promise<AttendanceUser> {
   return await $attendanceApi('/auth/me')
 }
